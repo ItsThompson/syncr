@@ -23,6 +23,10 @@ WHAT THIS WALK CANNOT SEE, stated so a green result is not read as more than it 
   enforcing.
 * which FIELD a listed module reads. The crossing is at module granularity; the field clauses in the
   record are prose, and a reader checks those.
+* a root outside the four below. `tools/`, `deployments/bin/` and `e2e/harness/` hold executed
+  Python and are outside them, so an enforcement written in one of those is not listed. None of the
+  three can refuse a user's declaration today: two monitoring probes, repository tooling, and a test
+  harness.
 
 A call is resolved through the module's own imports where the receiver allows it, and matched on
 the name alone where it does not, gated on the module importing the snap module at all. That gate
@@ -60,9 +64,12 @@ SNAP_MODULE: Final = "syncr_domain.snap"
 DECLARATION_PREDICATES: Final = ("is_wall_time_on_snap_grid", "is_a_snap_multiple")
 ENFORCEMENTS: Final = frozenset(f"{SNAP_MODULE}.{name}" for name in DECLARATION_PREDICATES)
 
-# Every root holding code this repository ships. The migration chain and the operational scripts are
-# in because a stored declaration is refused from one of those or from nowhere; tests are out
-# because the suites read the predicates constantly and none of them enforces anything.
+# Every root this repository calls shipped, taken from `test_write_target_sites.py`'s own
+# `SHIPPED_ROOTS` and `COVERED_TREES` rather than chosen here, so "shipped" means one thing in both
+# guards and neither can be widened without the other noticing. The migration chain and the
+# operational scripts are in because a stored declaration is refused from one of those or from
+# nowhere; tests are out because the suites read the predicates constantly and none of them enforces
+# anything.
 SHIPPED_ROOTS: Final = (
     "packages/*/src",
     "cli/src",
@@ -82,8 +89,6 @@ COVERED_TREES: Final = (
     "packages/syncr-api/alembic/",
     "deployments/ops/",
 )
-
-RECORD_SOURCE: Final = "packages/syncr-domain/src/syncr_domain/snap.py"
 
 # One item of the record's enumerated list: the module in double backticks, then what it reads. The
 # marker is anchored to the start of a line, so a module named inside a sentence is prose rather
@@ -131,6 +136,16 @@ def record() -> str:
     return stated
 
 
+def record_source() -> Path:
+    """The file the record lives in, taken from the imported module rather than named a second time.
+
+    A path spelled out as a constant is a second name for the module this file is about, and a guard
+    that reads its prose from one while reading its docstring from the other can be aimed at a
+    different file and still answer.
+    """
+    return Path(snap.__file__).resolve()
+
+
 def listed_sites(stated: str) -> tuple[str, ...]:
     """Every module the record's enumerated list names, in the order it names them."""
     return tuple(match.group("module") for match in _SITE.finditer(stated))
@@ -159,7 +174,7 @@ def module_of(relative: str) -> str:
 
 
 def package_of(relative: str) -> str:
-    """The dotted package a relative import in this module resolves against.
+    """The dotted package a relative import in this module resolves against, or its directory.
 
     Read off the path's parent directory rather than off the module name, because the two differ for
     a package's ``__init__.py``: ``feasibility/__init__.py`` imports AS ``syncr_domain.feasibility``
@@ -167,6 +182,9 @@ def package_of(relative: str) -> str:
     resolves against the same package one level up from its own name. Deriving this by dropping the
     last dotted segment of the module name hands a package's ``__init__`` its parent, and then
     ``from ..snap import`` inside it resolves to nothing.
+
+    A path that imports as no module has no dotted package either, so it gets its directory: nothing
+    under those roots uses a relative import, and a slash path resolves no rule stated in dots.
     """
     _, marker, tail = relative.partition("/src/")
     if not marker:
@@ -234,11 +252,11 @@ def test_the_walk_reaches_every_tree_a_declaration_could_be_refused_from() -> No
 
 def test_the_walk_reaches_a_nested_module_and_leaves_the_suites_out() -> None:
     # The reach control above is satisfied by one file per tree, so a walk that stopped recursing
-    # would pass it. Both named files are load-bearing for the rule: one holds the record and the
-    # other sits two directories down inside a package.
+    # would pass it. Both named files are load-bearing for the rule: one is the record's own, taken
+    # from the imported module, and the other sits two directories down inside a package.
     found = shipped_modules(repository_root())
 
-    assert RECORD_SOURCE in found
+    assert str(record_source().relative_to(repository_root())) in found
     assert "packages/syncr-api/src/syncr_api/promotions/service.py" in found
     assert [module for module in found if "/tests/" in module] == []
 
@@ -436,14 +454,21 @@ def test_the_record_still_states(clause: str, stated: str) -> None:
     )
 
 
+def test_the_citation_reading_reads_the_file_the_record_is_in() -> None:
+    # An instrument aimed at the wrong target answers confidently. The rule's prose is read from the
+    # module object and its citations from a file, so one assertion ties the two readings to one
+    # file: any other module's text cannot contain this module's docstring.
+    assert record() in record_source().read_text(encoding="utf-8")
+
+
 def test_the_record_cites_no_ticket() -> None:
     # Every other tree's citations are swept by a scan that skips this file, because a sweep that
     # took the record with it would delete the only statement of the rule. So this file's own
     # prose is held here instead.
-    source = (repository_root() / RECORD_SOURCE).read_text(encoding="utf-8")
+    source = record_source().read_text(encoding="utf-8")
 
     assert _CITATION.findall(source) == [], (
-        f"{RECORD_SOURCE} cites a planning artifact a reader cannot resolve: state what it "
+        f"{record_source().name} cites a planning artifact a reader cannot resolve: state what it "
         f"requires instead"
     )
 
