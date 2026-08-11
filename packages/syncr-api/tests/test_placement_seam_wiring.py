@@ -16,39 +16,57 @@ statements a wired seam makes false, over this member's own sources and suites, 
 after the wiring has been read: unwire the seam and the wiring guard fails first, which is the order
 that keeps the two from disagreeing.
 
-What escapes this: a reader reached through an alias, a ``getattr`` or a subclass; a second seam
-wired inside a helper that returns the reader rather than constructing it at the keyword; and any
-false sentence about the seam that is not one of the statements named below. What it catches is the
-ordinary way this goes wrong, which is a stub wired back in and a docstring left describing it.
+What escapes this: an assembler bound by assignment rather than imported (``Composer =
+WeekAssembler`` and then ``Composer(...)``), and a second composition whose ``placements`` keyword
+is not a direct call, such as one handed an already-built reader or a helper's return. Both
+spellings of a direct construction are covered for the assembler, the bare name and the
+module-qualified one, plus any local name an ``import from`` binds it to. A reader under another
+name does not hide, whether by alias, subclass or ``getattr``: the mapping asserts the reader's
+exact name, so such a wiring fails loudly rather than passing quietly. What is left is a false
+sentence about the seam that is not one of the statements named below.
 
-**Two shapes a stub takes in a suite are refused here as well**: a class defined in front of the
-reader's own name, and a fixture whose body does nothing, which any number of signatures can declare
-while nothing happens. Neither is visible to the suite that holds it.
+**Two shapes a stub takes in a suite are refused as well**: a class defined in front of the reader's
+own name, and a fixture whose body does nothing, which any number of signatures can declare while
+nothing happens. Both are stated over every workspace member's suite directory and over every Python
+file in it, because a rule over one member, or over the files named ``test_*.py`` alone, is
+satisfied by writing the same thing next door. Neither shape is visible to the suite that holds it.
 """
 
 from __future__ import annotations
 
 import ast
-import inspect
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from syncr_api.plans import injection
 from syncr_api.plans.assembler import WeekAssembler
 from syncr_api.plans.placements import StoredPlacements
-from syncr_api.solving import dispatch
+from tests.source_census import imported_as
+from tests.test_habit_outcome_reader_seam import member_suite_roots
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 ASSEMBLER = WeekAssembler.__name__
+ASSEMBLER_MODULE = WeekAssembler.__module__
 SEAM_KEYWORD = "placements"
 PRODUCTION_READER = StoredPlacements.__name__
 READER_MODULE = StoredPlacements.__module__
 
-# `packages/syncr-api/src/syncr_api/plans/injection.py` -> `packages/syncr-api`.
-MEMBER = Path(inspect.getfile(injection)).resolve().parents[3]
+# `packages/syncr-api/tests/test_placement_seam_wiring.py` -> `packages/syncr-api`. Taken from THIS
+# FILE rather than from the imported package, so the precondition below crosses the tree this
+# checkout holds against the tree the interpreter resolved: in a workspace whose editable installs
+# point at another checkout those are two different questions.
+MEMBER = Path(__file__).resolve().parents[1]
+SOURCE = MEMBER / "src" / "syncr_api"
 WIRING = "plans/injection.py"
+
+# The two modules that describe the seam in prose: the path that classifies a candidate against the
+# live plan, and the suite that drives it.
+DESCRIBING_THE_SEAM = (
+    SOURCE / "solving" / "dispatch.py",
+    MEMBER / "tests" / "test_solve_runner_integration.py",
+)
 
 # The statements a wired seam makes false. Each is a claim about what the seam answers or about what
 # the answer costs, and the scan below refuses all four wherever a source or a suite writes one.
@@ -82,27 +100,40 @@ def seam_wirings(source_root: Path) -> list[Wiring]:
     for module in sorted(source_root.rglob("*.py")):
         tree = ast.parse(module.read_text(encoding="utf-8"))
         named = str(module.relative_to(source_root))
+        composing = frozenset({ASSEMBLER}) | imported_as(
+            tree, module=ASSEMBLER_MODULE, names=(ASSEMBLER,)
+        )
         found.extend(
             Wiring(named, reader, _imported_from(tree, reader))
             for node in ast.walk(tree)
-            if (reader := _seam_of(node)) is not None
+            if (reader := _seam_of(node, composing)) is not None
         )
     return found
 
 
-def _seam_of(node: ast.AST) -> str | None:
+def _seam_of(node: ast.AST, composing: frozenset[str]) -> str | None:
     """The class this node's placement seam is constructed from, if it composes an assembler.
 
-    A keyword bound to anything but a call has no class to name: a seam handed an already-built
-    reader is invisible here, which is the residue the module docstring states.
+    ``composing`` holds every local name this source can reach the assembler by, so a
+    module-qualified call and an ``as`` alias are read as compositions rather than passed over. A
+    keyword bound to anything but a call has no class to name.
     """
-    if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != ASSEMBLER:
+    if not isinstance(node, ast.Call) or _named(node.func) not in composing:
         return None
     bound = {keyword.arg: keyword.value for keyword in node.keywords}
     seam = bound.get(SEAM_KEYWORD)
     if not isinstance(seam, ast.Call):
         return None
-    return getattr(seam.func, "id", None) or getattr(seam.func, "attr", None)
+    return _named(seam.func)
+
+
+def _named(node: ast.expr) -> str | None:
+    """The trailing name of a bare name or an attribute, and nothing for anything else."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
 
 
 def _imported_from(tree: ast.Module, name: str) -> str | None:
@@ -137,16 +168,30 @@ def denying_the_wiring(files: Iterable[Path]) -> dict[Path, list[str]]:
     return found
 
 
+def suite_roots() -> tuple[Path, ...]:
+    """Every workspace member's suite directory, read from the root manifest.
+
+    One reading, shared by both rules stated over the suites, so the two cannot come to cover
+    different trees while each looks like it covers the suites.
+    """
+    roots = tuple(member_suite_roots())
+    assert len(roots) > 1, f"the member list resolved to {roots}, so these rules cover one member"
+    return roots
+
+
 def classes_named(name: str, roots: Iterable[Path]) -> frozenset[Path]:
-    """Every suite under ``roots`` that DEFINES a class of that name.
+    """Every file under ``roots`` that DEFINES a class of that name.
 
     A definition rather than a mention, so the import and the constructor call a suite driving the
     production reader makes are not counted: what this finds is a local class standing in front of
     the real one.
+
+    Every Python file rather than the ones named ``test_*.py``: a suite's doubles live beside it in
+    modules pytest never collects directly, and that is where a placement double would go.
     """
     found = []
     for root in roots:
-        for path in sorted(root.rglob("test_*.py")):
+        for path in sorted(root.rglob("*.py")):
             source = path.read_text(encoding="utf-8")
             if name not in source:
                 continue
@@ -211,14 +256,24 @@ def test_the_one_composition_of_the_assembler_wires_the_stored_reader(source_roo
     assert wired[0].imported_from == READER_MODULE
 
 
-def test_the_tree_walked_is_the_one_this_suite_imported(source_root: Path) -> None:
-    """The precondition. A walk over a tree nobody runs would certify the claim above forever."""
-    assert Path(injection.__file__).resolve() == (source_root / WIRING).resolve()
-    assert PRODUCTION_READER in (source_root / WIRING).read_text(encoding="utf-8")
+def test_the_tree_walked_is_the_one_this_checkout_holds(source_root: Path) -> None:
+    """The precondition, and its two sides are resolved from different places.
+
+    ``source_root`` comes from the imported package and ``MEMBER`` from this file's own path, so a
+    run whose interpreter answers with another checkout's ``syncr_api`` fails here instead of
+    certifying that checkout's wiring against this checkout's statements.
+    """
+    assert Path(injection.__file__).resolve() == (SOURCE / WIRING).resolve()
+    assert source_root.resolve() == SOURCE.resolve()
+    assert PRODUCTION_READER in (SOURCE / WIRING).read_text(encoding="utf-8")
 
 
 def test_the_walk_reports_a_seam_wired_to_something_else(tmp_path: Path) -> None:
-    """The control on the reading: it names what the keyword is bound to, not what it expects."""
+    """The control on the reading: it names what the keyword is bound to, not what it expects.
+
+    Three spellings of the composition, because a reading that saw only the bare name would report
+    one wiring out of three and its exact-mapping case would still pass.
+    """
     (tmp_path / "wiring.py").write_text(
         "from elsewhere import NoPlacements\n"
         f"def build() -> object:\n"
@@ -231,11 +286,27 @@ def test_the_walk_reports_a_seam_wired_to_something_else(tmp_path: Path) -> None
         f"    return {ASSEMBLER}({SEAM_KEYWORD}=NoPlacements())\n",
         encoding="utf-8",
     )
+    (tmp_path / "qualified.py").write_text(
+        f"from elsewhere import NoPlacements\n"
+        f"import {ASSEMBLER_MODULE} as composer\n"
+        f"def build() -> object:\n"
+        f"    return composer.{ASSEMBLER}({SEAM_KEYWORD}=NoPlacements())\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "aliased.py").write_text(
+        f"from elsewhere import NoPlacements\n"
+        f"from {ASSEMBLER_MODULE} import {ASSEMBLER} as Composer\n"
+        f"def build() -> object:\n"
+        f"    return Composer({SEAM_KEYWORD}=NoPlacements())\n",
+        encoding="utf-8",
+    )
 
     found = seam_wirings(tmp_path)
 
     assert found == [
+        Wiring("aliased.py", "NoPlacements", "elsewhere"),
         Wiring("local_stub.py", "NoPlacements", None),
+        Wiring("qualified.py", "NoPlacements", "elsewhere"),
         Wiring("wiring.py", "NoPlacements", "elsewhere"),
     ]
 
@@ -276,14 +347,21 @@ def test_no_source_or_suite_of_this_member_denies_the_wiring(source_root: Path) 
     assert denying == {}, f"these deny a seam that is wired: { {str(one) for one in denying} }"
 
 
-def test_the_dispatch_names_the_reader_its_classification_rests_on() -> None:
-    """The path that classifies a candidate says which reader the plan it compares against comes
-    from.
+def test_every_module_that_describes_the_seam_names_the_reader() -> None:
+    """Each module whose prose rests on the seam's answer says which reader answers.
 
-    Keyed on the reader's own name rather than on a sentence, so rewording the paragraph is free and
-    dropping the seam out of it is not.
+    Keyed on the reader's own name rather than on a sentence, so rewording a paragraph is free and
+    dropping the seam out of one is not. Read from the tree rather than through ``__doc__``, for the
+    reason the scan below reads the tree: what is under test is what this checkout says.
     """
-    assert PRODUCTION_READER in (dispatch.__doc__ or "")
+    silent = [
+        str(path.relative_to(MEMBER))
+        for path in DESCRIBING_THE_SEAM
+        if PRODUCTION_READER
+        not in (ast.get_docstring(ast.parse(path.read_text(encoding="utf-8"))) or "")
+    ]
+
+    assert silent == [], f"{silent} rest on the seam's answer and do not say which reader answers"
 
 
 def test_the_scan_finds_every_denial_it_names(tmp_path: Path) -> None:
@@ -300,28 +378,42 @@ def test_the_scan_finds_every_denial_it_names(tmp_path: Path) -> None:
 
 def test_no_suite_defines_a_class_named_after_the_production_reader() -> None:
     """A local class of that name shadows the seam it looks like it drives, and reads nothing."""
-    assert classes_named(PRODUCTION_READER, (MEMBER / "tests",)) == frozenset()
+    defining = classes_named(PRODUCTION_READER, suite_roots())
+
+    assert defining == frozenset(), (
+        f"{sorted(str(one) for one in defining)} define a class named after the production reader, "
+        "which stands in front of it while reading nothing"
+    )
 
 
-def test_the_class_scan_sees_a_definition_and_ignores_a_use(tmp_path: Path) -> None:
-    """Its control, both ways: the definition is found, and importing or calling it is not one."""
-    root = tmp_path / "tests"
-    root.mkdir(parents=True)
-    (root / "test_defines_one.py").write_text(
+def test_the_class_scan_sees_a_definition_in_any_member_and_ignores_a_use(tmp_path: Path) -> None:
+    """Its control, three ways: a second member, a file pytest does not collect, and a mere use.
+
+    The file not named ``test_*.py`` is the case that matters, because the doubles of this member's
+    suites live in exactly such a file and that is where a placement double would be written.
+    """
+    one, two = tmp_path / "one" / "tests", tmp_path / "two" / "tests"
+    for root in (one, two):
+        root.mkdir(parents=True)
+    (one / "suite_fakes.py").write_text(f"class {PRODUCTION_READER}:\n    pass\n", encoding="utf-8")
+    (two / "test_defines_one.py").write_text(
         f"class {PRODUCTION_READER}:\n    pass\n", encoding="utf-8"
     )
-    (root / "test_drives_the_real_one.py").write_text(
+    (one / "test_drives_the_real_one.py").write_text(
         f"from {READER_MODULE} import {PRODUCTION_READER}\n"
         f"seam = {PRODUCTION_READER}(1, 2, 3, 4)\n",
         encoding="utf-8",
     )
 
-    assert classes_named(PRODUCTION_READER, (root,)) == {root / "test_defines_one.py"}
+    assert classes_named(PRODUCTION_READER, (one, two)) == {
+        one / "suite_fakes.py",
+        two / "test_defines_one.py",
+    }
 
 
-def test_no_fixture_of_this_member_has_a_body_that_does_nothing() -> None:
+def test_no_fixture_of_any_member_has_a_body_that_does_nothing() -> None:
     """The other shape: a fixture a signature declares and that substitutes nothing when it runs."""
-    idle = no_op_fixtures((MEMBER / "tests",))
+    idle = no_op_fixtures(suite_roots())
 
     assert idle == frozenset(), (
         f"{sorted((str(path), name) for path, name in idle)} run and change nothing, so a case can "
@@ -331,8 +423,11 @@ def test_no_fixture_of_this_member_has_a_body_that_does_nothing() -> None:
 
 
 def test_the_fixture_reading_sees_an_empty_body_and_leaves_a_working_one(tmp_path: Path) -> None:
-    """Its control, both ways, and over both decorator spellings pytest accepts."""
-    (tmp_path / "test_idle.py").write_text(
+    """Its control, over a second member, both decorator spellings, and a conftest."""
+    one, two = tmp_path / "one" / "tests", tmp_path / "two" / "tests"
+    for root in (one, two):
+        root.mkdir(parents=True)
+    (one / "test_idle.py").write_text(
         "import pytest\nfrom pytest import fixture\n\n\n"
         '@pytest.fixture\ndef says_only_this() -> None:\n    """A docstring and no body."""\n\n\n'
         "@fixture()\ndef passes() -> None:\n    pass\n\n\n"
@@ -340,8 +435,39 @@ def test_the_fixture_reading_sees_an_empty_body_and_leaves_a_working_one(tmp_pat
         "def not_a_fixture() -> None:\n    pass\n",
         encoding="utf-8",
     )
+    (two / "conftest.py").write_text(
+        "import pytest\n\n\n@pytest.fixture\ndef also_idle() -> None:\n    ...\n",
+        encoding="utf-8",
+    )
 
-    assert no_op_fixtures((tmp_path,)) == {
-        (tmp_path / "test_idle.py", "says_only_this"),
-        (tmp_path / "test_idle.py", "passes"),
+    assert no_op_fixtures((one, two)) == {
+        (one / "test_idle.py", "says_only_this"),
+        (one / "test_idle.py", "passes"),
+        (two / "conftest.py", "also_idle"),
     }
+
+
+def test_both_rules_over_the_suites_take_the_same_roots() -> None:
+    """One input set for both rules, read out of this module's own source.
+
+    Two scans over two different sets is how a name reaches the one file only one of them reads, so
+    the roots come from a single function and each rule is checked to take them from it.
+    """
+    tree = ast.parse(THE_SCANS_OWN_FILE.read_text(encoding="utf-8"))
+    taking = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and any(
+            isinstance(call, ast.Call) and _named(call.func) == suite_roots.__name__
+            for call in ast.walk(node)
+        )
+    }
+    roots = suite_roots()
+
+    assert {
+        test_no_suite_defines_a_class_named_after_the_production_reader.__name__,
+        test_no_fixture_of_any_member_has_a_body_that_does_nothing.__name__,
+    } <= taking
+    assert MEMBER / "tests" in roots, "this member's own suites are outside the scanned roots"
+    assert all(root.name == "tests" for root in roots)
