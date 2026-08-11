@@ -33,6 +33,7 @@ from syncr_api.plans.clause_schemas import ClauseResponse, ReasonResponse, as_cl
 from syncr_api.plans.currency import CURRENT, PLAN_CURRENCIES, SOLVING, STALE, plan_currency
 from syncr_api.plans.document_schemas import PlanDocumentResponse
 from syncr_api.plans.emptiness import (
+    AWAITING_MAINTAINER,
     EMPTY_REASONS,
     OUTSIDE_HORIZON,
     SETUP_INCOMPLETE,
@@ -89,6 +90,7 @@ from tests.plan_documents import (
 
 if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
+    from syncr_api.plans.emptiness import EmptyReason
     from syncr_api.solving.config import OperationKind, OperationStatus
     from syncr_domain.identifiers import AreaId
 
@@ -364,68 +366,89 @@ def test_the_three_words_are_the_whole_vocabulary() -> None:
 # Why a week holds no plan
 # --------------------------------------------------------------------------------
 
+# The horizon every case below is asked against, and the two weeks either side of it.
+_HORIZON = a_horizon()
+_INSIDE = WEEK
+_BEYOND = IsoWeek(2027, 3)
 
-def test_a_missing_minimum_input_is_named_in_the_statement() -> None:
-    readiness = PlanReadiness((MissingInput.AREAS, MissingInput.DAY_SHAPE))
-
-    empty = empty_week(WEEK, readiness=readiness, horizon=a_horizon())
-
-    assert empty.reason == SETUP_INCOMPLETE
-    assert empty.missing == (MissingInput.AREAS, MissingInput.DAY_SHAPE)
-    assert readiness.statement() in empty.statement
+_NOTHING_DECLARED = PlanReadiness((MissingInput.AREAS, MissingInput.DAY_SHAPE))
+_NO_AREAS = PlanReadiness((MissingInput.AREAS,))
+_READY = PlanReadiness()
 
 
-def test_a_missing_input_outranks_the_horizon_so_the_actions_offered_can_work() -> None:
-    """A tenant with no Areas cannot plan any week, so naming the horizon would offer two dead ends.
+@pytest.mark.parametrize(
+    ("iso_week", "readiness", "reason", "missing", "stated", "covered"),
+    [
+        pytest.param(
+            _INSIDE,
+            _NOTHING_DECLARED,
+            SETUP_INCOMPLETE,
+            (MissingInput.AREAS, MissingInput.DAY_SHAPE),
+            (_NOTHING_DECLARED.statement(),),
+            True,
+            id="setup-incomplete-inside-the-horizon",
+        ),
+        # A tenant with no Areas cannot plan any week, so naming the horizon here would offer two
+        # dead ends: extending it plans nothing without Areas, and solving the week is refused
+        # naming the very input the screen did not mention.
+        pytest.param(
+            _BEYOND,
+            _NO_AREAS,
+            SETUP_INCOMPLETE,
+            (MissingInput.AREAS,),
+            (_NO_AREAS.statement(),),
+            False,
+            id="setup-incomplete-outranks-the-horizon",
+        ),
+        pytest.param(
+            _BEYOND,
+            _READY,
+            OUTSIDE_HORIZON,
+            (),
+            (f"{_HORIZON.days}-day", str(_HORIZON.through), "solve this week now"),
+            False,
+            id="beyond-the-horizon",
+        ),
+        pytest.param(
+            _INSIDE,
+            _READY,
+            AWAITING_MAINTAINER,
+            (),
+            ("inside your", "has not been produced yet", "solve this week now"),
+            True,
+            id="awaiting-the-maintainer",
+        ),
+    ],
+)
+def test_every_state_a_planless_week_is_in_answers_with_its_own_word(
+    iso_week: IsoWeek,
+    readiness: PlanReadiness,
+    reason: EmptyReason,
+    missing: tuple[MissingInput, ...],
+    stated: tuple[str, ...],
+    covered: bool,
+) -> None:
+    """Three states over four cases, each asserting the word, the sentence and the flag together.
 
-    Extending the horizon plans nothing without Areas, and solving the week is refused naming the
-    very input the screen did not mention.
+    A case that asserted the word alone would pass against a response whose sentence and flag
+    contradict it, and a week the horizon holds is exactly where the three can disagree: the flag
+    says the week is inside the horizon while a word borrowed from the state beyond it offers to
+    extend one that already reaches the week.
     """
-    far_out = IsoWeek(2027, 3)
-    horizon = a_horizon()
-    assert not horizon.covers(far_out), "the fixture week is inside the horizon"
+    assert _HORIZON.covers(iso_week) is covered, "this case names a week on the other side"
 
-    empty = empty_week(far_out, readiness=PlanReadiness((MissingInput.AREAS,)), horizon=horizon)
+    empty = empty_week(iso_week, readiness=readiness, horizon=_HORIZON)
 
-    assert empty.reason == SETUP_INCOMPLETE
-    assert empty.covers_this_week is False
-
-
-def test_a_week_past_the_horizon_states_the_horizon_and_the_date_it_reaches() -> None:
-    horizon = a_horizon()
-
-    empty = empty_week(IsoWeek(2027, 3), readiness=PlanReadiness(), horizon=horizon)
-
-    assert empty.reason == OUTSIDE_HORIZON
-    assert empty.missing == ()
-    assert empty.covers_this_week is False
-    assert f"{horizon.days}-day" in empty.statement
-    assert str(horizon.through) in empty.statement
-    assert "solve this week now" in empty.statement
+    assert empty.reason == reason
+    assert empty.missing == missing
+    assert empty.covers_this_week is covered
+    for phrase in stated:
+        assert phrase in empty.statement
 
 
-def test_a_week_inside_the_horizon_with_no_plan_says_so_rather_than_claiming_it_is_beyond_one() -> (
-    None
-):
-    """The transient state: setup is complete and the maintainer has not reached the week yet.
-
-    The vocabulary has two members and this is neither, so the word is the one whose action fits and
-    the statement and the flag carry the truth. Nothing in the response claims the week is beyond a
-    horizon that holds it.
-    """
-    horizon = a_horizon()
-
-    empty = empty_week(WEEK, readiness=PlanReadiness(), horizon=horizon)
-
-    assert empty.reason == OUTSIDE_HORIZON
-    assert empty.covers_this_week is True
-    assert "inside your" in empty.statement
-    assert "has not been produced yet" in empty.statement
-
-
-def test_the_two_words_are_the_whole_vocabulary() -> None:
-    assert set(EMPTY_REASONS) == {OUTSIDE_HORIZON, SETUP_INCOMPLETE}
-    assert len(EMPTY_REASONS) == 2
+def test_the_three_reasons_are_the_whole_vocabulary() -> None:
+    assert set(EMPTY_REASONS) == {OUTSIDE_HORIZON, SETUP_INCOMPLETE, AWAITING_MAINTAINER}
+    assert len(EMPTY_REASONS) == 3
 
 
 # --------------------------------------------------------------------------------

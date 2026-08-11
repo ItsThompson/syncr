@@ -3340,7 +3340,7 @@ export interface components {
             windows: components["schemas"]["TimeWindowResponse"][];
         };
         /** @enum {string} */
-        EmptyReason: "outside_horizon" | "setup_incomplete";
+        EmptyReason: "outside_horizon" | "setup_incomplete" | "awaiting_maintainer";
         /**
          * EmptySlotReason
          * @description Why a template slot the solver could not fill is empty.

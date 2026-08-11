@@ -62,7 +62,7 @@ from syncr_api.outcomes.config import DAYS_PREFIX
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.config import APPLIED, PLAN_REVISIONS_TABLE, VERDICT_EVENTS_TABLE
 from syncr_api.plans.currency import CURRENT, SOLVING, STALE
-from syncr_api.plans.emptiness import OUTSIDE_HORIZON, SETUP_INCOMPLETE
+from syncr_api.plans.emptiness import AWAITING_MAINTAINER, OUTSIDE_HORIZON, SETUP_INCOMPLETE
 from syncr_api.plans.injection import build_week_assembler, build_week_service, get_week_service
 from syncr_api.plans.production import WeekProducer
 from syncr_api.plans.readiness import MissingInput
@@ -642,13 +642,18 @@ def test_a_week_past_the_horizon_states_the_horizon_and_offers_the_two_actions(
     assert "solve this week now" in view["emptyWeek"]["statement"]
 
 
-def test_a_week_inside_the_horizon_with_no_plan_yet_does_not_claim_to_be_beyond_one(
+def test_a_week_inside_the_horizon_with_no_plan_yet_says_it_is_awaiting_the_maintainer(
     http: TestClient, configured: dict[str, str]
 ) -> None:
-    """The transient between completing setup and the maintainer's next tick."""
+    """The transient between completing setup and the maintainer's next tick.
+
+    The word, the flag and the sentence are asserted together: this is the state where a word
+    borrowed from the week beyond the horizon would contradict the other two.
+    """
     view = week_view(http, configured, this_week())
 
     assert view["live"] is None
+    assert view["emptyReason"] == AWAITING_MAINTAINER
     assert view["emptyWeek"]["coversThisWeek"] is True
     assert "inside your" in view["emptyWeek"]["statement"]
     assert "has not been produced yet" in view["emptyWeek"]["statement"]

@@ -1,4 +1,4 @@
-"""Why a week has no plan, in the two words the screen has an empty state for.
+"""Why a week has no plan, in the words the screen has an empty state for.
 
 A read never triggers work, so a week the plan horizon maintainer has not reached has no plan, and
 saying so is what makes the horizon a visible product concept rather than an invisible assumption.
@@ -13,15 +13,16 @@ without Areas, and solving the week is refused naming the very input the screen 
 a missing minimum input is reported wherever the week is, and the horizon is reported for a week
 that could be planned and has not been.
 
-## One word covers two states, and the statement is what separates them
+## One word per state, so the word and the statement cannot disagree
 
-The vocabulary is closed at two members, and there are three states a week with no plan can be in:
-the minimum inputs are missing, the week is past the horizon, or the week is inside the horizon and
-the maintainer has not reached it yet. The third is a transient, at most one tick wide, and its
-nearest member is ``outside_horizon``: the action it offers, solve this week now, is exactly the
-right one. The statement says which of the two states it really is, and ``covers_this_week`` says
-so as a flag a client can branch on, so nothing in the response claims the week is beyond a horizon
-that holds it.
+A week with no plan is in one of three states, and each has a word of its own: the minimum inputs
+are missing (``setup_incomplete``), the week is past the horizon (``outside_horizon``), or the week
+is inside the horizon and the maintainer has not reached it yet (``awaiting_maintainer``). The last
+is a transient, at most one tick wide, and it needs a word of its own because a client that reads
+``outside_horizon`` there offers to extend a horizon that already holds the week.
+
+``covers_this_week`` remains a flag a client can branch on, because a week whose setup is
+incomplete sits either side of the horizon and the word for it says nothing about which.
 """
 
 from __future__ import annotations
@@ -39,10 +40,11 @@ if TYPE_CHECKING:
     from syncr_api.plans.readiness import MissingInput, PlanReadiness
     from syncr_domain.weeks import IsoWeek
 
-type EmptyReason = Literal["outside_horizon", "setup_incomplete"]
+type EmptyReason = Literal["outside_horizon", "setup_incomplete", "awaiting_maintainer"]
 OUTSIDE_HORIZON: Final[EmptyReason] = "outside_horizon"
 SETUP_INCOMPLETE: Final[EmptyReason] = "setup_incomplete"
-EMPTY_REASONS: Final = (OUTSIDE_HORIZON, SETUP_INCOMPLETE)
+AWAITING_MAINTAINER: Final[EmptyReason] = "awaiting_maintainer"
+EMPTY_REASONS: Final = (OUTSIDE_HORIZON, SETUP_INCOMPLETE, AWAITING_MAINTAINER)
 
 # How long a week inside the horizon can wait for its plan, in the words the statement uses. Read
 # from the cadence itself, so the sentence cannot promise a wait the maintainer does not keep.
@@ -95,7 +97,7 @@ class EmptyWeek:
 
 
 def empty_week(iso_week: IsoWeek, *, readiness: PlanReadiness, horizon: Horizon) -> EmptyWeek:
-    """Why ``iso_week`` has no plan. Total: every week without one gets one of the two words."""
+    """Why ``iso_week`` has no plan. Total: every week without one gets exactly one word."""
     covered = horizon.covers(iso_week)
     if not readiness.is_ready:
         return EmptyWeek(
@@ -120,7 +122,7 @@ def empty_week(iso_week: IsoWeek, *, readiness: PlanReadiness, horizon: Horizon)
             covers_this_week=covered,
         )
     return EmptyWeek(
-        reason=OUTSIDE_HORIZON,
+        reason=AWAITING_MAINTAINER,
         statement=(
             f"{iso_week} is inside your {horizon.days}-day planning horizon and its plan has not "
             f"been produced yet. syncr plans it without you asking, within {_TICK_MINUTES} "

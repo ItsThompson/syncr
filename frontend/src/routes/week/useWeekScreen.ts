@@ -17,7 +17,7 @@ import {
   type WeekView,
 } from "../../api/hooks/useWeek";
 import { parseClock } from "../../ui/primitives";
-import type { Extent, WeekDay } from "../../ui/domain";
+import type { EmptyWeekReason, Extent, WeekDay } from "../../ui/domain";
 import type { Problem } from "../../contract";
 import { bandOfEmptySlot, bandOfOffPlanPeriod, bandOfWindow, type WeekBand } from "./bands";
 import { areaIndexOf, weekBlockOf } from "./blocks";
@@ -29,7 +29,7 @@ export type WeekScreenState =
   | { readonly status: "error"; readonly problem: Problem }
   | {
       readonly status: "empty";
-      readonly reason: "outside_horizon" | "setup_incomplete";
+      readonly reason: EmptyWeekReason;
       readonly facts: EmptyWeekFacts;
     }
   | {
@@ -111,5 +111,13 @@ function bandsOf(view: WeekView): WeekBand[] {
  */
 function emptyState(view: WeekView): WeekScreenState {
   if (view.emptyReason === null || view.emptyWeek === null) return { status: "loading" };
-  return { status: "empty", reason: view.emptyReason, facts: view.emptyWeek };
+  return { status: "empty", reason: renderedReason(view.emptyReason), facts: view.emptyWeek };
+}
+
+/* THE WIRE NAMES THREE EMPTY STATES AND THIS SCREEN RENDERS TWO. `awaiting_maintainer` is a week inside the
+ * horizon whose plan has not been produced yet; it needs a title and one action of its own, and until it has
+ * them it draws as the horizon state. The sentence a reader actually reads is the server's either way, and it
+ * says the week is inside the horizon and waiting. */
+function renderedReason(reason: NonNullable<WeekView["emptyReason"]>): EmptyWeekReason {
+  return reason === "awaiting_maintainer" ? "outside_horizon" : reason;
 }

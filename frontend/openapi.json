@@ -2954,7 +2954,8 @@
       "EmptyReason": {
         "enum": [
           "outside_horizon",
-          "setup_incomplete"
+          "setup_incomplete",
+          "awaiting_maintainer"
         ],
         "type": "string"
       },
