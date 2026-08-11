@@ -32,9 +32,12 @@ number of cross-Area pairs, because that is what the gate is stated over. The **
 from the spread of the per-pair differences with no clamp on them, because the disagreement between
 those pairs is what the interval reports and the clamped figure alone has none.
 
-The cost of clamping once is that the bound in :mod:`syncr_learning.shrinkage` no longer holds on
-one observation's contribution: an absurd gap enters the mean at full size and only the mean is
-brought inside the range. The figure a solver reads still cannot leave the range.
+The cost of clamping once is that the range no longer bounds each pair's difference, only their
+mean. That costs nothing while a pair's gap is itself bounded, and it is: a gap at or above the same
+ceiling absorbs any price, so it is not evidence about one and the extraction drops it. A pair's
+difference therefore cannot exceed the width of the range in either direction, and one further pair
+moves a displayed price by no more than the bound in :mod:`syncr_learning.shrinkage`. Handed a gap
+the extraction never yields, this arithmetic would move much further than that bound.
 
 ## One thing about this parameter is not settled, and here is what would settle it
 

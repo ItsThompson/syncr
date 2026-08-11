@@ -22,6 +22,7 @@ from syncr_learning.config import (
     PRIOR_FITNESS,
     PRIOR_SKIP_PROBABILITY,
     PRIOR_WEIGHT,
+    THRESHOLD_CONTEXT_SWITCH_COST,
     THRESHOLD_TIME_OF_DAY_FITNESS,
     TimeBucket,
 )
@@ -41,7 +42,7 @@ from syncr_learning.observations import (
     SwitchObservation,
     TimeOfDayObservation,
 )
-from syncr_learning.shrinkage import shrunk
+from syncr_learning.shrinkage import outlier_bound, shrunk
 from tests.builders import AREA
 
 BASELINE_GAP = 30
@@ -60,12 +61,16 @@ def spread_around_a_baseline(*, far: int, near: int = 5) -> list[SwitchObservati
     The shape a per-observation floor mishandles: half the differences are negative, so truncating
     each one keeps the positive half whole and discards the size of the negative half.
     """
+    return switch_corpus(
+        across=[near if index % 2 == 0 else far for index in range(40)], baseline=BASELINE_GAP
+    )
+
+
+def switch_corpus(*, across: list[int], baseline: int) -> list[SwitchObservation]:
+    """Cross-Area pairs at the given gaps, against twenty within-Area pairs at one gap."""
     return [
-        *(
-            SwitchObservation(gap_minutes=near if index % 2 == 0 else far, changed_area=True)
-            for index in range(40)
-        ),
-        *(SwitchObservation(gap_minutes=BASELINE_GAP, changed_area=False) for _ in range(10)),
+        *(SwitchObservation(gap_minutes=gap, changed_area=True) for gap in across),
+        *(SwitchObservation(gap_minutes=baseline, changed_area=False) for _ in range(20)),
     ]
 
 
@@ -335,18 +340,51 @@ class TestContextSwitchCost:
 
     @pytest.mark.parametrize("gap", [0, 5, 600, 100_000])
     def test_the_fitted_price_never_leaves_the_clamp_range(self, gap: int) -> None:
-        # Clamping the difference of the means bounds the figure a solver reads but no longer bounds
-        # one pair's contribution to it, so this is the half of the credibility rule that survives
-        # and the absurd row is what drives it.
-        observed = [
-            SwitchObservation(gap_minutes=gap, changed_area=True),
-            *(SwitchObservation(gap_minutes=30, changed_area=True) for _ in range(39)),
-            *(SwitchObservation(gap_minutes=30, changed_area=False) for _ in range(10)),
-        ]
+        # Clamping the difference of the means bounds the figure a solver reads, whatever a row
+        # said, and the absurd row is what drives it.
+        observed = switch_corpus(across=[gap, *([30] * 39)], baseline=30)
         value = fit_context_switch_cost(observed).value
 
         assert value is not None
         assert MIN_SWITCH_COST_MINUTES <= value <= MAX_SWITCH_COST_MINUTES
+
+    @pytest.mark.parametrize("outlier", [0, 1, 60, 119, 120], ids=str)
+    def test_one_further_pair_cannot_move_the_price_past_the_stated_bound(
+        self, outlier: int
+    ) -> None:
+        # Clamping the difference of the means leaves each pair's own difference outside the range's
+        # reach, so the credibility bound has to be re-driven for this parameter rather than read
+        # off the formula. What holds it is the OTHER bound: a gap at or above the ceiling absorbs
+        # any price, so it is not evidence about one and never reaches here, which leaves a pair's
+        # difference inside the width in both directions. Driven at the gate, from a settled corpus
+        # of the smallest admissible gap, which is where the movement is largest.
+        at_the_gate = [0] * THRESHOLD_CONTEXT_SWITCH_COST
+        before = fit_context_switch_cost(switch_corpus(across=at_the_gate, baseline=0))
+        after = fit_context_switch_cost(switch_corpus(across=[*at_the_gate, outlier], baseline=0))
+
+        assert before.value is not None
+        assert after.value is not None
+        assert abs(after.value - before.value) <= outlier_bound(
+            low=MIN_SWITCH_COST_MINUTES,
+            high=MAX_SWITCH_COST_MINUTES,
+            threshold=THRESHOLD_CONTEXT_SWITCH_COST,
+        )
+
+    def test_a_gap_the_extraction_drops_would_break_that_bound(self) -> None:
+        # The positive control, and the reason the paragraph above is about the extraction rather
+        # than about the clamp: the bound survives on what reaches the fitter, not on anything the
+        # fitter does. A gap past the ceiling is refused upstream, in `features.py`.
+        at_the_gate = [0] * THRESHOLD_CONTEXT_SWITCH_COST
+        before = fit_context_switch_cost(switch_corpus(across=at_the_gate, baseline=0))
+        after = fit_context_switch_cost(switch_corpus(across=[*at_the_gate, 100_000], baseline=0))
+
+        assert before.value is not None
+        assert after.value is not None
+        assert abs(after.value - before.value) > outlier_bound(
+            low=MIN_SWITCH_COST_MINUTES,
+            high=MAX_SWITCH_COST_MINUTES,
+            threshold=THRESHOLD_CONTEXT_SWITCH_COST,
+        )
 
 
 class TestChurnTolerance:

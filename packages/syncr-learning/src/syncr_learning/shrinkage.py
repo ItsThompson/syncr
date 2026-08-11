@@ -26,9 +26,8 @@ So **one observation moves the value by at most its distance from the current va
   the width of the range whatever the row said. Where the clamp is applied per observation, as the
   duration ratio's is, a three-hour session against a one-hour plan is clamped rather than dropped:
   it did run long, and dropping it would discard the direction of the evidence along with its size.
-  Where the clamp is applied to a difference of two means instead, as the switch price's is, the
-  figure still cannot leave the range but one extreme observation moves the mean it enters, so the
-  bound below holds on the parameter and not on that observation's contribution to it.
+  Where it is applied to a difference of two means instead, as the switch price's is, the bound
+  survives only because each observation of that difference is bounded before it arrives.
 - A parameter is only DISPLAYED at or above its gate, so ``n`` is at least the threshold whenever a
   value exists. The bound on a displayed parameter is therefore ``width / (threshold + k + 1)``,
   which is :func:`outlier_bound`, and it is computed from the three numbers rather than stated as a
