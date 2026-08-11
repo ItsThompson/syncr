@@ -7,6 +7,8 @@ formula that divided by ``n`` instead of ``n + k``.
 
 from __future__ import annotations
 
+from statistics import fmean
+
 import pytest
 
 from syncr_learning.config import (
@@ -16,7 +18,7 @@ from syncr_learning.config import (
     THRESHOLD_DURATION_MULTIPLIER,
     ConfigError,
 )
-from syncr_learning.shrinkage import clamped, outlier_bound, shrunk
+from syncr_learning.shrinkage import clamped, outlier_bound, shrunk, shrunk_figure
 
 PRIOR = 1.0
 OBSERVED = 2.0
@@ -141,6 +143,53 @@ class TestTheInterval:
         assert result.confidence is not None
         assert (result.confidence[0] + result.confidence[1]) / 2 == pytest.approx(result.value)
         assert result.value != pytest.approx(3.0)
+
+
+class TestAFigureShrunkOverAPopulation:
+    """``shrunk_figure``: the count and the spread are the population's, the figure is not.
+
+    The shape a fitter needs when its empirical figure is not the mean of what it observed, which is
+    the case for a price that clamps the difference of two means.
+    """
+
+    def test_the_count_and_the_weight_come_from_the_population(self) -> None:
+        result = shrunk_figure(OBSERVED, spread=[0.0] * 40, prior=PRIOR)
+
+        assert result.samples == 40
+        assert result.shrinkage_weight == pytest.approx(10 / 50)
+        assert result.value == pytest.approx((40 * OBSERVED + 10 * PRIOR) / 50)
+
+    def test_the_interval_is_the_populations_spread_around_the_figure_that_was_shrunk(self) -> None:
+        population = [1.0, 2.0, 3.0] * 8
+        around_a_figure = shrunk_figure(9.0, spread=population, prior=PRIOR)
+        over_the_population = shrunk(population, prior=PRIOR)
+
+        assert around_a_figure.value is not None
+        assert around_a_figure.confidence is not None
+        assert over_the_population.confidence is not None
+        assert around_a_figure.value != pytest.approx(over_the_population.value)
+        assert _width(around_a_figure.confidence) == pytest.approx(
+            _width(over_the_population.confidence)
+        )
+        assert (around_a_figure.confidence[0] + around_a_figure.confidence[1]) / 2 == pytest.approx(
+            around_a_figure.value
+        )
+
+    def test_an_empty_population_is_the_prior_whatever_figure_is_handed_in(self) -> None:
+        result = shrunk_figure(999.0, spread=[], prior=PRIOR)
+
+        assert result.value == PRIOR
+        assert result.samples == 0
+        assert result.shrinkage_weight == 1.0
+
+    def test_shrinking_a_populations_own_mean_over_it_is_exactly_what_shrunk_does(self) -> None:
+        # What keeps the four fitters that clamp per observation on the path they were on: the
+        # sequence form is the figure form at the population's own mean, not a second formula.
+        population = [1.0, 2.0, 6.0]
+
+        assert shrunk_figure(fmean(population), spread=population, prior=PRIOR) == shrunk(
+            population, prior=PRIOR
+        )
 
 
 class TestClamping:

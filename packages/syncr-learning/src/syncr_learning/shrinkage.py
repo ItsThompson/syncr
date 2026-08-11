@@ -71,6 +71,33 @@ def shrunk(
     that is the GATE's decision, and the gate is what stops an unevidenced figure reaching the
     solver.
     """
+    return shrunk_figure(
+        fmean(measurements) if measurements else prior,
+        spread=measurements,
+        prior=prior,
+        prior_weight=prior_weight,
+    )
+
+
+def shrunk_figure(
+    empirical: float,
+    *,
+    spread: Sequence[float],
+    prior: float,
+    prior_weight: int = PRIOR_WEIGHT,
+) -> FitResult:
+    """The shrinkage formula over one empirical figure and the population behind it.
+
+    ``spread`` is that population: the sample count and the interval are read from it.
+    ``empirical`` is the figure the formula shrinks, and it is supplied separately because a fitter
+    whose figure is a clamped difference of two MEANS has one figure over a population of many.
+    Reading the count off that figure would report forty pairs as one, which leaves 91% of the value
+    at the prior on evidence worth 80% observed, and reading the spread off it would report the
+    population's disagreement as none.
+
+    An empty ``spread`` is the prior at a shrinkage weight of one whatever ``empirical`` says,
+    because a count of zero multiplies it away.
+    """
     if prior_weight <= 0:
         raise ConfigError(
             f"a prior weight of {prior_weight} is how many observations the prior is worth, and a "
@@ -78,16 +105,15 @@ def shrunk(
         )
     if not isfinite(prior):
         raise ConfigError(f"a prior of {prior} is not a figure any evidence could move")
-    samples = len(measurements)
+    samples = len(spread)
     weight = prior_weight / (samples + prior_weight)
     if samples == 0:
         return FitResult(value=prior, samples=0, confidence=(prior, prior), shrinkage_weight=weight)
-    empirical = fmean(measurements)
     value = (samples * empirical + prior_weight * prior) / (samples + prior_weight)
     return FitResult(
         value=value,
         samples=samples,
-        confidence=_interval(value, measurements),
+        confidence=_interval(value, spread),
         shrinkage_weight=weight,
     )
 
