@@ -79,9 +79,10 @@ The metric answers only whether a run reported at all:
 syncr_learning_run_duration_seconds_count
 ```
 
-Then the run's own log. The events to look for are `learning.promotion.candidate` and the per-tenant
-failure it exits non-zero for. A failed pass for one tenant does not stop the others: the run continues
-and reports the failure.
+Then the run's own log. The events to look for are `learning.tenant.failed`, which carries the
+traceback for the tenant whose pass raised, and `learning.run.failed`, one line per failure before the
+non-zero exit. `learning.run.finished` carries the tenant and failure counts either way. A failed pass
+for one tenant does not stop the others: the run continues and reports the failure.
 
 ## What to do
 
