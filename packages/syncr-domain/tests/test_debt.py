@@ -11,9 +11,10 @@ The last group is the same attack the cursor suite makes: debt counts, it does n
 a daylight-saving transition, a year boundary, and a change of zone are invisible to it. The
 one instant it reads is ``as_of``, and the clip that reads it is asserted at its own boundary.
 
-The discharge has a group of its own, because it is the one place where two counts over one log
-meet: what it must NOT credit is asserted beside what it must, on the cadence where crediting
-any completion reads a week of owed occurrences as nothing owed.
+The discharge has a group of its own, because it is the one place where the log's order is read:
+what a make-up must NOT credit is asserted beside what it must, on the cadence where crediting any
+completion reads a week of owed occurrences as nothing owed, and on the interleavings where a
+credit arrives before the charge it would otherwise settle.
 """
 
 from __future__ import annotations
@@ -46,6 +47,8 @@ from syncr_domain.outcomes import COMPLETION_STATES, MISS_STATE, HabitOutcome, O
 from syncr_domain.zones import to_instant
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from syncr_domain.identifiers import HabitId
     from syncr_domain.intervals import Instant
 
@@ -55,6 +58,10 @@ MONDAY = datetime(2026, 8, 3, 6, 0, tzinfo=UTC)
 LATER = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
 
 COMPLETED = OutcomeState.COMPLETED
+
+# The two events a log's order can matter for, for the cases that build one event at a time.
+A_MISS = "a confirmed skip"
+A_MAKE_UP_DONE = "a confirmed completion of a made-up occurrence"
 
 
 def habit(**overrides: object) -> Habit:
@@ -127,6 +134,24 @@ def made_up(
             make_up=True,
         )
         for offset in range(count)
+    ]
+
+
+def a_log(target: Habit, events: Sequence[str]) -> list[HabitOutcome]:
+    """One row per event, in the order given, one day and one key apart.
+
+    For the cases where the ORDER is the subject: a make-up settles a charge the log holds when it
+    arrives, so a credit before its charge and a credit after it are different logs.
+    """
+    return [
+        outcome(
+            target.id,
+            COMPLETED if event == A_MAKE_UP_DONE else MISS_STATE,
+            index=index,
+            at=MONDAY + timedelta(days=index),
+            make_up=event == A_MAKE_UP_DONE,
+        )
+        for index, event in enumerate(events)
     ]
 
 
@@ -324,8 +349,9 @@ def test_a_habit_at_its_cap_drops_below_it_and_stops_being_raised_once_the_make_
 ):
     """The raise starts one occurrence past the cap, so that is where the drop is asserted from.
 
-    The forgiven occurrence is not restored by the make-up: what the make-ups settle is the debt
-    the log still holds, and the reading is taken over the netted log from scratch.
+    A completion is credited against the misses the log holds, and the cap clamps the result of
+    that. Past the cap the two are not the same figure, and
+    ``test_a_completion_past_the_cap_moves_the_log_and_not_the_shown_backlog`` states the cost.
     """
     target = habit()
     over_the_cap = reading(target, misses(target, 9))
@@ -336,6 +362,29 @@ def test_a_habit_at_its_cap_drops_below_it_and_stops_being_raised_once_the_make_
     assert (made_good.misses, made_good.outstanding, made_good.forgiven_at_cap) == (7, 7, 0)
     assert not made_good.raised_in_weekly_session
     assert made_good.statement == "7 of 8 owed."
+
+
+def test_a_completion_past_the_cap_moves_the_log_and_not_the_shown_backlog() -> None:
+    """What a completion buys when the log holds more misses than the cap allows.
+
+    A week places ``outstanding`` made-up occurrences, which is the capped figure, so this habit is
+    shown eight. Completing all eight moves the shown backlog by four, because each completion is
+    credited against the twelve misses the log holds and the cap then clamps the result. The four
+    completions the reading has already called forgiven rather than added move nothing.
+
+    Asserted so the exchange is stated rather than implied. Both readings of what a completion past
+    the cap should buy are defensible, and this is the one that ships.
+    """
+    target = habit()
+    shown = reading(target, misses(target, 12))
+    after = [
+        reading(target, [*misses(target, 12), *made_up(target, done, after=12)])
+        for done in range(9)
+    ]
+
+    assert (shown.outstanding, shown.forgiven_at_cap) == (8, 4)
+    assert [owed.outstanding for owed in after] == [8, 8, 8, 8, 8, 7, 6, 5, 4]
+    assert [owed.forgiven_at_cap for owed in after] == [4, 3, 2, 1, 0, 0, 0, 0, 0]
 
 
 def test_a_made_up_occurrence_with_nothing_left_to_settle_owes_nothing_rather_than_less() -> None:
@@ -389,6 +438,70 @@ def test_another_habit_s_made_up_completion_does_not_settle_this_habit_s_debt() 
     assert outstanding_debt(someone_else, mixed, LATER) == 0
 
 
+def test_a_make_up_settles_a_charge_the_log_holds_when_it_arrives_and_carries_nothing_forward() -> (
+    None
+):
+    """Two logs holding one miss and one made-up completion, differing only in their order.
+
+    A credit that arrived before its charge would have to be banked to reach it, and a banked credit
+    is a credit that outlives the miss it settled.
+    """
+    target = habit()
+
+    assert reading(target, a_log(target, [A_MISS, A_MAKE_UP_DONE])).misses == 0
+    assert reading(target, a_log(target, [A_MAKE_UP_DONE, A_MISS])).misses == 1
+
+
+def test_a_correction_leaves_no_credit_behind_for_a_later_unrelated_miss() -> None:
+    """The path the floor exists for, walked to its end rather than read at one instant.
+
+    A miss, the make-up placed for it completed, and then the user corrects the original day. The
+    log now holds a completion whose charge is gone. A fresh miss weeks later is a miss: nothing in
+    the log has made it good, and the credit that settled the corrected day is spent.
+    """
+    target = habit()
+    skipped = outcome(target.id, MISS_STATE, index=0, at=MONDAY)
+    made_it_up = outcome(target.id, COMPLETED, index=4, at=MONDAY + timedelta(days=7), make_up=True)
+    corrected = outcome(target.id, COMPLETED, index=0, at=MONDAY)
+    a_fresh_miss = outcome(target.id, MISS_STATE, index=1, at=MONDAY + timedelta(days=56))
+
+    assert outstanding_debt(target, [skipped], LATER) == 1
+    assert outstanding_debt(target, [skipped, made_it_up], LATER) == 0
+    assert outstanding_debt(target, [corrected, made_it_up], LATER) == 0
+    assert outstanding_debt(target, [corrected, made_it_up, a_fresh_miss], LATER) == 1
+
+
+def test_the_order_the_walk_reads_is_the_log_s_own_and_not_the_sequence_it_arrives_in() -> None:
+    """The reader states no order, so the derivation cannot take one from the sequence it is given.
+
+    Reversed and rotated, one set of rows is one figure. Both figures are asserted, because a
+    derivation that sorted its input and a derivation that ignored order entirely would agree on the
+    first and disagree on the second.
+    """
+    target = habit()
+    rows = a_log(target, [A_MISS, A_MAKE_UP_DONE, A_MISS, A_MISS])
+
+    assert reading(target, rows).misses == 2
+    assert reading(target, list(reversed(rows))).misses == 2
+    assert reading(target, [*rows[2:], *rows[:2]]).misses == 2
+
+
+def test_a_charge_and_a_credit_that_came_due_at_one_instant_settle_each_other() -> None:
+    """The tie the walk has to break, and the direction it breaks in.
+
+    Two occurrences of one habit can be due at the same instant. Reading the charge as standing when
+    the credit arrives is the direction that never leaves the user's completed work unspent.
+    """
+    target = habit()
+    both_at_once = [
+        outcome(target.id, MISS_STATE, index=0, at=MONDAY),
+        outcome(target.id, COMPLETED, index=1, at=MONDAY, make_up=True),
+    ]
+
+    assert reading(target, both_at_once).misses == 0
+    assert reading(target, list(reversed(both_at_once))).misses == 0
+
+
 def test_the_netting_is_stated_over_the_log_rather_than_over_the_policy() -> None:
     """``misses`` is one figure whatever the policy, so the discharge is not a fourth policy.
 
@@ -396,16 +509,58 @@ def test_the_netting_is_stated_over_the_log_rather_than_over_the_policy() -> Non
     changed after the log was written. Netting there keeps the figure meaning one thing; branching
     on the policy would make it mean two.
     """
-    readings = {
-        policy: reading(
-            target := habit(miss_policy=policy),
-            [*misses(target, 1), *made_up(target, 1, after=1)],
-        )
-        for policy in MissPolicy
-    }
+    readings = []
+    for policy in MissPolicy:
+        target = habit(miss_policy=policy)
+        readings.append(reading(target, [*misses(target, 1), *made_up(target, 1, after=1)]))
 
-    assert [owed.misses for owed in readings.values()] == [0, 0, 0]
-    assert not any(owed.raised_in_weekly_session for owed in readings.values())
+    assert all(owed.misses == 0 for owed in readings)
+    assert not any(owed.raised_in_weekly_session for owed in readings)
+
+
+@given(
+    events=st.lists(st.sampled_from((A_MISS, A_MAKE_UP_DONE)), max_size=24),
+    periods=st.integers(min_value=1, max_value=8),
+)
+def test_the_figure_holds_every_miss_that_arrived_after_the_last_make_up_was_done(
+    events: list[str], periods: int
+) -> None:
+    """Over any interleaving, not only over misses-then-make-ups.
+
+    The property a banked credit breaks: a make-up cannot reach past its own arrival, so every miss
+    after the last completed make-up is still owed. The bounds beside it are the two a sign error
+    and a missing floor break.
+    """
+    target = habit(debt_cap_periods=periods)
+    owed = reading(target, a_log(target, events))
+    charged = events.count(A_MISS)
+    since_the_last_credit = (
+        len(events) - 1 - events[::-1].index(A_MAKE_UP_DONE) if A_MAKE_UP_DONE in events else -1
+    )
+
+    assert owed.misses >= events[since_the_last_credit + 1 :].count(A_MISS)
+    assert 0 <= owed.misses <= charged
+    assert owed.outstanding + owed.forgiven_at_cap == owed.misses
+
+
+@given(
+    events=st.lists(st.sampled_from((A_MISS, A_MAKE_UP_DONE)), max_size=16),
+)
+def test_one_more_miss_charges_one_and_one_more_make_up_settles_at_most_one(
+    events: list[str],
+) -> None:
+    """The step either event takes, from wherever the log already stands.
+
+    A miss always charges, which is what a banked credit breaks: appended to a surplus it would
+    charge nothing. A make-up settles one or nothing, never more and never less than nothing.
+    """
+    target = habit()
+    standing = reading(target, a_log(target, events)).misses
+    then_a_miss = reading(target, a_log(target, [*events, A_MISS])).misses
+    then_a_make_up = reading(target, a_log(target, [*events, A_MAKE_UP_DONE])).misses
+
+    assert then_a_miss == standing + 1
+    assert max(standing - 1, 0) == then_a_make_up
 
 
 @given(

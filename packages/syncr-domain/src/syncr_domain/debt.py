@@ -38,9 +38,11 @@ useless, and hitting the cap reuses the chronic-skip surface the weekly session 
 rather than inventing a half-life the user would have to reason about.
 
 **A completed make-up discharges the debt it was placed for.** An outcome carries whether the
-occurrence it records was a make-up, and a confirmed completion of a marked occurrence nets
-against the misses counted here. So the figure falls when the user does the work, and "missed
-occurrences not yet made up" is the literal reading of it rather than an approximation of it.
+occurrence it records was a make-up, and a confirmed completion of a marked occurrence settles a
+charge the log holds when that completion comes due. So what the log holds against a habit falls
+when the user does the work, and "missed occurrences not yet made up" is the literal reading of it
+rather than an approximation of it. A credit reaches no further than the charge standing when it
+arrives, so it cannot outlive the miss it settled.
 
 **A completion of a FRESH occurrence discharges nothing.** A four-a-week habit that owes four
 and then has a clean week has done the four it was due, not the four it owes, so crediting any
@@ -84,8 +86,8 @@ class DebtReading:
     """What the misses in one outcome log amount to under a habit's miss policy.
 
     ``outstanding`` is what the week assembler adds to a week as made-up occurrences.
-    ``misses`` is what the log still holds against the habit: confirmed skips, net of the made-up
-    occurrences the user has since completed, so it falls as the backlog is worked off.
+    ``misses`` is what the log still charges the habit: confirmed skips, less the made-up
+    occurrences completed against them, so it falls as the backlog is worked off.
     ``raised_in_weekly_session`` is the field chronic skips already use, and it is how both
     the debt cap and the ``escalate`` policy reach the weekly session's raised items.
     """
@@ -140,26 +142,52 @@ def debt_reading(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant)
 
 
 def _misses(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> int:
-    """Confirmed skips of this habit's occurrences due by ``as_of``, net of the make-ups done.
+    """What this habit's log still charges by ``as_of``: confirmed skips, less the make-ups done.
 
-    The clip is what ``as_of`` is for. A week's plan can already hold outcome rows for
-    occurrences later in the week, and an occurrence that has not come due yet has not been
-    missed, so counting it would charge the user for a session still ahead of them. It clips both
-    counts, because a make-up still ahead of the user has not been done either.
+    Walked in the log's own order rather than counted, because a completed make-up settles a charge
+    the log holds **when it arrives**. Differencing two totals would let a make-up whose own charge
+    has since been corrected away carry its credit forward and settle an unrelated miss years later,
+    which is a charge nothing in the log has made good.
 
-    The floor is reachable rather than defensive: correcting the miss that placed a make-up leaves
-    a log holding the completion and not the skip. A negative figure would reach the week's
-    expansion as a count added to the cadence, where it would silently drop fresh occurrences
-    from the week rather than fail.
+    The clip is what ``as_of`` is for. A week's plan can already hold outcome rows for occurrences
+    later in the week, and an occurrence that has not come due yet has not been missed, so counting
+    it would charge the user for a session still ahead of them. It clips both kinds of row, because
+    a make-up still ahead of the user has not been done either.
+
+    The floor is per credit and it is reachable rather than defensive: correcting the miss that
+    placed a make-up leaves a log holding the completion and not the skip. A negative figure would
+    reach the week's expansion as a count added to the cadence, where it would silently drop fresh
+    occurrences from the week rather than fail.
+    """
+    charged = 0
+    for outcome in _due_oldest_first(habit, outcomes, as_of):
+        if outcome.is_confirmed_miss:
+            charged += 1
+        elif outcome.is_confirmed_make_up_completion:
+            charged = max(charged - 1, 0)
+    return charged
+
+
+def _due_oldest_first(
+    habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant
+) -> list[HabitOutcome]:
+    """This habit's outcomes that had come due by ``as_of``, in the order they came due.
+
+    The order is imposed here rather than taken from the sequence, because the log's readers state
+    no order: a reader keyed by entity returns rows in whatever order its index holds them, and two
+    readers of one log may differ. Sorting on the instant each occurrence came due is the same
+    absolute-instant comparison the clip makes, so no zone and no date arithmetic enter with it.
+
+    Two occurrences of one habit can come due at the same instant. The tie reads the charge as
+    standing when the credit arrives, which is the direction that never leaves work the user did
+    unspent.
     """
     due = [
         outcome
         for outcome in outcomes
         if outcome.habit_id == habit.id and outcome.occurred_at <= as_of
     ]
-    missed = sum(1 for outcome in due if outcome.is_confirmed_miss)
-    made_up = sum(1 for outcome in due if outcome.is_confirmed_make_up_completion)
-    return max(missed - made_up, 0)
+    return sorted(due, key=lambda row: (row.occurred_at, row.is_confirmed_make_up_completion))
 
 
 def _reading(
