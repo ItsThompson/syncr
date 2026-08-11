@@ -21,15 +21,13 @@
  * shrinks between the two reads of a before-and-after. On the plan week nothing is behind the clock,
  * so the capacity side is constant and a rise of exactly the block's minutes is assertable.
  *
- * WHAT THAT COSTS, MEASURED RATHER THAN ARGUED: the block this case skips lies ahead of the reading
- * instant rather than behind it. No block can lie behind it here. The solver's own gap set is clipped
- * to that instant and every placement it makes lands on the fifteen-minute grid at or after it, a pin
- * is refused both for a block that has begun and for a start already gone, and no other path places a
- * block at all. So the earliest task block a fresh seed can produce begins in the future, and a suite
- * that wanted one behind the clock would have to wait for the grid instant it starts at. The rule
- * under test does not read the difference: what a placement contributes to its content is decided by
- * the outcome alone, and where its span falls decides only which side of the reading instant those
- * minutes are counted on, which is the same figure while nothing is confirmed.
+ * THE BLOCK THIS FILE SKIPS LIES AHEAD OF THE READING INSTANT, AND NO BLOCK HERE CAN LIE BEHIND IT.
+ * The solver's own gap set is clipped to that instant and every placement it makes lands on the
+ * fifteen-minute grid at or after it, a pin is refused both for a block that has begun and for a start
+ * already gone, and no other path places a block at all. The rule under test does not read the
+ * difference: what a placement contributes to its content is decided by the outcome alone, and where
+ * its span falls decides only which side of the reading instant those minutes are counted on, which is
+ * the same figure while nothing is confirmed.
  */
 
 import { expect, test, usingFixture } from "./harness.ts";
@@ -45,6 +43,13 @@ import {
 } from "../src/seed/fixtures/owes-more-than-a-week.ts";
 
 usingFixture("owes_more_than_a_week");
+
+/* SERIAL, because these two cases are not independent and the dependence is one direction only: the
+ * skip case solves the plan week, and the clock case asserts that neither week holds a placement. Run
+ * the other way round the clock case fails on that assertion, which is the right failure and the wrong
+ * reason. What serial mode costs is that a bite in the first case stops the second from reporting, so a
+ * mutation run that wants both answers runs them one at a time. */
+test.describe.configure({ mode: "serial" });
 
 const MINUTE_MS = 60_000;
 
