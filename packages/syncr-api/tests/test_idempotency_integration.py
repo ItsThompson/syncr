@@ -522,7 +522,7 @@ async def test_the_dependency_hashes_the_path_the_request_addressed(
     async with sessions() as session, session.begin():
         second = post_request(body=BODY, path=OTHER_PATH)
         guard = await get_idempotency_guard(second, session, principal, KEY)
-        with pytest.raises(ValidationFailed):
+        with pytest.raises(ValidationFailed, match="already used for a different request"):
             await guard.once(ROUTE, Created, elsewhere)
 
     assert stored.calls == 1
