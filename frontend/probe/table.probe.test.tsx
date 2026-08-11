@@ -104,6 +104,18 @@ const UNDECLARED: readonly TableColumn<Shape>[] = [
   { key: "count", header: "Entries", measure: "figure", cell: (shape) => shape.count },
 ];
 
+/**
+ * The same, with header words taken verbatim from two screens that render a table today.
+ *
+ * Every call site declares no width, so every one of them is laid out from its content, and a column laid out
+ * that way is built from what its contents ask for. A break keyword that is counted in that ask changes their
+ * rendering without any of them being edited, which is what this case exists to catch.
+ */
+const UNDECLARED_REAL_HEADERS: readonly TableColumn<Shape>[] = [
+  { key: "name", header: "Commitment", cell: (shape) => shape.name },
+  { key: "count", header: "Deviation", measure: "figure", cell: (shape) => shape.count },
+];
+
 /** EVERY column declares a length, so no column claims a share and nothing absorbs the difference. */
 const EVERY_COLUMN_A_LENGTH: readonly TableColumn<Shape>[] = [
   { key: "name", header: "Shape", width: "236px", cell: (shape) => shape.name },
@@ -180,6 +192,13 @@ const CASES: readonly Case[] = [
   { name: "weight-long", columns: NAME_AT_A_WEIGHT, rows: LONG, boxPx: 300, standing: false },
   { name: "undeclared-short", columns: UNDECLARED, rows: SHORT, boxPx: 300, standing: false },
   { name: "undeclared-long", columns: UNDECLARED, rows: LONG, boxPx: 300, standing: false },
+  {
+    name: "undeclared-real-headers",
+    columns: UNDECLARED_REAL_HEADERS,
+    rows: LONG,
+    boxPx: 300,
+    standing: false,
+  },
   {
     name: "all-lengths-short",
     columns: EVERY_COLUMN_A_LENGTH,
@@ -391,6 +410,29 @@ describe("the column policy in a browser", () => {
 
     // The control: with nothing declared, the same long cell moves the column beside it.
     expect(looseLong.columnsPx).not.toEqual(looseShort.columnsPx);
+  });
+
+  /* THE SIXTEEN SCREENS THAT DECLARE NOTHING, WHICH THIS COMPONENT'S TICKET MAY NOT CHANGE.
+   *
+   * A column laid out from its content is built from what its contents ask for, and a header's word is part of
+   * that ask. So a rule in the family can change every one of those screens without any of them being edited:
+   * `overflow-wrap: anywhere` on every header did exactly that, and this case is what would have said so. It
+   * measured a header row of 48.5px where the pitch is 28px, an 8-character label wrapped onto three lines, and a
+   * figure column down from 79px to 49.75px.
+   *
+   * THE ROW HEIGHT IS THE HALF WORTH ASSERTING. The column figures depend on the font, which is not loaded
+   * offline, so they are printed rather than pinned. A header whose words fit on one line leaves its row at the
+   * pitch whatever font draws it, and that is the claim: these tables are laid out as they were before the policy
+   * existed. */
+  it("leaves a table that declares nothing with its header on one line, at the pitch", () => {
+    const real = by("undeclared-real-headers");
+
+    expect(real.headerRowPx).toBe(PITCH_PX);
+    expect(by("undeclared-short").headerRowPx).toBe(PITCH_PX);
+    expect(by("undeclared-long").headerRowPx).toBe(PITCH_PX);
+
+    // And it is still the browser's own layout: the table fills its box exactly, as it did before the policy.
+    expect(real.tablePx).toBe(real.boxPx);
   });
 
   /* WHERE A DECLARED LENGTH IS NOT EXACT, which is the qualification `table.css` and `columnWidths.ts` carry. A
