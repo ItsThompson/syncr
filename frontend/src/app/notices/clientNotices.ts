@@ -35,7 +35,7 @@ export type BannerNotice = Notice & { readonly volume: "banner" };
 export interface ClientNotices {
   /** What the client has raised and the reader has not yet answered, oldest first. */
   readonly raised: readonly BannerNotice[];
-  /** Raises one. A notice replaces whatever stands under its id, so one condition stands once. */
+  /** Raises one. A notice replaces whatever stands under its id, in that one's place, so one condition stands once. */
   readonly report: (notice: BannerNotice) => void;
   readonly dismiss: (id: string) => void;
 }

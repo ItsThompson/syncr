@@ -161,6 +161,18 @@ describe("a notice reported from a screen", () => {
 
     expect(titlesInTheTopBar()).toEqual([CLIENT_TITLE]);
   });
+
+  /* AND IT STANDS WHERE IT ALREADY STOOD. The list is oldest first, which is a claim about position and not only
+   * about membership: a second failure of one write must not reorder the banners a reader is already reading. */
+  it("keeps its place when it is reported again, rather than moving to the end", async () => {
+    await renderShell();
+    await userEvent.click(screen.getByRole("button", { name: REPORT }));
+    await userEvent.click(screen.getByRole("button", { name: REPORT_ANOTHER }));
+
+    await userEvent.click(screen.getByRole("button", { name: REPORT }));
+
+    expect(titlesInTheTopBar()).toEqual([CLIENT_TITLE, ANOTHER_TITLE]);
+  });
 });
 
 describe("the reader dismissing it", () => {

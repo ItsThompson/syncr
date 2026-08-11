@@ -4,8 +4,10 @@
  * the screen that sent it, so a list held by a route would be discarded by the navigation that makes the notice
  * necessary. One holder, so two writes failing cannot each raise their own copy of the top bar.
  *
- * A NOTICE REPLACES WHATEVER STANDS UNDER ITS ID. A condition that is raised twice is one condition: two strips
- * for it would be two React children under one key, and a reader would have to dismiss the same sentence twice. */
+ * A NOTICE REPLACES WHATEVER STANDS UNDER ITS ID, IN THE PLACE THAT ONE ALREADY HOLDS. A condition raised twice
+ * is one condition: two strips for it would be two React children under one key, and a reader would have to
+ * dismiss the same sentence twice. Replacing in place rather than appending is what keeps the list oldest first,
+ * so a second failure of one write does not reorder the banners a reader is already reading. */
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
@@ -19,7 +21,11 @@ export function ClientNoticeHost({ children }: ClientNoticeHostProps) {
   const [raised, setRaised] = useState<readonly BannerNotice[]>([]);
 
   const report = useCallback((notice: BannerNotice) => {
-    setRaised((held) => [...held.filter((one) => one.id !== notice.id), notice]);
+    setRaised((held) =>
+      held.some((one) => one.id === notice.id)
+        ? held.map((one) => (one.id === notice.id ? notice : one))
+        : [...held, notice],
+    );
   }, []);
 
   const dismiss = useCallback((id: string) => {
