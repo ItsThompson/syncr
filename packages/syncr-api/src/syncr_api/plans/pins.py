@@ -100,10 +100,12 @@ class PinRepository(TenantScopedRepository):
     async def price(self, pin_id: PinId, *, objective_delta: float) -> PinRecord:
         """State what this pin's placement cost, which is what makes the row complete.
 
-        Separate from :meth:`hold` rather than folded into it, and in the same transaction as it,
-        so ``PN3``'s cost half is a property of what commits. The row is returned rather than the
-        caller reusing what ``hold`` answered: a record carrying a null cost is one nothing should
-        read twice.
+        Separate from :meth:`hold` and in the same transaction as it, so ``PN3``'s cost half is a
+        property of what commits. **The separation is vestigial**: the caller knows the delta before
+        it holds the row, so folding this into the insert would serve ``PN3`` as well and would
+        close the window in which a row exists without its cost. The row is returned rather than
+        the caller reusing what ``hold`` answered: a record carrying a null cost is one nothing
+        should read twice.
         """
         written = await self._session.scalars(
             self.scoped_update(Pin)

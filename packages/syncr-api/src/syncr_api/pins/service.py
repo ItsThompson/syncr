@@ -7,6 +7,7 @@ pin(week, blockId, start)
   ├── read the plan the solver last produced: the pending proposal, or the plan of record
   ├── refuse a placement the week has already reached, in either direction
   ├── ONE TRANSACTION
+  │     ├── weights.active()                          or refuse: a pin cannot be priced
   │     ├── read the deadline, the Area's floor, the pins held
   │     ├── assembler.assemble(week, now)             PRE-PIN frame, before any write
   │     ├── refuse a placement outside the assembled span
