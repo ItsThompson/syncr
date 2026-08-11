@@ -129,9 +129,10 @@ class AreaService:
     async def create(self, principal: Principal, declaration: AreaDeclaration) -> DealtArea:
         """Declare an Area, dealing it the next step of the ramp.
 
-        The Areas are locked first, so two declarations racing are serialized and the second
-        one counts the first. Without that, both would derive the same step from the same
-        count and two Areas would share a pigment before the ramp was full.
+        The Areas are locked first, so a concurrent declaration cannot change a row this one
+        has read. That does not serialize the count: a declaration blocked on those locks is
+        answered from the snapshot its own statement took, which predates the blocker's commit,
+        so two of them can pass a bound stated over the count and be dealt one step.
 
         A tenant whose Areas hold every step is refused, before the name is considered: no name
         is available to such a caller, so a refusal naming the name would send them to change
