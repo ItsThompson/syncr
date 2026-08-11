@@ -12,7 +12,7 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, MemoryRouter, RouterProvider, createMemoryRouter } from "react-router";
+import { Link, RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../testing/apiServer";
@@ -227,15 +227,32 @@ describe("the volume the source carries", () => {
 });
 
 describe("a component with no host above it", () => {
-  it("reports nothing, because outside the shell there is no top bar to report into", async () => {
-    render(
-      <MemoryRouter>
-        <ReportingScreen />
-      </MemoryRouter>,
-    );
+  /* THE ASSERTION IS THAT THE CALL IS INERT, not that the screen stayed empty: a screen with no host renders no
+   * top bar either, so "nothing appeared" was true of a source that threw as well as of one that carried the
+   * notice nowhere. The default is read out of the context and called directly, which is the only shape that can
+   * tell those two apart. */
+  it("reports nothing and does not throw, because outside the shell there is no top bar", () => {
+    const source = theSourceWithNoHost();
 
-    await userEvent.click(screen.getByRole("button", { name: REPORT }));
-
-    expect(screen.queryByText(CLIENT_TITLE)).toBeNull();
+    expect(() => {
+      source.report(captureNotSavedNotice(REFUSED));
+    }).not.toThrow();
+    expect(source.raised).toEqual([]);
   });
 });
+
+/** The source a component outside the shell is handed, read through a probe that renders under no host. */
+function theSourceWithNoHost(): ClientNotices {
+  const seen: ClientNotices[] = [];
+
+  function Probe() {
+    seen.push(useClientNotices());
+    return null;
+  }
+
+  render(<Probe />);
+  const source = seen.at(0);
+  if (source === undefined)
+    throw new Error("the probe did not render, so nothing below asserts anything");
+  return source;
+}
