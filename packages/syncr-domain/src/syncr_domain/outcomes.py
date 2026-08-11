@@ -106,9 +106,10 @@ class HabitOutcome:
     compared against a wall clock later. Two of those comparing without error is how a
     transition-week defect becomes invisible, which is the reason ``as_instant`` exists.
 
-    ``is_make_up`` is the week assembler's mark on the occurrence, carried onto the outcome so a
-    later reading can tell a made-up occurrence from a fresh one. It defaults to a fresh
-    occurrence, so a stored row carrying no mark reads as one rather than as a discharge.
+    ``is_make_up`` says the occurrence this row is about was placed to make an earlier miss good
+    rather than by the habit's own cadence, which is what lets the debt derivation tell a discharge
+    from an ordinary completion. It defaults to a fresh occurrence, so a stored row carrying no
+    mark reads as one rather than as a discharge.
     """
 
     habit_id: HabitId

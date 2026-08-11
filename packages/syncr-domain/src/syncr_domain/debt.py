@@ -3,7 +3,9 @@
 ```
 occurrence due
       │
-      ├── confirmed complete ─────────────▶ rotation cursor advances
+      ├── confirmed complete ─────────────▶ rotation cursor advances, and a made-up
+      │                                     occurrence's completion discharges one
+      │                                     unit of debt
       │
       └── confirmed skipped ──────────────▶ miss_policy decides
                                               │
@@ -35,13 +37,20 @@ lossy.
 useless, and hitting the cap reuses the chronic-skip surface the weekly session already has
 rather than inventing a half-life the user would have to reason about.
 
-**Nothing here discharges debt, and that is a property of the log rather than a choice.** The
-week assembler marks a made-up occurrence ``is_debt`` when it places one, but that mark is not
-written onto the outcome, so no later re-derivation can tell a made-up occurrence from a fresh
-one. A discharge rule would therefore have to hold state of its own, which is a stored cursor
-by another name: exactly the shape the derived rotation cursor exists to avoid. What the log
-*can* say is that an occurrence was not missed after all, and that is what a corrected
-confirmation says: the charge disappears because the derivation reads the log from scratch.
+**A completed make-up discharges the debt it was placed for.** An outcome carries whether the
+occurrence it records was a make-up, and a confirmed completion of a marked occurrence nets
+against the misses counted here. So the figure falls when the user does the work, and "missed
+occurrences not yet made up" is the literal reading of it rather than an approximation of it.
+
+**A completion of a FRESH occurrence discharges nothing.** A four-a-week habit that owes four
+and then has a clean week has done the four it was due, not the four it owes, so crediting any
+completion would report a backlog of nothing while four occurrences are still outstanding.
+
+**Two further things the log settles on its own, and neither is a discharge.** A corrected
+confirmation says the occurrence was not missed after all, and the charge disappears because
+the derivation reads the log from scratch. A made-up occurrence the user skips again is a miss
+of its own and charges as one. Nothing here holds state between readings, which is what keeps a
+stored cursor by another name out of the module.
 
 **No date arithmetic happens here.** ``as_of`` clips the log to occurrences that have already
 come due, which is an absolute-instant comparison and needs no zone, so a daylight-saving
@@ -75,6 +84,8 @@ class DebtReading:
     """What the misses in one outcome log amount to under a habit's miss policy.
 
     ``outstanding`` is what the week assembler adds to a week as made-up occurrences.
+    ``misses`` is what the log still holds against the habit: confirmed skips, net of the made-up
+    occurrences the user has since completed, so it falls as the backlog is worked off.
     ``raised_in_weekly_session`` is the field chronic skips already use, and it is how both
     the debt cap and the ``escalate`` policy reach the weekly session's raised items.
     """
@@ -100,8 +111,9 @@ def debt_cap(habit: Habit) -> int:
 def outstanding_debt(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> int:
     """Missed debt-policy occurrences not yet made up, clamped to :func:`debt_cap`.
 
-    Zero for ``forgive``, whose misses vanish, and zero for ``escalate``, which raises the
-    habit rather than rescheduling anything. Only ``debt`` accumulates.
+    An occurrence is made up when the log holds a confirmed completion of the made-up occurrence
+    placed for it. Zero for ``forgive``, whose misses vanish, and zero for ``escalate``, which
+    raises the habit rather than rescheduling anything. Only ``debt`` accumulates.
     """
     return debt_reading(habit, outcomes, as_of).outstanding
 
@@ -128,19 +140,26 @@ def debt_reading(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant)
 
 
 def _misses(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> int:
-    """Confirmed skips of this habit's occurrences that had come due by ``as_of``.
+    """Confirmed skips of this habit's occurrences due by ``as_of``, net of the make-ups done.
 
     The clip is what ``as_of`` is for. A week's plan can already hold outcome rows for
     occurrences later in the week, and an occurrence that has not come due yet has not been
-    missed, so counting it would charge the user for a session still ahead of them.
+    missed, so counting it would charge the user for a session still ahead of them. It clips both
+    counts, because a make-up still ahead of the user has not been done either.
+
+    The floor is reachable rather than defensive: correcting the miss that placed a make-up leaves
+    a log holding the completion and not the skip. A negative figure would reach the week's
+    expansion as a count added to the cadence, where it would silently drop fresh occurrences
+    from the week rather than fail.
     """
-    return sum(
-        1
+    due = [
+        outcome
         for outcome in outcomes
-        if outcome.habit_id == habit.id
-        and outcome.is_confirmed_miss
-        and outcome.occurred_at <= as_of
-    )
+        if outcome.habit_id == habit.id and outcome.occurred_at <= as_of
+    ]
+    missed = sum(1 for outcome in due if outcome.is_confirmed_miss)
+    made_up = sum(1 for outcome in due if outcome.is_confirmed_make_up_completion)
+    return max(missed - made_up, 0)
 
 
 def _reading(

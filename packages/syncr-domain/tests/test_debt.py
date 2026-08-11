@@ -10,6 +10,10 @@ off by one.
 The last group is the same attack the cursor suite makes: debt counts, it does not measure, so
 a daylight-saving transition, a year boundary, and a change of zone are invisible to it. The
 one instant it reads is ``as_of``, and the clip that reads it is asserted at its own boundary.
+
+The discharge has a group of its own, because it is the one place where two counts over one log
+meet: what it must NOT credit is asserted beside what it must, on the cadence where crediting
+any completion reads a week of owed occurrences as nothing owed.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from syncr_domain import debt
 from syncr_domain.debt import DebtReading, debt_cap, debt_reading, outstanding_debt
 from syncr_domain.fixtures.dst_weeks import DST_WEEKS, DstWeek
 from syncr_domain.habits import (
@@ -49,6 +54,8 @@ MONDAY = datetime(2026, 8, 3, 6, 0, tzinfo=UTC)
 # group of tests, where the instant is the subject rather than the setting.
 LATER = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
 
+COMPLETED = OutcomeState.COMPLETED
+
 
 def habit(**overrides: object) -> Habit:
     """A four-times-a-week debt habit, capped at the default two periods."""
@@ -70,6 +77,7 @@ def outcome(
     index: int = 0,
     at: Instant = MONDAY,
     confirmed: bool = True,
+    make_up: bool = False,
 ) -> HabitOutcome:
     return HabitOutcome(
         habit_id=habit_id,
@@ -77,6 +85,7 @@ def outcome(
         state=state,
         occurred_at=at,
         confirmed_at=at + timedelta(hours=12) if confirmed else None,
+        is_make_up=make_up,
     )
 
 
@@ -91,6 +100,33 @@ def misses(target: Habit, count: int, *, confirmed: bool = True) -> list[HabitOu
             confirmed=confirmed,
         )
         for index in range(count)
+    ]
+
+
+def made_up(
+    target: Habit,
+    count: int,
+    *,
+    after: int,
+    confirmed: bool = True,
+    state: OutcomeState = COMPLETED,
+) -> list[HabitOutcome]:
+    """``count`` outcomes of made-up occurrences, keyed and dated past ``after`` earlier rows.
+
+    A week holding made-up occurrences holds them after its fresh ones, so both the keys and the
+    days follow the misses a caller pairs them with: one row per occurrence is the precondition the
+    log is read under, and two rows sharing a key would break it.
+    """
+    return [
+        outcome(
+            target.id,
+            state,
+            index=after + offset,
+            at=MONDAY + timedelta(days=after + offset),
+            confirmed=confirmed,
+            make_up=True,
+        )
+        for offset in range(count)
     ]
 
 
@@ -218,6 +254,177 @@ def test_another_habit_s_misses_do_not_charge_this_habit() -> None:
 
     assert outstanding_debt(target, mixed, LATER) == 2
     assert outstanding_debt(someone_else, mixed, LATER) == 5
+
+
+# --------------------------------------------------------------------------------
+# Doing the make-up: what discharges debt, and what does not
+# --------------------------------------------------------------------------------
+
+
+def test_a_confirmed_completion_of_a_made_up_occurrence_settles_the_miss_it_was_placed_for() -> (
+    None
+):
+    """The rule, at the figure a consumer reads: one miss, one make-up done, nothing owed."""
+    target = habit()
+    settled = reading(target, [*misses(target, 1), *made_up(target, 1, after=1)])
+
+    assert (settled.misses, settled.outstanding, settled.forgiven_at_cap) == (0, 0, 0)
+    assert not settled.raised_in_weekly_session
+    assert settled.statement == "Nothing owed."
+
+
+@pytest.mark.parametrize(("owed", "done"), [(3, 1), (3, 2), (3, 3), (8, 5)])
+def test_each_made_up_occurrence_completed_takes_one_off_what_is_owed(owed: int, done: int) -> None:
+    target = habit()
+    log = [*misses(target, owed), *made_up(target, done, after=owed)]
+
+    assert outstanding_debt(target, log, LATER) == owed - done
+
+
+def test_a_completion_of_a_fresh_occurrence_discharges_nothing_on_the_four_a_week_case() -> None:
+    """The half that "any confirmed completion credits" gets wrong, on the cadence that shows it.
+
+    Four a week, so a week of misses owes four and the following week places four fresh
+    occurrences beside four made-up ones. Completing the week as planned settles the fresh four and
+    nothing else: crediting any completion would read this log as owing nothing while four
+    occurrences are still owed. Only the made-up four move the figure.
+    """
+    target = habit(cadence=TimesPerWeek(4))
+    week_one_missed = misses(target, 4)
+    next_monday = MONDAY + timedelta(days=7)
+    week_two_fresh_completed = [
+        outcome(target.id, COMPLETED, index=key, at=next_monday + timedelta(days=key))
+        for key in range(4)
+    ]
+    week_two_made_up_completed = [
+        outcome(
+            target.id,
+            COMPLETED,
+            index=4 + offset,
+            at=next_monday + timedelta(days=offset),
+            make_up=True,
+        )
+        for offset in range(4)
+    ]
+
+    assert outstanding_debt(target, week_one_missed, LATER) == 4
+    assert outstanding_debt(target, [*week_one_missed, *week_two_fresh_completed], LATER) == 4
+    assert (
+        outstanding_debt(
+            target,
+            [*week_one_missed, *week_two_fresh_completed, *week_two_made_up_completed],
+            LATER,
+        )
+        == 0
+    )
+
+
+def test_a_habit_at_its_cap_drops_below_it_and_stops_being_raised_once_the_make_ups_are_done() -> (
+    None
+):
+    """The raise starts one occurrence past the cap, so that is where the drop is asserted from.
+
+    The forgiven occurrence is not restored by the make-up: what the make-ups settle is the debt
+    the log still holds, and the reading is taken over the netted log from scratch.
+    """
+    target = habit()
+    over_the_cap = reading(target, misses(target, 9))
+    made_good = reading(target, [*misses(target, 9), *made_up(target, 2, after=9)])
+
+    assert (over_the_cap.outstanding, over_the_cap.forgiven_at_cap) == (8, 1)
+    assert over_the_cap.raised_in_weekly_session
+    assert (made_good.misses, made_good.outstanding, made_good.forgiven_at_cap) == (7, 7, 0)
+    assert not made_good.raised_in_weekly_session
+    assert made_good.statement == "7 of 8 owed."
+
+
+def test_a_made_up_occurrence_with_nothing_left_to_settle_owes_nothing_rather_than_less() -> None:
+    """Reachable rather than defensive: correcting the miss that placed the make-up leaves this log.
+
+    A negative figure would reach the assembler as a range it cannot expand and the cap as a bound
+    on the wrong side, so the floor is where the netting is stated rather than at either consumer.
+    """
+    target = habit()
+    nothing_owed = reading(target, made_up(target, 2, after=0))
+    one_owed_two_done = reading(target, [*misses(target, 1), *made_up(target, 2, after=1)])
+
+    assert (nothing_owed.misses, nothing_owed.outstanding) == (0, 0)
+    assert nothing_owed.statement == "Nothing owed."
+    assert (one_owed_two_done.misses, one_owed_two_done.outstanding) == (0, 0)
+
+
+def test_an_unconfirmed_completion_of_a_made_up_occurrence_discharges_nothing_yet() -> None:
+    """The same deferral the charge has: a day the user disengaged from settles nothing either."""
+    target = habit()
+    unconfirmed = [*misses(target, 2), *made_up(target, 1, after=2, confirmed=False)]
+
+    assert outstanding_debt(target, unconfirmed, LATER) == 2
+    assert outstanding_debt(target, [*misses(target, 2), *made_up(target, 1, after=2)], LATER) == 1
+
+
+def test_a_made_up_occurrence_the_user_skipped_again_charges_rather_than_discharges() -> None:
+    """A make-up not done is a miss of its own, which is what the log records and all it records."""
+    target = habit()
+    skipped_again = [*misses(target, 1), *made_up(target, 1, after=1, state=MISS_STATE)]
+
+    assert outstanding_debt(target, skipped_again, LATER) == 2
+
+
+def test_a_made_up_completion_that_has_not_come_due_discharges_nothing_yet() -> None:
+    """The clip reads both halves of the netting, so a week's later rows cannot settle it early."""
+    target = habit()
+    log = [*misses(target, 1), *made_up(target, 1, after=1)]
+    due = log[-1].occurred_at
+
+    assert outstanding_debt(target, log, as_of=due - timedelta(microseconds=1)) == 1
+    assert outstanding_debt(target, log, as_of=due) == 0
+
+
+def test_another_habit_s_made_up_completion_does_not_settle_this_habit_s_debt() -> None:
+    target = habit()
+    someone_else = habit()
+    mixed = [*misses(target, 2), *misses(someone_else, 2), *made_up(someone_else, 2, after=2)]
+
+    assert outstanding_debt(target, mixed, LATER) == 2
+    assert outstanding_debt(someone_else, mixed, LATER) == 0
+
+
+def test_the_netting_is_stated_over_the_log_rather_than_over_the_policy() -> None:
+    """``misses`` is one figure whatever the policy, so the discharge is not a fourth policy.
+
+    Only ``debt`` places a made-up occurrence, so the other two answer about a habit whose policy
+    changed after the log was written. Netting there keeps the figure meaning one thing; branching
+    on the policy would make it mean two.
+    """
+    readings = {
+        policy: reading(
+            target := habit(miss_policy=policy),
+            [*misses(target, 1), *made_up(target, 1, after=1)],
+        )
+        for policy in MissPolicy
+    }
+
+    assert [owed.misses for owed in readings.values()] == [0, 0, 0]
+    assert not any(owed.raised_in_weekly_session for owed in readings.values())
+
+
+@given(
+    owed=st.integers(min_value=0, max_value=40),
+    done=st.integers(min_value=0, max_value=40),
+    periods=st.integers(min_value=1, max_value=8),
+)
+def test_completing_a_make_up_lowers_the_debt_or_leaves_it_and_never_goes_below_zero(
+    owed: int, done: int, periods: int
+) -> None:
+    """The direction, over any pairing: a make-up cannot raise what is owed and cannot overshoot."""
+    target = habit(debt_cap_periods=periods)
+    charged = reading(target, misses(target, owed))
+    settled = reading(target, [*misses(target, owed), *made_up(target, done, after=owed)])
+
+    assert 0 <= settled.outstanding <= charged.outstanding
+    assert (settled.outstanding == 0) == (done >= owed)
+    assert settled.outstanding + settled.forgiven_at_cap == settled.misses
+    assert settled.raised_in_weekly_session == (settled.forgiven_at_cap > 0)
 
 
 # --------------------------------------------------------------------------------
@@ -441,3 +648,32 @@ def test_the_cap_at_its_own_bound_is_still_a_cap() -> None:
 
     assert owed.outstanding == debt_cap(target) == 4 * MAX_DEBT_CAP_PERIODS
     assert owed.forgiven_at_cap == 3
+
+
+# --------------------------------------------------------------------------------
+# What the module says about itself, against what it does
+# --------------------------------------------------------------------------------
+
+# The sentence the discharge rule replaced, refused by name. A correction with nothing holding it
+# is a correction that drifts back.
+RETRACTED = "Nothing here discharges debt"
+
+
+def test_the_module_does_not_state_that_nothing_discharges_debt() -> None:
+    """One spelling, which is the whole of what a text check can hold.
+
+    A denial worded some other way escapes this, and the group above is what catches that: it
+    asserts the figure falling, which no wording can make true or false.
+    """
+    assert debt.__doc__ is not None
+    assert RETRACTED not in debt.__doc__
+
+
+def test_outstanding_debt_reads_the_way_its_own_docstring_states_it() -> None:
+    """The claim and the reading in one place, so neither can move without the other."""
+    target = habit()
+    stated = outstanding_debt.__doc__ or ""
+
+    assert "not yet made up" in stated
+    assert outstanding_debt(target, misses(target, 1), LATER) == 1
+    assert outstanding_debt(target, [*misses(target, 1), *made_up(target, 1, after=1)], LATER) == 0
