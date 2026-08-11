@@ -49,7 +49,8 @@ export interface FormRowGroupField {
 }
 
 export type FormRowProps = {
-  /** Rendered uppercase in the label column, and the field's own label through `htmlFor`. */
+  /** Rendered uppercase in the label column: pointed at the field by the single form, drawn in an element the
+   * child is named by in the group form. */
   readonly label: string;
   /** What the field expects, in the reader's words. Replaced by the error while there is one. */
   readonly hint?: string | undefined;
