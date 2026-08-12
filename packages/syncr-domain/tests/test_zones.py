@@ -66,7 +66,7 @@ class TestResolveZone:
 
     @pytest.mark.parametrize("unknown", ["Europe", "Europe/" + "L" * 300])
     def test_every_rejection_a_boundary_sees_is_a_domain_error(self, unknown: str) -> None:
-        """Ticket 12 accepts a zone from the wire, so a rejection that escapes
+        """The boundary accepts a zone from the wire, so a rejection that escapes
         `DomainError` reaches the client as a 500 rather than a stated refusal."""
         entry_points: list[Callable[[], object]] = [
             lambda: resolve_zone(unknown),

@@ -1,6 +1,6 @@
 """The `off_plan_week` fixture, checked against the algebra and the zone rules that read it.
 
-The fixture holds literals so that a later ticket asserting a clipped span, a denominator, or
+The fixture holds literals so that a later suite asserting a clipped span, a denominator, or
 a projected event against it is making a real claim. That only works if the literals are
 right, so this suite is what earns them: every instant is re-derived here from `to_instant`
 and `week_span`, and every stated figure from the interval algebra.

@@ -296,7 +296,7 @@ class TestWhatEachStateAttributes:
         assert span.total_minutes() == 30
 
     def test_a_skipped_block_attributes_nothing(self) -> None:
-        # The row 1290 settled. The user said the work was not done, so the minutes are not held
+        # The user said the work was not done, so the minutes are not held
         # against the task: the demand stays gross for work that is genuinely still outstanding.
         assert attributed_span(PLANNED, recorded(MISS_STATE)) is None
 

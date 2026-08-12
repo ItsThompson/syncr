@@ -3,7 +3,7 @@
 `syncr-domain` is pure: entities, invariants, and arithmetic, with no I/O and no
 clock. That purity is what lets the solver be tested with literals, so it is asserted
 rather than trusted. This suite polices every module under `src/syncr_domain`,
-including ones other tickets add, and nothing needs registering for it to see them.
+including ones added later, and nothing needs registering for it to see them.
 
 Two walks, because neither sees what the other does.
 

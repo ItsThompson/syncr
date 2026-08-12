@@ -105,7 +105,7 @@ def test_a_confirmed_skip_on_the_past_hour_raises_the_demand_by_that_hour() -> N
     # The attribution table's one contested row, re-derived THROUGH the table rather than by hand:
     # the skipped hour attributes nothing, so the whole 240 less the two pinned hours is outstanding
     # again. Worked by hand this would pass even if the table said `skipped` attributes its planned
-    # span, which is the reading ticket 1290 rejected.
+    # span, which is the reading the table rejects.
     attributed_past = attributed_span(
         partial_progress.UNCONFIRMED_PAST, partial_progress.SKIPPED_PAST
     )

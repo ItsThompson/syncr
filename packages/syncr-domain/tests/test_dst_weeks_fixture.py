@@ -1,6 +1,6 @@
 """The `dst_weeks` fixture, checked against the algebra that reads it.
 
-The fixture holds literals so that a later ticket asserting `week_span`, a grid axis,
+The fixture holds literals so that a later suite asserting `week_span`, a grid axis,
 or a projector emission against it is making a real claim. That only works if the
 literals are right, so this suite is what earns them: every figure in the fixture is
 re-derived here from `to_instant`, `week_span`, and the fixture's own stated routine.

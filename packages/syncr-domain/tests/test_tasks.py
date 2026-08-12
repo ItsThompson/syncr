@@ -118,7 +118,7 @@ def test_remaining_work_is_the_estimate_less_what_was_recorded_and_never_negativ
 
 
 def test_a_partially_recorded_task_reduces_its_remaining_estimate_rather_than_its_record() -> None:
-    # US-TASK-04's last criterion, as arithmetic: the recorded figure is an input to this and
+    # The recorded figure is an input to this and
     # is never rewritten by it, so the time already spent survives for reports.
     estimate, recorded = 90, 30
 
@@ -225,7 +225,7 @@ def test_the_defaults_satisfy_t1_between_themselves() -> None:
 
 
 def test_a_captured_task_is_immediately_eligible_under_the_defaults() -> None:
-    # US-TASK-01's last criterion, at the level the predicate is stated: a task captured with
+    # A task captured with
     # nothing but a title and an Area has work left and is open, so the next assembly sees it.
     assert is_eligible_for_solving(
         status=TaskStatus.OPEN,
