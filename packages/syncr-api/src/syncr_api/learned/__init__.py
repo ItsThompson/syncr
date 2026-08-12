@@ -16,6 +16,7 @@ directory.
 | ``activation.py`` | the flag flip, and the re-solve of FUTURE weeks that follows it |
 | ``weight_reading.py`` | a stored row as the value the objective applies. One direction |
 | ``maturity.py`` | the maturity array the nightly job wrote, read back into rows |
+| ``subjects.py`` | what a row is about, resolved from the key its parameter token carries |
 | ``gate_statements.py`` | the two claims the screen makes in prose, served beside the figures |
 | ``views.py`` | the three shapes the service computes |
 | ``service.py`` | ``LearnedService``: the read, the version list, and the activation |
