@@ -151,8 +151,8 @@ def uncovered_minutes(discretionary_minutes: int, claimed_minutes: int) -> int:
     `budgets.unallocated_minutes` is the canonical form and takes the two interval SETS, which is
     what makes it non-negative by construction. A review cannot: its denominator is the plan of
     record's own stored figure, a scalar, and the set that figure was taken over is not stored
-    beside it. Rebuilding it from the document alone overstates it by the preceding week's frame
-    overhang.
+    beside it. Rebuilding the set from the document alone overstates it by the preceding week's
+    frame overhang.
 
     So the figure is a subtraction of counts, and the clamp is load-bearing rather than defensive.
     It is reachable: a ``moved`` outcome carries a user-supplied interval, and one reported inside
