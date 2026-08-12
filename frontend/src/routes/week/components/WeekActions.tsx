@@ -41,7 +41,6 @@ export interface WeekActionsProps {
   readonly onApprove: () => void;
 }
 
-/** `3 days unconfirmed`, and `1 day unconfirmed` for one. */
 function unconfirmedReading(unconfirmedDays: number): string {
   return `${unconfirmedDays} ${unconfirmedDays === 1 ? "day" : "days"} unconfirmed`;
 }
