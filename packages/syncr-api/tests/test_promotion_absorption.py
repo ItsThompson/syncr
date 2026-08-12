@@ -11,19 +11,38 @@ and the sweep below refuses one whose answer is empty or whose words are another
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+from typing import Final
 from uuid import UUID
 
 import pytest
 
+from syncr_api.promotions import absorption
 from syncr_api.promotions.absorption import ABSORBABLE, accept_refusal
 from syncr_domain.identity import BindingKind
 from syncr_domain.promotion import PromotionRef
 
 GYM = UUID(int=7)
 
+# A pointer to something outside this repository, in the two spellings this tree has carried: a bare
+# ticket number and a story identifier. Neither resolves for a reader holding only the code.
+_PLANNING_ARTIFACT: Final = re.compile(
+    r"\btickets?\s*[/#]?\s*\d{1,4}\b|\b[A-Z]{1,3}-[A-Z]+-\d{1,3}\b"
+)
+
 
 def a_ref(kind: BindingKind, *, minute_of_day: int = 780) -> PromotionRef:
     return PromotionRef(kind=kind, entity_id=GYM, weekday=2, minute_of_day=minute_of_day)
+
+
+def as_one_line(text: str) -> str:
+    """Prose with its wrapping removed, because a sentence wraps wherever the column runs out."""
+    return " ".join(text.split())
+
+
+def pointers_in(text: str) -> list[str]:
+    return _PLANNING_ARTIFACT.findall(text)
 
 
 class TestTheOneKindAPromotionCanActOn:
@@ -50,14 +69,23 @@ class TestTheOneKindAPromotionCanActOn:
 
 
 class TestWhatTheRefusalTellsTheReader:
-    def test_content_a_shape_could_hold_points_at_declaring_an_entry(self) -> None:
-        refusal = accept_refusal(a_ref(BindingKind.HABIT), title="Gym")
+    @pytest.mark.parametrize("kind", [BindingKind.HABIT, BindingKind.ROUTINE])
+    @pytest.mark.parametrize(("minute_of_day", "local_time"), [(780, "13:00"), (345, "05:45")])
+    def test_content_a_shape_could_hold_is_answered_with_the_declaration_and_the_time(
+        self, kind: BindingKind, minute_of_day: int, local_time: str
+    ) -> None:
+        # THE WHOLE SENTENCE, BY EQUALITY. The act it asks for is a declaration the reader makes
+        # and it cannot be made without a time, so a reading over separate tokens would still pass
+        # on a sentence that had lost one of the two, or gained a clause beside them. The expected
+        # time is spelled out rather than read back off the ref the call is given.
+        refusal = accept_refusal(a_ref(kind, minute_of_day=minute_of_day), title="Gym")
 
-        assert refusal is not None
-        assert "no entry to move" in refusal
-        # The time is in the sentence, because the act it asks for needs it.
-        assert "13:00" in refusal
-        assert "Templates" in refusal
+        assert refusal == (
+            "No entry of your day shapes holds Gym, so there is no entry to move. "
+            f"Declare one at {local_time} on Templates and the plan will start there. A template "
+            "entry states a duration and a flex band that a pin says nothing about, which is why "
+            "syncr proposes the pattern and leaves the declaration to you. Nothing was changed."
+        )
 
     def test_content_a_shape_cannot_hold_says_what_it_is_instead(self) -> None:
         # "Not a template entry" is not a reason a reader can act on, and neither of these can
@@ -92,8 +120,42 @@ class TestWhatTheRefusalTellsTheReader:
         assert refusal is not None
         assert "the content you keep pinning" in refusal
 
-    def test_the_time_in_the_sentence_is_the_pattern_s_own(self) -> None:
-        refusal = accept_refusal(a_ref(BindingKind.HABIT, minute_of_day=345), title="Gym")
 
-        assert refusal is not None
-        assert "05:45" in refusal
+class TestTheAnswerTheModuleRecords:
+    """The decision the module states, and the pointer it must not state in place of one.
+
+    The refusal is the product's answer and not a placeholder for a later one, so the module says
+    which it is and these cases cross that. A statement no test reads can be deleted or reversed by
+    anyone, which is how a refusal's reason comes to be a pointer at something a reader holding the
+    code cannot open.
+    """
+
+    def test_the_module_states_that_accept_moves_an_entry_and_never_creates_one(self) -> None:
+        stated = as_one_line(absorption.__doc__ or "")
+
+        assert "Accept moves an entry and never creates one" in stated
+        assert "the refusal below is that answer rather than a placeholder" in stated
+
+    def test_the_module_states_what_a_created_entry_would_have_syncr_choose(self) -> None:
+        stated = as_one_line(absorption.__doc__ or "")
+
+        assert (
+            "An entry declares a duration and a flex band that a pin states nothing about" in stated
+        )
+
+    def test_the_module_points_at_no_planning_artifact(self) -> None:
+        assert pointers_in(_module_source()) == []
+
+    def test_the_reading_that_finds_a_pointer_can_see_one(self) -> None:
+        # The control on the case above. An emptiness assertion over a reading that matches nothing
+        # passes whatever the module says, so both spellings the reading exists for are shown to
+        # bite, and prose that carries neither is shown not to.
+        assert pointers_in("the reason the template cannot take it") == []
+        assert pointers_in("tickets/1550 holds the product question") == ["tickets/1550"]
+        assert pointers_in("US-TPL-05's own example is a move") == ["US-TPL-05"]
+
+
+def _module_source() -> str:
+    path = absorption.__file__
+    assert path is not None
+    return Path(path).read_text(encoding="utf-8")
