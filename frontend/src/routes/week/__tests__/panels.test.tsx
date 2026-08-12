@@ -10,7 +10,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../testing/apiServer";
 import { renderAt } from "../../../testing/renderRoute";
@@ -37,9 +37,19 @@ import {
   installWeekReads,
   monday,
 } from "./fixtures";
+import { WIDE_MIN_WIDTH_PX } from "../panelRoom";
 import type { WeekView } from "../../../api/hooks/useWeek";
 
 const WEEK = `${window.location.origin}/api/v1/weeks/${ISO_WEEK}`;
+
+/* THE WIDTH IS SET WHERE A CASE DEPENDS ON IT. The panel opens unasked where there is room for its own column, so the
+ * cases below that turn on the rail state which side of --bp-wide they render at rather than inheriting jsdom's own
+ * width. Restored after each case, so one narrow render does not decide the next one. */
+const JSDOM_WIDTH = window.innerWidth;
+
+afterEach(() => {
+  window.innerWidth = JSDOM_WIDTH;
+});
 
 async function renderWeek(view: WeekView) {
   const reads = installWeekReads(view);
@@ -50,6 +60,11 @@ async function renderWeek(view: WeekView) {
 
 function panel(): HTMLElement {
   return screen.getByLabelText("Verdict");
+}
+
+/** The open state as the surface publishes it, which is the form a rule can select on. */
+function panelState(): string | null {
+  return document.querySelector("[data-panel]")?.getAttribute("data-panel") ?? null;
 }
 
 describe("the verdict the week serves", () => {
@@ -190,6 +205,65 @@ describe("the detail panel", () => {
     await userEvent.hover(screen.getByLabelText(`${LEETCODE} · Career`));
 
     expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
+  });
+
+  /* WHERE THERE IS ROOM FOR THE PANEL'S COLUMN, SELECTION IS THE WHOLE GESTURE. That is the design language's own
+   * trigger -- the reason arrives on selection and never on hover -- and it is why the state defaults open at this
+   * width rather than making a reader ask twice for something already on the screen. */
+  it("is open where there is room, so selecting a block alone renders it", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX;
+    await renderWeek(buildWeekView());
+
+    await userEvent.keyboard("j");
+
+    const detail = await screen.findByLabelText("Detail");
+    expect(within(detail).getByText(LEETCODE)).toBeInTheDocument();
+  });
+
+  /* THE OTHER EDGE OF THE SAME DEFAULT, one pixel below the threshold: the panel's column would take the width a day
+   * column needs for a legible title, so the panel starts closed and the rail is what the reader has instead. */
+  it("starts closed where there is no room, and the rail's own control opens it", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX - 1;
+    await renderWeek(buildWeekView());
+    await userEvent.keyboard("j");
+    expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open the detail panel" }));
+
+    const detail = await screen.findByLabelText("Detail");
+    expect(within(detail).getByText(LEETCODE)).toBeInTheDocument();
+  });
+
+  it("closes from the rail's control as well, which is the same control renamed", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX - 1;
+    await renderWeek(buildWeekView());
+    await userEvent.click(screen.getByLabelText(`${LEETCODE} · Career`));
+    await screen.findByLabelText("Detail");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close the detail panel to its rail" }),
+    );
+
+    expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
+    /* THE SELECTION SURVIVES CLOSING FROM THE RAIL. Only `Escape` clears it, so a reader who wanted the grid back
+     * keeps the block they were reading about and can open the panel again on it. */
+    expect(screen.getByLabelText(`${LEETCODE} · Career`)).toHaveAttribute("data-selected");
+  });
+
+  /* THE STATE TRAVELS AS AN ATTRIBUTE, which is what lets a rule select on it without a second copy of the condition.
+   * One element carries it, asserted, because two would be two states named the same thing. */
+  it("carries the open state as data-panel, in one place", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX - 1;
+    await renderWeek(buildWeekView());
+
+    expect(document.querySelectorAll("[data-panel]")).toHaveLength(1);
+    expect(panelState()).toBe("closed");
+
+    await userEvent.click(screen.getByLabelText(`${LEETCODE} · Career`));
+    expect(panelState()).toBe("open");
+
+    await userEvent.keyboard("{Escape}");
+    expect(panelState()).toBe("closed");
   });
 
   it("renders the reason as labelled rows and never as a paragraph", async () => {

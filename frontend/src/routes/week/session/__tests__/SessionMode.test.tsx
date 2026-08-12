@@ -604,11 +604,20 @@ describe("a week that moved on while the session was open", () => {
 describe("the detail panel the keyboard map opens", () => {
   it("opens inside the mode, so Enter is not a key that does nothing", async () => {
     /* The mode inherits the whole keyboard map, and `Enter` opens the detail panel. A surface that took the binding and
-     * drew no panel would leave a key that silently sets state nothing renders. */
+     * drew no panel would leave a key that silently sets state nothing renders.
+     *
+     * FOCUS IS TAKEN OFF THE BLOCK BEFORE `Enter`, because a selected block holds focus and a block is a real button:
+     * `Enter` on it is the button's own activation, which opens the panel through the pointer's handler and would leave
+     * this case green with the binding deleted. Off the block, the document binding is the only thing that can answer. */
     openTheSession();
     renderAt(SESSION_PATH);
+    await screen.findByLabelText(`${LEETCODE} · Career`);
 
-    await userEvent.click(await screen.findByLabelText(`${LEETCODE} · Career`));
+    await userEvent.keyboard("j");
+    screen.getByLabelText(`${LEETCODE} · Career`).blur();
+    expect(document.body).toHaveFocus();
+    expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
+
     await userEvent.keyboard("{Enter}");
 
     expect(await screen.findByRole("button", { name: "Close the detail panel" })).toBeVisible();

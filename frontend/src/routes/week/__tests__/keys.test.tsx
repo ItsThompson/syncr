@@ -17,11 +17,12 @@
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { renderAt } from "../../../testing/renderRoute";
 import { todayIn } from "../../../lib/zonedInstant";
 import { isoWeekOf } from "../../today/isoWeek";
+import { WIDE_MIN_WIDTH_PX } from "../panelRoom";
 import {
   APPLICATION,
   BLOCK_APPLICATION,
@@ -63,6 +64,15 @@ async function renderWeek() {
   await screen.findByLabelText(`${LEETCODE} · Career`);
   return reads;
 }
+
+/* THE WIDTH IS SET RATHER THAN INHERITED. The panel opens unasked where there is room for its own column, so a case
+ * about `Enter` has to state which side of that threshold it renders on: at jsdom's own width the premise would be a
+ * default nobody wrote down. Restored after each case, so a narrow render does not leave the next one narrow. */
+const JSDOM_WIDTH = window.innerWidth;
+
+afterEach(() => {
+  window.innerWidth = JSDOM_WIDTH;
+});
 
 function blockOf(title: string): HTMLElement {
   return screen.getByLabelText(`${title} · Career`);
@@ -183,9 +193,20 @@ describe("z cycles the visible hours", () => {
 });
 
 describe("Enter and Escape", () => {
-  it("Enter opens the detail panel for the selected block", async () => {
+  /* THE ONE CASE THAT CAN TELL WHETHER `Enter` IS BOUND AT ALL, and the premise is the reason it is written this way. A
+   * selected block HOLDS FOCUS and a block is a real button, so `Enter` on it is the button's own activation: it opens
+   * the panel through the same handler the pointer uses whether or not this screen binds the key. With focus off the
+   * block -- a reader who selected with the keys and then clicked the page -- the document binding is the only thing
+   * left that can answer. Both halves of the premise are asserted rather than assumed, so this case fails loudly
+   * instead of going quiet if either stops holding. The version before it typed `j{Enter}` with focus on the block and
+   * stayed green with the binding deleted. */
+  it("Enter opens the detail panel for the selected block, with focus off the block itself", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX - 1;
     await renderWeek();
     await userEvent.keyboard("j");
+    blockOf(LEETCODE).blur();
+    expect(document.body).toHaveFocus();
+    expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
 
     await userEvent.keyboard("{Enter}");
 
@@ -193,7 +214,22 @@ describe("Enter and Escape", () => {
     expect(within(detail).getByText(LEETCODE)).toBeInTheDocument();
   });
 
+  /* THE OTHER EDGE, at the width where the panel is open already: `Enter` on the focused block is the block's own
+   * activation, which is the pointer's route, and neither route toggles. Both openers SET the state. */
+  it("activating the selected block again holds the panel open rather than toggling it shut", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX;
+    await renderWeek();
+    await userEvent.keyboard("j");
+    await screen.findByLabelText("Detail");
+
+    await userEvent.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Detail")).toBeInTheDocument();
+    expect(blockOf(LEETCODE)).toHaveAttribute("data-selected");
+  });
+
   it("Enter with nothing selected opens nothing", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX - 1;
     await renderWeek();
 
     await userEvent.keyboard("{Enter}");
@@ -202,8 +238,9 @@ describe("Enter and Escape", () => {
   });
 
   it("Escape clears the selection and closes the panel", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX;
     await renderWeek();
-    await userEvent.keyboard("j{Enter}");
+    await userEvent.keyboard("j");
     await screen.findByLabelText("Detail");
 
     await userEvent.keyboard("{Escape}");
