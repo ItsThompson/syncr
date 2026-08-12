@@ -17,7 +17,7 @@
  * early-catch metric's numerator structurally zero. Both directions are driven through the real client rather than by
  * reading the module's flag, because the flag is not the claim: the request is. */
 
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -517,6 +517,29 @@ describe("the promotion candidates", () => {
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
     expect(screen.getByText(candidate.acceptRefusal ?? "")).toBeVisible();
+  });
+
+  it("draws the accept control in the absorbable row alone, in a panel holding one of each", async () => {
+    /* WHAT THE CASE ABOVE CANNOT SEE. With one refused candidate, "no accept control for this row" and "no accept
+     * control anywhere" are one reading, and a panel that had lost the control altogether satisfies it too. Two
+     * candidates separate them: the control is asserted in the row it belongs to rather than counted over the table,
+     * and the DECLINE in both rows, because the answer a decline records is about the asking rather than the template. */
+    const refused = buildPromotionCandidate();
+    const refusal = refused.acceptRefusal;
+    if (refusal === null) throw new Error("the refused candidate carries no sentence");
+    openTheSession(buildSession({ promotions: [buildAbsorbablePromotion(), refused] }));
+    renderAt(SESSION_PATH);
+    await screen.findByLabelText("Repeated pins");
+
+    const table = screen.getByRole("table", { name: /Content pinned to one time/ });
+    const absorbableRow = within(table).getByRole("row", { name: new RegExp(GYM) });
+    const refusedRow = within(table).getByRole("row", { name: new RegExp(LEETCODE) });
+
+    expect(within(absorbableRow).getByRole("button", { name: "Accept" })).toBeVisible();
+    expect(within(refusedRow).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+    expect(within(refusedRow).getByText(refusal)).toBeVisible();
+    expect(within(absorbableRow).getByRole("button", { name: "Decline" })).toBeVisible();
+    expect(within(refusedRow).getByRole("button", { name: "Decline" })).toBeVisible();
   });
 
   it("renders the api's sentence when an answer is refused", async () => {
