@@ -155,10 +155,10 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     netting defect in this module has turned on, and it is preserved: nothing here subtracts a
     minute count from a minute count.
 
-    Measured outside the suite, on a week holding 152 placements: 347 us a candidate over four
-    Areas, and 379 us over thirty-two, because each placement is bucketed once rather than read
-    again for every Area. Nothing in the suite crosses either figure, deliberately: a wall-time
-    assertion measures the machine it runs on.
+    Measured outside the suite, on a week holding 152 placements: about 350 us a candidate over
+    four Areas, and about 380 us over thirty-two, because each placement is bucketed once rather
+    than read again for every Area. Nothing in the suite crosses either figure, deliberately: a
+    wall-time assertion measures the machine it runs on.
     """
     if candidate.area_id is None or state.holds(candidate):
         return None
