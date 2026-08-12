@@ -465,6 +465,15 @@ def test_the_habit_projection_states_both_keys_the_index_leads_with() -> None:
     assert f"{BLOCK_OUTCOMES_TABLE}.{TENANT_ID_COLUMN} = " in sql
 
 
+async def test_the_habit_projection_answers_an_empty_request_without_a_read() -> None:
+    # Every assembly of a week performs this read, and a tenant who has declared no habit is a real
+    # case the habit collection reaches on every render. The session here is bound to nothing, so a
+    # statement issued against it would raise: answering at all is the proof that none was.
+    read = await HabitOutcomeLog(AsyncSession(), uuid4()).read([])
+
+    assert read == ()
+
+
 def test_a_json_key_expression_refuses_a_key_that_would_end_the_string() -> None:
     # The control for the helper the index above is built with. Every caller passes a constant, so
     # the rejection is what makes that a property of the call rather than a convention. Two
