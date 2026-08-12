@@ -65,8 +65,6 @@ STATEMENT_CONSTRUCTORS = frozenset({"select", "update", "delete"})
 
 # `syncr_api.<package>.models` is three parts, and the package is the second from last.
 MODELS_MODULE_DEPTH = 3
-SERVICE_MODULE_NAME = "service.py"
-PACKAGE_NAME = "syncr_api"
 
 METHODS_WITHOUT_A_BODY = frozenset({"GET", "HEAD", "OPTIONS"})
 
