@@ -1,10 +1,10 @@
 """The verdict a week carries, as the CLI reads it and prints its provenance.
 
-**The verdict's wire shape is not in the OpenAPI document yet.** Every week response in this
-deployment answers ``verdict: null``, and the component that fills it is a later slice. So this
-reader requires only the two members the headline is composed from, ``feasible`` and
-``provenance``, and treats the shortfalls and the tradeoffs as absent-is-empty. A smaller claim
-is a claim a later contract is less likely to falsify, and the ``--json`` output carries the
+**This reader models less than the contract carries, deliberately.** The api answers
+``verdict: null`` exactly when the week holds no plan, and its ``VerdictResponse`` carries more
+members than the headline is composed from, so this reader requires only ``feasible`` and
+``provenance`` and treats the shortfalls and the tradeoffs as absent-is-empty. A smaller claim
+is a claim a contract change is less likely to falsify, and the ``--json`` output carries the
 api's own payload verbatim whatever this reader models.
 
 The vocabulary and the duration wording are the domain's, imported rather than restated:
@@ -36,7 +36,8 @@ from syncr_domain.feasibility.verdict import Provenance, hours_and_minutes
 if TYPE_CHECKING:
     from datetime import datetime
 
-# What the ledger prints after the headline, per provenance. The words are the spec's.
+# What the ledger prints after the headline, per provenance. The words are fixed rather than chosen
+# here: stdout is a contract with the agent reading it, and the ledger's suite asserts both.
 PROVENANCE_TAGS: dict[Provenance, str] = {
     Provenance.PROBE: "[capacity check]",
     Provenance.SOLVER: "[after solving]",
