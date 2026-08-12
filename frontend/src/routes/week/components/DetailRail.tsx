@@ -4,8 +4,8 @@
  * and a narrower grid cannot hold a title. The rail is a reserved column either way, so the grid's own width does not
  * change when the panel opens.
  *
- * THE CONTROL IS WHAT MAKES THE RAIL MORE THAN A BORDER. On a display with no room for the panel's column the keyboard
- * has `Enter` and the pointer had nothing at all, so the reason was reachable by one input and not the other.
+ * THE CONTROL IS WHAT MAKES THE RAIL MORE THAN A BORDER. On a display with no room for the panel's column the reason
+ * is reachable from the keyboard by `Enter`, and the rail is the pointer's own route to it.
  *
  * THE TERTIARY RANK RATHER THAN THE QUIET ONE, because the rail is 26px and the quiet rank's own padding is 18px of it:
  * a mark inside it would sit outside the column it belongs to. */
