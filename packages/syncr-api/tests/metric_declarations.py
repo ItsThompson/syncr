@@ -255,6 +255,12 @@ NOT_ALERTED: Final[Mapping[str, str]] = {
         "Two workers reached one due solve and one claimed it. The single-flight invariant holding "
         "is not an incident."
     ),
+    "syncr_solve_taken_over_total": (
+        "A running solve whose row moved before its own terminal step, so its write was discarded "
+        "whole: the reaper on a lease it outlived, or a reader asking a tradeoff of the same week. "
+        "Both are the mechanism working, and the consequence worth paging on is a week whose solve "
+        "never lands, which `SolveFailing` reads directly."
+    ),
     "syncr_operation_sweep_tenant_failures_total": (
         "A maintenance pass that raised. Its consequence is operations sitting non-terminal for "
         "one more cadence, and the sweep retries with no operator involvement."

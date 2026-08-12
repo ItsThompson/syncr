@@ -216,7 +216,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "Operations stuck, races lost, and contained solve faults",
-      "description": "Three families with no alert of their own, drawn together because each is a contained fault: a non-terminal operation count that will not fall, a claim or reaper race the loser recorded, and a solve pass that raised outside the outcomes the coordinator records. SolveFailing reads the last of these directly, because a pass that raises never reaches the line that records a failed outcome.",
+      "description": "Three families with no alert of their own, drawn together because each is a contained fault: a non-terminal operation count that will not fall, a claim or reaper race the loser recorded, a running solve whose write was discarded because its row moved, and a solve pass that raised outside the outcomes the coordinator records. SolveFailing reads the last of these directly, because a pass that raises never reaches the line that records a failed outcome.",
       "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
       "targets": [
@@ -234,6 +234,11 @@
           "refId": "C",
           "expr": "rate(syncr_operation_reaper_races_lost_total[1h]) * 3600",
           "legendFormat": "reaper races lost"
+        },
+        {
+          "refId": "G",
+          "expr": "rate(syncr_solve_taken_over_total[1h]) * 3600",
+          "legendFormat": "solve writes discarded"
         },
         {
           "refId": "D",

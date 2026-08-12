@@ -288,6 +288,7 @@ class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
             "syncr_sse_events_dropped_total",
             "syncr_sse_listener_reconnects_total",
             "syncr_solve_claim_races_lost_total",
+            "syncr_solve_taken_over_total",
             "syncr_solve_tenant_failures_total",
             "syncr_solve_superseded_ratio",
         ],

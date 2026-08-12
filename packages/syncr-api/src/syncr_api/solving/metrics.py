@@ -1,4 +1,4 @@
-"""What the orchestration publishes about itself: four families the debounce is tuned from.
+"""What the orchestration publishes about itself: five families the debounce is tuned from.
 
 The solver package already times the SOLVE. These measure the OPERATION around it, which is a
 different subject: a solve that ran perfectly and was then discarded is a success to the solver and
@@ -9,6 +9,7 @@ happens.
 |---|---|
 | ``syncr_solve_total`` | how many solves ended each way |
 | ``syncr_solve_superseded_ratio`` | whether the debounce window fits how this user edits |
+| ``syncr_solve_taken_over_total`` | how often a running solve's own write was discarded |
 | ``syncr_operations_non_terminal`` | whether anything is stuck, by kind |
 | ``syncr_operation_queue_delay_seconds`` | how long a claim waited past the instant it was due |
 
@@ -62,6 +63,17 @@ OPERATION_QUEUE_DELAY = Histogram(
     "syncr_operation_queue_delay_seconds",
     "How long a claimed operation waited past the instant it became due, by kind.",
     labelnames=("kind",),
+    registry=REGISTRY,
+)
+
+# A RUNNING solve whose terminal step applied to no row, so its whole write transaction rolled back.
+# Its own family rather than a second meaning on the claim scan's counter: a claim race is skipped
+# before any work, and this is a solve that assembled, ran and then wrote nothing. Two actors reach
+# it -- the reaper on an expired lease, and a tradeoff request superseding the solve to ask its own
+# question -- and the log line beside each carries the status the row was found in.
+SOLVE_TAKEN_OVER = Counter(
+    "syncr_solve_taken_over_total",
+    "Running solves whose terminal step found the row already stepped, so the write was discarded.",
     registry=REGISTRY,
 )
 

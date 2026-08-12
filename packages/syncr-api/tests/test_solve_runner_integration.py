@@ -887,16 +887,23 @@ class TestALeaseExpiringMidSolve:
 
         A tenant-failure counter that moves for an expected race is a counter an operator cannot
         alert on, because the ordinary case and the fault read identically.
+
+        The race is counted on the DISCARDED-WRITE counter and not on the claim scan's, because the
+        two mean different events: this solve assembled a week and ran a solve before its row was
+        taken, and a lost claim is a row skipped before any of that. The other edge of that pair is
+        driven in ``test_tradeoff_during_a_solve.py``.
         """
         await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+        taken_over = _sample("syncr_solve_taken_over_total")
         races = _sample("syncr_solve_claim_races_lost_total")
         tenant_faults = _sample("syncr_solve_tenant_failures_total")
 
         await a_solve_whose_lease_expires(sessions, context, owner, clock)
 
-        assert _sample("syncr_solve_claim_races_lost_total") == races + 1
+        assert _sample("syncr_solve_taken_over_total") == taken_over + 1
+        assert _sample("syncr_solve_claim_races_lost_total") == races
         assert _sample("syncr_solve_tenant_failures_total") == tenant_faults
 
     async def test_the_reaped_solve_reaches_the_solve_counter(

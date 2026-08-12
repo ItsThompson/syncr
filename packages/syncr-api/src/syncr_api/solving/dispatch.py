@@ -107,11 +107,11 @@ from syncr_api.solving.config import (
     SOLVER_RAISED,
     WRITE_REFUSED,
 )
-from syncr_api.solving.coordinator import CLAIM_RACES_LOST
 from syncr_api.solving.errors import OperationMovedOn
 from syncr_api.solving.failures import statement_for
 from syncr_api.solving.injection import build_solve_coordinator
 from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.metrics import SOLVE_TAKEN_OVER
 from syncr_api.solving.outcomes import Failed, Succeeded, Superseded
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.solving.snapshots import as_snapshot
@@ -414,12 +414,13 @@ class SolveDispatch:
     ) -> OperationRecord:
         """The row as something else left it, so ``run()`` answers rather than raising.
 
-        Counted on the same instrument the claim scan's lost races use, because it is the same class
-        of event: a step that applied to no row because another actor had already stepped it. What
-        makes it safe is that this solve wrote nothing, which the caller of this dispatch does not
-        have to know, because the row it answers with says so.
+        Two actors reach this: the reaper, on a lease this solve outlived, and a tradeoff request
+        superseding the solve to ask its own question of the week. Both leave the same fact behind,
+        which is what makes one instrument right for it: this solve's write was discarded whole. It
+        is NOT the claim scan's counter, because that race is a row skipped before any work, and the
+        status the row was found in is on the line below for the actor.
         """
-        CLAIM_RACES_LOST.inc()
+        SOLVE_TAKEN_OVER.inc()
         _log.info(
             "solving.solve.taken_over",
             iso_week=str(week),
