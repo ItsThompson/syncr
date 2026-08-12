@@ -596,7 +596,7 @@ class TestTheDominantClause:
         assert (dominant.term, dominant.share) == ("budget_deviation", 2.0 / 3.0)
 
     def test_every_chosen_block_of_one_plan_names_the_same_term_and_share(self) -> None:
-        """The share is the PLAN's, which is the settlement ticket 1343 asked for.
+        """The share is the PLAN's rather than the block's.
 
         Read as this block's cost the two occurrences below would carry different shares, because
         one is in a floored Area and the other is not.
@@ -796,9 +796,9 @@ class TestThePinClauses:
 
         The clause renders the pin's own interval. It agrees with the block's because the inherited
         set seeds a pinned block at the pin unconditionally, and ``immovability``'s prose describes
-        the opposite precedence for this exact input: a started binding whose pin is refused. Which
-        module is right is ticket 1333's question, and this assertion is what makes the answer
-        visible here instead of silently rendering a span the week does not hold.
+        the opposite precedence for this exact input: a started binding whose pin is refused. The
+        two are not yet reconciled, and this assertion is what makes the answer visible here instead
+        of silently rendering a span the week does not hold.
         """
         occurrence = an_occurrence(habit_id=A_HABIT, index=0, minutes=60, area_id=FITNESS)
         began = between(9, 10)
@@ -858,12 +858,12 @@ class TestThePinClauses:
 
 
 class TestAStrongWindowThatCouldNotBeHonored:
-    def test_the_three_clauses_section_08_prints_are_reproducible(self) -> None:
+    def test_the_three_clauses_a_yielded_preference_reports_are_reproducible(self) -> None:
         """The rejected preferred windows, the constraints that refused them, and the cost.
 
-        Section 08's own example. The rules and the windows are asserted verbatim; the misfit's
-        share is 1.0 here rather than the section's illustrative 62%, because every other term of
-        this week is zero by construction and a share is a fraction of what the plan costs.
+        The rules and the windows are asserted verbatim; the misfit's share is 1.0 here rather than
+        a fraction, because every other term of this week is zero by construction and a share is a
+        fraction of what the plan costs.
         """
         result = solved(preference_yield_week())
         clauses = clauses_of(result, f"Gym · {VARIANT}")

@@ -194,7 +194,7 @@ def test_a_solve_leaves_the_forbidden_windows_the_week_declared() -> None:
 
 
 # --------------------------------------------------------------------------------------
-# US-SOLVE-08: determinism
+# Determinism
 # --------------------------------------------------------------------------------------
 
 
@@ -330,7 +330,7 @@ def test_a_pin_inside_an_off_plan_span_is_the_one_thing_that_survives_it() -> No
 
 
 # --------------------------------------------------------------------------------------
-# US-SOLVE-11: a re-solve never shrinks the work
+# A re-solve never shrinks the work
 # --------------------------------------------------------------------------------------
 
 
@@ -384,7 +384,7 @@ def test_re_solving_repeatedly_leaves_the_total_placed_minutes_unchanged() -> No
 
 
 def test_a_pinned_hour_reduces_the_work_still_to_place_and_stays_in_the_document() -> None:
-    """The exception the story states: a pin cannot move, so the pin IS part of the total.
+    """The exception: a pin cannot move, so the pin IS part of the total.
 
     The assembler nets a pin out of ``remaining_minutes``, so the demand here is 180 and the plan
     holds 240: three fresh hours plus the pinned one.
@@ -446,7 +446,7 @@ def test_a_block_that_has_begun_stays_where_it_is_and_counts_toward_the_total() 
 
 
 def test_a_solve_never_places_work_over_a_span_a_block_that_has_begun_already_holds() -> None:
-    """Ticket 1331's unsafe half: H4 measures over what the state holds, and a solve seeds it."""
+    """H4 measures over what the state holds, and a solve seeds it."""
     begun = a_block(
         binding=BindingRef.for_habit(ANOTHER_HABIT, index=0),
         interval=between(8, 12, day=0),

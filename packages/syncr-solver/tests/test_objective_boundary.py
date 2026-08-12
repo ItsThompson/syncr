@@ -231,9 +231,10 @@ def test_the_objective_reads_exactly_the_declared_members_of_the_checkers_state(
     """Which keeps the netted set and the denominator from being restated in this work.
 
     ``already_netted`` is the one statement of the set the assembler subtracted before its figures
-    arrived, crossed against the api's own statement by ticket 1330. ``discretionary`` is the one
-    the document's denominator and H9 both take. A member of either read directly here would be a
-    second statement of a quantity, which is the fault class this epic has paid most for.
+    arrived, and the api's own statement of it is ``plans.netting.Placement.immovable``.
+    ``discretionary`` is the one the document's denominator and H9 both take. A member of either
+    read directly here would be a second statement of a quantity, which is the fault class this
+    epic has paid most for.
     """
     read = {member for member in _STATE_READ.findall(objective_source()) if member}
 

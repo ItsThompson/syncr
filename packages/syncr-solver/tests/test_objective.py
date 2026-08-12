@@ -349,8 +349,8 @@ def _a_tie_exists_in(plan: PlanDocument) -> bool:
     """Whether two of this plan's Area-carrying blocks cover one interval.
 
     Asserted rather than assumed, because the invariance above is only about ties and a fixture that
-    lost its tie would leave the test passing while measuring nothing. That is ticket 29's failure
-    mode, and this is the cheapest form of the check that catches it.
+    lost its tie would leave the test passing while measuring nothing. This is the cheapest form of
+    the check that catches it.
     """
     spans = [block.interval for block in plan.blocks if block.area_id is not None]
     return len(spans) != len(set(spans))
