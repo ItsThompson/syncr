@@ -42,6 +42,21 @@ function cellText(row: Element, selector: string): string | null {
   return row.querySelector(selector)?.textContent ?? null;
 }
 
+/* WHAT REACT SAYS ON THE CONSOLE, WHICH FOR A DUPLICATE KEY IS THE ONLY CHANNEL THAT OBSERVES IT AT ALL.
+ *
+ * Both streams, as `ui/primitives/__tests__/mounting.test.tsx` takes them: which of the two React writes a
+ * message to is React's to change, and a spy on one of them would pass while the defect stood. Restored by the
+ * suite's own `afterEach`. */
+function captureComplaints(): string[] {
+  const complaints: string[] = [];
+  const record = (...args: unknown[]): void => {
+    complaints.push(args.join(" "));
+  };
+  vi.spyOn(console, "error").mockImplementation(record);
+  vi.spyOn(console, "warn").mockImplementation(record);
+  return complaints;
+}
+
 async function pressPaletteChord(): Promise<void> {
   await userEvent.keyboard("{Meta>}k{/Meta}");
   await userEvent.keyboard("{Control>}k{/Control}");
@@ -169,14 +184,11 @@ describe("the help overlay", () => {
   });
 
   /* TWO ROWS MAY CARRY ONE KEY STRING, because one keystroke answers differently depending on the screen. React
-   * identifies a sibling by its key, so a key that is the keystroke alone makes the two rows one: the second is
-   * dropped or misplaced on the next render, and React says so on the console. Both halves are asserted, because
-   * the complaint is what bites first. */
+   * identifies a sibling by its key, so a key that is the keystroke alone makes the two rows one. Both halves are
+   * asserted, and the complaint is the half that bites: measured, React renders both rows anyway, so the row set
+   * alone cannot fail. The describe below keeps the complaint honest. */
   it("renders both rows that share a key string, with no complaint from React", async () => {
-    const complaints: string[] = [];
-    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      complaints.push(args.join(" "));
-    });
+    const complaints = captureComplaints();
     const { baseElement } = render(<HelpOverlay />);
     await userEvent.keyboard(HELP_KEY);
 
@@ -226,5 +238,34 @@ describe("the help overlay", () => {
     for (const screenEntry of SCREENS) {
       expect(screen.getByText(`g ${screenEntry.chord}`)).toBeInTheDocument();
     }
+  });
+});
+
+/* THE CANARY FOR THE ONE GUARD THAT RESTS ON A FRAMEWORK'S CONSOLE.
+ *
+ * A duplicate key changes nothing a test can read: the rows render, in order, and a key is reflected in neither
+ * the DOM nor the accessibility tree. React's development warning is the only channel that observes it, and
+ * `react` is declared as a caret range, so a minor release that drops or moves that warning would leave the case
+ * above green with the defect standing and no signal anywhere.
+ *
+ * This mounts the defect on its own, over two children this file owns, and asserts the warning arrives. If React
+ * stops warning, this reddens and names the reason instead of the guard quietly becoming a tautology. */
+describe("the console channel the shared-key case rests on", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("still carries React's complaint about two children under one key", () => {
+    const complaints = captureComplaints();
+
+    render(
+      <dl>
+        {["first", "second"].map((action) => (
+          <div key="one key for two">{action}</div>
+        ))}
+      </dl>,
+    );
+
+    expect(complaints.join(" ")).toContain("same key");
   });
 });
