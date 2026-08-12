@@ -12,10 +12,10 @@
  * so a case that asserted its own wording would be asserting this test file's copy of the api's words. What is asserted
  * is that the sentence REACHES the screen, and the words are the fixture's.
  *
- * THE HEADER IS SENT ON A MUTATION MADE INSIDE THE MODE AND ON NOTHING ELSE, which is `VE3` end to end from this side:
- * the recorder writes `session_mode_active` from what the caller states, so a client that sent nothing would leave the
- * early-catch metric's numerator structurally zero. Both directions are driven through the real client rather than by
- * reading the module's flag, because the flag is not the claim: the request is. */
+ * THE HEADER IS SENT ON A MUTATION MADE INSIDE THE MODE AND ON NOTHING ELSE, because only the caller knows whether the
+ * weekly session is open: the recorder writes `session_mode_active` from what the caller states, so a client that sent
+ * nothing would leave the early-catch metric's numerator structurally zero. Both directions are driven through the
+ * real client rather than by reading the module's flag, because the flag is not the claim: the request is. */
 
 import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
@@ -86,9 +86,9 @@ function openTheSession(
 /**
  * A write route, recording the session-mode header each request carried.
  *
- * The header is what `VE3` is stated over, so what a case asserts is the REQUEST rather than the module flag behind it:
- * a flag read correctly and never put on a request would leave the metric's numerator structurally zero, which is the
- * state ticket 1431 measured.
+ * The header is where the caller's own answer crosses, so what a case asserts is the REQUEST rather than the module
+ * flag behind it: a flag read correctly and never put on a request would leave the metric's numerator structurally
+ * zero, which is the state ticket 1431 measured.
  */
 function recordSessionHeaders(path: string, body: object): (string | null)[] {
   const stated: (string | null)[] = [];
@@ -582,8 +582,9 @@ describe("the promotion candidates", () => {
   });
 
   it("carries the session header on an answer, because it is a mutation made in the mode", async () => {
-    /* `VE3` again, on the two writes this ticket adds: the middleware is on the client, so a hook added later
-     * inherits it, and this is the case that would notice if these two had been given their own call path. */
+    /* The caller's own answer again, on the two writes this ticket adds: the middleware is on the client, so
+     * a hook added later inherits it, and this is the case that would notice if these two had been given
+     * their own call path. */
     const candidate = buildAbsorbablePromotion();
     openTheSession(buildSession({ promotions: [candidate] }));
     const stated = recordSessionHeaders(`/api/v1/promotions/${candidate.id}/decline`, {

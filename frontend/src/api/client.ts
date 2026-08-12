@@ -14,12 +14,12 @@
  * unambiguous in a log. `credentials: include` is what carries the session cookie on that one
  * origin, and it is set here rather than per call so a new hook cannot forget it.
  *
- * THE WEEKLY-SESSION HEADER IS SET HERE FOR THE SAME REASON. `VE3` says only the caller knows whether the weekly
- * session is open, so every mutation made inside one has to say so, and there are six of them on the week screen with
- * a seventh arriving whenever a route is added. Deciding it per call site is how one of them comes to forget: this
- * reads the mode's own flag at the moment the request is built, on unsafe methods only, and sends nothing at all
- * outside a session. The api resolves the header only where a verdict is recorded, because its refusal for an
- * unreadable value says nothing was changed -- which is true of a mutation and meaningless on a read. */
+ * THE WEEKLY-SESSION HEADER IS SET HERE FOR THE SAME REASON. Only the caller knows whether the weekly session is
+ * open, so every mutation made inside one has to say so, and there are six of them on the week screen with a seventh
+ * arriving whenever a route is added. Deciding it per call site is how one of them comes to forget: this reads the
+ * mode's own flag at the moment the request is built, on unsafe methods only, and sends nothing at all outside a
+ * session. The api resolves the header only where a verdict is recorded, because its refusal for an unreadable value
+ * says nothing was changed -- which is true of a mutation and meaningless on a read. */
 
 import createClient from "openapi-fetch";
 

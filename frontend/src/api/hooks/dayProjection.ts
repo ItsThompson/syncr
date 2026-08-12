@@ -26,7 +26,7 @@ export type DayRow = components["schemas"]["LedgerRowResponse"];
 export type Outcome = components["schemas"]["OutcomeResponse"];
 export type OutcomeState = components["schemas"]["OutcomeState"];
 
-/** What a row says happened, which is `presumed` until it says otherwise: the absent row is O1. */
+/** What a row says happened, which is `presumed` until it says otherwise: an absent row is ordinary. */
 export function stateOf(row: DayRow): OutcomeState {
   return row.outcome?.state ?? "presumed";
 }

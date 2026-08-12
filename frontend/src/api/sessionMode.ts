@@ -1,6 +1,6 @@
 /* WHETHER THE WEEKLY SESSION IS OPEN, WHICH ONE MODE DECLARES AND ONE MIDDLEWARE READS.
  *
- * `VE3`: only the caller knows whether the weekly session is open, because it is a mode of this client's own screen
+ * Only the caller knows whether the weekly session is open, because it is a mode of this client's own screen
  * rather than a state the api holds. A verdict transition recorded during a session is what the early-catch product
  * metric's numerator counts, so the answer has to cross the wire on every mutation the mode makes.
  *
