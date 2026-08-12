@@ -6,8 +6,8 @@ what lets a worker stop a solve whose result nobody will read.
 
 ## Where the numbers come from
 
-Ticket 34 measured the objective at **p50 1.509 ms and p99 1.709 ms on a 210-block week**, which is
-the size this product is sized against. The objective is what a solve spends its time on, so the
+The objective measures **p50 1.509 ms and p99 1.709 ms on a 210-block week**, which is the size
+this product is sized against. The objective is what a solve spends its time on, so the
 budget is a count of evaluations rather than a wall clock:
 
 ```
@@ -32,7 +32,7 @@ one it would have reached and better than the one it started from.
 
 ## Cancellation is an optimization and nothing else
 
-**Correctness comes from ticket 40's conditional write**, which refuses a solve whose input version
+**Correctness comes from the version-checked write**, which refuses a solve whose input version
 has moved. A cancelled solve stops early and returns the plan it had, and the coordinator discards
 it; a solve that misses its checkpoint finishes and is discarded just the same. So the predicate is
 allowed to answer differently between two calls without making a solve non-deterministic in any

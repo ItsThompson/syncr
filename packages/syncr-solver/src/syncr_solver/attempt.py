@@ -9,7 +9,7 @@ the state holds -- H4 over the spans, H8 and H9 over an Area's minutes -- so a b
 document without its placement reaching the state would be invisible to all three, and the solve
 would place work over time it had already taken.
 
-## Everything ticket 38 needs is retained rather than recomputed
+## Everything a reason record needs is retained rather than recomputed
 
 The refusals with their rule and window, the empty slots with their stated reason, and the
 ``bound`` clause each candidate carried are all kept here. Assembling a reason record is then a

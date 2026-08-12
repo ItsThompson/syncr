@@ -56,8 +56,8 @@ of     = placed_minutes + floor_reservation_minutes the floor that reservation i
 ``of - placed`` is then the probe's reservation exactly, for every Area and every week, so the
 clause cannot disagree with the figure a reader compares it against. The Area's DECLARED floor is
 not on ``AreaBudget`` at all, and an Area with more placed than its floor asks therefore reads
-``of == placed`` with a reservation of zero, which is what the probe reports for it: see ticket
-1380, which carries the producer field that would let the clause name the declared figure too.
+``of == placed`` with a reservation of zero, which is what the probe reports for it. Naming the
+declared figure too would need a producer field that does not exist.
 """
 
 from __future__ import annotations
@@ -197,10 +197,9 @@ def _pin_clauses(pin: Pin | None) -> tuple[Clause, ...]:
     **``at`` is the pin's own span rather than the block's**, and the two agree because
     :func:`syncr_solver.inheritance.inherited` seeds a pinned block at the pin. That precedence is
     contradicted by :mod:`syncr_solver.immovability`'s own prose for a binding that has already
-    begun, and which of the two is right is ticket 1333's question. The clause renders the user's
-    edit either way; a test asserts the two spans agree for a started-and-pinned binding, so a
-    reconciliation there fails loudly here rather than silently renders a span the week does not
-    hold.
+    begun, and the two are not yet reconciled. The clause renders the user's edit either way; a
+    test asserts the two spans agree for a started-and-pinned binding, so a reconciliation there
+    fails loudly here rather than silently renders a span the week does not hold.
     """
     if pin is None:
         return ()

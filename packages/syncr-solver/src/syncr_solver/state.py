@@ -210,7 +210,7 @@ class PartialPlan:
     #
     # A field rather than a call, because H9 asks for it once per candidate and it is the same
     # answer every time: measured on a 152-block week, deriving it per candidate cost 1.1 s of a
-    # 2.5 s solve. Ticket 33 left it a call and named this measurement as what a field needed.
+    # 2.5 s solve.
     #
     # **It carries no default, and that is not symmetry with the fields above.** An empty claimable
     # set makes H9's free capacity zero, which makes the week read as already short of its floors,
@@ -261,9 +261,8 @@ class PartialPlan:
         the same for every candidate a week is offered: see :attr:`claimable`.
 
         **Kept as a method rather than collapsed into the field**, which is otherwise the reading a
-        pass-through invites. Three of ticket 33's test modules ask the state this question by name,
-        and their being byte-unchanged is what says the performance work preserved the arithmetic; a
-        rename would have edited the crossing that proves it.
+        pass-through invites. Three test modules ask the state this question by name, so collapsing
+        it into the field would edit all three.
         """
         return self.claimable
 
@@ -295,9 +294,8 @@ class PartialPlan:
 
         **Two readers, one statement.** H9 asks it of the floor it may still reserve, and the
         objective's deadline term asks it of the work a task still owes. The assembler's own
-        statement of the same set is ``syncr_api.plans.netting.Placement.immovable``, and ticket
-        1330 is the test that crosses the two packages; a third statement here would put that
-        crossing one layer further out of reach.
+        statement of the same set is ``syncr_api.plans.netting.Placement.immovable``; a third
+        statement here would put the two even further apart.
         """
         return binding in self.started or binding in self.pins
 

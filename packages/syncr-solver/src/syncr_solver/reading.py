@@ -171,9 +171,8 @@ class PlanReading:
         NET of the bindings :meth:`~syncr_solver.state.PartialPlan.already_netted` names, because
         the demand this is compared against is: ``EligibleTask.remaining_minutes`` arrives with
         the started blocks and the pins already subtracted, so counting their minutes here would
-        credit one placement to both sides of one comparison. That is the fault ticket 29 found
-        at four sites and ticket 33 at a fifth, and the netting is read from the checker's state
-        rather than restated so the two cannot drift.
+        credit one placement to both sides of one comparison. The netting is read from the
+        checker's state rather than restated so the two cannot drift.
 
         ``before`` clips to a deadline, which is why the union is taken before the total: a block
         straddling the instant contributes the part that lands in time.

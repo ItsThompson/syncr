@@ -76,7 +76,7 @@ applies to any block, and the most it can charge is the strong component.
 The design's formula box adds a strong term to a soft term, and that sum has two mutually exclusive
 addends: it is a selection written as a sum. **Its own rationale table already agrees with the
 ceiling above**, counting the declared windows as ONE component of three rather than as two, so this
-reconciles two statements in one section rather than overruling either. Ticket 1344 carries it.
+reconciles the design's two statements rather than overruling either.
 
 The arithmetic below still charges both where both are present, rather than picking one. A
 producer that emitted two strengths for one owner would then read above 1.0 rather than silently
