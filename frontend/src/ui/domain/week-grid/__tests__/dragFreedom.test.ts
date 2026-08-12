@@ -7,11 +7,12 @@
  * `Shift+Left` widens the gesture the document calls the drag's equivalent, and it reddens here rather than passing
  * quietly while the document describes a product that no longer exists.
  *
- * THE REACH PROMISE IS PINNED BY THE WHOLE LINE IT IS MADE IN, because a broader reading of it is available and
- * wrong. Section Keyboard promises that the keyboard reaches every block at every tier, which is about which blocks
- * a reader can get to, not about parity with every pointer capability. Under a parity promise the absent horizontal
- * pair would be a defect instead of the decision it is, and a clause added beside the promise is how that reading
- * arrives, which is why the assertion is an equality rather than a search for the sentence.
+ * THE PARITY PROMISE IS REFUSED IN WHICHEVER SHAPE IT ARRIVES, and the promise that stands is pinned by its own
+ * bolded claim. Section Keyboard promises that the keyboard reaches every block at every tier, which is about which
+ * blocks a reader can get to, not about parity with every pointer capability. Under a parity promise the absent
+ * horizontal pair would be a defect instead of the decision it is. This document states every rule as a bolded lede,
+ * so a parity claim arrives either as a clause beside the promise or as a paragraph of its own: refusing the words
+ * across the whole section catches both, where an equality on one line catches only the first.
  *
  * WHAT THE BINDING CENSUS COVERS. `useKeyBinding` is the one mechanism in this tree that can require Shift, which
  * the last case measures rather than assumes; the drag's own window listener reads `Escape` alone, and a kit control
@@ -31,9 +32,11 @@ import { repoRoot } from "../../../../../scripts/lib/paths.ts";
 const EQUIVALENT_ROW =
   "| `Shift+↑` `Shift+↓` | move by 15 minutes and pin. the keyboard equivalent of the drag |";
 
-/** The promise whole, so a clause added beside it is a failure rather than a still-passing substring. */
-const REACH_PROMISE =
-  "**The keyboard reaches every block at every tier.** `j` and `k` do not care how tall a block is, so the smallest block in the week is exactly as reachable as the largest. That matters more than the pointer path, because a 9.8px pointer target is genuinely small.";
+/** The promise that stands, as the document states a rule: a bolded lede. */
+const REACH_PROMISE = "**The keyboard reaches every block at every tier.**";
+
+/** The claim the promise is not, in the two wordings the section could arrive at it by. */
+const PARITY_CLAIM = /reaches everything the pointer does|parity/;
 
 /** Both members, so the reading is blind neither to a horizontal pair arriving nor to the vertical pair going. */
 const SHIFTED_ARROWS = [
@@ -61,12 +64,11 @@ describe("the keyboard equivalent of the drag", () => {
     expect(rows).toEqual([EQUIVALENT_ROW]);
   });
 
-  it("promises reach rather than parity, so the absent horizontal pair is a decision", async () => {
-    const promise = (await keyboardSection())
-      .split("\n")
-      .find((line) => line.includes("keyboard reaches every block"));
+  it("promises reach rather than parity, in whichever shape a parity claim would arrive", async () => {
+    const section = await keyboardSection();
 
-    expect(promise).toBe(REACH_PROMISE);
+    expect(section).toContain(REACH_PROMISE);
+    expect(section.split("\n").filter((line) => PARITY_CLAIM.test(line))).toEqual([]);
   });
 
   it("is bound as that pair, and nothing in the tree binds a horizontal one", async () => {
