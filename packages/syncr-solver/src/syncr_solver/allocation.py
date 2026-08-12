@@ -87,6 +87,13 @@ only the placements an Area claims. The oracle in the suite shares that last bli
 since it nets the same way, so no property can see it: it is recorded here because a blind spot an
 instrument shares is the one thing this file's reasoning cannot catch.
 
+**The Area-less blind spot has a second site, and it leans the other way.** The arrival reading
+skips such a placement too, so the room the floors arrived with is over-stated, which reserves MORE
+floors and refuses MORE candidates rather than fewer. Both sites are unreachable in practice: the
+Area-less content is the frame and the anchors, and ``_claimable`` has already subtracted those.
+The direction is recorded anyway, because it is the one over-credit here that does not err in the
+safe direction.
+
 A hard constraint that may not prove feasibility can only safely err in that direction.
 """
 
@@ -155,12 +162,12 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     netting defect in this module has turned on, and it is preserved: nothing here subtracts a
     minute count from a minute count.
 
-    Measured outside the suite on a week holding 152 placements: one call reads them once, 152
-    reads, whether the week declares one Area or thirty-two. Reading them per Area cost 152 times
-    one more than the Area count, which is 5016 reads at thirty-two. In wall time that is about
-    350 us a candidate over four Areas. Nothing in the suite crosses either figure, deliberately:
-    a wall-time assertion measures the machine it runs on, and counting the reads needs the
-    instrument that counts them.
+    Measured outside the suite on a week holding 152 placements: one call traverses the set twice,
+    304 reads, whether the week declares one Area or thirty-two, of which 152 go through ``_spans``.
+    Reading it per Area cost 152 more for every Area, which is 5168 reads at thirty-two. In wall
+    time that is about 350 us a candidate over four Areas, on the one host that measured it. Nothing
+    in the suite crosses either figure, deliberately: a wall-time assertion measures the machine it
+    runs on, and counting the reads needs the instrument that counts them.
     """
     if candidate.area_id is None or state.holds(candidate):
         return None

@@ -424,15 +424,14 @@ def test_a_floor_a_placement_nothing_can_move_made_unreachable_refuses_nothing_a
 
 
 def test_one_areas_arriving_shortfall_leaves_every_other_areas_floor_reserved() -> None:
-    # The fixture that measured the aggregate reading, driven as the inverse of what it held. The
-    # floors are reserved one at a time rather than summed into a single gate, so the 20 minutes of
-    # the two that the week cannot hold no longer opens it: a Study candidate taking the whole week
-    # is refused, where it used to leave the week 230 minutes short of floors it arrived 20 short
-    # of.
+    # 210 claimable minutes against floors of 200 and 30: each fits on its own, the two together do
+    # not, and the 20 minutes the week cannot hold is the arriving shortfall. Each floor is reserved
+    # on its own rather than summed into a single gate, so that shortfall opens nothing and a Study
+    # candidate taking the whole week is refused.
     #
     # The control is the same week with Fitness's floor lowered until nothing arrives short, and it
     # refuses the identical candidate. So what varies is the arriving deficit and nothing else, and
-    # what it now varies is the figure in the clause rather than whether there is one.
+    # what it varies is the figure in the clause rather than whether there is one.
     whole_week = a_candidate(Interval(at(0), at(3.5)), area_id=STUDY, binding=READING)
     arrives_short = a_week_arriving_twenty_minutes_short()
     arrives_satisfiable = a_week_arriving_twenty_minutes_short(fitness_floor=180)
