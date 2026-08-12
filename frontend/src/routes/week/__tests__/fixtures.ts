@@ -410,6 +410,19 @@ export function installWeekReads(view: WeekView): WeekReads {
 
 export const WEEK_PATH = `/week?week=${ISO_WEEK}`;
 
+/**
+ * The whole line the week band draws, which is what both screens that draw it are asserted against.
+ *
+ * WHOLE RATHER THAN A SUBSTRING, because a figure is a substring of every figure that ends in it: an assertion
+ * looking only for `5 days unconfirmed` accepts a rendered `15 days unconfirmed`, and one looking only for
+ * `1 day unconfirmed` accepts `11 day unconfirmed`. An equality also refuses a clause added beside the served
+ * one. The zoom reading is this file's own settings fixture, and the trailing `z` is the key hint inside the
+ * same paragraph.
+ */
+export function wholeBandLine(blockCount: number, unconfirmedReading: string): string {
+  return `${blockCount} blocks · ${unconfirmedReading} · ${SETTINGS.visibleHours}h visible z`;
+}
+
 /* THE WEEKLY SESSION IS A MODE OF THAT SAME ROUTE, at that same week: `?mode=session`. Both parameters, because the
  * session is about a specific week and a link carrying only the mode would open on whichever week today falls in. */
 export const SESSION_PATH = `/week?week=${ISO_WEEK}&mode=session`;

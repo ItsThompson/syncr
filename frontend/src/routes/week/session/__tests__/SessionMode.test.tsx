@@ -35,7 +35,6 @@ import {
   LEETCODE,
   PROMOTED_ENTRY_ID,
   SESSION_PATH,
-  SETTINGS,
   WEEK_PATH,
   buildAbsorbablePromotion,
   buildApproved,
@@ -52,6 +51,7 @@ import {
   installSessionRead,
   installWeekReads,
   monday,
+  wholeBandLine,
 } from "../../__tests__/fixtures";
 
 const APPROVED = buildApproved();
@@ -380,10 +380,8 @@ describe("the retrospective half", () => {
     openTheSession(buildSession({ retro }), buildWeekView({ readings }));
     renderAt(SESSION_PATH);
 
-    /* The WHOLE line, because `5 days unconfirmed` is a substring of `15 days unconfirmed`: a case looking only for
-     * its own figure would accept any figure ending in it. */
     expect((await screen.findByText(/h visible/)).textContent).toBe(
-      `${readings.blockCount} blocks · ${thisWeek} days unconfirmed · ${SETTINGS.visibleHours}h visible z`,
+      wholeBandLine(readings.blockCount, `${thisWeek} days unconfirmed`),
     );
     expect(await screen.findByText(/5 confirmed days and 1 unconfirmed/)).toBeVisible();
   });

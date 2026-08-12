@@ -30,6 +30,7 @@ import {
   buildReadings,
   buildWeekView,
   installWeekReads,
+  wholeBandLine,
 } from "./fixtures";
 
 /* The axis the fixture's own week yields: the declared bounds run 06:00 to 22:00 and no block lies outside them, so
@@ -39,18 +40,6 @@ const EXTENT_MINUTES = 16 * 60;
 /** The band's own line: the block count, the unconfirmed days, and the zoom reading, as a reader reads them. */
 async function bandLine(): Promise<string> {
   return (await screen.findByText(/h visible/)).textContent ?? "";
-}
-
-/**
- * The whole line the band draws, which is what every case below is asserted against.
- *
- * WHOLE RATHER THAN A SUBSTRING. `5 days unconfirmed` is a substring of `15 days unconfirmed`, so a case looking
- * only for its own figure accepts any figure ending in it, and only the singular reading would still bite, by the
- * accident that `1 day` is not a substring of `21 days`. The zoom reading is the settings fixture's own, and the
- * trailing `z` is the key hint inside the same paragraph.
- */
-function wholeBandLine(blockCount: number, unconfirmedReading: string): string {
-  return `${blockCount} blocks · ${unconfirmedReading} · ${SETTINGS.visibleHours}h visible z`;
 }
 
 describe("the week the reader asked for", () => {
@@ -169,12 +158,11 @@ describe("the week's count of unconfirmed days", () => {
    * `0 blocks` on a week holding none. The thing that disappears at nought is Today's backfill control, which is a
    * control with nothing to do rather than a reading with nothing to say. */
   it("prints a nought the way the band's other cells print theirs", async () => {
-    installWeekReads(
-      buildWeekView({ readings: buildReadings({ blockCount: 0, unconfirmedDays: 0 }) }),
-    );
+    const readings = buildReadings({ blockCount: 0, unconfirmedDays: 0 });
+    installWeekReads(buildWeekView({ readings }));
     renderAt(WEEK_PATH);
 
-    expect(await bandLine()).toBe(wholeBandLine(0, "0 days unconfirmed"));
+    expect(await bandLine()).toBe(wholeBandLine(readings.blockCount, "0 days unconfirmed"));
   });
 
   /* THREE READINGS RATHER THAN ONE. A literal, a hard-coded plural and a figure read off a neighbouring field each
