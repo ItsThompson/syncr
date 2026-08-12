@@ -16,7 +16,7 @@
  * reader is typing into, which is by design in the shell's keyboard module, and the kit's fields accept no
  * key handler, so the only place left is a container: the a11y lint refuses a key handler on one and it is
  * right to, since the handler belongs on the focusable element. Cancelling is the cancel control, which Tab
- * reaches from the field. Raised as ticket 1455.
+ * reaches from the field.
  *
  * A FIGURE OUTSIDE THE API'S BOUNDS DISABLES THE RECORD BUTTON AND SAYS SO. The stepper hands a typed value
  * back unsnapped and unclamped on purpose, so the surface that knows the bounds is the one that judges it,
