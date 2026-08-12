@@ -39,20 +39,19 @@ subtrahends has exactly one implementation, in :mod:`syncr_domain.discretionary`
 off-plan span reaches the denominator as a member of an ``IntervalSet`` and a frame span
 sitting inside one is subtracted once rather than twice.
 
-The remaining eight rules belong to the subsystems they constrain, and each is owned by a
-ticket that builds that subsystem. They are listed so a reader looking for them here
-learns where to look instead:
+The remaining eight rules belong to the subsystems they constrain rather than to this
+module. They are listed so a reader looking for one here learns that it is elsewhere:
 
-| Rule | Owner |
-|---|---|
-| Nothing materializes inside the span, and ``keep_frame`` decides whether routines do | ticket 25 |
-| The solver places no task, habit occurrence, or Area slot inside the span | ticket 33 |
-| A pin inside the span is honored as a hard constraint | ticket 33 (H11 and H12) |
-| Anchors still ingest and shadows still generate, having nothing to forbid | ticket 23 |
-| An anchor over a pinned block inside the span is still a conflict | ticket 39 |
-| The span is excluded wholesale from reviews and from every fitter | tickets 51 and 53 |
-| A majority-off-plan week is skipped by the engagement canary | ticket 54 |
-| The span renders as a forbidden window, with no fourth use of hatch | ticket 35 |
+| Rule |
+|---|
+| Nothing materializes inside the span, and ``keep_frame`` decides whether routines do |
+| The solver places no task, habit occurrence, or Area slot inside the span |
+| A pin inside the span is honored as a hard constraint (H11 and H12) |
+| Anchors still ingest and shadows still generate, having nothing to forbid |
+| An anchor over a pinned block inside the span is still a conflict |
+| The span is excluded wholesale from reviews and from every fitter |
+| A majority-off-plan week is skipped by the engagement canary |
+| The span renders as a forbidden window, with no fourth use of hatch |
 
 The learning exclusion is unconditional and has no field. A split rule that preserved
 duration signal from confirmed pinned blocks inside the span was considered and rejected:
