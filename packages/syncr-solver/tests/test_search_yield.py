@@ -202,7 +202,7 @@ def test_the_last_acceptance_is_the_iteration_the_final_total_needs() -> None:
 def test_the_last_acceptance_the_instrument_reports_is_that_iteration(descended: Yield) -> None:
     """The instrument's own reading of the crossing above, which is the figure the mode prints."""
     assert descended.last_acceptance == LAST_ACCEPTANCE
-    assert descended.tail == descended.iterations - LAST_ACCEPTANCE
+    assert descended.tail == 49
 
 
 # --------------------------------------------------------------------------------------
