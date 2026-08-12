@@ -20,11 +20,13 @@ because the budget over a real week is a claim about that fixture rather than ab
 
 from __future__ import annotations
 
+from dataclasses import fields, is_dataclass
 from typing import TYPE_CHECKING, Final, get_args
 from uuid import UUID
 
 import pytest
 
+from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingRef
 from syncr_domain.reasons import (
     CLAUSE_BUDGET,
@@ -45,6 +47,7 @@ from syncr_solver.materialize import materialize
 from syncr_solver.metrics import MaterializeCause
 from syncr_solver.reasons import BLOCKED_PER_BLOCK, CHURN, assemble, explained
 from syncr_solver.state import PartialPlan
+from syncr_solver.terms import StalenessInput
 from syncr_solver.weights import OBJECTIVE_TERMS
 from tests.materialized_weeks import (
     CAREER,
@@ -79,7 +82,7 @@ from tests.preference_yield_week import (
 from tests.solve_weeks import a_week, solved
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from syncr_domain.identifiers import AreaId
     from syncr_domain.plan import Block, PlanDocument
@@ -138,6 +141,32 @@ def records_of(
 
 def kinds_in(record: ReasonRecord) -> tuple[str, ...]:
     return tuple(type(clause).__name__ for clause in record.clauses)
+
+
+def inputs_named_in(record: ReasonRecord) -> tuple[str, ...]:
+    """Which of the staleness inputs' spellings this record's clauses carry as a value.
+
+    Over the whole record rather than one clause, because what a block can say is the whole record.
+    The spellings come from :class:`~syncr_solver.terms.StalenessInput` rather than being written
+    out here, so the reading is keyed to the vocabulary it covers.
+
+    Values rather than field names, and by equality rather than by substring, so a field NAMED for
+    an input does not read as a clause carrying one. ``bound`` is where that matters in the other
+    direction: ``BindingSource.ROTATION`` is a habit's own vocabulary and a block whose content came
+    from a rotation cursor carries it truthfully, which this reading finds and a test below states.
+    """
+    spellings = {member.value for member in StalenessInput}
+    carried = {value for clause in record.clauses for value in _values(clause)}
+    return tuple(sorted(carried & spellings))
+
+
+def _values(value: object) -> Iterator[str]:
+    """Every field value of ``value`` as text, reaching into any dataclass it holds."""
+    if is_dataclass(value) and not isinstance(value, type):
+        for field in fields(value):
+            yield from _values(getattr(value, field.name))
+        return
+    yield str(value)
 
 
 def clauses_of(result: SolveResult, title: str) -> tuple[Clause, ...]:
@@ -595,6 +624,54 @@ class TestTheDominantClause:
 
         assert len(named) == 1
 
+    def test_a_staleness_dominated_plan_names_the_term_and_neither_of_its_two_inputs(self) -> None:
+        """The split knows which input dominated and the record has nowhere to put it.
+
+        Asserted in both directions on purpose. An emptiness alone cannot tell a record that names
+        no input from a projection that never ran, so the split's own answer is asserted beside it:
+        the reading exists upstream, and ``Dominant`` carries a term, so ``staleness`` is the whole
+        of what a block says about a week falling behind.
+        """
+        stale = a_breakdown(staleness=3.0)
+
+        (record,) = records_of(_a_document(_a_placed_block()), breakdown=stale)
+        dominant = only(Dominant, record.clauses)
+
+        assert stale.staleness_split.dominant() is StalenessInput.CADENCE
+        assert isinstance(dominant, Dominant)
+        assert dominant.term == "staleness"
+        assert inputs_named_in(record) == ()
+
+    def test_the_reading_that_finds_an_input_named_in_a_clause_can_see_one(self) -> None:
+        # The control. An emptiness over a reading that resolves nothing passes whatever the clauses
+        # say, so the reading is shown to find an input where a clause does carry one. A term slot
+        # holding an input is exactly the shape the record does not have.
+        named = _with_clauses(
+            _a_placed_block(), (Dominant(StalenessInput.CADENCE.value, 1.0),)
+        ).reason
+
+        assert inputs_named_in(named) == (StalenessInput.CADENCE.value,)
+
+    def test_a_rotation_bound_block_carries_that_as_its_source_and_not_as_the_input(self) -> None:
+        """The two spellings are also a habit's binding vocabulary, and that is a different claim.
+
+        A block whose content came from a rotation cursor says so in its ``bound`` clause, which is
+        true and is not a statement about which staleness input dominated: the ``dominant`` clause
+        still names the term. Without this the emptiness above would read as a rule about the word
+        rather than about the clause that may carry it.
+        """
+        stale = a_breakdown(staleness=3.0)
+
+        (record,) = records_of(_a_document(_a_rotation_bound_block()), breakdown=stale)
+        bound = only(Bound, record.clauses)
+        dominant = only(Dominant, record.clauses)
+
+        assert isinstance(bound, Bound)
+        assert bound.source is BindingSource.ROTATION
+        assert isinstance(dominant, Dominant)
+        assert dominant.term == "staleness"
+        assert inputs_named_in(record) == (StalenessInput.ROTATION.value,)
+
     def test_a_plan_that_costs_nothing_names_no_dominant_term(self) -> None:
         """A term at a share of zero would state a dominant cost no arithmetic found."""
         result = a_solved_week()
@@ -1019,6 +1096,27 @@ def _a_solved_document() -> PlanDocument:
 def _a_placed_block() -> Block:
     result = a_solved_week()
     return next(block for block in result.document.blocks if block.title == "Walk")
+
+
+def _a_rotation_bound_block() -> Block:
+    """One block whose content a rotation cursor chose, found by the clause rather than the title.
+
+    The title is composed by the solver from the habit's and the variant's, so selecting on it would
+    pin a spelling this test is not about.
+    """
+    result = a_solved_week(
+        habit_occurrences=(
+            an_occurrence(habit_id=A_HABIT, index=0, area_id=FITNESS, title="Gym", variant="Legs"),
+        )
+    )
+    return next(
+        block
+        for block in result.document.blocks
+        if any(
+            isinstance(clause, Bound) and clause.source is BindingSource.ROTATION
+            for clause in block.reason.clauses
+        )
+    )
 
 
 def _a_row(block: Block, hour: float) -> BlockedCandidate:
