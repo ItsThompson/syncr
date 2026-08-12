@@ -13,13 +13,16 @@
  * either. The first is the state; the last two are the reasons `states.css` gives for drawing the rule transparent
  * at rest rather than adding a width.
  *
- * EACH CASE RENDERS TWO ROWS AND READS THE FIRST, because `.ledger__row:last-child` sets `border-bottom: 0` and a
- * lone row is its own last child. That rule and `.state-row[data-current]` have equal specificity and the ledger's
- * comes later in the bundle, so on a one-row fixture the ledger's wins and the bottom width is `0px` in BOTH
- * readings for anything the state rule declares short of `!important`: the hairline reading would compare `0px`
- * against `0px` and pass for the `:last-child` rule rather than for the state rule leaving the hairline alone. Two
- * rows put the measured one in the middle of a run, where `.state-row[data-current]` outranks `.ledger__row` on
- * specificity and a drift in either form shows up. It is also where a ledger row actually lives.
+ * EACH CASE RENDERS TWO ROWS AND READS THE FIRST, because `.ledger__row:last-child` sets `border-bottom: 0`
+ * and a lone row is its own last child. That declaration sets the bottom STYLE to `none` as well as the width
+ * to zero, and a computed border width is `0` whenever the style is `none`. The rule and
+ * `.state-row[data-current]` have equal specificity and the ledger's comes later in the bundle, so on a
+ * one-row fixture the bottom width reads `0px` in BOTH readings unless the state rule overrides the style as
+ * well as the width, which at equal specificity and earlier source order takes `!important` on both: the
+ * hairline reading would compare `0px` against `0px` and pass for the `:last-child` rule rather than for the
+ * state rule leaving the hairline alone. Two rows put the measured one in the middle of a run, where
+ * `.state-row[data-current]` outranks `.ledger__row` on specificity and a drift in either form shows up. The
+ * second row is never read: it exists to give the first one a sibling.
  *
  * The markup is the component's own, rendered with `renderToStaticMarkup`, so the page cannot drift from the
  * product. The sheet is the built bundle rather than the two source files, because the reset and the token layer
