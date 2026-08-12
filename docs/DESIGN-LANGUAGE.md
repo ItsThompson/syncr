@@ -135,6 +135,16 @@ An earlier draft special-cased the circadian frame as a full-width backdrop that
 
 **A forbidden window is drawn, not omitted.** The recovery shadow an anchor casts is a hatched band with a gutter label, sitting under every block in z-order. It is deliberately not a block: no fill, no Area rule, no state, because it is the absence of a block that it exists to explain. Left as nothing, a forbidden gap and an ordinary empty gap are pixel-identical and the solver appears to decline a gap for no reason.
 
+**A drag has one degree of freedom, and it is the minute.** The pointer is read against the column it pressed in, on both axes. A position outside that column states no target, and a release there makes no request rather than being clamped to an edge nobody aimed at. Which day a block sits in is not something this gesture changes.
+
+| Question | Answer | Why |
+|---|---|---|
+| Does a pointer over another column retarget the drag? | No. The marker is a per-column element: it clears while the pointer is outside the column, and it states the target again when the pointer comes back | A reader who drags sideways has as likely moved the pointer as changed their mind, and the cost of guessing wrong is a pin, which is a hard constraint on the solver and a training label the learning layer fits against |
+| What does a drag across a week boundary mean? | Nothing, by construction. A drag cannot leave its column, so it cannot reach another week | A pin is made in one week, against a plan that week has read. A drop onto the next Monday would write into a week the screen is not showing |
+| Does the keyboard get a horizontal equivalent? | No. `Shift+↑` and `Shift+↓` move by 15 minutes and pin, and there is no `Shift+←` or `Shift+→`. `h` and `l` move the selection between columns and move no block | § Keyboard promises that the keyboard reaches every block at every tier, which is reach rather than parity with every pointer capability. Neither gesture changes a block's day, so neither needs a horizontal pair |
+
+**Moving a block to another day is therefore not a gesture this screen has**, and that is a decision rather than a limit imposed on it. Both the drag and its keyboard equivalent state a minute inside one column, and a cross-column gesture would state a day from where a pointer drifted.
+
 ### Width policy
 
 **The week grid absorbs surplus width. The sidebar and the detail panel are fixed.** Block titles in the single-line tiers cannot wrap, so the grid is the only column that cannot absorb a squeeze.
