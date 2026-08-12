@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /* The status table in `docs/smoke-scenarios.md` and the suite must agree, and this is what checks it.
  *
- * A LIST IS A SECOND COPY OF A FACT. The table's job is to be the map from section 22's done-criteria
- * table to something that can fail, and it has been wrong twice. Round 1: the S17 row claimed an
- * assertion no file in the suite made. Round 2: three rows named a spec file the same round had deleted,
- * because the first version of THIS FILE read the scenario and the status columns and stopped, which
- * left the column a reader follows to find the assertion unchecked. The set it could see was not the set
- * it claimed to bound.
+ * A LIST IS A SECOND COPY OF A FACT. The table's job is to be the map from a status list to something
+ * that can fail, and a check that reads only the scenario and the status columns leaves the column a
+ * reader follows to find the assertion unchecked: the set it can see is then not the set it claims to
+ * bound. Two kinds of staleness got through that way, a row claiming an assertion no file in the
+ * suite made and rows naming a spec file that no longer existed.
  *
  * So it now reads every column it is meant to bound, in both directions:
  *
@@ -57,7 +56,7 @@ const ROW = /^\|\s*(S\d{1,2})\s*\|.*\|.*\|.*\|\s*$/;
 const NAMED_SPEC = /`([\w.-]+\.spec\.ts)`/g;
 
 /* A repository path named in the Where column: a backtick span holding a slash and no space. Catches
- * `packages/syncr-api/tests/test_approval_during_a_solve.py` and `reviews/spec-review-5.md`. */
+ * `packages/syncr-api/tests/test_approval_during_a_solve.py`, which the S30 row names. */
 const NAMED_PATH = /`([\w./-]*\/[\w./-]+)`/g;
 
 /* A `just` recipe named in the Where column. */

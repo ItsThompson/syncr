@@ -222,7 +222,7 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
       "labelled window, so its column should offer exactly one activatable gutter label",
   ).toHaveCount(1);
 
-  /* Every unsafe request the flow sends, recorded from before the label is activated: this criterion is as much
+  /* Every unsafe request the flow sends, recorded from before the label is activated: this case is as much
    * about a pin that must NOT be sent as about the two writes that must be. */
   const unsafe: string[] = [];
   page.on("request", (request) => {

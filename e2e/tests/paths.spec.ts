@@ -1,4 +1,4 @@
-/* The three whole-product paths section 20 names, each driven end to end.
+/* The three whole-product paths, each driven end to end.
  *
  * | Path | What it crosses |
  * |---|---|

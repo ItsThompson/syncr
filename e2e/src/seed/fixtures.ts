@@ -1,19 +1,18 @@
-/* The fixture registry: section 20's fixture table, as the recipes that load it.
+/* The fixture registry: the scenarios' fixture table, as the recipes that load it.
  *
- * One name per row of that table, spelled exactly as the table spells it, so a scenario naming a
- * fixture and the spec naming one are naming the same thing. `hand_tuned_weights` is absent
- * deliberately: the bootstrap provisions weight set version 1 with `origin = "hand-tuned"`, so it is
- * not a fixture this harness loads but a fact of every tenant it creates. `hostile_ics` is absent for
- * the same kind of reason: it is a corpus of feed bodies the api's own adapter suite reads, and
- * nothing in a browser can observe a parse.
+ * One name per fixture the scenarios name, spelled the way the scenario table spells it, so a
+ * scenario naming a fixture and this harness loading one are naming the same thing.
+ * `hand_tuned_weights` is absent deliberately: the bootstrap provisions weight set version 1 with
+ * `origin = "hand-tuned"`, so it is not a fixture this harness loads but a fact of every tenant it
+ * creates. `hostile_ics` is absent for the same kind of reason: it is a corpus of feed bodies the
+ * api's own adapter suite reads, and nothing in a browser can observe a parse.
  *
- * `tight_capacity` and `owes_more_than_a_week` are the two names section 20 does not have. Both are
- * HARNESS fixtures rather than spec ones. `tight_capacity` exists for a week whose verdict one
- * mutation can move, which is what makes the floor reservation, the progress arithmetic and a
- * session-attributed infeasibility episode observable at all: three of this suite's stated gaps had
- * one cause, and it was the absence of this week. `owes_more_than_a_week` is a week with no frame and
- * a gap no week could close, which is what makes the span a verdict measures capacity over readable
- * as a figure rather than as a comparison.
+ * `tight_capacity` and `owes_more_than_a_week` are the two names this harness added rather than
+ * inherited. `tight_capacity` exists for a week whose verdict one mutation can move, which is what
+ * makes the floor reservation, the progress arithmetic and a session-attributed infeasibility episode
+ * observable at all: three of this suite's stated gaps had one cause, and it was the absence of this
+ * week. `owes_more_than_a_week` is a week with no frame and a gap no week could close, which is what
+ * makes the span a verdict measures capacity over readable as a figure rather than as a comparison.
  */
 
 import type { ApiClient } from "../api/client.ts";

@@ -1,9 +1,9 @@
 /* The three one-shots the harness runs inside the stack, and the compose invocation they share.
  *
  * Two of them exist because they cannot be done over HTTP. There is no route that creates an
- * account, because P0 has no sign-up, and there is no route that empties a database. The third is
- * the plan-horizon maintainer's tick, which S1 names as "wait for the next tick, or trigger it":
- * the wait is fifteen minutes because the runner's first tick only sets its own due time, so the
+ * account, because the product has no sign-up, and there is no route that empties a database. The
+ * third is the plan-horizon maintainer's tick, which S1 names as "wait for the next tick, or trigger
+ * it": the wait is fifteen minutes because the runner's first tick only sets its own due time, so the
  * suite triggers it.
  *
  * Each runs the REAL instrument. `syncr-bootstrap-user` is the console script a first deployment

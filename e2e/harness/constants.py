@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Print the domain fixtures' own numbers, so the stack-level seeds do not restate them.
 
-Five of the fixtures section 20's table names already exist in the source tree, as frozen values the
+Five of this harness's fixture names already exist in the source tree, as frozen values the
 domain and api suites assert against: ``syncr_domain.fixtures``. They cannot be loaded into a
 running stack, because every instant in them is a literal in February or October 2026 and every
 identifier is a synthetic UUID. What CAN be shared is the arithmetic each one is about -- how much

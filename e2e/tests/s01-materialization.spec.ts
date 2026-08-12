@@ -56,9 +56,9 @@ test("S1 and S24 every Area slot is present, drawn as not solved because nobody 
   const view = await weekView(api, planWeek());
   expect(view.live!.emptySlots.length).toBeGreaterThan(0);
   for (const slot of view.live!.emptySlots) {
-    // `not_solved` and NOT `no_eligible_content`. Section 20 draws the distinction in as many words:
-    // this is the rendering for a slot nobody has looked at the backlog for, and the other one is for a
-    // slot whose backlog was looked at and was empty. S17 is the scenario that observes the second.
+    // `not_solved` and NOT `no_eligible_content`, which are two different states: this is the rendering
+    // for a slot nobody has looked at the backlog for, and the other one is for a slot whose backlog
+    // was looked at and was empty. S17 is the scenario that observes the second.
     expect(slot.reason).toBe("not_solved");
     expect(slot.areaId).not.toBeNull();
   }

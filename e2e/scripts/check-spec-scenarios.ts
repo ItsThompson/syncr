@@ -2,11 +2,11 @@
 /* `scenarios.md` states which numbered scenario each spec drives, and this is what checks it.
  *
  * WHY A SECOND STATEMENT EXISTS. `docs/smoke-scenarios.md` is keyed on the SCENARIO: it maps each of the 37 to
- * the file that drives it, which is the direction a reader follows from a done-criteria table. Two things it
- * structurally cannot say. It cannot account for a spec file that drives none of the 37, because it has no row
- * to hang one on. And it cannot notice a NEW spec file at all, because nothing in it is keyed on the set of
- * files. `scenarios.md` is keyed on the file, so every `*.spec.ts` in `tests/` is accounted for or the gate
- * goes red.
+ * the file that drives it, which is the direction a reader follows when they have a scenario number and want
+ * the assertion. Two things it structurally cannot say. It cannot account for a spec file that drives none of
+ * the 37, because it has no row to hang one on. And it cannot notice a NEW spec file at all, because nothing
+ * in it is keyed on the set of files. `scenarios.md` is keyed on the file, so every `*.spec.ts` in `tests/` is
+ * accounted for or the gate goes red.
  *
  * A LIST IS A SECOND COPY OF A FACT, so this one is crossed against the suite rather than proofread, in both
  * directions and on every column it claims to bound. Five things fail here:

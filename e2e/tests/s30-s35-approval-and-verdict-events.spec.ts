@@ -170,7 +170,7 @@ test("S35 every row is a transition, and the ratio the product reads is the epis
 
 /* S35's stated figure, AS A TRIPWIRE, so its polarity matches S34's rather than opposing it.
  *
- * Spec S35 requires a ratio of exactly 0.5 over one session-caught episode and one that was not. This
+ * S35 requires a ratio of exactly 0.5 over one session-caught episode and one that was not. This
  * suite cannot construct the session-caught one: two routes read `X-Syncr-Session-Mode`, the pin and the
  * tradeoff request, and neither is a mutation that flips a roomy week's reading. So the figure is asserted
  * and the case is marked as expected to fail.
@@ -181,10 +181,10 @@ test("S35 every row is a transition, and the ratio the product reads is the epis
  *
  * WHAT WILL AND WILL NOT TURN IT GREEN, stated because a tripwire whose trigger nobody knows is a tripwire
  * nobody removes. It reads whatever episodes the cases above happened to leave, and nothing here arranges
- * them to be exactly two with exactly one flagged. So ticket 1571 alone, which carries the header to more
- * routes, will not make this pass: it needs 1572's fixture, a week tight enough that one pin flips its
- * verdict, and the two episodes driven explicitly. Unlike S34's tripwire, whose four assertions all become
- * true the moment ticket 1310 lands, this one has to be rewritten as well as unmarked. */
+ * them to be exactly two with exactly one flagged. So carrying the session header to more routes will not
+ * make this pass on its own: it needs a week tight enough that one pin flips its verdict, and the two
+ * episodes driven explicitly. Unlike S34's tripwire, whose four assertions all become true the moment the
+ * strip's discretionary denominator is supplied, this one has to be rewritten as well as unmarked. */
 test("S35 the early-catch ratio over one session-caught episode and one that was not is exactly 0.5", async () => {
   test.fail(true, "no route that flips a verdict carries the session header: ticket 1571");
   const measured = await verdictEvents();
