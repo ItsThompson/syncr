@@ -331,11 +331,12 @@ describe("the minutes a block really took", () => {
     });
   });
 
-  /* THE BROWSER NOW JUDGES THE FIELD IT IS ABLE TO JUDGE. The element carries no floor, so its step base is
-     the figure the form opened with and the five it steps by is the grid: a typed figure off that grid is a
-     step mismatch, and a browser refuses to submit a mismatched field. React holds the `value` attribute a
-     number field bases its step on still while the field has focus, which is why the typed figure is the one
-     case this reaches. Leaving the field snaps the figure onto the grid, and that figure records. */
+  /* THE BROWSER NOW JUDGES THE FIELD IT IS ABLE TO JUDGE, and it judges against the figure the form opened
+     with. The element carries no floor, so its step base is that figure, and the grid a typed figure has to
+     land on runs in fives from there: 47 against a base of 60 is a step mismatch, and a browser refuses to
+     submit a mismatched field. React holds the `value` attribute the base comes from still while the field
+     has focus, which is why typing is the case that reaches this. A commit is the other grid: leaving the
+     field snaps to a multiple of the step rather than to the base, which here is the same 45. */
   it("refuses a typed figure off the step's grid until leaving the field snaps it", async () => {
     await renderToday(onHostToday(buildDay()));
     const sent = stubRecording();
@@ -362,11 +363,12 @@ describe("the minutes a block really took", () => {
     });
   });
 
-  /* WHAT THE FORM OPENS WITH IS ITS OWN STEP BASE, so the grid the browser holds a typed figure to does not
-     reach a prefilled one, and the two paths disagree. A routine's floor is bounded rather than snapped, an
-     occurrence reduced to that floor is the row's planned duration, and the field opens there: valid, and
-     recorded by the same Enter that refuses 47 above. This test is what says the disagreement is real. */
-  it("records a prefilled figure off the step's grid, which the refusal above cannot reach", async () => {
+  /* WHAT THE FORM OPENS WITH IS ITS OWN STEP BASE, so the grid the browser holds a typed figure to is the
+     prefill's rather than the absolute five, and a prefilled figure is never off its own grid. A routine's
+     floor is bounded rather than snapped, so a seven-minute occurrence is the row's planned duration, the
+     field opens there valid, and the same Enter that refuses 47 on a sixty-minute row records this. The two
+     paths disagree, and this test is what says the disagreement is real. */
+  it("records a prefilled figure off the step's grid, which the typed path refuses", async () => {
     const reduced = buildSleepRow({
       durationMinutes: 7,
       interval: { start: `${DATE}T00:00:00+00:00`, end: `${DATE}T00:07:00+00:00` },

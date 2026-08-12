@@ -9,8 +9,9 @@
  *
  * ENTER RECORDS THROUGH A REAL FORM, which is what makes `Shift+X`, a step, then Enter the whole of a
  * partial: the browser's own submit rather than a keystroke this screen interprets. The browser's own validity
- * applies to that submit, and the field takes its step base from the figure the form opened with, so a figure
- * typed off the five it steps by is refused until leaving the field snaps it onto the grid.
+ * applies to that submit, and the field takes its step base from the figure the form opened with, so a typed
+ * figure is refused unless it lands on the fives running from that figure. A commit is the other grid: a blur
+ * snaps to a multiple of five, whatever the field opened at.
  *
  * THERE IS NO ESCAPE BINDING, and it is a gap rather than a choice. A bare Escape yields to the field a
  * reader is typing into, which is by design in the shell's keyboard module, and the kit's fields accept no
