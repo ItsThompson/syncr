@@ -19,9 +19,9 @@
  * IT TOLERATES ONE NAMED REFUSAL RATHER THAN EXITING ON IT, AND THE TOLERANCE NOW GUARDS NOTHING.
  * `past_disagreement` is what a solve draws when its candidate would restate a week's past. The binding
  * phase leaves a slot the week has already reached unbound, so a first solve of a partly lived week no
- * longer draws it, and `docs/smoke-scenarios.md` records a run in which every week solved and this
- * branch was never taken. It stays ONE named code rather than a blanket allowance: the refusal is
- * named, printed, and continued past, and any OTHER failure still stops the seed.
+ * longer draws it, and `docs/smoke-scenarios.md` records a run in which every week solved and the
+ * tolerance was never taken. The tolerance stays ONE named code rather than a blanket allowance: the
+ * refusal is named, printed, and continued past, and any OTHER failure still stops the seed.
  */
 
 import type { ApiClient } from "../../api/client.ts";
