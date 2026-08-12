@@ -250,8 +250,9 @@ def test_the_refusal_reading_answers_from_a_raise_or_one_delegation() -> None:
 
 def test_the_handler_reading_answers_from_a_route_decorator_and_one_service_call() -> None:
     # The other reader's control. A handler bound to a second router is still a handler, which is
-    # what the split into two routers made possible, and a function with no route decorator is not
-    # one however much it looks like a handler.
+    # what the split into two routers made possible, and none of the last three is one: a function
+    # with no decorator, one whose decorator is not a router's at all, and one bound to a router
+    # verb that carries no response statuses for the crossing to read.
     on_one_router = (
         "@router.post(PATH)\nasync def request_tradeoff(service: Dep):\n"
         "    return await service.request(1)\n"
@@ -261,7 +262,17 @@ def test_the_handler_reading_answers_from_a_route_decorator_and_one_service_call
         "    return await service.approved(1)\n"
     )
     undecorated = "async def helper(service: Dep):\n    return await service.request(1)\n"
+    decorated_by_something_else = (
+        '@measured("concessions")\nasync def request(service: Dep):\n'
+        "    return await service.request(1)\n"
+    )
+    not_an_http_verb = (
+        "@router.websocket(PATH)\nasync def watch(service: Dep):\n"
+        "    return await service.approved(1)\n"
+    )
 
     assert handlers_by_name(on_one_router) == {"request_tradeoff": "request"}
     assert handlers_by_name(on_another_router) == {"list_adjustments": "approved"}
     assert handlers_by_name(undecorated) == {}
+    assert handlers_by_name(decorated_by_something_else) == {}
+    assert handlers_by_name(not_an_http_verb) == {}
