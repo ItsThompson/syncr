@@ -175,6 +175,8 @@ A calendar block differs from a transcript row in one way that drives all of thi
 
 Loudness, most to least: conflict, proposal, selected, focus, hover.
 
+**The vocabulary governs marks on an object a reader compares across states**, so a control seen only while it holds focus has no resting mark to compare against and takes the hidden-until-focused channel, the clip geometry at `--state-hidden-*`, and no other.
+
 **Absence of fill is the proposal channel, and dashed was rejected for it.** A dashed border already means `disabled` on a control, and one visual carrying two meanings is what this system forbids. Absence of fill is unclaimed, unambiguous, and survives forced colors, where a fill is dropped anyway. The target keeps a dashed outline as well, so that in forced colors the missing fill stops being the only difference.
 
 **Conflict and selected share the left rule deliberately.** They cannot co-occur meaningfully: a conflict is resolved by selecting it, at which point the detail panel states it in words. Conflict wins the pixel while it lasts.
