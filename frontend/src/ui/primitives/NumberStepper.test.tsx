@@ -199,7 +199,8 @@ describe("the element's own arrow keys", () => {
   });
 
   /* A ceiling is not a step base, so it stays on the element and the element refuses to pass it. Two tests,
-     because a plant on the attribute has to reach the figure as well as the attribute. */
+     because deleting the attribute has to fail the figure too and not only the attribute: in one test the
+     attribute assertion comes first and the step is never reached. */
   it("keeps the ceiling on the element, which a floor's step base does not affect", () => {
     renderStepper({ measure: "duration", value: 60, max: 60 });
 
