@@ -16,9 +16,8 @@
  * aria-expanded or aria-selected on the control, so every element carrying one is aria-hidden.
  *
  * EVERY MARK IS WRITTEN AS ITS CODEPOINT, the form `docs/design/components.html` uses for the select
- * arrow. A codepoint cannot be confused with a lookalike a keyboard produces: the indeterminate mark and
- * the disclosure minus are U+2212 MINUS SIGN and not a hyphen, and that distinction is invisible in a
- * literal.
+ * arrow. A codepoint cannot be confused with a lookalike a keyboard produces: the indeterminate mark is
+ * U+2212 MINUS SIGN and not a hyphen, and that distinction is invisible in a literal.
  *
  * The values come from the rendered sheet rather than from taste: the tick at U+2713, the minus at
  * U+2212, the cross at U+2715, the triangles at U+25BE and U+25B4, and the month arrows at U+2039 and U+203A.
@@ -85,9 +84,9 @@
      cells butt against each other and any lighter block would read as a second state. */
   --glyph-meter-cell: "\2588";
 
-  /* The bracketed form, stated once. Key hints take exactly this shape, `[ j ]`, and so does the
-     accordion's disclosure, so there is one bracketed-glyph form in the system rather than two. A
-     bordered key cap is never used: a border plus brackets at 10px is redundant. */
+  /* The bracketed form, stated once. The key hint takes exactly this shape, `[ j ]`, and draws the pair
+     from here rather than from two literals of its own, so a second bracketed form cannot appear beside
+     it. A bordered key cap is never used: a border plus brackets at 10px is redundant. */
   --glyph-bracket-open: "[ ";
   --glyph-bracket-close: " ]";
 }
@@ -100,13 +99,9 @@
  * class per meaning would put the same declaration in the file twice and make a real collision harder to
  * see. What must stay unique is the MARK TABLE above: one codepoint, one entry, which is what
  * `__tests__/glyphTable.test.ts` asserts. That file also reads the components, so a slot no component names
- * and a mark no slot reaches are both findings rather than rules nobody notices. */
+ * and a mark no rule the application renders draws are both findings rather than rules nobody notices. */
 .glyph::before {
   content: var(--glyph);
-}
-
-.glyph--bracketed::before {
-  content: var(--glyph-bracket-open) var(--glyph) var(--glyph-bracket-close);
 }
 
 .glyph--plus {
@@ -199,18 +194,7 @@
   --glyph: var(--glyph-meter-cell);
 }
 
-/* DISCLOSURE IS ONE OF TWO GLYPHS DRIVEN BY A STATE, so this is the kit's assignment of the glyph-slot
- * channel to Radix's `data-state`. The closed mark is the default and the open one replaces it, keyed on
- * the trigger's own attribute rather than on a class the JavaScript toggles. */
-.glyph--disclosure {
-  --glyph: var(--glyph-plus);
-}
-
-[data-state="open"] .glyph--disclosure {
-  --glyph: var(--glyph-minus);
-}
-
-/* A ROW'S STANDING MARK: the second state-driven glyph, and the kit's assignment of the glyph slot to
+/* A ROW'S STANDING MARK: the one glyph a state drives, and the kit's assignment of the glyph slot to
  * `data-at-risk`.
  *
  * IT IS HERE RATHER THAN BESIDE THE OTHER ROW STATES because a mark is written where the mark table is: a rule

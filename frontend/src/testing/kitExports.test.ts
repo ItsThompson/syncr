@@ -40,6 +40,6 @@ describe("the components a barrel exports", () => {
   });
 
   it("reads them in a stable order, so a failure names the difference and not the ordering", () => {
-    expect(componentNamesIn({ Tabs: Button, Accordion: Button })).toEqual(["Accordion", "Tabs"]);
+    expect(componentNamesIn({ Tabs: Button, Dialog: Button })).toEqual(["Dialog", "Tabs"]);
   });
 });

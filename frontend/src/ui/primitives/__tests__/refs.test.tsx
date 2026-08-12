@@ -21,7 +21,7 @@ const noop = () => {};
 /**
  * A ref the case hands to the component, which records what the component gives back.
  *
- * The callback form rather than a `createRef` object, because one array of cases has to hold sixteen element
+ * The callback form rather than a `createRef` object, because one array of cases has to hold fifteen element
  * types: a ref object of the wrong element type is refused, while a callback taking any element is accepted by
  * every one of them, which is the same assignability React's own `Ref<T>` is built on.
  */
@@ -162,18 +162,6 @@ const REF_CASES: readonly RefCase[] = [
         onValueChange={noop}
         tabs={[{ value: "days", label: "Day types", content: <p>Four</p> }]}
         label="Sections"
-      />
-    ),
-  },
-  {
-    name: "Accordion",
-    tag: "DIV",
-    mount: (ref) => (
-      <primitives.Accordion
-        ref={ref}
-        sections={[{ value: "days", label: "Day types", content: <p>Four</p> }]}
-        openValues={["days"]}
-        onOpenValuesChange={noop}
       />
     ),
   },

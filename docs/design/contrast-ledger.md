@@ -164,7 +164,6 @@ is known, in `frontend/src/ui/domain/charts/__tests__/contrast.test.ts`.
 - `frontend/src/ui/layout/Rule.css`
 - `frontend/src/ui/layout/StatCell.css`
 - `frontend/src/ui/layout/Strip.css`
-- `frontend/src/ui/primitives/Accordion.css`
 - `frontend/src/ui/primitives/Button.css`
 - `frontend/src/ui/primitives/Calendar.css`
 - `frontend/src/ui/primitives/Command.css`

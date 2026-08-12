@@ -17,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { componentNamesIn } from "../../../testing/kitExports";
 import * as primitives from "../index";
 import {
-  Accordion,
   Button,
   Calendar,
   Checkbox,
@@ -118,16 +117,6 @@ const PRIMITIVES: readonly (readonly [string, () => React.ReactElement])[] = [
         onValueChange={noop}
         tabs={[{ value: "days", label: "Day types", count: 4, content: <p>Four</p> }]}
         label="Sections"
-      />
-    ),
-  ],
-  [
-    "Accordion",
-    () => (
-      <Accordion
-        sections={[{ value: "days", label: "Day types", content: <p>Four</p> }]}
-        openValues={["days"]}
-        onOpenValuesChange={noop}
       />
     ),
   ],

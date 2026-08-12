@@ -10,8 +10,8 @@
  *
  * The domain barrel accepts the side effect on one further ground: every family is rendered by at least one
  * route, so none of the CSS is bytes a session never uses. That clause can go false with no stylesheet
- * changing, and the sibling layer proves it is not a theoretical worry, since `ui/primitives` exports two
- * controls no screen renders and ships their sheets. So the clause is measured here too. */
+ * changing, and the sibling layer proves it is not a theoretical worry, since `ui/primitives` exports a
+ * control no screen renders. So the clause is measured here too. */
 
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -86,11 +86,11 @@ describe("importing Table through the domain barrel", () => {
 });
 
 describe("importing Button through the primitives barrel", () => {
-  it("loads the accordion and the dialog, which a button is neither of", async () => {
+  it("loads the tabs and the dialog, which a button is neither of", async () => {
     const css = await throughPrimitivesBarrel;
 
     expect(css).toContain(".button");
-    expect(css).toContain(".accordion");
+    expect(css).toContain(".tabs");
     expect(css).toContain(".dialog");
   });
 });
@@ -151,11 +151,11 @@ describe("the route clause the domain barrel's acceptance rests on", () => {
   });
 
   /* THE SEARCH'S OWN CONTROL. An empty result is the failing answer above, and an empty result is also what a
-   * search that had stopped matching would give. `Accordion` is exported by the primitives barrel and named by
+   * search that had stopped matching would give. `Textarea` is exported by the primitives barrel and named by
    * no screen, which is exactly the shape this search has to be able to report. */
-  it("reports no route naming Accordion, which is the shape it must be able to report", async () => {
+  it("reports no route naming Textarea, which is the shape it must be able to report", async () => {
     const sources = await consumerSources;
 
-    expect(sources.some((source) => namesIn(source, "Accordion"))).toBe(false);
+    expect(sources.some((source) => namesIn(source, "Textarea"))).toBe(false);
   });
 });

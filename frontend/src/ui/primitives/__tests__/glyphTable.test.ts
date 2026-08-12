@@ -5,16 +5,24 @@
  * and can never co-render. A table makes that checkable; per-component literals do not.
  *
  * The marks are written as codepoints, so these tests also pin the codepoint rather than a lookalike: the
- * indeterminate mark and the disclosure minus are U+2212 MINUS SIGN and not a hyphen, which is a distinction
- * a literal in a component would hide.
+ * indeterminate mark is U+2212 MINUS SIGN and not a hyphen, which is a distinction a literal in a component
+ * would hide.
  *
  * A MARK'S CONSUMER IS A COMPONENT, WHICH IS WHY THESE TESTS READ THE COMPONENTS. A table built to demand is
  * a claim about what draws each mark, and no assertion over `glyphs.css` alone can make it: the file that
- * declares a mark also references it, so an orphan satisfies any check that asks the file about itself. */
+ * declares a mark also references it, so an orphan satisfies any check that asks the file about itself.
+ *
+ * THE CARRIERS ARE READ FROM EVERY SHIPPED STYLESHEET rather than from the table's own file. A mark is drawn by
+ * whatever rule sets it, and the key hint's bracket pair is set in `ui/domain/marks/marks.css`: reading the
+ * table's file alone counted such a mark as reaching nothing, and it took a slot class in `glyphs.css` that no
+ * longer exists to mask it. */
 
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
+import { filesUnder } from "../../../../scripts/lib/files.ts";
+import { appSourceDir } from "../../../../scripts/lib/paths.ts";
 import { componentsNaming, appSourceRoot } from "../../../testing/kitSources";
 import { kitStylesheet } from "../../../testing/kitStylesheets";
 
@@ -28,49 +36,53 @@ async function glyphTable(): Promise<Map<string, string>> {
 }
 
 /**
- * Which slot classes reach each mark, read from the rules that set `--glyph`.
+ * Which classes reach each mark, read from every rule that draws one.
  *
- * A component names a SLOT and never a mark, so a mark's consumer is one hop away: the slot class whose rule
- * assigns it. `disclosure` reaches two marks and `bracketed` composes the bracket pair with whatever slot it
- * sits beside, which is why this is a mark-to-slots map rather than a pair.
+ * A component names a CLASS and never a mark, so a mark's consumer is one hop away: the class whose rule
+ * assigns it. A mark may be reached by more than one, which is why this is a mark-to-classes map rather than a
+ * pair: the bracket pair is composed by the key hint's own rules, and the slot classes assign the rest.
  */
-async function slotsByMark(): Promise<Map<string, Set<string>>> {
+async function classesByMark(): Promise<Map<string, Set<string>>> {
   const reached = new Map<string, Set<string>>();
-  parse(await kitStylesheet("glyphs.css")).walkRules((rule) => {
-    /* The class is matched by its tail and reassembled, because a pattern spelling the whole class name puts
-     * a hyphen against a character class and reads as Tailwind's arbitrary-value form to the markup scan. */
-    const slots = [...rule.selector.matchAll(/\.glyph--([a-z-]+)/g)].map(
-      (match) => `glyph--${match[1]}`,
-    );
-    if (slots.length === 0) return;
-    rule.walkDecls((declaration) => {
-      for (const reference of declaration.value.matchAll(/var\(--glyph-([a-z-]+)\)/g)) {
-        const mark = reference[1];
-        reached.set(mark, new Set([...(reached.get(mark) ?? []), ...slots]));
-      }
+  const sheets = await filesUnder(appSourceDir, [".css"]);
+  const contents = await Promise.all(sheets.map((sheet) => readFile(sheet, "utf8")));
+  for (const css of contents) {
+    parse(css).walkRules((rule) => {
+      /* The class is matched by its tail and reassembled, because a pattern spelling the whole class name puts
+       * a hyphen against a character class and reads as Tailwind's arbitrary-value form to the markup scan. */
+      const classes = [...rule.selector.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((match) => match[1]);
+      if (classes.length === 0) return;
+      rule.walkDecls((declaration) => {
+        for (const reference of declaration.value.matchAll(/var\(--glyph-([a-z-]+)\)/g)) {
+          const mark = reference[1];
+          reached.set(mark, new Set([...(reached.get(mark) ?? []), ...classes]));
+        }
+      });
     });
-  });
+  }
   return reached;
 }
 
-/** Every slot class the table declares, flattened out of the mark map. */
-async function declaredSlots(): Promise<string[]> {
-  const slots = new Set<string>();
-  for (const reached of (await slotsByMark()).values()) {
-    for (const slot of reached) slots.add(slot);
+/** Every class the shipped stylesheets draw a mark with, flattened out of the mark map. */
+async function drawingClasses(): Promise<string[]> {
+  const classes = new Set<string>();
+  for (const reached of (await classesByMark()).values()) {
+    for (const className of reached) classes.add(className);
   }
-  return [...slots].toSorted();
+  return [...classes].toSorted();
 }
 
-/** Every slot class the layer's components name, which is the only evidence a rule is not dead.
+/** Every drawing class the application's components name, which is the only evidence a rule is not dead.
  *
  * Read from the whole application rather than from the primitives layer, because the table is the KIT's and its
  * consumers are wherever a mark is drawn: the dialog's dismiss control is a primitive, and the origin marks,
  * the pin, the proposal source and the overlap count are drawn by domain components. */
-async function slotsInUse(): Promise<Set<string>> {
-  const slots = await declaredSlots();
-  const consumers = await Promise.all(slots.map((slot) => componentsNaming(slot, appSourceRoot)));
-  return new Set(slots.filter((_, index) => consumers[index].length > 0));
+async function classesInUse(): Promise<Set<string>> {
+  const classes = await drawingClasses();
+  const consumers = await Promise.all(
+    classes.map((className) => componentsNaming(className, appSourceRoot)),
+  );
+  return new Set(classes.filter((_, index) => consumers[index].length > 0));
 }
 
 describe("the glyph table", () => {
@@ -124,25 +136,25 @@ describe("the glyph table", () => {
 
   /* The old form of this test asked `glyphs.css` whether it contained `var(--glyph-x)`, which the file that
    * declares the mark answers yes to by construction: it checked the file against itself, and an orphaned
-   * mark passed. A mark's consumer is a COMPONENT naming the slot that reaches it, so the components are what
-   * is read. */
+   * mark passed. A mark's consumer is a COMPONENT naming the class whose rule draws it, so the components are
+   * what is read. */
   it("holds no mark no component draws, because a table is built to demand like everything else", async () => {
-    const reached = await slotsByMark();
-    const inUse = await slotsInUse();
+    const reached = await classesByMark();
+    const inUse = await classesInUse();
 
     const orphaned: string[] = [];
     for (const mark of (await glyphTable()).keys()) {
-      const slots = [...(reached.get(mark) ?? [])];
-      if (!slots.some((slot) => inUse.has(slot))) orphaned.push(mark);
+      const classes = [...(reached.get(mark) ?? [])];
+      if (!classes.some((className) => inUse.has(className))) orphaned.push(mark);
     }
 
     expect(orphaned).toEqual([]);
   });
 
-  it("declares no slot class no component names, so the table carries no dead rule", async () => {
-    const inUse = await slotsInUse();
+  it("leaves no rule drawing a mark for a class no component names", async () => {
+    const inUse = await classesInUse();
 
-    expect((await declaredSlots()).filter((slot) => !inUse.has(slot))).toEqual([]);
+    expect((await drawingClasses()).filter((className) => !inUse.has(className))).toEqual([]);
   });
 
   it("gives every meaning its own mark, so two marks cannot collide", async () => {
@@ -187,27 +199,31 @@ describe("the glyph table", () => {
     expect((await componentsNaming("glyph--cross", appSourceRoot)).length).toBeGreaterThan(0);
   });
 
-  it("draws the disclosure minus with the minus sign rather than a hyphen", async () => {
+  it("draws the indeterminate mark with the minus sign rather than a hyphen", async () => {
     const table = await glyphTable();
 
     expect(table.get("minus")).not.toContain("-");
   });
 
-  it("states the bracketed form once, so a key hint and a disclosure cannot differ", async () => {
-    const css = await kitStylesheet("glyphs.css");
-    const bracketed = /\.glyph--bracketed::before\s*\{([^}]*)\}/.exec(css);
+  it("states the bracketed form once, so both halves come from the table rather than a literal", async () => {
+    const table = await glyphTable();
+    const carriers = await classesByMark();
+    const open = [...(carriers.get("bracket-open") ?? [])].toSorted();
 
-    expect(bracketed?.[1]).toContain("var(--glyph-bracket-open)");
-    expect(bracketed?.[1]).toContain("var(--glyph-bracket-close)");
+    expect(table.get("bracket-open")).toBe('"[ "');
+    expect(table.get("bracket-close")).toBe('" ]"');
+    expect(open).not.toEqual([]);
+    expect(open).toEqual([...(carriers.get("bracket-close") ?? [])].toSorted());
   });
 
-  /* One slot is named for its meaning rather than its mark, and it is the only one that can be: disclosure
-   * carries two marks and switches between them on the trigger's own state. */
+  /* Every slot is named after the mark it holds, with no exception: a slot named for a meaning would put the
+   * same declaration in the file twice under two names, and the marks a reader can never see at once share one
+   * entry instead. */
   it("names every slot after its mark rather than after a meaning", async () => {
     const css = await kitStylesheet("glyphs.css");
     const slots = [
       ...css.matchAll(/\.glyph--([a-z-]+)\s*\{\s*--glyph:\s*var\(--glyph-([a-z-]+)\)/g),
-    ].filter(([, slot]) => slot !== "disclosure");
+    ];
 
     expect(slots.length).toBeGreaterThan(3);
     for (const [, slot, mark] of slots) expect(slot).toBe(mark);

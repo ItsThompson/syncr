@@ -60,7 +60,6 @@
  * `CommandItem` is deliberately not exported. A palette row is composed from the actions `Command` is given,
  * because a caller assembling rows would be composing a row this kit has not designed. */
 
-export { Accordion, type AccordionProps, type AccordionSection } from "./Accordion";
 export { Button, type ButtonProps, type ButtonRank } from "./Button";
 export { Calendar, type CalendarProps } from "./Calendar";
 export { Checkbox, type CheckboxProps, type CheckboxState } from "./Checkbox";
