@@ -1,8 +1,8 @@
 /* Fixture: a second file switching the same state's mark, which is the drift the check exists to catch.
  *
  * The selector differs and the channel does not: two files deciding what `[data-state="open"]` puts in the
- * glyph slot is how two surfaces come to disagree about a disclosure mark. */
+ * glyph slot is how two surfaces come to disagree about a mark. */
 
-[data-state="open"] .accordion__own-mark {
+[data-state="open"] .row__second-mark {
   --glyph: var(--glyph-check);
 }

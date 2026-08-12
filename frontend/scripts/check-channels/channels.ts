@@ -78,8 +78,8 @@ export const CHANNELS: readonly Channel[] = [
    * properties are the `::before`/`::after` family rather than a colour.
    *
    * `--glyph` is here because that is what the kit's glyph table actually assigns. `glyphs.css` states
-   * `content: var(--glyph)` once, on the slot, and a state switches the MARK by setting `--glyph`: the
-   * accordion's `[ + ]` becoming `[ - ]` is `[data-state="open"]` setting that property. Reading only
+   * `content: var(--glyph)` once, on the slot, and a state switches the MARK by setting `--glyph`: a row
+   * becoming at risk is `[data-at-risk]` setting that property. Reading only
    * `content` would have called the glyph slot unassigned while a state was driving it, which is a
    * check reporting a claim rather than a fact. */
   {

@@ -3,7 +3,7 @@
  * Motion is zero, so a disclosure opens and closes in one frame. That is right, and it creates the one problem an
  * animation would have hidden: everything below the toggled element moves by the panel's whole height instantly,
  * and if the element sits below the fold the reader's viewport is suddenly showing different content than the row
- * they clicked. Section 16 states the rule as a scroll problem rather than a motion problem, and this is it:
+ * they clicked. It is a scroll problem rather than a motion problem:
  * measure the element before the layout changes, measure it after, and take the difference out of the scroll
  * position.
  *

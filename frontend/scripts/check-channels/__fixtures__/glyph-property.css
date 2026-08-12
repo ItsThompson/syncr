@@ -1,13 +1,13 @@
 /* Fixture: the glyph slot assigned the way this kit assigns it, through `--glyph`.
  *
  * `glyphs.css` states `content: var(--glyph)` once, on the slot, and a state switches the MARK by setting
- * that property: the accordion's `[ + ]` becoming `[ - ]` is `[data-state="open"]` setting `--glyph`. A
+ * that property: a row becoming at risk is `[data-at-risk]` setting `--glyph`. A
  * channel model that read only `content` called the glyph slot unassigned while a state was driving it. */
 
-.glyph--disclosure {
+.row__own-mark {
   --glyph: var(--glyph-plus);
 }
 
-[data-state="open"] .glyph--disclosure {
+[data-state="open"] .row__own-mark {
   --glyph: var(--glyph-minus);
 }

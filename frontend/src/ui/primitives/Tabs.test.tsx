@@ -1,9 +1,8 @@
-/* Tabs and the accordion: the two disclosure surfaces.
+/* Tabs: the kit's one disclosure surface.
  *
  * THE ACTIVE TAB TAKES THE --rule-emphasis BOTTOM RULE, in --ink-deep. The rule is reserved transparent at rest
  * so activating a tab changes a colour and not a width, which is the same discipline the current navigation row
- * is drawn with.
- * DISCLOSURE IS `[ + ]` AND `[ - ]`, from the glyph table, keyed on the trigger's own state. */
+ * is drawn with. */
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

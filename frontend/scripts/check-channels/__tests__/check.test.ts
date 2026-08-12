@@ -73,7 +73,7 @@ describe("the glyph slot and the quarter-line weight", () => {
 
   /* THE WAY THIS KIT ACTUALLY ASSIGNS IT. `glyphs.css` states `content: var(--glyph)` once, on the slot, and
    * a state switches the MARK by setting that property. Reading only `content` reported the glyph slot as
-   * unassigned while `[data-state="open"]` was driving it, so the script agreed with a claim the kit could
+   * unassigned while a state was driving it, so the script agreed with a claim the kit could
    * not support. */
   it("sees a state that switches the mark through --glyph rather than through content", async () => {
     const outcome = await check(["glyph-property.css"]);
