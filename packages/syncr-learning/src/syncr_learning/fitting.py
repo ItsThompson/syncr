@@ -1,10 +1,10 @@
 """Observations to one appendable artefact: every fitter run, every gate applied, every row
 explained.
 
-The order is fixed and it is the pipeline section 11 draws. For each parameter: count the relevant
-observations, compare the count with the threshold, and either fit with shrinkage or record a
-collecting row with no value at all. Nothing here decides what a fit MEANS; the fitters do that,
-:mod:`syncr_learning.applied` gates each one, and this composes them in order.
+The order is fixed. For each parameter: count the relevant observations, compare the count with the
+threshold, and either fit with shrinkage or record a collecting row with no value at all. Nothing
+here decides what a fit MEANS; the fitters do that, :mod:`syncr_learning.applied` gates each one,
+and this composes them in order.
 
 **This function is pure.** Given one ``Observations`` and one incumbent it returns one artefact,
 which makes the job's idempotence a property of the arithmetic rather than of the database: two runs

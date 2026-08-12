@@ -25,10 +25,11 @@ A refused fit is ordinary: a gate is not met, or the weight vector came back neg
 the corpus no better than the incumbent. The run records it, keeps the figure in force and carries
 on.
 
-A FAILED fit is an exception, and the run exits non-zero for it. Section 19 pairs that exit with an
-info alert and the observation that the previous active weight set stays in place, which is a benign
-degradation: the solver keeps working with slightly older parameters. What the exit code buys is
-that the failure is visible to the monitoring stack rather than silently producing no new version.
+A FAILED fit is an exception, and the run exits non-zero for it. ``LearningJobFailed`` in
+``deployments/prometheus/alerts.yml`` reads that exit at severity info, and the previous active
+weight set stays in place, which is a benign degradation: the solver keeps working with slightly
+older parameters. What the exit code buys is that the failure is visible to the monitoring stack
+rather than silently producing no new version.
 
 One tenant's failure does not stop the others. A run over twelve tenants where one has a corrupt row
 should write eleven versions and report one failure, because the alternative is one bad row costing

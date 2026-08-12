@@ -1,9 +1,10 @@
 """The container's ``main``: configure logging, build the adapter, run once, exit with the verdict.
 
 **The exit code is the whole point of this module.** A failed fit exits non-zero so the container's
-failure is visible to the monitoring stack rather than silently producing no new version. Section 19
-pairs that exit with an info alert and the observation that the previous active weight set stays in
-place, which is a benign degradation: the solver keeps working with slightly older parameters.
+failure is visible to the monitoring stack rather than silently producing no new version.
+``LearningJobFailed`` in ``deployments/prometheus/alerts.yml`` reads that exit at severity info, and
+the previous active weight set stays in place, which is a benign degradation: the solver keeps
+working with slightly older parameters.
 
 A one-shot, not a service. There is no server, no loop and no signal handling: the container runs,
 the timer that started it collects the code, and the process is gone. What it does hold is the

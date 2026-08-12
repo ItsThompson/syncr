@@ -5,9 +5,8 @@ fitted = (n x empirical + k x prior) / (n + k)
 ```
 
 Estimates blend with priors rather than jumping to the empirical mean at low sample counts, so
-maturation feels like gradual sharpening instead of erratic swings. Section 11 works three cases at
-``k = 10``: one observation leaves the value 91% prior, ten make it half and half, and fifty make it
-83% observed.
+maturation feels like gradual sharpening instead of erratic swings. Three cases at ``k = 10``: one
+observation leaves the value 91% prior, ten make it half and half, and fifty make it 83% observed.
 
 ## The bound on a single outlier, derived rather than asserted
 
@@ -65,8 +64,8 @@ def shrunk(
     """The shrinkage formula over already-clamped measurements, with its interval.
 
     ``prior_weight`` is ``k``, and it is a parameter rather than a constant read here so a fitter
-    can state its own. Every one takes the default today; section 11 says changing one must be a
-    configuration change and this is the shape that makes it one.
+    can state its own. Every one takes the default today; changing one has to be a configuration
+    change rather than a migration, and this is the shape that makes it one.
 
     An empty list is the prior at a shrinkage weight of one, which is the correct reading rather
     than a refusal: no evidence means the whole of the figure is the prior. What a caller does about

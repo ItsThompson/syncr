@@ -48,7 +48,7 @@ AREA: Final = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_AREA: Final = UUID("22222222-2222-4222-8222-222222222222")
 
 # What a block is planned for and what it really takes, in the corpus below. The ratio is 82/60,
-# which is section 11's own worked example of an estimate error.
+# which is the estimate error ``statements.py`` quotes in words.
 PLANNED_MINUTES: Final = 60
 ACTUAL_MINUTES: Final = 82
 

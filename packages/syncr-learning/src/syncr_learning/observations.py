@@ -2,8 +2,7 @@
 
 Every fitter takes a list of one of these and returns a :class:`~syncr_learning.results.FitResult`.
 Nothing here reads a clock, a database or a plan, so a fitter's whole behaviour is decidable from
-values written in a test file, which is what section 20's learning-unit layer means by "nothing.
-Fitters take observation lists".
+values written in a test file: a fitter's own suite needs no fixture beyond a list of these.
 
 Each observation is a MEASUREMENT, already reduced from the rows it came from: the extractor decides
 which hour a placement fell in and whether the day was confirmed, and by the time a fitter sees an
@@ -26,9 +25,9 @@ if TYPE_CHECKING:
 class DurationObservation:
     """One confirmed block that reported how long it really took.
 
-    Only a ``partial`` outcome carries the figure, which is why section 11 names that state as the
-    sole source of the duration signal: every other state says the block ran as planned or not at
-    all, and neither is an estimate error.
+    Only a ``partial`` outcome carries the figure, which is why that state is the sole source of the
+    duration signal: every other state says the block ran as planned or not at all, and neither is
+    an estimate error.
     """
 
     area_id: AreaId
@@ -150,7 +149,8 @@ class RankExample:
     negative, and a weight vector ranks the pair correctly when the weighted sum is below zero.
 
     Recorded at the edit rather than recomputed here, because the weight set that priced it is
-    versioned and will have moved on: E2 is the rule and this is the value that carries it.
+    versioned and will have moved on. The difference is stored and never recomputed later, and this
+    is the value that carries it.
     """
 
     difference: dict[str, float]

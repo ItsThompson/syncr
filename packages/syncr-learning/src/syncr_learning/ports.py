@@ -15,7 +15,6 @@ enforcement: there is no call for a module above to make.
 The repeated-pin candidates a run finds are returned rather than written. The rows the weekly
 session reads, and the accept and decline routes over them, are the promotion surface's own; a table
 this job wrote and nothing read would be the number-nobody-reads this package exists to avoid.
-Ticket 1530 carries the persistence.
 """
 
 from __future__ import annotations
