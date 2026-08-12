@@ -344,41 +344,108 @@ describe("the drag that issues no request", () => {
     await settle();
     expect(pins.bodies).toEqual([]);
   });
+});
 
-  it("cancels when the pointer is released above the column it started in", async () => {
+/* THE DRAG'S ONE DEGREE OF FREEDOM, ASSERTED AS A SET SO THAT NOBODY WIDENS IT BY ACCIDENT. The minute comes from the
+ * pointer's height and from nothing else, and the origin column's box bounds BOTH axes: a position outside it states no
+ * target, and a release there issues no request.
+ *
+ * EACH REFUSAL IS A TRANSITION HERE RATHER THAN AN ABSENCE. A case that presses, moves outside and asserts that nothing
+ * happened is green for two different reasons: the pointer left the column, or the drag never began at all. Moving the
+ * stubbed box so that no press lands in a column leaves such a case green with its own premise destroyed. So each case
+ * below states a target first and then watches it go.
+ *
+ * THE FIRST CASE IS WHAT MAKES THE OTHER TWO MEAN SOMETHING. A refusal on one axis with the other pinned cannot tell
+ * "one axis is free" from "this axis is free": the pointer moves across the column here and states the same instant, so
+ * the box bounds the horizontal axis without the minute ever reading it.
+ *
+ * WHAT THE STUBBED BOX CANNOT SEE. Every canvas answers the same box, so no case in this file can tell one column from
+ * another: what is asserted is that a position outside the ORIGIN box states nothing, not that the position was over
+ * Tuesday. A page with seven real columns is what would tell those two apart. */
+describe("the drag's degrees of freedom", () => {
+  /** Two positions well inside the stubbed box, so a refusal below is the bound rather than the press. */
+  const PRESSED_X = 60;
+  const ACROSS_X = 100;
+  /** Past the box's right edge of 137: another column, on a real page. */
+  const BESIDE_X = 620;
+  /** Above the box's own top, which is over no quarter hour at all. */
+  const ABOVE_Y = -40;
+
+  it("reads the minute from the pointer's height alone, so crossing the column changes nothing", async () => {
     await renderWeek();
     const pins = recordPins();
 
-    fireEvent.pointerDown(blockOf(LEETCODE), { clientY: offsetOf(540) });
-    /* Above the canvas: the reader has stated no placement, and clamping to the top edge would turn a slip into a
-     * hard constraint on the solver. */
-    fireEvent.pointerMove(window, { clientY: -40 });
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientX: PRESSED_X, clientY: offsetOf(540) });
+    fireEvent.pointerMove(window, { clientX: ACROSS_X, clientY: offsetOf(780) });
     fireEvent.pointerUp(window);
 
-    await settle();
-    expect(pins.bodies).toEqual([]);
-    expect(document.querySelector(".week-insertion")).toBeNull();
+    await waitFor(() => expect(pins.bodies).toHaveLength(1));
+    /* The body a drag that never moved sideways posts, stated rather than compared against another run. */
+    expect(pins.bodies[0]).toEqual({
+      blockId: BLOCK_LEETCODE,
+      start: "2026-02-09T13:00:00.000Z",
+    });
   });
 
-  /* THE HORIZONTAL AXIS, WHICH THE VERTICAL CASE ABOVE DOES NOT COVER. `clientX` was read nowhere in the drag, so a
-   * release beside the starting column was not outside anything: it was read against that column, and dragging
-   * Monday's block over Tuesday at 13:00 posted MONDAY 13:00 -- a placement in a day the reader had left.
-   *
-   * WHAT THIS TEST CAN AND CANNOT SEE. The stubbed box is the SAME for every canvas, so no test here can tell one
-   * column from another: what is asserted is that a position outside the origin box horizontally states nothing, not
-   * that the position was over Tuesday. Whether a drag should instead RETARGET to the column under the cursor is
-   * ticket 1494, and a real box per column is on 1493's list. */
-  it("cancels when the pointer is released beside the column it started in", async () => {
+  it("states no target and issues no request once the pointer is beside the column", async () => {
     await renderWeek();
     const pins = recordPins();
 
-    fireEvent.pointerDown(blockOf(LEETCODE), { clientX: 60, clientY: offsetOf(540) });
-    fireEvent.pointerMove(window, { clientX: 620, clientY: offsetOf(780) });
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientX: PRESSED_X, clientY: offsetOf(540) });
+    fireEvent.pointerMove(window, { clientX: ACROSS_X, clientY: offsetOf(780) });
+    expect(document.querySelector(".week-insertion")?.textContent).toBe("13:00");
+
+    fireEvent.pointerMove(window, { clientX: BESIDE_X, clientY: offsetOf(780) });
+
+    expect(document.querySelector(".week-insertion")).toBeNull();
+    /* The drag is still live: the pointer stated no target, and the platform has taken nothing away. */
+    expect(document.querySelector(".week-grid")).toHaveAttribute("data-dragging");
+
     fireEvent.pointerUp(window);
 
     await settle();
     expect(pins.bodies).toEqual([]);
+  });
+
+  it("states no target and issues no request once the pointer is above the column", async () => {
+    await renderWeek();
+    const pins = recordPins();
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientX: PRESSED_X, clientY: offsetOf(540) });
+    fireEvent.pointerMove(window, { clientX: PRESSED_X, clientY: offsetOf(780) });
+    expect(document.querySelector(".week-insertion")?.textContent).toBe("13:00");
+
+    fireEvent.pointerMove(window, { clientX: PRESSED_X, clientY: ABOVE_Y });
+
     expect(document.querySelector(".week-insertion")).toBeNull();
+
+    fireEvent.pointerUp(window);
+
+    await settle();
+    expect(pins.bodies).toEqual([]);
+  });
+
+  /* LEAVING THE COLUMN CLEARS THE TARGET RATHER THAN ENDING THE DRAG, which is the other edge of the two cases above:
+   * without it they would also pass on a drag that the first sideways move had cancelled outright. */
+  it("states the target again when the pointer comes back, and that release posts the pin", async () => {
+    await renderWeek();
+    const pins = recordPins();
+
+    fireEvent.pointerDown(blockOf(LEETCODE), { clientX: PRESSED_X, clientY: offsetOf(540) });
+    fireEvent.pointerMove(window, { clientX: BESIDE_X, clientY: offsetOf(780) });
+    expect(document.querySelector(".week-insertion")).toBeNull();
+
+    fireEvent.pointerMove(window, { clientX: ACROSS_X, clientY: offsetOf(780) });
+
+    expect(document.querySelector(".week-insertion")?.textContent).toBe("13:00");
+
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => expect(pins.bodies).toHaveLength(1));
+    expect(pins.bodies[0]).toEqual({
+      blockId: BLOCK_LEETCODE,
+      start: "2026-02-09T13:00:00.000Z",
+    });
   });
 });
 
