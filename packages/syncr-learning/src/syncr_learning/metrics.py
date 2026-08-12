@@ -1,14 +1,15 @@
-"""The six metric families the nightly run exports, on the registry ``syncr-common`` owns.
+"""The metric families the nightly run exports, on the registry ``syncr-common`` owns.
 
 The job has no HTTP surface, so nothing serves an exposition here: a one-shot container is not
 scrapeable, and the run instead writes its figures to the registry and the entrypoint pushes or logs
-them. What matters for this module is that the families exist and are named exactly as section 18
-spells them, because an alert reads a name.
+them. What matters for this module is that a family's NAME is a contract with whatever reads it:
+``LearningJobFailed`` in ``deployments/prometheus/alerts.yml`` reads
+``syncr_learning_run_duration_seconds`` by name, so a rename here is a rename there.
 
-``syncr_learning_samples`` is labelled by PARAMETER, which is the label section 11's own maturity
-table is keyed on: an alert about a gate is an alert about one parameter, and one series per
-parameter is what lets a dashboard draw six progress bars. The label set is bounded by
-:data:`~syncr_learning.config.FITTED_PARAMETERS`, so it cannot grow with the data.
+``syncr_learning_samples`` is labelled by PARAMETER: an alert about a gate is an alert about one
+parameter, and one series per parameter is what lets a dashboard draw one progress bar each. The
+label set is bounded by :data:`~syncr_learning.config.FITTED_PARAMETERS`, so it cannot grow with the
+data.
 
 ``syncr_weight_set_version`` is a GAUGE rather than a counter. A revert lowers it, which a counter
 cannot express, and the point of the series is "which artefact is in force" rather than "how many
@@ -77,7 +78,7 @@ UNMEASURED_EDITS = Gauge(
 )
 """The corpus that predates the measurement, counted rather than silently skipped.
 
-E5 forbids pruning these rows, so the figure only ever falls as the corpus grows. Exported because
+Nothing prunes these rows, so the figure only ever falls as the corpus grows. Exported because
 without it a weight gate held back by history is indistinguishable from one held back by a quiet
 user.
 """

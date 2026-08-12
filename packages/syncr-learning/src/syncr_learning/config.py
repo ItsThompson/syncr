@@ -5,17 +5,19 @@ Three kinds of number live here and each is a different sort of claim.
 **The priors.** What a parameter is worth before this user has produced evidence about it. Every one
 equals the hand-tuned figure version 1 ships, because that figure IS the prior belief: a second,
 differently chosen prior would mean the first observation moved the value away from what the solver
-was already using. ``tests/test_solver_agreement.py`` holds each against the api's own
-``P0_WEIGHTS``.
+was already using. ``tests/test_solver_agreement.py`` holds the two the api also names, the switch
+price and the churn tolerance, against its ``P0_WEIGHTS``; the other three have no entry in it, so
+nothing crosses them.
 
 **The prior weights.** How many observations it takes for the evidence to outweigh the prior.
-Section 11 states the formula and works three cases at ``k = 10``, so ten is the documented default
-and every parameter takes it until one is measured to need otherwise.
+:mod:`syncr_learning.shrinkage` states the formula and works three cases at ``k = 10``, so ten is
+the documented default and every parameter takes it until one is measured to need otherwise.
 
-**The maturity thresholds. THESE ARE UNVALIDATED ESTIMATES.** They are the PRD author's guesses at
-how fast each parameter converges, not measurements of it, and they are stated as such on the
-Learned screen. Revising one against real data is a change to this file and nothing else: no
-migration, no schema change, and no reprocessing of history, because every run refits from the log.
+**The maturity thresholds. THESE ARE UNVALIDATED ESTIMATES.** They are the guesses ``docs/prd.md``'s
+maturity table states, not measurements of how fast each parameter converges, and they are stated as
+such on the Learned screen. Revising one against real data is a change to this file and nothing
+else: no migration, no schema change, and no reprocessing of history, because every run refits from
+the log.
 
 ## Why the vocabulary is restated here rather than imported
 
@@ -104,7 +106,7 @@ FITTED_PARAMETERS: Final[tuple[str, ...]] = (
     CHURN_TOLERANCE,
     OBJECTIVE_WEIGHTS,
 )
-"""Every parameter with a gate. Six rows, which is section 11's maturity table plus the weights."""
+"""Every parameter with a gate. The suite crosses this tuple against :data:`THRESHOLDS`'s keys."""
 
 
 # ---------------------------------------------------------------------------
@@ -129,9 +131,9 @@ PRIOR_CHURN_TOLERANCE: Final = 3.0
 PRIOR_WEIGHT: Final = 10
 """``k``: how many observations it takes for the evidence to weigh as much as the prior.
 
-Section 11 works three cases at this value: one observation leaves the value 91% prior, ten make it
-half and half, and fifty make it 83% observed. One default for every parameter until a measurement
-says one of them converges differently.
+Three cases at this value: one observation leaves the value 91% prior, ten make it half and half,
+and fifty make it 83% observed. One default for every parameter until a measurement says one of them
+converges differently.
 """
 
 
@@ -176,10 +178,10 @@ MAX_CHURN_TOLERANCE: Final = 40.0
 # ---------------------------------------------------------------------------
 
 THRESHOLD_DURATION_MULTIPLIER: Final = 12
-"""Confirmed blocks in one Area. Section 11 estimates 10 to 15; this is the middle of it."""
+"""Confirmed blocks in one Area. The estimate is 10 to 15; this is the middle of it."""
 
 THRESHOLD_TIME_OF_DAY_FITNESS: Final = 30
-"""Confirmed blocks in one Area, spread across hours. Section 11 estimates 30 or more."""
+"""Confirmed blocks in one Area, spread across hours. The estimate is 30 or more."""
 
 MIN_DISTINCT_HOURS: Final = 6
 """How many different hours those blocks have to cover before a curve is fitted at all.
@@ -197,10 +199,10 @@ THRESHOLD_CONTEXT_SWITCH_COST: Final = 20
 """Adjacent confirmed pairs. Both populations, because the figure is a difference between them."""
 
 THRESHOLD_CHURN_TOLERANCE: Final = 20
-"""Proposals. Section 11's own figure."""
+"""Proposals. The estimate itself rather than a point chosen inside a range."""
 
 THRESHOLD_OBJECTIVE_WEIGHTS: Final = 50
-"""Edit events. Section 11 estimates 50 to 100; this is the lower bound of it."""
+"""Edit events. The estimate is 50 to 100; this is the lower bound of it."""
 
 THRESHOLDS: Final[dict[str, int]] = {
     DURATION_MULTIPLIER: THRESHOLD_DURATION_MULTIPLIER,

@@ -42,7 +42,7 @@ And the run, its I/O, and the container's entrypoint:
 |---|---|
 | ``ports.py`` | the reader and the writer this job's I/O is stated over |
 | ``job.py`` | the nightly pass over every tenant, and the report the exit code reads |
-| ``metrics.py`` | the six families the run exports |
+| ``metrics.py`` | the metric families the run exports |
 | ``storage/`` | the Postgres adapter: the spellings this job restates, and the two ends |
 | ``fixtures/`` | the corpora other suites read, sized either side of every gate |
 | ``entrypoint.py`` | the container's ``main``: build the adapter, run, exit |
