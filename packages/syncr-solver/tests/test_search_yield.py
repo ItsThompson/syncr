@@ -119,9 +119,9 @@ def test_the_instrument_runs_the_descent_the_budget_cuts_short() -> None:
     assert (measured.iterations, measured.accepted) == (shipped.iterations, shipped.accepted)
     assert measured.total == shipped.breakdown.total()
     assert measured.iterations == budget.move_evaluations
-    # Fewer than the 9 the whole budget buys, so this case is a shortened descent rather than the
+    # Four of the nine the whole budget buys, so this case is a shortened descent rather than the
     # same one under another name.
-    assert 0 < measured.accepted < ACCEPTANCES
+    assert measured.accepted == 4
 
 
 # --------------------------------------------------------------------------------------
@@ -151,15 +151,29 @@ def test_each_move_kind_holds_the_column_the_reference_week_gives_it(
 def test_the_kinds_columns_account_for_every_iteration_and_every_acceptance(
     descended: Yield,
 ) -> None:
-    """The four columns are a partition: nothing is counted twice and nothing falls between them.
+    """The four columns are a partition, and the acceptances arrived in one order.
 
     The per-kind cases above each hold one column, and all four holding their own figure would still
-    admit a fifth move nobody counted. This crosses the columns against the totals ``improve`` also
-    reports, which is what makes the split a split.
+    admit a fifth move nobody counted: the sums cross the columns against the totals ``improve``
+    also reports, which is what makes the split a split.
+
+    The order is the third reading and the counts cannot see it. Nine acceptances of these three
+    kinds in any other sequence satisfy both sums, and the sequence is what says which kind was
+    buying improvements late in the descent rather than early.
     """
     assert sum(column.considered for column in descended.kinds) == descended.iterations
     assert sum(column.accepted for column in descended.kinds) == descended.accepted
-    assert [taken.kind for taken in descended.acceptances].count(RELOCATE) == 7
+    assert [taken.kind for taken in descended.acceptances] == [
+        RELOCATE,
+        RELOCATE,
+        RELOCATE,
+        SWAP,
+        RESPLIT,
+        RELOCATE,
+        RELOCATE,
+        RELOCATE,
+        RELOCATE,
+    ]
 
 
 # --------------------------------------------------------------------------------------
