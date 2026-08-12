@@ -38,11 +38,15 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.learned.activation import FutureWeeksResolved, WeightSetActivation
     from syncr_api.learned.records import WeightSetRecord
     from syncr_api.learned.repository import WeightSetRepository
+    from syncr_domain.identifiers import AreaId
 
 _log = get_logger("syncr.learned")
 
@@ -54,11 +58,13 @@ class LearnedService:
         self,
         *,
         weights: WeightSetRepository,
+        areas: AreaRepository,
         activation: WeightSetActivation,
         resolver: FutureWeeksResolved,
         clock: Clock,
     ) -> None:
         self._weights = weights
+        self._areas = areas
         self._activation = activation
         self._resolver = resolver
         self._clock = clock
@@ -79,6 +85,7 @@ class LearnedService:
             origin=active.origin,
             fitted_at=active.fitted_at,
             rows=rows,
+            area_names=await self._area_names(),
             ready=ready_count(rows),
             collecting=collecting_count(rows),
             thresholds_are_estimates=THRESHOLDS_ARE_ESTIMATES,
@@ -111,6 +118,10 @@ class LearnedService:
             version=version,
             resolved_weeks=tuple(str(one.iso_week) for one in operations),
         )
+
+    async def _area_names(self) -> Mapping[AreaId, str]:
+        """The Areas' names, for the subject each keyed row is about."""
+        return {area.id: area.name for area in await self._areas.list_all()}
 
 
 def _summary(stored: WeightSetRecord) -> WeightSetSummary:

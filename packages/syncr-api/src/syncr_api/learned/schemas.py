@@ -13,6 +13,7 @@ from pydantic.alias_generators import to_camel
 
 # Runtime, not type-only: pydantic resolves a field annotation when the model is built.
 from syncr_api.core.schemas import WireInstant
+from syncr_api.learned.subjects import subject_of
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,6 +32,13 @@ class ParameterResponse(LearnedSchema):
     """One row of the Learned screen."""
 
     parameter: str = Field(description="The parameter, with its key where it has one.")
+    subject: str | None = Field(
+        description=(
+            "What this row is about: the name of the Area its key names, or null where the "
+            "parameter carries no key or names an Area this account does not hold. The key is an "
+            "identifier, so the name is resolved here rather than by a client."
+        )
+    )
     samples: int = Field(description="Observations behind it.")
     threshold: int = Field(description="How many it needs before it is applied. An ESTIMATE.")
     state: str = Field(description="`collecting` or `ready`.")
@@ -41,9 +49,10 @@ class ParameterResponse(LearnedSchema):
     plain_language: str = Field(description="What this row means, in the user's own terms.")
 
     @classmethod
-    def of(cls, row: ParameterMaturityReading) -> Self:
+    def of(cls, row: ParameterMaturityReading, *, subject: str | None) -> Self:
         return cls(
             parameter=row.parameter,
+            subject=subject,
             samples=row.samples,
             threshold=row.threshold,
             state=row.state,
@@ -72,7 +81,10 @@ class LearnedResponse(LearnedSchema):
             version=reading.version,
             origin=reading.origin,
             fitted_at=reading.fitted_at,
-            parameters=[ParameterResponse.of(one) for one in reading.rows],
+            parameters=[
+                ParameterResponse.of(one, subject=subject_of(one.parameter, reading.area_names))
+                for one in reading.rows
+            ],
             ready=reading.ready,
             collecting=reading.collecting,
             thresholds_are_estimates=reading.thresholds_are_estimates,

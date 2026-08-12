@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
     from syncr_api.learned.config import WeightSetOrigin
     from syncr_api.learned.maturity import ParameterMaturityReading
+    from syncr_domain.identifiers import AreaId
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -29,12 +31,17 @@ class LearnedReading:
     honesty is not penalised, or the whole dataset's integrity is at risk. So is
     ``collecting_is_normal``: section 11's Learned-screen table asks for it explicitly, in prose, on
     the screen.
+
+    ``area_names`` names every Area this tenant holds. A row names the Area it is about inside the
+    key of its own parameter token and nowhere else, so what a row is ABOUT is resolved against this
+    rather than read off the row, and one read of the Areas serves every row.
     """
 
     version: int
     origin: WeightSetOrigin
     fitted_at: datetime | None
     rows: tuple[ParameterMaturityReading, ...]
+    area_names: Mapping[AreaId, str]
     ready: int
     collecting: int
     thresholds_are_estimates: str

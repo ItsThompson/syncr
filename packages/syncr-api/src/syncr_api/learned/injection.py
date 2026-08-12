@@ -8,6 +8,9 @@ week input version counter is plan storage's, because that table is the single s
 for every mutation a running solve has to see. The settings row is ``user_settings``', because which
 week holds today's local date is one question with one answer. And the solve coordinator is the
 solving module's, because it is the only creation path for a ``solve`` operation.
+
+The Areas are read through their own repository for the same reason: a maturity row names the Area
+it is about by identifier, and what an Area is CALLED has one owner.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from fastapi import Depends, Request
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.learned.activation import FutureWeeksResolved, WeightSetActivation
 from syncr_api.learned.repository import WeightSetRepository
@@ -36,6 +40,7 @@ def get_learned_service(
     tenant_id = principal.tenant_id
     return LearnedService(
         weights=WeightSetRepository(transaction, tenant_id),
+        areas=AreaRepository(transaction, tenant_id),
         activation=WeightSetActivation(transaction, tenant_id),
         resolver=FutureWeeksResolved(
             versions=WeekInputVersionRepository(transaction, tenant_id),

@@ -111,6 +111,7 @@ def a_principal(owner: UserRecord) -> Principal:
 
 def build(session: AsyncSession, owner: UserRecord) -> LearnedService:
     """The service, wired the way the injection wires it, over one session."""
+    from syncr_api.areas.repository import AreaRepository
     from syncr_api.learned.activation import FutureWeeksResolved, WeightSetActivation
     from syncr_api.learned.service import LearnedService
     from syncr_api.solving.injection import build_solve_coordinator
@@ -119,6 +120,7 @@ def build(session: AsyncSession, owner: UserRecord) -> LearnedService:
     tenant_id = owner.tenant_id
     return LearnedService(
         weights=WeightSetRepository(session, tenant_id),
+        areas=AreaRepository(session, tenant_id),
         activation=WeightSetActivation(session, tenant_id),
         resolver=FutureWeeksResolved(
             versions=WeekInputVersionRepository(session, tenant_id),
