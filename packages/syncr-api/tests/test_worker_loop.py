@@ -51,13 +51,13 @@ def _failure_count(runner: str) -> float:
 
 
 def test_every_registered_runner_is_callable() -> None:
-    # The registry is append-only, so this holds for every runner a later slice adds.
+    # The registry is append-only, so this holds for every runner added later.
     assert all(callable(runner) for runner in RUNNERS)
 
 
 # The five duties one tick runs, in order, and which of them have a body. Spelled out here rather
 # than derived from the declaration, because that declaration IS what this asserts: the structure is
-# the ticket's own, and a duty renamed, reordered or dropped has to fail rather than be re-read.
+# deliberate, and a duty renamed, reordered or dropped has to fail rather than be re-read.
 ITERATION = [
     ("solve", True),
     ("plan_horizon_maintainer", True),

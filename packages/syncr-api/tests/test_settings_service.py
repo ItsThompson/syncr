@@ -133,9 +133,9 @@ class RecordingWeekInputVersions:
 
 @pytest.fixture
 def principal() -> Principal:
-    # One construction site on purpose. The principal's shape is owned elsewhere, and the
-    # OAuth slice is widening it in this same wave: a browser session carries every scope,
-    # because the user is acting directly, so that is what a stand-in for one carries.
+    # One construction site on purpose. The principal's shape is owned elsewhere: a browser session
+    # carries every scope, because the user is acting directly, so that is what a stand-in for one
+    # carries.
     return Principal(tenant_id=uuid4(), user_id=uuid4(), scopes=ALL_SCOPES)
 
 

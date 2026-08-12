@@ -428,7 +428,7 @@ def test_a_feed_failing_inside_the_threshold_raises_nothing_over_the_wire(
 def test_the_document_states_no_staleness_threshold_a_client_could_apply(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
-    # The whole payload, read as a tree, because the defect the input ticket asked for is a figure a
+    # The whole payload, read as a tree, because the defect is a figure a
     # client can read and apply from anywhere on the document rather than from one named field.
     created = add_source(http, signed_in)
     stop_answering(live_database_url, owner.tenant_id, created["id"], succeeded=None)

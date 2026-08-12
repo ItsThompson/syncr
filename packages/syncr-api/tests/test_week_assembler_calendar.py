@@ -772,7 +772,7 @@ async def test_the_denominator_subtracts_the_night_inherited_from_the_week_befor
 
 
 async def test_a_recovery_window_scoped_to_areas_stays_in_the_denominator() -> None:
-    # The asymmetry the subtraction table exists for, and the only figure in this ticket that a
+    # The asymmetry the subtraction table exists for, and the only figure here that a
     # whole-week reading can get wrong in the direction that manufactures a shortfall. A scoped
     # window is claimable by every Area it does not name, so it stays in; the commitment itself is
     # time the product does not own, so it leaves. The two blocks the same declaration casts stay

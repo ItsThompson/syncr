@@ -18,8 +18,8 @@ Neither arm stores a concession, and neither raises anything, so under both a ca
 tradeoff succeeded and the shortfall it was offered for is still there. That is what the route's
 refusal answers.
 
-**How far the refusal reaches, stated because a guard credited with more reach than it has is this
-epic's most repeated defect.** The refusal is at the request, so it stops such an operation being
+**How far the refusal reaches, stated because a guard is easily credited with more reach than it
+has.** The refusal is at the request, so it stops such an operation being
 CREATED. It does not stop one being adopted: an operation that already carries a candidate is folded
 and adopted exactly as it is below, and the coordinator carries a candidate forward onto the
 follow-up of a superseded solve. What makes that unreachable in practice is that the request is the

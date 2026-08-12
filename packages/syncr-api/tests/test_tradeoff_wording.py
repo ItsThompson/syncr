@@ -72,9 +72,9 @@ def test_the_weekday_names_are_the_products_own_rather_than_the_process_locale()
 
 
 def test_each_label_names_its_target_in_the_users_own_words() -> None:
-    # The title and the Area name are what the user typed. The spec's example label lowercases a
-    # routine a user capitalized, and following the example rather than the declaration would put a
-    # word on the panel the user never wrote.
+    # The title and the Area name are what the user typed. Lowercasing a routine the user
+    # capitalized would put a word on the panel the user never wrote, so a label reads the
+    # declaration rather than an example of one.
     assert labels.dropped(title="Kim's Game Project") == "Drop Kim's Game Project this week"
     assert (
         labels.partial_accepted(title="F&F Past Papers")
