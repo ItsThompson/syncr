@@ -418,9 +418,8 @@ class ChurnBaseline:
 
     A baseline names no revision, or names one and carries its plan, or names one whose plan
     this deployment cannot read. The third is not a defect: reading a stored document back
-    through the domain constructors is ticket 1222 and the week placement reader is ticket 1251,
-    so **today every approved week is in it** and churn is structurally zero. Ticket 1340
-    carries that.
+    through the domain constructors can fail on a document this deployment cannot rebuild, and
+    churn goes uncharged rather than measured against a plan nobody supplied.
 
     ``reason`` is a property rather than a field, so it cannot disagree with the fields it
     describes. A renderer reads it and gets a distinct answer per state; a renderer reading only
@@ -439,7 +438,7 @@ class ChurnBaseline:
     **The pairing invariant is the domain twin's, for the reason a clause renders from it.** A
     plan with no revision named would make ``is_measured`` true while ``reason`` said
     ``never-approved``, and a ``dominant`` clause built from it would cite churn while naming no
-    revision and no date, which is exactly what US-WHY-03 forbids. Unreachable through the two
+    revision and no date, which a clause may never render. Unreachable through the two
     constructors and refused by the type anyway, because the clause's own guarantee is stated as a
     property of this value rather than of one producer.
     """

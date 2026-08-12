@@ -200,9 +200,9 @@ def test_an_approved_baseline_names_the_revision_and_when_it_was_approved() -> N
 
 
 def test_a_baseline_naming_a_revision_whose_plan_it_cannot_read_says_which_state_it_is_in() -> None:
-    # The state every approved week is in today, because nothing reads a stored document back
-    # (tickets 1222 and 1251). It is named rather than reported as an ordinary approved baseline: a
-    # renderer told "approved-revision" would claim a comparison against a plan nobody supplied.
+    # The state a week is in when its approved document cannot be rebuilt. It is named rather than
+    # reported as an ordinary approved baseline: a renderer told "approved-revision" would claim a
+    # comparison against a plan nobody supplied.
     named = ChurnBaseline.approved(uuid4(), NOW)
 
     assert named.reason == ChurnBaseline.APPROVED_UNREADABLE
@@ -230,7 +230,7 @@ def test_a_plan_no_revision_names_is_not_a_baseline() -> None:
 
     ``is_measured`` reads the document, so a plan carried without a revision would make churn
     chargeable while ``reason`` still read ``never-approved``, and the clause would say the plan
-    moved while naming nothing it moved from. US-WHY-03 forbids exactly that.
+    moved while naming nothing it moved from.
     """
     with pytest.raises(PlanError, match="names the revision that plan is"):
         ChurnBaseline(document=a_plan())
