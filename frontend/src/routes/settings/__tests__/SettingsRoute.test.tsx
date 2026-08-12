@@ -53,6 +53,13 @@ async function settled(): Promise<void> {
 
 const panelNamed = (title: string) => screen.getByRole("region", { name: new RegExp(title, "i") });
 
+/** What a field is described by, which is the hint a reader is given without opening the control. */
+const hintOf = (field: HTMLElement): string | null => {
+  const messageId = field.getAttribute("aria-describedby");
+  if (messageId === null) return null;
+  return document.getElementById(messageId)?.textContent ?? null;
+};
+
 /* The same condition is raised at two volumes with a shared identity root: a banner in the top bar and a panel at
  * the head of this screen. They carry the same title by design, so a query for one has to say which volume. */
 const noticeAt = (volume: "panel" | "banner", role: "alert" | "status", name: string) => {
@@ -357,15 +364,32 @@ describe("the grid geometry panel", () => {
     );
   });
 
-  it("states why the range stops where it does rather than hiding the rest", async () => {
-    apiServer.use(...settingsHandlers());
-    renderAt("/settings");
-    await settled();
+  /* THE WHOLE HINT BY EQUALITY, AND READ THROUGH THE FIELD'S OWN `aria-describedby`. The claim is that a reader is
+   * told which of two figures they have been handed, so the reading has to be the sentence the field points at
+   * rather than text anywhere in the panel, and equality is what refuses a clause quietly dropped from the middle
+   * of it. `geometry.test.ts` owns the words; what this case owns is that they reach the control.
+   *
+   * THE WINDOW IS SET rather than inherited. jsdom reports 768px, whose cap is 13; at the height `--grid-h` is
+   * stated against the sentence names the 16 the display record measured, which is the figure the arithmetic is
+   * pinned at one file over. */
+  it("names the cap in the field's own hint, and says the figure is an estimate", async () => {
+    const inherited = Object.getOwnPropertyDescriptor(window, "innerHeight");
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 900 });
+    try {
+      apiServer.use(...settingsHandlers());
+      renderAt("/settings");
+      await settled();
 
-    expect(panelNamed("Grid geometry")).toHaveTextContent("30-minute block");
-    expect(panelNamed("Grid geometry")).toHaveTextContent(
-      "listed as unavailable rather than removed",
-    );
+      expect(hintOf(screen.getByRole("combobox", { name: /Visible hours/ }))).toBe(
+        "How much of a day the Week grid shows at once. Past 16 hours a 30-minute block is too short " +
+          "to hold its title on this display, and that is the most common block length by a wide " +
+          "margin. Those levels are listed as unavailable rather than removed, so the range reads as a " +
+          "range. This screen is not rendering that grid, so the figure is estimated from this window. " +
+          "The Week screen measures its own grid and may allow a different level.",
+      );
+    } finally {
+      if (inherited !== undefined) Object.defineProperty(window, "innerHeight", inherited);
+    }
   });
 
   it("writes the chosen level to the settings endpoint", async () => {
