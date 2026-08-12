@@ -140,8 +140,7 @@ def descend(attempt: Attempt, weights: WeightSet, *, budget: SolveBudget) -> Yie
     """
     preferences = ResolvedPreferences(attempt.inputs.preferences)
     current = attempt
-    breakdown = evaluate(current.document(), inputs=current.inputs, weights=weights)
-    total = breakdown.total()
+    total = evaluate(current.document(), inputs=current.inputs, weights=weights).total()
     tally = _Tally()
     started = perf_counter()
     iterations = 0
@@ -167,7 +166,7 @@ def descend(attempt: Attempt, weights: WeightSet, *, budget: SolveBudget) -> Yie
             tally.considered(move.kind, generating + perf_counter() - at)
             if found.total() >= total:
                 continue
-            current, breakdown, total = move.attempt, found, found.total()
+            current, total = move.attempt, found.total()
             tally.accepted(iteration=iterations, kind=move.kind, total=total)
             improving = True
             break
