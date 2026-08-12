@@ -1216,6 +1216,7 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     await a_planned_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
     paths = verdict_bearing_reads_of(settings)
+    assert paths, "no verdict-bearing read was found, so this asserted nothing"
 
     for _ in range(2):
         for path in paths:
