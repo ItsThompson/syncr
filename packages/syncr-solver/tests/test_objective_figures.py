@@ -247,9 +247,17 @@ def test_churn_never_passes_the_terms_own_unit_at_any_tolerance_a_weight_set_adm
     assert cost == pytest.approx(expected, rel=1e-12, abs=0.0)
     assert 0.0 <= cost <= 1.0
     assert math.isfinite(cost)
-    # The threshold is a figure this file states as an input and the module states as a constant.
-    # Crossed here rather than taken from there, so a threshold that moves is red at every case.
+
+
+def test_the_two_boundary_tolerances_are_the_ones_the_flat_guard_sits_between() -> None:
+    """The threshold is a figure the sweep states as an input and the module states as a constant.
+
+    Crossed here rather than taken from there, and in a case of its own rather than in the sweep's
+    body: run once per tolerance it would redden every case alike, and the ids would stop naming the
+    regime that broke.
+    """
     assert _AT_THE_FLAT_GUARD == _CHURN_KNEE_FLAT
+    assert math.nextafter(_CHURN_KNEE_FLAT, math.inf) == _PAST_THE_FLAT_GUARD
 
 
 def test_the_misfit_ceiling_counts_one_declared_component_because_two_cannot_both_fire() -> None:
