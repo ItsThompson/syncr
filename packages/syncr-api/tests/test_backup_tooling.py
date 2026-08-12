@@ -1,7 +1,7 @@
 """The backup path's pure logic, and every refusal it is built out of.
 
 **AN INSTRUMENT IS WORTHLESS UNTIL IT HAS BEEN SHOWN TO FAIL**, and for a backup that is the whole
-ticket: a path that reports success and produces nothing usable is the failure this deployment
+point: a path that reports success and produces nothing usable is the failure this deployment
 cannot detect any other way. So every case below is a refusal, and each names the production shape
 it is stated over.
 
@@ -463,8 +463,7 @@ class TestTheArchiverGuard:
 
     Both holes it closes are the same shape: an EMPTY staging volume, which a healthy deployment and
     a broken one leave identically. One is reached by a failing `archive_command`, the other by
-    archiving switched off, and the second was found by a reviewer driving the shipper against a
-    real service in this tree that has no archive settings.
+    archiving switched off, which a real service in this tree with no archive settings reproduces.
 
     The rows below are the shape `psql -At` returns for `ARCHIVER_STATE`: seven fields, pipe
     separated, with the pending-failure comparison already made by SQL.

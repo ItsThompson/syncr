@@ -1,7 +1,7 @@
 """The two observability duties, driven against Postgres with rows that make each gauge move.
 
 The unit tests state the arithmetic in exact numbers. What this asserts is the other half, which is
-the half four tickets in this epic got wrong: THAT THE INSTRUMENT MOVES WHEN THE THING IT WATCHES
+the half repeatedly got wrong here: THAT THE INSTRUMENT MOVES WHEN THE THING IT WATCHES
 CHANGES. Every reading here is taken out of the Prometheus exposition, as a scraper takes it, rather
 than from a collector's private attribute.
 
@@ -263,7 +263,7 @@ class TestTheStateGauges:
         Nothing in the client library removes a child of a labelled gauge, and the worker is
         long-lived. Without the removal, a source the user deleted would keep its last reading until
         the process restarted, so `SourceStale` would fire forever on a source that no longer
-        exists: an alert for a condition the user cannot act on, which section 18 forbids.
+        exists: an alert for a condition the user cannot act on, which the alerting rules forbid.
         """
         async with context.database.sessionmaker() as session, session.begin():
             created = await a_source(session, owner, added=NOW - timedelta(days=2))
@@ -286,8 +286,8 @@ class TestTheStateGauges:
 
         An excluded source is never polled, so a reading for it grows without bound. `SourceStale`
         is a maximum over sources, so a growing reading stuck the alert firing forever on a source
-        the user switched off DELIBERATELY: the expected outcome of their own instruction, which
-        section 18's second clause forbids alerting on. Measured before the fix at 864000.0 against
+        the user switched off DELIBERATELY: the expected outcome of their own instruction, which no
+        alert may fire on. Measured before the fix at 864000.0 against
         an 86400 threshold, reachable by one PATCH.
 
         The record states the principle one property away: "the user asked for zero anchors from it,
@@ -360,8 +360,8 @@ class TestTheStateGauges:
     ) -> None:
         """BREAK IT: publish a stale source and a failing token, remove the tenant, observe again.
 
-        The deleted-source end one level up, and the one this ticket's own enumeration of criterion
-        16 found last. A tenant's children are pruned only while that tenant is still enumerated, so
+        The deleted-source end one level up, and the last one found. A tenant's children are pruned
+        only while that tenant is still enumerated, so
         a tenant that leaves `TenantRepository.list_ids()` is never visited again and holds every
         child at its last value for the life of the worker. `SourceStale` and
         `WriteTargetTokenExpiring` both read a maximum ACROSS tenants, so one departed tenant fires

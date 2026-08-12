@@ -208,7 +208,7 @@ class TestTheHeartbeat:
 
 class TestWhatIsNotDelivered:
     async def test_an_event_published_before_the_stream_opened_is_not_replayed(self) -> None:
-        """No replay buffer in P0: a reconnecting client refetches, which is the source of truth.
+        """No replay buffer: a reconnecting client refetches, which is the source of truth.
 
         A buffer would be per client and bounded, which is a second delivery mechanism for a problem
         one refetch already solves.
@@ -275,8 +275,9 @@ class TestEveryFamilyThisSliceExportsIsVisibleBeforeItIsUsed:
     """The reading "nothing is stuck" and the reading "nobody has looked yet" have to differ.
 
     A labeled Prometheus family does not exist until a label is used, so an alert stated over one is
-    silent until the first observation. This epic has shipped that twice: a counter that incremented
-    before its document existed, and a gauge that could not fire for a duty failing every pass. So
+    silent until the first observation. This deployment has shipped that twice: a counter that
+    incremented before its document existed, and a gauge that could not fire for a duty failing
+    every pass. So
     every family added here is read out of the exposition as a scraper reads it, on a process that
     has done no work.
     """

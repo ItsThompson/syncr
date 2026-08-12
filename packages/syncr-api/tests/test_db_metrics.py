@@ -72,7 +72,7 @@ class TestThePoolGauge:
     async def test_it_is_present_before_any_connection_is_taken(self, engine: AsyncEngine) -> None:
         """A gauge nothing has set yet must still be readable, or the alert has no series.
 
-        Ticket 30's lesson stated as a test: a gauge set only when work happens is absent exactly
+        A gauge set only when work happens is absent exactly
         when the work is not happening.
         """
         assert POOL_IN_USE in generate_latest(REGISTRY).decode()

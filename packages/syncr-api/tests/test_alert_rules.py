@@ -9,8 +9,8 @@ inhibit rule that silenced every warning in the deployment.
 So no direction is a list anyone maintains:
 
 - **EXPORTED** is read from the Prometheus registry after importing every module of all six
-  workspace members. That covers a family declared through a helper defined elsewhere, which round
-  1's crossing missed. It does NOT cover a family constructed inside a function body, because
+  workspace members. That covers a family declared through a helper defined elsewhere. It does NOT
+  cover a family constructed inside a function body, because
   importing a module does not run one, so a SECOND reading is crossed against it: every
   family-shaped string literal on disk must be in the registry. A literal that is not is either a
   family a process can export and this crossing cannot see, or a name that was never a family, and
@@ -416,8 +416,8 @@ def exported_families() -> set[str]:
 
     EVERY module of all six members is imported, not only the modules whose own source constructs a
     collector. A family declared through a helper defined elsewhere never registers under the
-    narrower rule, so both set differences below would step over it: a reviewer shipped one such
-    family past the entire crossing, twice, from two different members.
+    narrower rule, so both set differences below would step over it: one such family has been
+    shipped past the entire crossing, twice, from two different members.
 
     Importing a module does not execute a function body, so this alone cannot see a family built
     lazily inside one. :func:`family_literals` is the second reading that does.
@@ -841,7 +841,7 @@ class TestTheExtractionItself:
 
         The last hand-maintained hinge in this file. A seventh member added without a row in the old
         map escaped the registry walk, the literal scan and both set differences at once, and only a
-        reviewer reading the map would notice. This asserts the derivation found all six and
+        person reading the map would notice. This asserts the derivation found all six and
         resolved each to a real source tree, so an empty or partial read cannot satisfy the sets it
         feeds.
         """
@@ -894,11 +894,12 @@ class TestTheExtractionItself:
 
 class TestTheThirteen:
     def test_there_are_exactly_thirteen_rules(self) -> None:
-        """Thirteen, and no fourteenth. Alert fatigue is the failure mode on a personal deployment.
+        """The rule file and the severity table hold the same number. Alert fatigue is the failure
+        mode on a personal deployment, so neither may grow a rule the other does not carry.
 
-        Section 18 names twelve. The thirteenth is `ClockDrifting`, which section 19's failure
-        matrix names as a row of its own and which nothing else in the deployment would notice; the
-        reasoning is beside the rule and beside `SEVERITY_BY_ALERT`.
+        `ClockDrifting` is the one that watches the host clock rather than the product, and nothing
+        else in the deployment would notice a drift; the reasoning is beside the rule and beside
+        `SEVERITY_BY_ALERT`.
         """
         assert len(alert_rules()) == len(SEVERITY_BY_ALERT)
 
@@ -932,10 +933,9 @@ class TestTheThirteen:
         """A pointer that does not resolve is worse than no pointer.
 
         The assertion above asserted the string was non-empty, and a reader concluded a runbook was
-        present: EIGHT of the twelve pointed at files that did not exist, and a previous review had
-        recommended adding a note to one of them without either of us noticing it had never been
-        written. That is this ticket's own defect class, in the guard rather than in the code: the
-        set the assertion can see is not the set its name claims to bound.
+        present: EIGHT of them pointed at files that did not exist, and one had a note recommended
+        for it that nobody noticed had never been written. The defect class is in the guard rather
+        than in the code: the set the assertion can see is not the set its name claims to bound.
 
         Resolved from the repository root, because that is what the annotation's path is relative to
         and what an operator reading the alert will type.
@@ -1071,7 +1071,7 @@ class TestDelivery:
 class TestLiveness:
     """Every process that exports a family must have an alert that fires when it stops.
 
-    The ticket's own headline finding was a whole process whose registry nothing scraped. The
+    This deployment has shipped a whole process whose registry nothing scraped. The
     equivalent silence is a process nothing watches: every plan-pipeline, calendar and token family
     is recorded in the worker, so a dead worker leaves a frozen gauge reading healthy and an absent
     counter with no increase.
@@ -1304,7 +1304,7 @@ class TestTheCrossing:
 
 
 class TestTheSpecInventoryIsAFloor:
-    """Section 18's own tables, which no exemption can absorb.
+    """`SPEC_FAMILIES`, which no exemption can absorb.
 
     One constant rather than two overlapping lists. An empty reason puts the family on the floor; a
     reason lets it off, and the same family must then appear in `UNWATCHED` with its own. Escaping
@@ -1315,7 +1315,7 @@ class TestTheSpecInventoryIsAFloor:
         assert {base_family(one) for one in SPEC_FAMILIES} <= exported_families()
 
     def test_every_family_the_spec_names_is_watched_unless_it_says_why_not(self) -> None:
-        """Ticket 28's five orphans closed as a FLOOR rather than as a set of exemptions."""
+        """A family with an empty reason is on the FLOOR rather than in a set of exemptions."""
         on_the_floor = {base_family(one) for one, reason in SPEC_FAMILIES.items() if not reason}
 
         assert on_the_floor <= watched_families()
@@ -1517,10 +1517,10 @@ class TestTheDashboards:
         assert "container_memory_working_set_bytes" in queries
 
     def test_the_maintainer_s_cost_is_stated_as_assemblies_and_probes(self) -> None:
-        """Note 7: the maintainer performs roughly 288 ASSEMBLIES AND PROBES a day.
+        """The maintainer performs roughly 288 ASSEMBLIES AND PROBES a day.
 
         The assembly is the cost. A panel that named only the probes would understate the dominant
-        one by an order of magnitude, which is the correction ticket 43 made to the spec.
+        one by an order of magnitude.
         """
         text = dashboard_text("system.json")
 

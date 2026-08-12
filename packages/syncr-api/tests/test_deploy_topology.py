@@ -1,6 +1,6 @@
 """The deployed topology, read from the Compose files the deployment actually composes.
 
-Five claims a machine can check, and every one of them is a property the ticket states rather than a
+Five claims a machine can check, and every one of them is a property of the deployment rather than a
 style preference:
 
 - **The tunnel is the only ingress.** No service in the deployed stack publishes a host port.
@@ -9,7 +9,7 @@ style preference:
 - **Every image is pinned by digest.** Literally for a third-party image, and by a variable with no
   default for the four this repository builds, so a missing digest ABORTS compose rather than
   floating to `latest`.
-- **Every service declares a memory limit**, and each matches section 19's resource budget.
+- **Every service declares a memory limit**, and each matches `MEMORY_LIMITS` below.
 - **The nightly one-shots are not resident**, so nothing that should run once a day is a service.
 
 READ FROM `docker compose config` RATHER THAN FROM THE FILES. That is the resolved form, with
@@ -59,7 +59,7 @@ REQUIRED_VARIABLES: Final = {
     "CLOUDFLARE_TUNNEL_TOKEN": "a-token-shaped-string",
 }
 
-# Section 19's resource budget, service by service. The limits live in the BASE file rather than the
+# The resource budget, service by service. The limits live in the BASE file rather than the
 # deploy overlay, deliberately: a limit that exists only in production is a limit nobody has watched
 # work.
 MEMORY_LIMITS: Final[Mapping[str, str]] = {
@@ -72,7 +72,7 @@ MEMORY_LIMITS: Final[Mapping[str, str]] = {
     "frontend": "128M",
     "cloudflared": "128M",
     "learning": "1536M",
-    # Not in section 19's table, which names the nine above. Each of these is a small resident
+    # Beyond the nine above. Each of these is a small resident
     # process or a one-shot, and each carries a limit for the same reason the nine do.
     "node_exporter": "128M",
     "cadvisor": "256M",
@@ -81,7 +81,8 @@ MEMORY_LIMITS: Final[Mapping[str, str]] = {
     "fingerprint": "768M",
 }
 
-# WHO MAY REACH THE DATABASE. The ticket names three, and the fourth is declared with its reason:
+# WHO MAY REACH THE DATABASE. Three are the product's own processes, and the fourth is declared
+# with its reason:
 # the exporter is the only monitoring service that talks to Postgres, and Postgres is reachable from
 # nowhere else, so its scrape target has to sit on the same network.
 DATA_NET_SERVICES: Final[Mapping[str, str]] = {
@@ -203,7 +204,7 @@ class TestTheTunnelIsTheOnlyIngress:
 
 
 class TestTheDatabaseIsNotRoutable:
-    """A leaked credential is not remotely exploitable, which is the mitigation section 19 names."""
+    """A leaked credential is not remotely exploitable, which is the mitigation this buys."""
 
     def test_data_net_is_internal(self, deployed: dict[str, Any]) -> None:
         assert deployed["networks"]["data-net"]["internal"] is True
@@ -288,15 +289,15 @@ class TestEveryImageIsPinned:
 class TestTheDrillRunsWhatProductionRuns:
     """A drill that restored into a host-built image would prove the backup against something else.
 
-    The reviewer's finding, and it was invisible until the configuration was RESOLVED: every human
+    Invisible until the configuration was RESOLVED: every human
     invocation of the ops and drill recipes composed the base file alone, which names
     `syncr-api:latest` and `syncr-ops:latest`. A digest pull creates no such tag, and both files
     carry a `build:` section, so the deployed host would have BUILT the images from its checkout:
-    at step 11 of the first deployment, which is the criterion the epic cannot waive.
+    at step 11 of `docs/runbooks/deploy-and-rollback.md`, which a first deployment cannot skip.
     """
 
-    # The drill's own three, plus the two ops one-shots the recipes run. None is in section 19's
-    # resource table and all five must resolve the release's digests on a host.
+    # The drill's own three, plus the two ops one-shots the recipes run. None is one of the nine
+    # always-resident services and all five must resolve the release's digests on a host.
     DRILL_SERVICES = (
         "ops",
         "fingerprint",
@@ -365,7 +366,7 @@ class TestTheResourceBudget:
         assert stated == _bytes(limit)
 
     def test_the_steady_state_fits_the_host(self, deployed: dict[str, Any]) -> None:
-        """8 GB, and section 19 budgets ~3.3 GB resident. The LIMITS may oversubscribe; the RESIDENT
+        """8 GB on the host. The LIMITS may oversubscribe; the RESIDENT
         set is what has to fit, so this asserts the one thing a configuration can: that the services
         which are always running do not declare more than the host has."""
         resident = sum(
@@ -446,7 +447,7 @@ class TestTheFrontendServesOneOrigin:
             assert prefix in directives
 
     def test_it_does_not_proxy_the_metrics_exposition(self) -> None:
-        """Section 18: `/metrics` is reachable only inside `app-net`. Proxying it would publish
+        """`/metrics` is reachable only inside `app-net`. Proxying it would publish
         every figure about the user's own plan through the tunnel.
 
         READ OVER THE DIRECTIVES, NOT THE FILE. The first version of this read the whole text and

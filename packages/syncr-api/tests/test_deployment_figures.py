@@ -61,9 +61,9 @@ DISK_PRESSURE = RUNBOOKS / "disk-pressure.md"
 CLOCK_DRIFT = RUNBOOKS / "clock-drift.md"
 ICS_FEED_BROKEN = RUNBOOKS / "ics-feed-broken.md"
 
-# Section 21 names eleven runbooks by file name. This is that list, and the assertion below is an
+# The eleven runbooks a rule names by file name, kept as one list. The assertion below is an
 # existence check rather than a claim about content: a pointer that does not resolve is worse than
-# no pointer, and eight of twelve alert annotations pointed at nothing before ticket 54.
+# no pointer, and eight alert annotations once pointed at nothing.
 SECTION_21_RUNBOOKS: Final = (
     "bootstrap-first-user.md",
     "restore-from-backup.md",
@@ -127,8 +127,8 @@ def _number(count: int) -> str:
 def _every_runbook() -> tuple[str, ...]:
     """Every runbook in the directory, which is the set a rule about runbooks has to be stated over.
 
-    Section 21 names eleven and this deployment has sixteen: the alert-named ones ticket 54 wrote
-    are runbooks too, and one of them is the file this ticket rewrote.
+    The directory holds more than the eleven runbooks the list above names: an alert-named
+    runbook is a runbook too, and one of them is the file `$OPS` is first defined in.
     """
     return tuple(sorted(path.name for path in (repo_root() / RUNBOOKS).glob("*.md")))
 
@@ -212,7 +212,7 @@ class TestEveryRunbookSectionTwentyOneNamesExists:
 
     @pytest.mark.parametrize("name", SECTION_21_RUNBOOKS)
     def test_it_states_a_trigger(self, name: str) -> None:
-        """Section 21: each states its trigger, its steps, and how to verify it worked."""
+        """Each states its trigger, its steps, and how to verify it worked."""
         assert "## Trigger" in read(RUNBOOKS / name)
 
     def test_there_is_no_second_file_for_a_procedure_that_moved(self) -> None:
@@ -374,7 +374,6 @@ class TestTheDeployRunbook:
         assert "nmap" in runbook
 
     def test_it_names_the_restore_drill_as_a_step_of_the_first_deployment(self) -> None:
-        """The one criterion this epic cannot waive."""
         runbook = read(DEPLOY_AND_ROLLBACK)
 
         assert "restore drill" in runbook.lower()
@@ -711,8 +710,8 @@ class TestTheShellVariablesTheRunbooksUse:
     def test_it_reads_every_runbook_rather_than_the_eleven_section_21_names(self) -> None:
         """THE SET THIS BOUNDS IS EVERY FILE IN THE DIRECTORY, and the first version was not.
 
-        Parametrized over section 21's eleven, it never read `backup-stale.md`: the file whose FIRST
-        CHECK uses `$OPS`, and the one this ticket rewrote. Measured by removing that file's own
+        Parametrized over the eleven named files, it never read `backup-stale.md`: the file whose
+        FIRST CHECK uses `$OPS`. Measured by removing that file's own
         definition and watching nothing redden.
         """
         reading = set(_every_runbook())
@@ -1092,8 +1091,8 @@ class TheDestructiveTeardown:
     """Nothing in this tree may TELL anyone to run ``docker compose down -v`` against a project
     holding anything a developer or a deployment keeps.
 
-    ``down -v`` is scoped to the PROJECT, and that is the whole hazard: a local run of ticket 58's
-    own drill proved what it means, because the drill and the deployed stack share a project name
+    ``down -v`` is scoped to the PROJECT, and that is the whole hazard: a local run of the drill
+    proved what it means, because the drill and the deployed stack share a project name
     and its teardown deleted ``pgdata``, the WAL volume, the staging volume and the bucket. The code
     path was fixed to remove containers BY SERVICE NAME, and the instruction survived in a refusal
     message the operator reads while trying to recover years of data, falsely attributed to the
@@ -1179,7 +1178,7 @@ class TheDestructiveTeardown:
     # second file claiming the same exemption fails.
     DECLARING_FILE = "packages/syncr-api/tests/test_deployment_figures.py"
 
-    # The nine file types a reviewer planted the instruction in, four of which the first reading
+    # The nine file types the instruction was planted in, four of which the first reading
     # saw. The walk's positive control rather than its input: the walk reads every text file.
     PLANTED = (
         "invented.py",
@@ -1442,7 +1441,7 @@ class TestTheDestructiveTeardown:
         )
 
     def test_the_reading_sees_the_line_that_shipped(self, tmp_path: Path) -> None:
-        """The positive control, over the WALK, in every file type a reviewer planted it in.
+        """The positive control, over the WALK, in every file type the instruction was planted in.
 
         Driven against a tree of its own rather than against the repository, because the rule's
         whole point is that a NEW file cannot reintroduce the instruction, and a control that could
@@ -1514,7 +1513,7 @@ class TestTheDestructiveTeardown:
             assert len(matched) == 1, f"({path}, {fragment!r}) matches {matched}, not one line"
 
     def test_the_reading_covers_every_file_type_that_carries_the_string(self) -> None:
-        """An EXACT set rather than a count, which is what round 1 asked for on another reading.
+        """An EXACT set rather than a count.
 
         `>= 2` passed with three suffixes. It would keep passing if the walk narrowed to two, which
         is exactly how the systemd units came to be invisible.
@@ -1560,7 +1559,7 @@ class TestTheDestructiveTeardown:
     def test_the_reading_sees_a_file_in_a_directory_a_skip_list_would_have_excluded(self) -> None:
         """THE CONTROL FOR THE CLASS THAT KEPT RECURRING, stated over a real tracked path.
 
-        `frontend/dist/x.md` is the shape a reviewer planted to defeat the hand-written list:
+        `frontend/dist/x.md` is the shape that defeats a hand-written list:
         tracked, inside a directory the list named, and therefore invisible to the walk AND to the
         crossing that was supposed to catch exactly that. There is no list now, so the property to
         hold is that the reading covers a tracked file wherever it sits, including under a name a
@@ -2805,9 +2804,9 @@ def _prose_of(relative: Path) -> str:
 class TestWhyWritingToARealCalendarIsOff:
     """The default, and every statement of why, crossed against each other.
 
-    This exists because the reason drifted twice inside one ticket. The live Google suite met the
+    This exists because the reason drifted twice. The live Google suite met the
     provider, which falsified the sentence "it has never met the real API" wherever it was written.
-    Four rounds of reading found 4 sites, then 6, then 10, then 12: no reading of the tree was ever
+    Four readings of the tree found 4 sites, then 6, then 10, then 12: no reading was ever
     complete on its first attempt, which is the whole argument for a declared tuple.
 
     The guard is positive and bounded on purpose. A check that no sentence in the tree CLAIMS the
