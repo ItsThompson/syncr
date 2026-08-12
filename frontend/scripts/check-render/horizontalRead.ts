@@ -20,15 +20,15 @@ const PAGE = path.join(frontendRoot, "scripts", "check-render", "weekColumns.ts"
 
 export function horizontalRead(text: string): CheckOutcome {
   const report = parse(text);
-  if (report === null || report.error !== undefined) {
+  if (typeof report === "string") {
     return {
       findings: [
         {
           file: PAGE,
           check: "column-readings",
           message:
-            `the page reported no column geometry, so the horizontal axis of the drag was not measured: ` +
-            `${report?.error ?? "the readings could not be parsed"}. Nothing here is a claim about the drag.`,
+            `the page reported no column geometry, so the horizontal axis of the drag was not measured: ${report}. ` +
+            "Nothing here is a claim about the drag.",
         },
       ],
       notes: [],
@@ -179,12 +179,48 @@ function notesOf(report: ColumnReport): string[] {
   ];
 }
 
-function parse(text: string): ColumnReport | null {
-  if (text.trim() === "") return null;
+/**
+ * The report, or the sentence saying why there is none.
+ *
+ * THE SHAPE IS CHECKED RATHER THAN ASSERTED. A cast here would put a `TypeError` in the first check that read a field
+ * the page had not written, which kills the whole gate and takes the nine title cases with it: a crash is worse than a
+ * mis-named red, because there is no finding at all. Every way the reading can be unusable comes back through the one
+ * channel built for it.
+ */
+function parse(text: string): ColumnReport | string {
+  if (text.trim() === "") return "the page wrote nothing on the channel";
+  let parsed: unknown = null;
   try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null ? (parsed as ColumnReport) : null;
+    parsed = JSON.parse(text);
   } catch {
-    return null;
+    return "the readings are not JSON";
   }
+  if (typeof parsed !== "object" || parsed === null) return "the readings are not an object";
+  const claim = parsed as Partial<ColumnReport>;
+  if (typeof claim.error === "string") return claim.error;
+  if (!Array.isArray(claim.columns)) return "the readings carry no column list";
+  if (typeof claim.atMin !== "number" || typeof claim.clientY !== "number") {
+    return "the readings name no pointer position";
+  }
+  if (!claim.columns.every(isColumnReading)) return "a column reading is missing a figure";
+  return { atMin: claim.atMin, clientY: claim.clientY, columns: claim.columns };
+}
+
+/** Every figure a finding below reads, so a missing one is a channel fault rather than a crash in a check. */
+function isColumnReading(value: unknown): value is ColumnReading {
+  if (typeof value !== "object" || value === null) return false;
+  const claim = value as Record<string, unknown>;
+  const boxed = ["leftPx", "rightPx", "topPx", "bottomPx"].every(
+    (name) => typeof claim[name] === "number",
+  );
+  const read = [
+    "ownMin",
+    "fromPreviousMin",
+    "fromNextMin",
+    "atRightEdgeMin",
+    "pastRightEdgeMin",
+    "atLeftEdgeMin",
+    "beforeLeftEdgeMin",
+  ].every((name) => claim[name] === null || typeof claim[name] === "number");
+  return boxed && read && typeof claim.date === "string" && typeof claim.index === "number";
 }
