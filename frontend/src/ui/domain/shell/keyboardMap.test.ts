@@ -9,12 +9,13 @@
  * Without that half, the global `Escape` row would be satisfied by the week screen's `Escape`, which is the
  * confusion the scope exists to end.
  *
- * THREE MECHANISMS ANSWER A KEYSTROKE HERE AND ONLY ONE OF THEM IS LEGIBLE TO A SCAN. `useKeyBinding` is a call
- * this file can find. A `g` chord is resolved by `useScreenChords` against the screen table, so it is answered by
- * a screen's own letter plus a file that mounts the hook over that table. Anything else -- Radix's own dismiss,
- * an element's `onKeyDown` -- is invisible here and has to be declared with the mechanism named. A declaration is
- * held at both edges: it must name a row the map holds, and it must be needed, so a declaration for a row the
- * scan can already see fails rather than passing the row twice over.
+ * TWO MECHANISMS ANSWER A KEYSTROKE IN A WAY THIS FILE CAN READ, and every other one is declared. `useKeyBinding`
+ * is a call, found by reading the source. A `g` chord is resolved by `useScreenChords` against the screen table,
+ * so a chord row is answered by a screen's own letter plus a file that mounts the hook over that table. The rest
+ * are invisible here -- Radix's own dismiss, an element's own `onKeyDown`, the drag's window listener -- and a row
+ * that needs one names the mechanism. A declaration is held at both edges: it must name a row the map holds, and
+ * it must be needed, so a declaration for a row the scan can already see fails rather than passing the row twice
+ * over.
  *
  * THE OTHER DIRECTION IS NOT THIS FILE'S. A binding with no row is a gap in the overlay rather than a false
  * statement in it, and the map does not yet carry a row for every binding the routes register. */
