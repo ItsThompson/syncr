@@ -53,6 +53,15 @@ roughly one solve per solve-duration. A sustained ratio above roughly 0.3 theref
 the mechanism is failing: it means bursts are being cut short, the window is expiring mid-burst, a
 solve starts, and the next edit displaces it.
 
+**One cause of a supersession is not a window question at all, and tuning the window does nothing for
+it.** A tradeoff request never coalesces and is never debounced: it closes whatever solve is in flight,
+running included, and takes its place, because a proposal that does not contain the concession is not
+an answer to what the reader asked. So a reader working through the tradeoffs an infeasible week offers
+produces one supersession per request whatever the window is. Read
+`syncr_solve_taken_over_total` beside the ratio before changing the value: it counts the solves whose
+write was discarded mid-flight, which is the shape a tradeoff request leaves and a coalesced burst
+does not.
+
 ## What the 1500 ms was measured against, and what it was not
 
 The value comes from three figures, and only the first is a measurement of this deployment:
