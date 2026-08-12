@@ -78,4 +78,10 @@ python3 tools/invariant_labels.py --check    # the gate: every cited label has a
 
 The census reads the files in git's index whose comment spelling `tools/comments.py` declares, which covers source, the `justfile`, the compose files and `deployments/`. It reads comments and stand-alone strings only, so the solver's `ConstraintRule` vocabulary and a rule name a test fixture passes as a value are not citations. Documentation is not read: it explains labels rather than citing them, and this file names every one of them.
 
-The check is one-directional. A cited label with no row fails; a row nothing cites is only reported, because these rows outlive the comments that pointed at them.
+A row nothing cites is only reported, never failed, because these rows outlive the comments that pointed at them.
+
+## And why a comment may no longer name one
+
+The same gate fails when a comment names a label at all, because a comment is better off stating the requirement: the number tells a reader to go and look something up, and the sentence tells them what the code has to do. The trees whose comments still name labels are listed by name in `PENDING` in `tools/invariant_labels.py`, with the reason each is still true, and a listed tree that cites nothing fails too, so an entry cannot outlive the change that empties it.
+
+Between the two the gate covers one set with no gap: every file the census reads either may not name a label, or is under a tree that says why it still does.

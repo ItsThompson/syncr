@@ -29,6 +29,16 @@ not. Comments that name a label are being replaced by comments that state what i
 citations trend to none while the rows stay: the file is what a reader consults, and its rows
 outlive the last comment that pointed at them. A row nothing cites is printed, never failed.
 
+THE SECOND DIRECTION IS WHAT KEEPS A SWEPT TREE SWEPT. Once a tree's comments state their
+requirements, a label reappearing in one of them is a regression nothing above can see, because
+every label resolves and so that check stays green. :func:`bare` fails on a citation anywhere
+outside a tree :data:`PENDING` names, so the two cover one set between them and nothing falls
+between: every path the reading reads is in exactly one of the two states, and the exempt state is
+enumerated.
+
+AN EXEMPTION CANNOT OUTLIVE THE SWEEP IT WAITS FOR. A named tree that cites no label fails, so the
+entry goes with the change that empties it rather than staying behind to permit a relapse.
+
 FOR THE SAME REASON THE CONTROL ON THIS GATE KEYS ON THE READING RATHER THAN ON WHAT IT FOUND. A
 repository whose comments all state their requirement cites no label at all, and that is the state
 this one is meant to reach, so a control keyed on citations would fail on success. Zero files read,
@@ -71,6 +81,17 @@ LABEL: Final = re.compile(rf"\b(?:{'|'.join(FAMILIES)})\d{{1,2}}\b")
 # names no invariant and can have no row.
 NOT_A_LABEL: Final[Mapping[str, str]] = {
     "H99": "a fabricated rule name a solver test uses as a negative control",
+}
+
+# The trees whose comments still name labels instead of stating what they require, each with the
+# reason that is still true. A citation inside one is reported; a citation anywhere else fails.
+#
+# THIS IS THE WHOLE OF THE EXEMPTION, so the set the gate covers is every path the reading reads
+# less these prefixes. An entry is deleted by the change that leaves its tree citing nothing, and
+# the gate fails while an entry sits in front of a tree that cites none, so an exemption that has
+# stopped being true cannot go on permitting a label.
+PENDING: Final[Mapping[str, str]] = {
+    "packages/syncr-solver": "its comments still name the labels rather than stating them",
 }
 
 _ROW: Final = re.compile(r"^\|\s*`(?P<label>[A-Za-z]+\d{1,2})`\s*\|\s*(?P<states>[^|]+?)\s*\|$")
@@ -200,6 +221,39 @@ def uncited(found: Iterable[Citation], lookup: Lookup) -> list[str]:
     return sorted(lookup.rows.keys() - cited, key=_in_family_order)
 
 
+def _is_pending(path: str, pending: Mapping[str, str]) -> bool:
+    return any(path == tree or path.startswith(f"{tree}/") for tree in pending)
+
+
+def bare(taken: Census, *, root: Path, pending: Mapping[str, str] = PENDING) -> list[str]:
+    """Every label a comment names outside a pending tree, and every exemption that is spent.
+
+    The other direction of the gate. The check above asks whether a citation resolves, which stays
+    green once every label has a row, so on its own it cannot see a label coming back into a comment
+    that had been rewritten to state its requirement. This asks whether a comment names a label at
+    all, everywhere except the trees named as not yet swept.
+
+    A spent exemption fails: a named tree the reading has paths for and finds no citation in is a
+    sweep that has landed, and its entry has to go with it. Scoped to trees the reading has paths
+    for, so this holds over any repository rather than over this one's directory layout.
+    """
+    complaints = [
+        f"{citation} names {citation.label} rather than stating what it requires: replace the "
+        f"label with the sentence {LOOKUP} gives for it"
+        for citation in taken.found
+        if not _is_pending(citation.path, pending)
+    ]
+    cited = {citation.path for citation in taken.found}
+    read = {path.relative_to(root).as_posix() for path in taken.read}
+    return complaints + [
+        f"{tree} is named as not yet swept and cites no label, so that sweep has landed: delete "
+        f"its entry from PENDING in tools/invariant_labels.py"
+        for tree in sorted(pending)
+        if any(_is_pending(path, {tree: ""}) for path in read)
+        and not any(_is_pending(path, {tree: ""}) for path in cited)
+    ]
+
+
 def _in_family_order(label: str) -> tuple[str, int]:
     return (label.rstrip("0123456789"), int(label.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ")))
 
@@ -234,6 +288,10 @@ def _report(taken: Census, lookup: Lookup) -> None:
     )
     print(f"not read: {', '.join(f'{k} ({v})' for k, v in sorted(comments.SKIPPED.items()))}")
     print(f"not a label, by name: {', '.join(sorted(NOT_A_LABEL))}")
+    waiting = sorted(tree for tree in PENDING if tree in per_tree)
+    if waiting:
+        listed = ", ".join(waiting)
+        print(f"not yet swept, so a citation there is reported and not failed: {listed}")
     resolved = len(lookup.rows)
     print(
         f"\n{LOOKUP} resolves {resolved} labels; "
@@ -278,13 +336,13 @@ def main(argv: Sequence[str]) -> int:
     _report(taken, lookup)
     if "--check" not in argv:
         return 0
-    complaints = check(taken, lookup)
+    complaints = check(taken, lookup) + bare(taken, root=REPO_ROOT)
     if complaints:
         print(f"\n{len(complaints)} problem(s):", file=sys.stderr)
         for complaint in complaints:
             print(f"  {complaint}", file=sys.stderr)
         return 1
-    print(f"\nevery cited label resolves in {LOOKUP}")
+    print(f"\nevery cited label resolves in {LOOKUP}, and no swept tree names one")
     return 0
 
 

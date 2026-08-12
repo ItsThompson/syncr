@@ -24,10 +24,12 @@ from invariant_labels import (
     FAMILIES,
     LOOKUP,
     NOT_A_LABEL,
+    PENDING,
     REPO_ROOT,
     Census,
     Citation,
     Lookup,
+    bare,
     census,
     check,
     lookup_of,
@@ -292,6 +294,124 @@ class TestTheReading:
         assert check(_a_census(), lookup) == []
 
 
+class TestNoCommentNamesALabelOutsideAPendingTree:
+    """The direction that keeps a swept tree swept, and the exemption that cannot outlive its sweep.
+
+    The check crossed against the lookup cannot see this class of regression at all: every label
+    has a row, so a label coming back into a rewritten comment resolves and passes. What is asserted
+    here is the absence of the token, everywhere except the trees named as still citing them.
+
+    KEEP THE PLANTED TOKENS IN STRING VALUES, as the rest of this file does: a token written into a
+    docstring here would be a citation this repository has to answer for.
+    """
+
+    def test_the_repository_names_no_label_outside_a_pending_tree(self, head: AtHead) -> None:
+        """The property the restatement sweeps deliver, read off the tree rather than claimed."""
+        assert bare(head.taken, root=REPO_ROOT) == []
+
+    def test_every_pending_tree_is_one_the_index_carries(self) -> None:
+        """A misspelled prefix would exempt nothing and say nothing, so the suite pins the names.
+
+        The gate itself is scoped to trees the reading has paths for, because it has to hold over
+        any repository. This repository is the one whose layout can be asserted.
+        """
+        carried = {path.relative_to(REPO_ROOT).as_posix() for path in tracked(REPO_ROOT)}
+
+        for tree in PENDING:
+            assert any(path.startswith(f"{tree}/") for path in carried), tree
+
+    def test_every_pending_tree_states_why_it_is_still_pending(self) -> None:
+        assert all(PENDING.values())
+
+    def test_a_label_a_comment_names_outside_a_pending_tree_is_a_complaint(
+        self, tmp_path: Path
+    ) -> None:
+        """The mutation: one label put back into a comment, and the gate names it and the remedy."""
+        planted = tmp_path / "swept.py"
+        planted.write_text("# H9 governs this one\n", encoding="utf-8")
+
+        complaints = bare(census([planted], root=tmp_path), root=tmp_path)
+
+        assert len(complaints) == 1
+        assert "swept.py:1" in complaints[0]
+        assert "H9" in complaints[0]
+        assert str(LOOKUP) in complaints[0]
+        assert "rather than stating what it requires" in complaints[0]
+
+    def test_a_label_inside_a_pending_tree_is_reported_rather_than_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """A tree whose sweep has not landed still cites, so its citations are not this gate's."""
+        waiting = tmp_path / "waiting"
+        waiting.mkdir()
+        planted = waiting / "module.py"
+        planted.write_text("# H9 governs this one\n", encoding="utf-8")
+        taken = census([planted], root=tmp_path)
+
+        assert bare(taken, root=tmp_path, pending={"waiting": "not swept yet"}) == []
+        assert [citation.label for citation in taken.found] == ["H9"]
+
+    def test_an_exemption_the_sweep_has_emptied_fails(self, tmp_path: Path) -> None:
+        """The other edge, and the one that stops the exemption becoming permanent cover."""
+        waiting = tmp_path / "waiting"
+        waiting.mkdir()
+        (waiting / "module.py").write_text(
+            "# the solve gives way to an imported commitment\n", encoding="utf-8"
+        )
+
+        complaints = bare(
+            census([waiting / "module.py"], root=tmp_path),
+            root=tmp_path,
+            pending={"waiting": "not swept yet"},
+        )
+
+        assert len(complaints) == 1
+        assert "waiting is named as not yet swept and cites no label" in complaints[0]
+        assert "delete its entry" in complaints[0]
+
+    def test_an_exemption_for_a_tree_the_reading_never_reached_says_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Scoping, stated: a tree with no read path is a reading that cannot judge an exemption."""
+        planted = tmp_path / "module.py"
+        planted.write_text("# a comment with no citation in it\n", encoding="utf-8")
+
+        taken = census([planted], root=tmp_path)
+
+        assert bare(taken, root=tmp_path, pending={"somewhere/else": "not swept yet"}) == []
+
+    def test_an_enum_member_spelled_like_a_label_does_not_fire(self, tmp_path: Path) -> None:
+        """The identifier and the citation, told apart, which is what the vocabulary depends on.
+
+        A rule member is code: its name and the value beside it are read by the compiler rather than
+        by a maintainer looking something up. Both edges are driven on one file, because a gate that
+        stayed silent on the comment as well would pass this by being blind.
+        """
+        member = 'class ConstraintRule(StrEnum):\n    AREA_FLOOR = "H9"\n'
+        planted = tmp_path / "constraints.py"
+        planted.write_text(member, encoding="utf-8")
+
+        assert bare(census([planted], root=tmp_path), root=tmp_path) == []
+
+        planted.write_text(f"{member}# H9 is what it stands for\n", encoding="utf-8")
+
+        assert len(bare(census([planted], root=tmp_path), root=tmp_path)) == 1
+
+    def test_the_gate_fails_on_a_label_a_swept_tree_names(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Through the command, over a label that resolves: the exit the other check cannot take."""
+        monkeypatch.setattr(invariant_labels, "REPO_ROOT", _a_relapsed_repository(tmp_path))
+
+        assert main(["--check"]) == 1
+        printed = capsys.readouterr()
+        assert "rather than stating what it requires" in printed.err
+        assert "every cited label resolves" not in printed.out
+
+
 class TestTheCommandItself:
     """The two exits, driven over a repository built for the purpose.
 
@@ -369,6 +489,11 @@ def _a_repository(root: Path) -> Path:
 def _a_swept_repository(root: Path) -> Path:
     """The same, with the comment stating its requirement instead of naming a label."""
     return _a_repository_of(root, "# the solve gives way to an imported commitment\n")
+
+
+def _a_relapsed_repository(root: Path) -> Path:
+    """A swept repository whose one comment has gone back to naming a label the lookup resolves."""
+    return _a_repository_of(root, "# H1 governs this one\n")
 
 
 def _a_repository_of(root: Path, comment: str) -> Path:
