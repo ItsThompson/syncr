@@ -20,11 +20,13 @@ import { renderAt } from "../../../testing/renderRoute";
 import { GRID_H_PX } from "../../../ui/domain";
 import {
   APPLICATION,
+  DATES,
   EMPTY_WEEK_FACTS,
   ISO_WEEK,
   LEETCODE,
   SETTINGS,
   WEEK_PATH,
+  buildPlan,
   buildReadings,
   buildWeekView,
   installWeekReads,
@@ -33,6 +35,11 @@ import {
 /* The axis the fixture's own week yields: the declared bounds run 06:00 to 22:00 and no block lies outside them, so
  * the extent is 960 minutes and every column's canvas is that many minutes of pixels. */
 const EXTENT_MINUTES = 16 * 60;
+
+/** The band's own line: the block count, the unconfirmed days, and the zoom reading, as a reader reads them. */
+async function bandLine(): Promise<string> {
+  return (await screen.findByText(/h visible/)).textContent ?? "";
+}
 
 describe("the week the reader asked for", () => {
   it("renders seven columns from the payload's own zone map", async () => {
@@ -120,6 +127,58 @@ describe("the week the reader asked for", () => {
 
     expect(canvas).toHaveStyle({ height: `${atTheCap}px` });
     expect(canvas).not.toHaveStyle({ height: `${unclamped}px` });
+  });
+});
+
+/* THE COUNT OF UNCONFIRMED DAYS IS THE WEEK READ'S OWN FIGURE. The payload says nothing about any day's
+ * confirmation, so a screen deriving this from what it drew would be a second rule with less to go on than the
+ * api's, and it would disagree with the Today band about the same week. */
+describe("the week's count of unconfirmed days", () => {
+  /** How many of the week's dates the fixture's plan puts a block on, which is what counting the drawn rows reaches. */
+  const DAYS_HOLDING_A_BLOCK = new Set(
+    buildPlan().blocks.map((block) => block.interval.start.slice(0, 10)),
+  ).size;
+
+  const SERVED = 5;
+
+  it("renders the served figure rather than the one its own drawn days imply", async () => {
+    expect(DAYS_HOLDING_A_BLOCK, "the drawn days must disagree with the served figure").not.toBe(
+      SERVED,
+    );
+    expect(DATES.length, "and so must the seven columns").not.toBe(SERVED);
+    installWeekReads(buildWeekView({ readings: buildReadings({ unconfirmedDays: SERVED }) }));
+    renderAt(WEEK_PATH);
+
+    const line = await bandLine();
+    expect(line).toContain(`${SERVED} days unconfirmed`);
+    expect(line).not.toContain(`${DAYS_HOLDING_A_BLOCK} days unconfirmed`);
+    expect(line).not.toContain(`${DATES.length} days unconfirmed`);
+  });
+
+  /* NOUGHT IS PRINTED, NOT DROPPED, which is what the band's other cells do with theirs: the block count reads
+   * `0 blocks` on a week holding none. The thing that disappears at nought is Today's backfill control, which is a
+   * control with nothing to do rather than a reading with nothing to say. */
+  it("prints a nought the way the band's other cells print theirs", async () => {
+    installWeekReads(
+      buildWeekView({ readings: buildReadings({ blockCount: 0, unconfirmedDays: 0 }) }),
+    );
+    renderAt(WEEK_PATH);
+
+    const line = await bandLine();
+    expect(line).toContain("0 blocks");
+    expect(line).toContain("0 days unconfirmed");
+  });
+
+  /* THREE READINGS RATHER THAN ONE. A literal, a hard-coded plural and a figure read off a neighbouring field each
+   * satisfy one of these and not all three, and one is the direction a week that goes fully unanswered takes. */
+  it.each([
+    [1, "1 day unconfirmed"],
+    [DATES.length, `${DATES.length} days unconfirmed`],
+  ])("reads %i as `%s`", async (unconfirmedDays, reading) => {
+    installWeekReads(buildWeekView({ readings: buildReadings({ unconfirmedDays }) }));
+    renderAt(WEEK_PATH);
+
+    expect(await bandLine()).toContain(reading);
   });
 });
 

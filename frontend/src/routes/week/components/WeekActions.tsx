@@ -18,7 +18,11 @@
  *
  * THE PLAN CURRENCY IS NOT STATED HERE. It rides in the summary strip's `SCHEDULED` sub-line, BECAUSE it qualifies the
  * block count, and a band that repeated the word would be the second surface the rule exists to prevent. The count
- * here is the same figure the strip's cell reads, which is why the two cannot disagree about it. */
+ * here is the same figure the strip's cell reads, which is why the two cannot disagree about it.
+ *
+ * THE UNCONFIRMED DAYS ARE SERVED, NOT COUNTED HERE. The api decides which of a week's days have ended, hold a block
+ * and are still unanswered, and the Today band reads the same rule's answer for its own window; counting the columns
+ * this band sits above would be a second rule, and the payload carries no per-day confirmation for it to count. */
 
 import { Link } from "react-router";
 
@@ -27,6 +31,8 @@ import { Button } from "../../../ui/primitives";
 
 export interface WeekActionsProps {
   readonly blockCount: number;
+  /** Days of THIS week that have ended, hold a block and are unconfirmed, as the week read served it. */
+  readonly unconfirmedDays: number;
   readonly visibleHours: number;
   readonly hasProposal: boolean;
   /** Where the weekly session opens for this week, or null when this band IS the session. */
@@ -35,8 +41,14 @@ export interface WeekActionsProps {
   readonly onApprove: () => void;
 }
 
+/** `3 days unconfirmed`, and `1 day unconfirmed` for one. */
+function unconfirmedReading(unconfirmedDays: number): string {
+  return `${unconfirmedDays} ${unconfirmedDays === 1 ? "day" : "days"} unconfirmed`;
+}
+
 export function WeekActions({
   blockCount,
+  unconfirmedDays,
   visibleHours,
   hasProposal,
   sessionHref,
@@ -46,7 +58,8 @@ export function WeekActions({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <p className="text-eyebrow text-text-muted">
-        {blockCount} blocks · {visibleHours}h visible <KeyHint keys="z" />
+        {blockCount} blocks · {unconfirmedReading(unconfirmedDays)} · {visibleHours}h visible{" "}
+        <KeyHint keys="z" />
       </p>
       {sessionHref === null ? null : (
         <Link className="text-sm underline" to={sessionHref}>

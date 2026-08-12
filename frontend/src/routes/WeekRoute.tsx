@@ -161,6 +161,7 @@ export function WeekRoute() {
           onApprove={interaction.onApprove}
           onResolveNow={interaction.onResolveNow}
           sessionHref={sessionPath(isoWeek)}
+          unconfirmedDays={screen.readings.unconfirmedDays}
           visibleHours={interaction.visibleHours}
         />
         <SummaryStrip

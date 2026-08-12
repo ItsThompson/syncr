@@ -76,6 +76,7 @@ export function SessionMode({
           onApprove={interaction.onApprove}
           onResolveNow={interaction.onResolveNow}
           sessionHref={null}
+          unconfirmedDays={screen.readings.unconfirmedDays}
           visibleHours={interaction.visibleHours}
         />
         <SummaryStrip
