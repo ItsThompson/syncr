@@ -2,10 +2,10 @@
  *
  * WHY THIS FILE EXISTS. The unit suite renders in jsdom, which lays nothing out: `getBoundingClientRect` answers
  * zeros, `:focus-visible` never matches, no computed style is available, and forced-colors mode cannot be entered
- * at all. Every claim below is about a COMPOSED, LAID-OUT result, and the two defects item 46 found by opening a
- * browser once were both of exactly that kind: a select list rendering under a dialog's scrim at z-index 40 against
- * 50, visible and unclickable, and a form opening with the caret on its dismiss control so that `n`-then-type typed
- * nothing. Neither was reachable from a green unit suite.
+ * at all. Every claim below is about a COMPOSED, LAID-OUT result, and the two defects a browser pass over this
+ * product's forms found were both of exactly that kind: a select list rendering under a dialog's scrim at
+ * z-index 40 against 50, visible and unclickable, and a form opening with the caret on its dismiss control so
+ * that `n`-then-type typed nothing. Neither was reachable from a green unit suite.
  *
  * S21, A WHOLE PLANNING SESSION WITHOUT THE POINTER. The scenario the smoke table has carried as not automated:
  * navigate by chord, traverse blocks including a SLIVER-TIER one, pin with Shift+Down, capture with `n`, confirm
@@ -211,8 +211,8 @@ test.describe("the focus ring", () => {
       await page.keyboard.press("Tab");
       const ring = (await page.evaluate(RING)) as Ring | null;
       /* A NULL READING IS A TAB THAT LANDED ON `document.body`, which is one of the adversarial cases this file
-       * exists for: item 46 measured Radix doing exactly that after a keystroke-opened dialog. Skipping it and
-       * asserting an empty finding list would let a walk that measured NOTHING pass, so the count is asserted
+       * exists for: a browser pass measured Radix doing exactly that after a keystroke-opened dialog. Skipping it
+       * and asserting an empty finding list would let a walk that measured NOTHING pass, so the count is asserted
        * below and a stop with no element is a finding of its own. */
       if (ring === null) {
         missing.push(`tab stop ${String(index + 1)} landed on nothing focusable`);
@@ -305,8 +305,8 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
      *
      * WHAT THIS FIXTURE DOES NOT REACH is the sliver tier: no seeded week holds a block short enough to fall
      * below 13px at any available zoom, so the 8-to-13px case is exercised against the real component in
-     * `frontend/src/ui/domain/week-grid/__tests__/block.test.tsx`, by role, at that exact height. Ticket 1561
-     * carries the fixture that would bring it here. */
+     * `frontend/src/ui/domain/week-grid/__tests__/block.test.tsx`, by role, at that exact height. No fixture here
+     * brings it into a browser. */
     const LADDER_STEPS = 6;
     const tiersPresent = new Set<string>();
     for (let step = 0; step < LADDER_STEPS; step += 1) {
@@ -347,8 +347,8 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
       )
       .toBeGreaterThan(before.pins.length);
 
-    /* CAPTURE IS GLOBAL, and the caret has to be in the field: item 46 measured a form opening with the caret on
-     * its dismiss control, so `n`-then-type typed nothing at all. */
+    /* CAPTURE IS GLOBAL, and the caret has to be in the field: a browser pass measured a form opening with the
+     * caret on its dismiss control, so `n`-then-type typed nothing at all. */
     await page.keyboard.press("n");
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.type("Read the audit");
@@ -429,7 +429,7 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
      * was null -- and the slot is null BEFORE the press, so that arm was an assertion whose subject cannot vary on
      * the fixture that runs it. It is gone rather than left dormant. A 2xx here now REDDENS with what to write,
      * because the day a seed makes the approval land is the day this case has to assert what a landed approval
-     * changes; ticket 1561 owns that fixture and records the coupling.
+     * changes, and the fixture that makes it land is what records the coupling.
      */
     await render(page, week());
     /* The same determinism as the confirm step: the screen's own approve control exists once the week has arrived,

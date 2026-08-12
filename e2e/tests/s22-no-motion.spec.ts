@@ -9,13 +9,13 @@
  * The states are exercised rather than assumed: every one of the shell's routes, both weekly-session
  * modes, a week whose plan is beyond the horizon and therefore empty, and a route that does not exist.
  *
- * WHICH OF ITEM 51'S TWO PREDICTED SURFACES THIS FILE REACHES, because the answer is one of each. It
- * named both amber notice surfaces in the weekly session and singled out the PROMOTION panel as the
- * likeliest place a browser pass finds something, since it puts a `Table` inside a notice surface and
- * nothing else in the product does. That panel is NOT reached: it returns null on an empty candidate list
- * and no fixture here raises a promotion. The RAISED panel is, and the case at the foot of this file
- * asserts both facts, so the day a fixture raises a promotion it reddens. The composition itself stays
- * with ticket 1572 and the fixture it needs.
+ * WHICH OF THE TWO AMBER NOTICE SURFACES THIS FILE REACHES, because the answer is one of each. A
+ * browser pass over the weekly session names both, and singles out the PROMOTION panel as the likeliest
+ * place it finds something, since it puts a `Table` inside a notice surface and nothing else in the
+ * product does. That panel is NOT reached: it returns null on an empty candidate list and no fixture
+ * here raises a promotion. The RAISED panel is, and the case at the foot of this file asserts both
+ * facts, so the day a fixture raises a promotion it reddens. The composition itself waits on a fixture
+ * that raises one.
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
@@ -58,7 +58,7 @@ const MOTION = `(() => {
 const routes = (): readonly { readonly what: string; readonly path: string }[] => [
   { what: "a week that holds a plan", path: `/week?week=${planWeek()}` },
   { what: "a week beyond the horizon", path: `/week?week=${beyondHorizonWeek()}` },
-  // The weekly session, where item 51's two amber notice surfaces live. The raised panel renders here and
+  // The weekly session, where both amber notice surfaces live. The raised panel renders here and
   // is asserted below; the promotion panel does not, because no fixture raises a promotion.
   { what: "the weekly session", path: `/week?week=${planWeek()}&mode=session` },
   { what: "the areas screen in weekly mode", path: "/areas?mode=weekly" },
@@ -105,12 +105,11 @@ for (const route of routes()) {
 
 /* WHICH OF THE TWO AMBER NOTICE SURFACES THESE CASES ACTUALLY REACH, asserted rather than assumed.
  *
- * Item 51 predicted the promotion panel as the likeliest place a browser pass finds something, because it
- * puts a `Table` INSIDE a notice surface and nothing else in the product does. The round that added the
- * session route to the list above claimed that composition was therefore reached, and it is not:
- * `PromotionPanel` returns null on an empty candidate list, and no fixture here raises a promotion, which
- * needs repeated pins across three weeks. Measured on this fixture's session payload: `promotions: 0`,
- * `raised: 1`.
+ * The promotion panel is the likeliest place a browser pass finds something, because it puts a `Table`
+ * INSIDE a notice surface and nothing else in the product does. Adding the session route to the list
+ * above does not reach that composition: `PromotionPanel` returns null on an empty candidate list, and
+ * no fixture here raises a promotion, which needs repeated pins across three weeks. Measured on this
+ * fixture's session payload: `promotions: 0`, `raised: 1`.
  *
  * So this case states which is which, and it is written to fail if either fact changes: the day a fixture
  * raises a promotion, its second half goes red and the gap table has to be corrected. */
