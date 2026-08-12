@@ -1,6 +1,6 @@
 """Shrinkage: the three worked cases, the bound on one outlier, and the interval.
 
-The three cases are section 11's own, quoted with their figures rather than with a direction: an
+The three cases are quoted with their figures rather than with a direction: an
 assertion that the value "moved toward the mean" passes at any ``k`` and would not have caught a
 formula that divided by ``n`` instead of ``n + k``.
 """

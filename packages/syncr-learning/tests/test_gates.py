@@ -1,6 +1,6 @@
 """The maturity gates: below the threshold nothing is applied, and the two scalars are gated too.
 
-The scalar half is the gap ticket 34 flagged and nothing recorded: ``context_switch_cost`` and
+The scalar half is the harder one: ``context_switch_cost`` and
 ``churn_tolerance`` are non-nullable columns, so "below its gate" cannot be expressed as an absent
 key the way it can for the three maps. What enforces it is that the artefact takes an already-gated
 value, and the tests here drive that through the composition rather than asserting the gate function

@@ -297,7 +297,7 @@ async def seed_edit(
     """One edit event, written through the api's own repository and its own context serializer.
 
     ``measured=False`` writes the shape a row from before the measurement carries, which is what
-    `E5` leaves in the corpus permanently.
+    stays in the corpus permanently, because nothing prunes an edit event.
     """
     binding = BindingRef(
         kind=BindingKind.TASK,
@@ -461,7 +461,7 @@ class TestTheReaderResolvesWhatTheApiWrote:
     ) -> None:
         """The claim held for three of the five, and the bound IS the budget's justification.
 
-        `edit_events` is the one table `E5` forbids pruning, so it is the one that grows without
+        `edit_events` is the one table nothing prunes, so it is the one that grows without
         limit: an unbounded read of it is the one that would eventually cost the nightly budget.
         """
         area_id = await the_area(sessions, tenant)
@@ -559,7 +559,7 @@ class TestTheReaderResolvesWhatTheApiWrote:
     async def test_an_edit_written_before_the_measurement_reads_back_as_unmeasured(
         self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
     ) -> None:
-        # The corpus E5 forbids pruning. The absence has to read as a value the fit can exclude, not
+        # The corpus nothing prunes. The absence has to read as a value the fit can exclude, not
         # as a corrupt row, and this drives it through the real column.
         await seed_edit(sessions, tenant, iso_week=WEEK, measured=False)
 
@@ -606,7 +606,7 @@ class TestTheWriterAppends:
     async def test_exactly_one_version_stays_active_per_tenant(
         self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
     ) -> None:
-        # Ticket 7's partial unique index enforces it, and appending never touches the flag, so a
+        # `uq_weight_sets_tenant_id_active` enforces it, and appending never touches the flag, so a
         # run cannot make a second row claim to be the weights in use.
         await PostgresParameterWriter(sessions).append_version(tenant, an_artifact())
         await PostgresParameterWriter(sessions).append_version(tenant, an_artifact())
@@ -622,7 +622,7 @@ class TestTheWriterAppends:
     async def test_the_stored_curve_is_readable_by_the_solver_s_own_projection(
         self, sessions: async_sessionmaker[AsyncSession], tenant: TenantId
     ) -> None:
-        # The loop this ticket closes: a run writes the two fitted maps and the api reads them back
+        # Both ends of the loop: a run writes the two fitted maps and the api reads them back
         # into the value the objective applies. Without this the stored spelling would be this
         # package's private invention.
         from syncr_api.learned.weight_reading import as_weight_set
