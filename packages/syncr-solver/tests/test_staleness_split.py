@@ -14,7 +14,8 @@ and the cost is real -- an edit to a paragraph this file pins for a different re
 
 A ban runs beside the equalities, over every prose unit of every solver module, because the claim
 being corrected was stated in four places and a correction to one is what this epic keeps rejecting.
-The ban is what notices a fifth. What it cannot see is stated at the ban.
+The ban is what notices a fifth. Its width is a case rather than a claim: eighteen plausible
+restatements are driven through it, and what it still cannot see is stated at it.
 """
 
 from __future__ import annotations
@@ -227,11 +228,25 @@ def test_the_breakdown_states_that_the_split_reaches_nothing_further() -> None:
 # ---------------------------------------------------------------------------
 
 # A reader as the SUBJECT of a positive naming verb, with an input as the object. The verb has to
-# follow the reader through nothing but a modal, so a denial reads as a denial: "the reason record
-# DOES NOT name it" puts `does` between the two and matches nothing here.
-_READER: Final = r"(?:reason record|clause|panel|the interface)"
+# follow the reader through nothing but a modal or one comma-delimited aside, so a denial reads as a
+# denial: "the reason record DOES NOT name it" puts `does` between the two and matches nothing here.
+#
+# Every vocabulary here was widened once, against the eighteen restatements in `RESTATEMENTS` below.
+# The first version caught five, which is why that table is a case rather than a paragraph: a ban's
+# width is a figure, and a figure nothing reads goes stale.
+_READER: Final = r"(?:\brecords?\b|\bclauses?\b|\bpanels?\b|\bscreens?\b|the interface)"
+# The same reader where the sentence names it as an object, so the article and up to two qualifying
+# words in front of it are part of the shape: "by the reason record", "the week screen".
+_A_READER: Final = rf"(?:the |a |its |this )?(?:\w+'?s? ){{0,2}}{_READER}"
+_ASIDE: Final = r"(?:,[^.,]{0,40},)?"
 _MODALS: Final = r"(?:(?:can|could|may|will|would|still|also|already|itself)\s+)*"
-_NAMES: Final = r"(?:nam(?:e|es|ing)|says?|states?|reports?|reads?)"
+_NAMES: Final = (
+    r"(?:nam(?:e|es|ing)|says?|states?|reports?|reads?|carr(?:y|ies|ying)|hold(?:s|ing)?"
+    r"|surfac(?:e|es|ing)|expos(?:e|es|ing)|explain(?:s|ing)?|render(?:s|ing)?|show(?:s|ing)?)"
+)
+_PASSIVE: Final = (
+    r"(?:named|said|stated|reported|read|carried|held|surfaced|exposed|explained|rendered|shown)"
+)
 _AN_INPUT: Final = (
     r"which (?:input|of them|of the two|dominated)"
     r"|(?:input|one|half)s? (?:that )?dominat"
@@ -242,21 +257,27 @@ _AN_INPUT: Final = (
 BANNED: Final[tuple[tuple[str, str, str], ...]] = (
     (
         "a-reader-names-which-input",
-        rf"{_READER}\s+{_MODALS}{_NAMES}\b[^.]{{0,60}}(?:{_AN_INPUT})",
+        rf"{_READER}{_ASIDE}\s+{_MODALS}{_NAMES}\b[^.]{{0,60}}(?:{_AN_INPUT})",
         "Nothing is lost in explainability, because the reason record can still name which input "
         "dominated, and this is where it reads that from.",
     ),
     (
         "a-reader-is-what-names-it",
-        rf"(?:this|that|it) is what (?:the |a )?{_READER}\s+{_MODALS}{_NAMES}\b",
+        rf"(?:this|that|it) is what {_A_READER}{_ASIDE}\s+{_MODALS}{_NAMES}\b",
         "Which of the staleness term's two inputs dominated, and both figures. Not a cost: the "
         "term above is the cost, and this is what the reason record names.",
+    ),
+    (
+        "an-input-is-named-by-a-reader",
+        rf"(?:{_AN_INPUT})[^.]{{0,30}}(?:is|are) {_PASSIVE} by {_A_READER}",
+        "which input dominated is named by the reason record",
     ),
 )
 
 # The other edge. Each is the SHAPE of a denial rather than a whole sentence, because what the ban
 # must admit is the shape: a reader named as what does NOT carry the input, and a clause named as
-# carrying the term instead.
+# carrying the term instead. Every one is a fragment this package now states, so a widening that
+# swallowed a denial fails here rather than in review.
 ADMITTED: Final[tuple[tuple[str, str], ...]] = (
     ("the-record-does-not-name-it", "and the reason record does not name it"),
     ("the-clause-names-the-term", "The ``dominant`` clause names the TERM, ``staleness``"),
@@ -265,6 +286,40 @@ ADMITTED: Final[tuple[tuple[str, str], ...]] = (
         "the `dominant` clause carries that term rather than either input",
     ),
     ("the-split-names-it-instead", "named so the split can say which dominated"),
+    ("the-breakdown-carries-it", "Which input dominated is carried by the objective BREAKDOWN"),
+    ("no-clause-and-no-column", "no clause of a reason record and no stored column carries it"),
+    (
+        "the-record-says-what-it-does-say",
+        "so a block's record says the week is falling behind and not which half of it is",
+    ),
+)
+
+# Eighteen restatements of the claim, in the shapes a writer would plausibly reach for. The first
+# version of the ban caught five: two verb vocabularies, an aside between a reader and its verb, a
+# reader the list did not hold, and the passive all walked past it.
+#
+# `the-clauses-own-verb` is the one that mattered. `carries` is the verb the corrected field comment
+# uses, so the register this package now writes in was the register the ban could not read, and a
+# writer copying the corrected wording would have reached for exactly the word it was blind to.
+RESTATEMENTS: Final[tuple[tuple[str, str], ...]] = (
+    ("surfaces", "the reason record surfaces which input dominated"),
+    ("exposes", "the reason record exposes which input dominated"),
+    ("explains", "the reason record explains which input dominated"),
+    ("the-clauses-own-verb", "the clause carries the dominant input"),
+    ("holds", "the clause holds which of the two dominated"),
+    ("renders", "the panel renders which input dominated"),
+    ("shows", "the clause shows which input dominated"),
+    ("an-aside", "the reason record, for every block, names which input dominated"),
+    ("a-longer-aside", "the clause, on every block of the week, says which input dominated"),
+    ("a-screen", "the week screen names which input dominated"),
+    ("a-blocks-record", "the block's record names which input dominated"),
+    ("a-bare-record", "a record carries the dominant input"),
+    ("the-passive", "which input dominated is named by the reason record"),
+    ("the-passive-carried", "which input dominated is carried by the clause"),
+    ("the-passive-reported", "which of the two dominated is reported by the panel"),
+    ("the-original", "the reason record can still name which input dominated"),
+    ("the-deictic", "this is what the reason record names"),
+    ("the-deictic-widened", "it is what the panel surfaces"),
 )
 
 
@@ -278,6 +333,16 @@ def test_the_ban_matches_the_claim_where_it_was_written(
     assert re.search(pattern, shape, re.IGNORECASE) is not None, name
 
 
+@pytest.mark.parametrize(("name", "shape"), RESTATEMENTS, ids=[row[0] for row in RESTATEMENTS])
+def test_the_ban_catches_a_plausible_restatement_of_the_claim(name: str, shape: str) -> None:
+    # The width, as a figure. Each of these says the thing the correction denies, in a register the
+    # first version of the ban could not read, and this is what stops the vocabularies from being an
+    # opinion about what a writer will reach for.
+    caught = [row[0] for row in BANNED if re.search(row[1], shape, re.IGNORECASE)]
+
+    assert caught, name
+
+
 @pytest.mark.parametrize(("name", "shape"), ADMITTED, ids=[row[0] for row in ADMITTED])
 def test_the_ban_admits_a_sentence_that_denies_the_claim(name: str, shape: str) -> None:
     # The other edge. A ban wide enough to catch the assertion and its denial would force the
@@ -289,11 +354,15 @@ def test_the_ban_admits_a_sentence_that_denies_the_claim(name: str, shape: str) 
 def test_no_module_of_the_solver_says_a_reader_names_which_input_dominated() -> None:
     """The population, read off the package rather than listed.
 
-    WHAT THIS CANNOT SEE. A claim whose input object sits BEFORE the reader's verb and whose
-    sentence is not the deictic form the second pattern spells: the one unit of that shape in this
-    package is pinned by equality above instead. A claim in words neither pattern spells. A claim in
-    a string passed as a value rather than standing alone, which is not prose. A comment after code
-    on the same line, which ``comment_blocks`` does not read.
+    WHAT THIS CANNOT SEE, in the shapes measured rather than the one first declared. A reader this
+    vocabulary does not hold, since the list is closed and "the week grid" is as plausible as "the
+    week screen". A naming verb outside the twelve, and the verb set is the vocabulary that let five
+    restatements past the first version. An aside between a reader and its verb that is not
+    comma-delimited: "the reason record for every block names it" passes. A claim whose input object
+    sits BEFORE the reader's verb outside the two forms the second and third patterns spell; the one
+    unit of that shape in this package is the field comment, pinned by equality above. A claim in a
+    string passed as a value rather than standing alone, which is not prose. A comment after code on
+    the same line, which ``comment_blocks`` does not read.
     """
     found: list[str] = []
     for path in solver_modules():

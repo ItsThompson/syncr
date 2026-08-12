@@ -163,8 +163,8 @@ def inputs_named_in(record: ReasonRecord) -> tuple[str, ...]:
 def _values(value: object) -> Iterator[str]:
     """Every field value of ``value`` as text, reaching into any dataclass it holds."""
     if is_dataclass(value) and not isinstance(value, type):
-        for field in fields(value):
-            yield from _values(getattr(value, field.name))
+        for held in fields(value):
+            yield from _values(getattr(value, held.name))
         return
     yield str(value)
 
