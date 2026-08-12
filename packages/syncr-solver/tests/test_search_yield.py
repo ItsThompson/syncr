@@ -35,8 +35,8 @@ from tests.search_yield import Acceptance, Yield, constructed, descend
 
 SHIPPED = SolveBudget()
 
-# The reference week's descent, measured at `136b874b` through `python -m tests.measure_solve yield`
-# and reproduced by the cases below. 184 iterations rather than the budget's 200, because this week
+# The reference week's descent, measured through `python -m tests.measure_solve yield` and
+# reproduced by the cases below. 184 iterations rather than the budget's 200, because this week
 # reaches a local optimum: the generator is exhausted with nothing left that improves the plan.
 A_REFERENCE_PROFILE = (
     pytest.param(RELOCATE, 121, 7, id="relocate"),
