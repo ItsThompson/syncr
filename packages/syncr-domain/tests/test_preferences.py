@@ -164,8 +164,8 @@ class TestP3TheDailyCapIsAnAreasAlone:
         cap is for; the ideal duration is the field that owes the grid, and it is refused off it two
         classes down.
 
-        The Areas screen rests on this: it authors the cap through a plain figure field
-        rather than a quarter-hour stepper, and a stepper wrote 105 for a typed 100.
+        The Areas screen rests on this: it authors the cap through a plain figure field rather
+        than a quarter-hour stepper, and a stepper wrote 105 for a typed 100.
         """
         # A floor on the parametrization: a multiple of the snap here would make the case vacuous.
         assert minutes % SNAP_MINUTES != 0
