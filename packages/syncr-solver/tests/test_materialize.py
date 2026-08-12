@@ -20,11 +20,12 @@ from __future__ import annotations
 import dataclasses
 import inspect
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 
 from syncr_domain.gaps import EmptySlotReason, ForbiddenScope, SlotContext, gutter_label
-from syncr_domain.identity import BindingKind, Origin, TransitLeg, block_id
+from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, block_id
 from syncr_domain.reasons import Bound, DerivationSource
 from syncr_solver import materialize
 from syncr_solver.constraints import ConstraintRule
@@ -36,8 +37,10 @@ from tests.materialized_weeks import (
     CAREER,
     FITNESS,
     WEEK,
+    a_block,
     a_concrete_entry,
     a_frame_entry,
+    a_live_plan,
     a_prep_block,
     a_recovery_window,
     a_slot,
@@ -50,9 +53,6 @@ from tests.materialized_weeks import (
 )
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
-    from syncr_domain.identity import BindingRef
     from syncr_domain.plan import Block, PlanDocument
     from syncr_domain.reasons import Clause
     from syncr_solver.inputs import SolveInputs
@@ -526,6 +526,33 @@ def test_a_candidate_over_a_commitment_is_refused_and_the_refusal_names_the_rule
             colliding.interval,
             "Kontron Placement Interview",
         )
+    ]
+
+
+def test_a_candidate_over_a_block_that_has_begun_is_refused_by_the_span_the_week_spent() -> None:
+    # Derivation is the caller that seeds nothing: it places what nothing had to choose, and it
+    # honours no pin and carries no past block. So the spans the week has already spent reach the
+    # occupancy rules through the state's own indexes, and an entry over one of them is refused
+    # rather than placed on top of time that has gone.
+    gym = BindingRef.for_task(UUID(int=61))
+    began = a_block(binding=gym, interval=between(8.5, 9.5), title="Gym")
+    colliding = a_concrete_entry(interval=between(9, 9.25), title="Shower")
+
+    materialized = derive(
+        a_week(
+            live_plan=a_live_plan(began),
+            shadow_blocks=(),
+            template_entries=(colliding,),
+        ),
+        cause=MaterializeCause.PHASE1,
+    )
+
+    assert [
+        (rejection.rule, rejection.window, rejection.detail) for rejection in materialized.blocked
+    ] == [(ConstraintRule.BLOCK_OVERLAP, colliding.interval, "Gym")]
+    assert [block.origin for block in materialized.document.blocks] == [
+        Origin.ANCHOR,
+        Origin.FRAME,
     ]
 
 

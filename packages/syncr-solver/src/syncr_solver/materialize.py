@@ -25,8 +25,9 @@ commitments. They are placed as they arrive.
 
 Everything else derivation determines is CHECKED, against that space and against what is already
 placed. A buffer or a concrete entry that would overlap an anchor, an absolute forbidden window,
-the frame, or an earlier placement is refused, and the refusal names the rule and the window. So
-materialization never creates an overlap of its own, which is what H4 binds.
+the frame, a span the week has already begun, or an earlier placement is refused, and the refusal
+names the rule and the window. So materialization never creates an overlap of its own, which is
+what H4 binds.
 
 Buffers are checked before entries, because a buffer's geometry is cast by an immovable
 commitment while an entry is the shape the user declared for the day, and an anchor colliding
@@ -36,10 +37,11 @@ with a materialized entry is a conflict the user resolves rather than one this f
 
 No content is bound, so no habit occurrence and no task appears. No pin is honoured and no past
 block is carried: a pin is the user's own choice about a placement, and reporting one needs the
-two clauses a chosen placement carries. For the fallback job the omission costs nothing, because a
-week with no plan has no pins to honour. Every block here carries exactly one clause, the ``bound``
-clause naming its determinant, so a derived plan satisfies the reason-record minimum with no
-exception carved out for it.
+two clauses a chosen placement carries. A span that has already begun is still refused to a
+candidate, because carrying no block for it is not the same as placing an entry over time that has
+gone. For the fallback job the omission costs nothing, because a week with no plan has no pins to
+honour. Every block here carries exactly one clause, the ``bound`` clause naming its determinant,
+so a derived plan satisfies the reason-record minimum with no exception carved out for it.
 """
 
 from __future__ import annotations

@@ -25,6 +25,10 @@ somewhere at all, and H4 and H12 whether this candidate IS the user's own placem
 lookup by :class:`~syncr_domain.identity.BindingRef` rather than a scan, so no ordering decides
 the answer and one binding has one answer.
 
+H4 reads the started index too, for the spans rather than for the bindings: what a caller seeded
+is the caller's own phase, and a rule that could see nothing else would be blind to time the week
+has already begun whenever a caller stated none of it.
+
 **A pin outranks derivation in the immovable index.** A prep or transit block is fixed by
 derivation, and the user may still pin one elsewhere, which is how a longer-than-usual commute is
 expressed. Composed the other way, that pin would be refused for not being where derivation put
@@ -189,7 +193,8 @@ class PartialPlan:
     off_plan: tuple[OffPlanPeriod, ...]
     # H8 reads the daily cap, H9 the floor still to reserve
     areas: tuple[AreaBudget, ...]
-    # H10. The bindings whose block has begun, at the span it begun in
+    # H10, and H4 for the spans a candidate may not sit on. The bindings whose block has begun, at
+    # the span it begun in
     started: Mapping[BindingRef, Held]
     # H11. Every binding the solver may not move, in either sense
     immovable: Mapping[BindingRef, Held]

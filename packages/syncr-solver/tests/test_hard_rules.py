@@ -731,8 +731,10 @@ def test_the_rich_week_admits_a_measurable_share_of_what_it_is_offered() -> None
 
 
 def test_the_rich_week_admits_a_candidate_at_all() -> None:
+    # Placed in the early afternoon, which this week leaves free: 08:00 is the span its live plan
+    # has already begun, and a candidate there is refused whether or not a caller seeded it.
     attempt = place(
-        (a_candidate(between(8, 9), binding=READING),), PartialPlan.of(RICH_WEEK), HARD_RULES
+        (a_candidate(between(12.5, 13.5), binding=READING),), PartialPlan.of(RICH_WEEK), HARD_RULES
     )
 
     assert len(attempt.placed) == 1

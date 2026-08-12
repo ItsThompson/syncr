@@ -20,9 +20,11 @@ from syncr_solver.constraints import ConstraintCheck, ConstraintRule
 from syncr_solver.occupancy import (
     INHERITED_FRAME,
     OCCUPANCY_RULES,
+    block_overlap,
     forbidden_area,
     forbidden_window,
 )
+from syncr_solver.rules import HARD_RULES
 from syncr_solver.state import PartialPlan, Placement
 from tests.materialized_weeks import (
     CAREER,
@@ -449,6 +451,96 @@ def test_a_pin_moved_off_its_own_interval_is_no_longer_the_users_own_placement()
 
     assert rejection is not None
     assert rejection.rule is ConstraintRule.BLOCK_OVERLAP
+
+
+def test_a_candidate_over_a_block_that_has_begun_is_refused_though_nothing_was_seeded() -> None:
+    # What a caller seeds is a phase of the caller's, and a hard rule may not depend on it: the
+    # state indexes the week's own started blocks whatever the caller passed, so H4 reads those
+    # rather than resting on a contract nothing enforces.
+    gym = BindingRef.for_task(UUID(int=1))
+    week = inputs(live_plan=a_live_plan(a_block(binding=gym, interval=between(8, 9), title="Gym")))
+    candidate = a_candidate(between(8.5, 9.5))
+
+    rejection = a_check().check(candidate, PartialPlan.of(week))
+
+    assert rejection is not None
+    assert (rejection.rule, rejection.window, rejection.detail) == (
+        ConstraintRule.BLOCK_OVERLAP,
+        candidate.interval,
+        "Gym",
+    )
+
+
+def test_a_candidate_over_a_pin_is_not_refused_because_the_overlap_would_be_the_users_own() -> None:
+    # The other side of the same reading, and the reason it stops at the spans that have begun. A
+    # pin is the one immovable a person chose, and the overlap it makes with the shape of the user's
+    # own day is the user's too: refused here, a pin would delete the entries it lands on rather
+    # than sit over them. Derivation is the caller this bites, since it honours no pin and offers
+    # the day's own entries.
+    gym = BindingRef.for_task(UUID(int=1))
+    pinned = between(16, 17, day=4)
+    week = inputs(
+        pins=(a_pin(binding=gym, interval=pinned),),
+        live_plan=a_live_plan(a_block(binding=gym, interval=pinned, title="Gym")),
+    )
+
+    assert a_check().check(a_candidate(between(16.5, 17.5, day=4)), PartialPlan.of(week)) is None
+
+
+def test_the_span_holding_a_candidates_own_content_is_not_what_h4_refuses_it_against() -> None:
+    # The other edge of the exception above. A candidate at the span that holds its own content is
+    # the placement being preserved, and refusing it would drop a block the week already has.
+    gym = BindingRef.for_task(UUID(int=1))
+    began = between(8, 9)
+    state = PartialPlan.of(
+        inputs(live_plan=a_live_plan(a_block(binding=gym, interval=began, title="Gym")))
+    )
+
+    assert a_check().check(a_candidate(began, binding=gym, title="Gym"), state) is None
+
+
+def test_a_candidate_moved_off_the_span_holding_it_is_refused_by_the_rule_owning_the_move() -> None:
+    # So the exception above is not a hole. H4 says nothing about a candidate's own content, and
+    # the rules that do are the two whose subject is the move: the moment has passed, or a person
+    # put it there. Driven through the whole table, because that is where the two are in force.
+    gym, reading = BindingRef.for_task(UUID(int=1)), BindingRef.for_task(UUID(int=2))
+    state = PartialPlan.of(
+        inputs(
+            live_plan=a_live_plan(a_block(binding=gym, interval=between(8, 9), title="Gym")),
+            pins=(a_pin(binding=reading, interval=between(16, 17, day=4)),),
+        )
+    )
+    began = a_candidate(between(8.5, 9.5), binding=gym, title="Gym")
+    moved = a_candidate(between(16.5, 17.5, day=4), binding=reading, title="Reading")
+
+    assert block_overlap(began, state) is None
+    assert block_overlap(moved, state) is None
+    refusals = [ConstraintCheck(HARD_RULES).check(one, state) for one in (began, moved)]
+    assert [rejection.rule for rejection in refusals if rejection is not None] == [
+        ConstraintRule.PAST_BLOCK,
+        ConstraintRule.IMMOVABLE_BLOCK,
+    ]
+
+
+def test_two_held_spans_over_one_candidate_report_the_earlier_in_either_arrival_order() -> None:
+    # The two indexes are keyed by binding rather than sorted, so the member a candidate is
+    # refused against is chosen by the same order the sorted collections are held in: permuting an
+    # input list would otherwise change a reason clause while changing no placement.
+    gym, reading = BindingRef.for_task(UUID(int=1)), BindingRef.for_task(UUID(int=2))
+    early = a_block(binding=gym, interval=between(8, 9), title="Gym")
+    late = a_block(binding=reading, interval=between(8.5, 9.5), title="Reading")
+    candidate = a_candidate(between(8.75, 9.25))
+
+    forwards = a_check().check(
+        candidate, PartialPlan.of(inputs(live_plan=a_live_plan(early, late)))
+    )
+    backwards = a_check().check(
+        candidate, PartialPlan.of(inputs(live_plan=a_live_plan(late, early)))
+    )
+
+    assert forwards is not None
+    assert forwards == backwards
+    assert forwards.detail == "Gym"
 
 
 def test_the_state_holds_its_members_in_span_order_whatever_order_they_arrived_in() -> None:

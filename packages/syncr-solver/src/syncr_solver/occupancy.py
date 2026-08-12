@@ -32,11 +32,12 @@ from typing import TYPE_CHECKING, Final
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope
 from syncr_domain.identity import BindingKind
 from syncr_solver.constraints import Blocked, ConstraintRule
+from syncr_solver.ordering import held_key
 
 if TYPE_CHECKING:
     from syncr_domain.gaps import ForbiddenWindow
     from syncr_solver.constraints import Rule
-    from syncr_solver.state import PartialPlan, Placement
+    from syncr_solver.state import Held, PartialPlan, Placement
 
 # What a rejection names when the span that rejected a candidate is a routine occurrence the
 # preceding week owns. It carries no title of its own: the week that owns the occurrence holds the
@@ -96,19 +97,50 @@ def block_overlap(candidate: Placement, state: PartialPlan) -> Blocked | None:
     """H4. A solve never creates an overlap, which binds the solve rather than the plan.
 
     A user-authored overlap and an anchor landing on a planned block are both legitimate contents
-    of a week. What this forbids is one placement of this solve overlapping another.
+    of a week. What this forbids is one placement of this solve overlapping another, or overlapping
+    a span the week has already begun.
 
     So a candidate at the interval the user pinned it to is never refused here, whatever it lands
     on: the overlap it creates is the user's own, and refusing it would drop the pin rather than
     preserve the overlap. Every other candidate gives way, which is what makes an overlap in a
     solved week always either the user's or an external commitment's.
+
+    **What the caller seeded is read first, and the week's own begun spans after it.** Both
+    readings answer the same question, and a placement a caller stated carries the title the solve
+    gave it, so a state holding one names it the way the rest of that solve's refusals do.
     """
     if state.pins.get(candidate.binding) == candidate.interval:
         return None
     for placement in state.placed:
         if placement.interval.overlaps(candidate.interval):
             return Blocked(ConstraintRule.BLOCK_OVERLAP, candidate.interval, placement.title)
-    return None
+    begun = _begun_over(candidate, state)
+    if begun is None:
+        return None
+    return Blocked(ConstraintRule.BLOCK_OVERLAP, candidate.interval, begun.detail)
+
+
+def _begun_over(candidate: Placement, state: PartialPlan) -> Held | None:
+    """The span the week has already begun that this candidate would sit on, or nothing.
+
+    Read from the state's own index rather than from what a caller passed, so a caller that seeds
+    nothing cannot leave this rule unable to see time that has gone. The earliest of them when more
+    than one qualifies, through the order those spans are held in, so a permuted input list cannot
+    change which one a clause names.
+
+    A candidate's OWN content is passed over. At the span that holds it, refusing would drop a
+    block the week already has, and at any other span the refusal belongs to H10, which says the
+    truer thing: the moment has passed.
+    """
+    return min(
+        (
+            held
+            for binding, held in state.started.items()
+            if binding != candidate.binding and held.interval.overlaps(candidate.interval)
+        ),
+        key=held_key,
+        default=None,
+    )
 
 
 def forbidden_area(candidate: Placement, state: PartialPlan) -> Blocked | None:
