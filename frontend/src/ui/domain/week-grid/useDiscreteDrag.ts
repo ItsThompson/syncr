@@ -29,8 +29,14 @@
  * and cancels, rather than being clamped to an edge nobody aimed at. The horizontal pair is not symmetry for its own
  * sake: without it a drag over the NEXT column was read against the starting one, so dragging Monday's block over
  * Tuesday at 13:00 pinned it to MONDAY at 13:00 -- a placement the reader never stated, in a column they had left.
- * Whether a drag should instead RETARGET to the column under the cursor is ticket 1494, and it is a product question
- * rather than this module's.
+ *
+ * SO THE DRAG HAS ONE DEGREE OF FREEDOM, THE MINUTE, AND THAT IS A DECISION RATHER THAN A MISSING FEATURE. A pointer
+ * over another column does not retarget, and no drag reaches another week, because none leaves the column it began
+ * in. `docs/DESIGN-LANGUAGE.md` § Keyboard settles it: `Shift+Up` and `Shift+Down` are glossed "move by 15 minutes
+ * and pin. the keyboard equivalent of the drag", and the table lists no horizontal pair, so the gesture the document
+ * calls this drag's equivalent cannot change days either. `h` and `l` move the SELECTION between columns and move no
+ * block. § The week grid carries the refusal and the two questions that follow from it, so a reader of that document
+ * does not have to infer the rule from this file.
  *
  * THE POINTER IS CAPTURED, so a release anywhere reaches this drag. Without capture a mouse released outside the
  * viewport delivers no `pointerup` to the page at all: the drag stayed live, the marker stayed drawn, and the next
@@ -215,7 +221,8 @@ function dropOf(live: Live): BlockDrop | null {
  *
  * BOTH AXES ARE BOUNDED BY THE SAME BOX. A pointer outside it vertically is over no quarter at all; one outside it
  * horizontally is over ANOTHER COLUMN, and reading that position against the starting column produced a placement in
- * a day the reader had left. Whether a drag should retarget to the column under the cursor is ticket 1494.
+ * a day the reader had left. A pointer over another column states nothing here rather than retargeting, which is the
+ * decision the header states.
  *
  * THE SNAP IS COMPUTED HERE RATHER THAN THROUGH `snapMinutes`, which floors at zero. A column's minute offset may be
  * negative: a frame occurrence beginning at 23:00 on Sunday is a block of Monday's column, so Monday's axis starts
