@@ -30,7 +30,7 @@ started-block rule winning for that input -- the block stays where it ran, and t
 while ``inheritance._placed`` seeds a pinned block at the pin unconditionally, which would move it.
 The two disagreed because the input was unreachable. It stays unreachable: the route refuses the
 drag, and a pin whose interval the week has since reached is not carried, so the block reaches the
-checker with no pin against it and stays where it ran, exactly as that module's own prose says.
+checker with no pin against it and stays where it ran, exactly as ``immovability`` says.
 
 **A pin whose interval elapses while its block lives only in a pending proposal.** Carried, the
 solver builds a block for pinned content the live plan does not hold, the guard reads that block as

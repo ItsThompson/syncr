@@ -1019,7 +1019,7 @@ def test_no_mutation_leaves_its_flip_to_whatever_next_reads_the_week(
 
 
 # --------------------------------------------------------------------------------
-# no read path appends one
+# No read path appends one
 # --------------------------------------------------------------------------------
 
 

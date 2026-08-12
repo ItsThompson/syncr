@@ -421,7 +421,7 @@ def test_a_week_with_no_plan_carries_no_verdict(
 
 
 # --------------------------------------------------------------------------------
-# the payload writes nothing, including no VerdictEvent
+# The payload writes nothing, including no VerdictEvent
 # --------------------------------------------------------------------------------
 
 

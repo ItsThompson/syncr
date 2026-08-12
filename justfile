@@ -614,7 +614,9 @@ lint-hooks:
 #
 # A comment citing an invariant by its number points at a document this repository does not contain,
 # and `docs/invariants.md` is the only thing that resolves one. The census reads the index and fails
-# on a label with no row there, so a comment cannot cite a requirement a reader cannot look up.
+# in two directions: a label with no row there, and a label named in a comment at all, outside the
+# trees `PENDING` lists as still naming them. So a reader meets the requirement rather than a number,
+# and a tree that has been swept cannot quietly acquire one again.
 #
 # `tools/` is not a workspace member, so `just lint-style` and `just typecheck` never enter it, which
 # is the same hole `lint-ops` exists to close for `deployments/`. Its tests run here too rather than

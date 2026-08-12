@@ -295,7 +295,7 @@ async def test_the_transition_is_recorded_within_one_tick_of_the_week_becoming_i
 
 
 # --------------------------------------------------------------------------------
-# only on a transition
+# Only on a transition
 # --------------------------------------------------------------------------------
 
 
@@ -359,7 +359,7 @@ async def test_the_close_of_an_episode_is_recorded_too(
 
 
 # --------------------------------------------------------------------------------
-# a feasible flip, never a provenance change
+# A feasible flip, never a provenance change
 # --------------------------------------------------------------------------------
 
 
@@ -407,7 +407,7 @@ async def _seed_a_solver_row(
 
 
 # --------------------------------------------------------------------------------
-# one instant per tick
+# One instant per tick
 # --------------------------------------------------------------------------------
 
 

@@ -29,6 +29,7 @@ from invariant_labels import (
     Census,
     Citation,
     Lookup,
+    _is_pending,
     bare,
     census,
     check,
@@ -313,15 +314,18 @@ class TestNoCommentNamesALabelOutsideAPendingTree:
         """A misspelled prefix would exempt nothing and say nothing, so the suite pins the names.
 
         The gate itself is scoped to trees the reading has paths for, because it has to hold over
-        any repository. This repository is the one whose layout can be asserted.
+        any repository. This repository is the one whose layout can be asserted. Asked through the
+        gate's own predicate, so an entry naming a single file satisfies both or neither.
         """
         carried = {path.relative_to(REPO_ROOT).as_posix() for path in tracked(REPO_ROOT)}
 
         for tree in PENDING:
-            assert any(path.startswith(f"{tree}/") for path in carried), tree
+            assert any(_is_pending(path, (tree,)) for path in carried), tree
 
     def test_every_pending_tree_states_why_it_is_still_pending(self) -> None:
-        assert all(PENDING.values())
+        """A reason is a sentence a reader can act on, so a token or a space is not one."""
+        for tree, reason in PENDING.items():
+            assert len(reason.split()) >= 4, tree
 
     def test_a_label_a_comment_names_outside_a_pending_tree_is_a_complaint(
         self, tmp_path: Path

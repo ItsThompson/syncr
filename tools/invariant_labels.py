@@ -221,7 +221,7 @@ def uncited(found: Iterable[Citation], lookup: Lookup) -> list[str]:
     return sorted(lookup.rows.keys() - cited, key=_in_family_order)
 
 
-def _is_pending(path: str, pending: Mapping[str, str]) -> bool:
+def _is_pending(path: str, pending: Iterable[str]) -> bool:
     return any(path == tree or path.startswith(f"{tree}/") for tree in pending)
 
 
@@ -249,8 +249,8 @@ def bare(taken: Census, *, root: Path, pending: Mapping[str, str] = PENDING) -> 
         f"{tree} is named as not yet swept and cites no label, so that sweep has landed: delete "
         f"its entry from PENDING in tools/invariant_labels.py"
         for tree in sorted(pending)
-        if any(_is_pending(path, {tree: ""}) for path in read)
-        and not any(_is_pending(path, {tree: ""}) for path in cited)
+        if any(_is_pending(path, (tree,)) for path in read)
+        and not any(_is_pending(path, (tree,)) for path in cited)
     ]
 
 

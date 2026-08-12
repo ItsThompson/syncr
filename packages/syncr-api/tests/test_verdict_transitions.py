@@ -194,7 +194,7 @@ def test_the_row_carries_the_version_the_verdict_was_computed_against() -> None:
 
 
 # --------------------------------------------------------------------------------
-# what counts as a transition, and the maintainer's narrowing of it
+# What counts as a transition, and the maintainer's narrowing of it
 # --------------------------------------------------------------------------------
 
 
@@ -357,7 +357,7 @@ def test_the_six_members_are_the_only_ones_this_package_writes() -> None:
 
 
 # --------------------------------------------------------------------------------
-# the episode
+# The episode
 # --------------------------------------------------------------------------------
 
 

@@ -73,7 +73,7 @@ Two numbers, `H5` and `H15`, name rules that were withdrawn. Their rows stay, an
 
 ```
 python3 tools/invariant_labels.py            # what the tree cites, per label and per tree
-python3 tools/invariant_labels.py --check    # the gate: every cited label has a row
+python3 tools/invariant_labels.py --check    # the gate: every cited label has a row, and no swept tree names one
 ```
 
 The census reads the files in git's index whose comment spelling `tools/comments.py` declares, which covers source, the `justfile`, the compose files and `deployments/`. It reads comments and stand-alone strings only, so the solver's `ConstraintRule` vocabulary and a rule name a test fixture passes as a value are not citations. Documentation is not read: it explains labels rather than citing them, and this file names every one of them.
