@@ -51,7 +51,7 @@ export function ShellLayout({ notices }: ShellLayoutProps) {
       <TopBar notices={notices} />
       <div className="flex grow">
         <SidebarNav screens={SCREENS} currentPath={location.pathname} />
-        <main className="grow px-7 py-5">
+        <main id="main" tabIndex={-1} className="grow px-7 py-5">
           <Outlet />
         </main>
       </div>
