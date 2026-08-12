@@ -1,11 +1,12 @@
 /* THE DRAG HAS ONE DEGREE OF FREEDOM, AND THE TWO SURFACES THAT SETTLE THAT ARE CROSSED HERE.
  *
- * `useDiscreteDrag.ts` states the refusal as a decision and cites the design language for it. A citation nothing
- * checks is a sentence that goes stale under the tree it describes, so both halves of the citation are read: the
- * document must still gloss `Shift+Up`/`Shift+Down` as the keyboard equivalent of the drag and still list no
- * horizontal pair, and the tree must still bind that vertical pair and no horizontal one. A change that binds
- * `Shift+Left` widens the gesture the document calls the drag's equivalent, and it reddens here rather than passing
- * quietly while the document describes a product that no longer exists.
+ * `useDiscreteDrag.ts` states the refusal as a decision and cites two surfaces for it: the design language's keyboard
+ * gloss, and the drag table in its week-grid section. A citation nothing checks is a sentence that goes stale under
+ * the tree it describes, so both are read. The document must gloss `Shift+↑`/`Shift+↓` as the keyboard equivalent of
+ * the drag, must list no horizontal pair, and must carry the table that states the refusal and answers what follows
+ * from it; the tree must bind that vertical pair and no horizontal one. A change that binds `Shift+←` widens the
+ * gesture the document calls the drag's equivalent, and it reddens here rather than passing quietly while the
+ * document describes a product that no longer exists.
  *
  * THE PARITY PROMISE IS REFUSED IN WHICHEVER SHAPE IT ARRIVES, and the promise that stands is pinned by its own
  * bolded claim. Section Keyboard promises that the keyboard reaches every block at every tier, which is about which
@@ -44,20 +45,51 @@ const SHIFTED_ARROWS = [
   "ArrowUp in frontend/src/routes/week/hooks/useWeekScreenInteraction.ts",
 ];
 
+/** The lede the drag table sits under, which is where the refusal is stated rather than inferred. */
+const REFUSAL = "**A drag has one degree of freedom, and it is the minute.**";
+
+/** The head of the one table the refusal is answered in, which is how its rows are found. */
+const DRAG_TABLE_HEAD = "| Question | Answer | Why |";
+
+/** Whole, so a question that goes is as visible as one that arrives. */
+const DRAG_QUESTIONS = [
+  "Does a pointer over another column retarget the drag?",
+  "What does a drag across a week boundary mean?",
+  "Does the keyboard get a horizontal equivalent?",
+];
+
 const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 const SHIFTED_ARROW_CELL = /Shift\+[↑↓←→]/;
 
-/** The design language's keyboard section, from its own heading to the next one. */
-async function keyboardSection(): Promise<string> {
+/** One section of the design language, from its own heading to the next one at that level. */
+async function sectionOf(heading: string): Promise<string> {
   const doc = await readFile(path.join(repoRoot, "docs", "DESIGN-LANGUAGE.md"), "utf8");
-  const section = doc.split(/^## /m).find((part) => part.startsWith("Keyboard\n"));
-  if (section === undefined) throw new Error("the design language has no Keyboard section");
+  const section = doc.split(/^## /m).find((part) => part.startsWith(`${heading}\n`));
+  if (section === undefined) throw new Error(`the design language has no ${heading} section`);
   return section;
+}
+
+/** The rows of the one table a section introduces with `head`, as their cells. */
+function rowsUnder(section: string, head: string): string[][] {
+  const lines = section.split("\n");
+  const headAt = lines.indexOf(head);
+  if (headAt === -1) throw new Error(`the section carries no table under ${head}`);
+  const rows: string[][] = [];
+  for (const line of lines.slice(headAt + 2)) {
+    if (!line.startsWith("|")) break;
+    rows.push(
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    );
+  }
+  return rows;
 }
 
 describe("the keyboard equivalent of the drag", () => {
   it("is the vertical pair the design language glosses, and it lists no horizontal pair", async () => {
-    const rows = (await keyboardSection())
+    const rows = (await sectionOf("Keyboard"))
       .split("\n")
       .filter((line) => line.startsWith("|") && SHIFTED_ARROW_CELL.test(line));
 
@@ -65,7 +97,7 @@ describe("the keyboard equivalent of the drag", () => {
   });
 
   it("promises reach rather than parity, in whichever shape a parity claim would arrive", async () => {
-    const section = await keyboardSection();
+    const section = await sectionOf("Keyboard");
 
     expect(section).toContain(REACH_PROMISE);
     expect(section.split("\n").filter((line) => PARITY_CLAIM.test(line))).toEqual([]);
@@ -91,5 +123,16 @@ describe("the keyboard equivalent of the drag", () => {
       .map(({ file }) => path.relative(repoRoot, file));
 
     expect(readers).toEqual(["frontend/src/lib/keyboard/useKeyBinding.ts"]);
+  });
+});
+
+/* THE OTHER SURFACE THE HEADER CITES. The table is this ticket's whole deliverable to a reader of the document, and
+ * the header points at it, so deleting or gutting it is a failure here rather than a silence. */
+describe("the drag table the header points at", () => {
+  it("states the refusal and answers all three of the questions it raises", async () => {
+    const section = await sectionOf("The week grid");
+
+    expect(section).toContain(REFUSAL);
+    expect(rowsUnder(section, DRAG_TABLE_HEAD).map((cells) => cells[0])).toEqual(DRAG_QUESTIONS);
   });
 });
