@@ -40,7 +40,7 @@ from fastapi import APIRouter
 
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.app_factory import create_app
-from syncr_api.core.settings import API_PREFIX
+from syncr_api.core.settings import API_PREFIX, EnvSettings, build_service_settings
 from tests.boundaries import (
     DRIVEN_READ_CONTRIBUTIONS,
     EXEMPT_PARAMETERIZED_READS,
@@ -48,6 +48,7 @@ from tests.boundaries import (
     path_parameters,
     read_paths,
 )
+from tests.conftest import TEST_SERVICE
 from tests.source_census import imported_as, named, tracked_python_sources
 
 if TYPE_CHECKING:
@@ -66,6 +67,56 @@ SYNTHETIC_SEGMENT = "synthetic"
 # driven. Both edges of one reading.
 READ_UNDER_NO_CONTRIBUTION = f"{API_PREFIX}/{SYNTHETIC_SEGMENT}/{{{SYNTHETIC_PARAMETER}}}"
 READ_UNDER_THE_WEEK_PREFIX = f"{WEEKS_PREFIX}/{{{SYNTHETIC_PARAMETER}}}/{SYNTHETIC_SEGMENT}"
+
+# One read the application really declares, for the constructions below to cover without requesting.
+SPELLED_READ = f"{API_PREFIX}/days/{{date}}"
+
+
+def _a_typed_path(app: FastAPI) -> list[str]:
+    return [SPELLED_READ]
+
+
+def _builds_its_own_application(app: FastAPI) -> list[str]:
+    settings = build_service_settings(service=TEST_SERVICE, env=EnvSettings(_env_file=None))
+    return [
+        path
+        for path in read_paths(create_app(settings), parameterized=True)
+        if path == SPELLED_READ
+    ]
+
+
+def _a_typed_path_intersected_with_the_table(app: FastAPI) -> list[str]:
+    return [path for path in (SPELLED_READ,) if path in read_paths(app, parameterized=True)]
+
+
+def _reads_the_table_then_answers_a_typed_path(app: FastAPI) -> list[str]:
+    return [SPELLED_READ] if read_paths(app, parameterized=True) else []
+
+
+# Four ways to cover a read by naming it, and whether the derivation rule reports each one. All four
+# derive the same real path over the real application, so the equality and the deriving-nothing rule
+# accept all four: this is the only rule that can tell them apart, and it tells two of them apart.
+#
+# THE TWO IT CANNOT SEPARATE FROM A DERIVATION are the ones that filter a typed path through the
+# application they were handed. Both answer nothing for a table with no routes, exactly as a
+# derivation does, and no single-input probe can distinguish them: what a second input would have to
+# vary is the table, and a contribution that ignores the table it was given is what the second row
+# catches. Published rather than left to be found. Both survivors stay pinned to the route table, so
+# neither can outlive the route it names.
+DERIVATION_CONSTRUCTIONS = (
+    ("a typed path", _a_typed_path, True),
+    ("builds its own application and derives from that", _builds_its_own_application, True),
+    (
+        "a typed path intersected with the table it was handed",
+        _a_typed_path_intersected_with_the_table,
+        False,
+    ),
+    (
+        "reads the table to decide, then answers a typed path",
+        _reads_the_table_then_answers_a_typed_path,
+        False,
+    ),
+)
 
 # How a source reaches a published contribution, and whether the reading below counts it as one.
 #
@@ -227,11 +278,13 @@ def test_every_contribution_answers_nothing_when_there_is_nothing_to_derive(
 ) -> None:
     """A contribution has to be a function of the route table rather than a list of paths.
 
-    This is the half of the registry's honesty the reading below cannot supply. A contribution that
-    spelled its paths would subtract real reads from the census while nothing addressed them, and it
-    would satisfy every other rule here: it derives something, it is imported, it is called.
+    This is the half of the registry's honesty the consumption reading cannot supply. A contribution
+    that spelled its paths would subtract real reads from the census while nothing addressed them,
+    and it would satisfy every other rule here: it derives something, it is imported, it is called.
     Handing it an application that declares no routes separates the two, because a derivation has
     nothing to answer with and a spelled path answers itself.
+
+    What it separates and what it does not is published below in ``DERIVATION_CONSTRUCTIONS``.
     """
     census = census_of_reads(create_app(settings))
 
@@ -369,18 +422,24 @@ def test_the_census_reports_a_contribution_that_derives_nothing(
     assert census.contributions_ignoring_the_route_table == ()
 
 
-def test_the_census_reports_a_contribution_that_spells_a_path_instead_of_deriving_one(
-    settings: ServiceSettings,
+@pytest.mark.parametrize(
+    ("construction", "reported"),
+    [(construction, reported) for _, construction, reported in DERIVATION_CONSTRUCTIONS],
+    ids=[label for label, _, _ in DERIVATION_CONSTRUCTIONS],
+)
+def test_the_derivation_rule_answers_each_construction_as_published(
+    settings: ServiceSettings, construction: DrivenReads, reported: bool
 ) -> None:
-    """The construction this closes: a path named in a function, covering a read nothing drives."""
+    """Both edges of the rule, and the two constructions it cannot separate from a derivation.
 
-    def spells_a_path(app: FastAPI) -> list[str]:
-        return [f"{API_PREFIX}/days/{{date}}"]
+    Every one of these covers the same read while nothing requests it, and every one derives
+    something over the real application, so the equality and the deriving-nothing rule are satisfied
+    by all four. What the reported column records is which of them this rule can tell apart.
+    """
+    census = census_of_reads(create_app(settings), contributions=(construction,))
 
-    census = census_of_reads(create_app(settings), contributions=(spells_a_path,))
-
-    assert census.contributions_ignoring_the_route_table == (spells_a_path.__name__,)
-    assert census.contributions_deriving_nothing == ()
+    assert census.driven == frozenset({SPELLED_READ})
+    assert bool(census.contributions_ignoring_the_route_table) is reported
 
 
 @pytest.mark.parametrize(
