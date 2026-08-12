@@ -13,10 +13,11 @@ in the suite said so. A named exclusion that has to exist is the shape the other
 this is that shape for this one.
 
 This module equates the two accounted-for sets with what the application declares, so a read named
-by neither fails by name. Five ways that equality goes quiet are asserted beside it: an exemption
+by neither fails by name. Six ways that equality goes quiet are asserted beside it: an exemption
 for a route that does not exist, an exemption for a route a driver reaches after all, a reason
-copied from a route addressed by another value, a contribution that derives nothing, and a
-contribution that derives a read the application does not serve.
+copied from a route addressed by another value, a contribution that derives nothing, a contribution
+that derives a read the application does not serve, and a contribution that spells a path instead of
+deriving one.
 
 The registry holds every derivation of driven reads the suite has, and holding one fewer is the one
 failure this module cannot see: the reads that derivation drives become declared gaps, and each
@@ -221,6 +222,22 @@ def test_every_contribution_derives_at_least_one_read(settings: ServiceSettings)
     assert census.contributions_deriving_nothing == ()
 
 
+def test_every_contribution_answers_nothing_when_there_is_nothing_to_derive(
+    settings: ServiceSettings,
+) -> None:
+    """A contribution has to be a function of the route table rather than a list of paths.
+
+    This is the half of the registry's honesty the reading below cannot supply. A contribution that
+    spelled its paths would subtract real reads from the census while nothing addressed them, and it
+    would satisfy every other rule here: it derives something, it is imported, it is called.
+    Handing it an application that declares no routes separates the two, because a derivation has
+    nothing to answer with and a spelled path answers itself.
+    """
+    census = census_of_reads(create_app(settings))
+
+    assert census.contributions_ignoring_the_route_table == ()
+
+
 @pytest.mark.parametrize(
     "contribution", DRIVEN_READ_CONTRIBUTIONS, ids=lambda given: given.__name__
 )
@@ -237,7 +254,9 @@ def test_every_contribution_is_imported_and_called_by_another_module(
     imports the contribution and calls it, which every guard that drives one must do and which a
     module that requested nothing could also do. Requiring a request would mean deciding from syntax
     that a call is an HTTP request, and `.get` is a mapping read as often as it is a client call, so
-    the stronger form would be a predicate that cannot fail rather than a stronger guard.
+    the stronger form would be a predicate that cannot fail rather than a stronger guard. What
+    closes that gap from the other end is the rule above: a contribution has to derive its paths
+    from the route table, so a coverage token cannot be a path someone typed.
     """
     readers = [
         path.name
@@ -347,6 +366,21 @@ def test_the_census_reports_a_contribution_that_derives_nothing(
     census = census_of_reads(create_app(settings), contributions=(derives_nothing,))
 
     assert census.contributions_deriving_nothing == (derives_nothing.__name__,)
+    assert census.contributions_ignoring_the_route_table == ()
+
+
+def test_the_census_reports_a_contribution_that_spells_a_path_instead_of_deriving_one(
+    settings: ServiceSettings,
+) -> None:
+    """The construction this closes: a path named in a function, covering a read nothing drives."""
+
+    def spells_a_path(app: FastAPI) -> list[str]:
+        return [f"{API_PREFIX}/days/{{date}}"]
+
+    census = census_of_reads(create_app(settings), contributions=(spells_a_path,))
+
+    assert census.contributions_ignoring_the_route_table == (spells_a_path.__name__,)
+    assert census.contributions_deriving_nothing == ()
 
 
 @pytest.mark.parametrize(

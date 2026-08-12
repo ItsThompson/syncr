@@ -29,6 +29,7 @@ from typing import (
     get_type_hints,
 )
 
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 from syncr_api.concessions.config import WEEKS_PREFIX
@@ -40,7 +41,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
     from pathlib import Path
 
-    from fastapi import FastAPI
     from fastapi.dependencies.models import Dependant
     from starlette.routing import BaseRoute
 
@@ -141,6 +141,10 @@ class ReadCensus:
     # Contributions that derived nothing, by name. A contribution matching no route has gone blind,
     # and the equality above cannot see the difference.
     contributions_deriving_nothing: tuple[str, ...]
+    # Contributions that answered with a path for an application declaring no routes, by name. A
+    # derivation has nothing to derive from an empty route table; one that answers anyway is
+    # spelling its paths, and a spelled path covers a read by naming it rather than by driving it.
+    contributions_ignoring_the_route_table: tuple[str, ...]
 
 
 def api_routes(app: FastAPI) -> list[RouteView]:
@@ -252,6 +256,11 @@ type DrivenReads = Callable[[FastAPI], list[str]]
 # CANNOT SEE: the reads it derives are then declared gaps while a guard drives them. Both of these
 # were written before the census and were found by sweeping the suite for readers of the route
 # table, which is the sweep to repeat rather than a list to trust.
+#
+# What a member of this tuple may NOT be is a list of paths wearing a function's clothes. The census
+# hands each one an application declaring no routes: a derivation answers nothing there, and a
+# spelled path answers itself, which is how a contribution that covers a read by naming it is told
+# from one that covers it by deriving it.
 DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads, verdict_bearing_reads)
 
 # The parameterized reads no contribution drives, each naming the value a driver would have to
@@ -323,6 +332,9 @@ def census_of_reads(
             if not path_parameters(path) <= path_parameters(reason)
         ),
         contributions_deriving_nothing=tuple(name for name, paths in derived if not paths),
+        contributions_ignoring_the_route_table=tuple(
+            contribution.__name__ for contribution in contributions if contribution(FastAPI())
+        ),
     )
 
 
