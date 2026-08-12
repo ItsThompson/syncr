@@ -16,12 +16,12 @@
  * observations of one binding is therefore reachable on a Friday and not on a Monday, and the print
  * says which.
  *
- * IT TOLERATES ONE NAMED REFUSAL RATHER THAN EXITING ON IT. A solve of a week whose earlier days are
- * already past is refused with `past_disagreement`, permanently, because the plan-horizon maintainer
- * materializes a live plan and that closes the escape hatch `plans/settled.py` leaves for a week with
- * no live plan. That is ticket 1570, a defect in the product rather than in this seed: until it lands,
- * the current week's blocks are the ones the maintainer placed, which is a smaller corpus and a real
- * one. So the refusal is named, printed, and continued past. Any OTHER failure still stops the seed.
+ * IT TOLERATES ONE NAMED REFUSAL RATHER THAN EXITING ON IT, AND THE TOLERANCE NOW GUARDS NOTHING.
+ * `past_disagreement` is what a solve draws when its candidate would restate a week's past. The binding
+ * phase leaves a slot the week has already reached unbound, so a first solve of a partly lived week no
+ * longer draws it, and `docs/smoke-scenarios.md` records a run in which every week solved and this
+ * branch was never taken. It stays ONE named code rather than a blanket allowance: the refusal is
+ * named, printed, and continued past, and any OTHER failure still stops the seed.
  */
 
 import type { ApiClient } from "../../api/client.ts";
@@ -52,11 +52,11 @@ const WEEKS_AHEAD = 2;
 
 const hasEnded = (block: Block, now: Date): boolean => new Date(block.interval.end) < now;
 
-/* The refusal ticket 1570 owns. Named as a value, so tolerating it is a decision about ONE known state
- * rather than a blanket "any failure is acceptable". */
+/* The one refusal this seed tolerates. Named as a value, so tolerating it is a decision about ONE known
+ * state rather than a blanket "any failure is acceptable". */
 const KNOWN_REFUSAL = "past_disagreement";
 
-/** Solve `isoWeek` and say what happened, tolerating only the refusal ticket 1570 owns.
+/** Solve `isoWeek` and say what happened, tolerating only `KNOWN_REFUSAL`.
  *
  * It waits for the refusal to APPEAR rather than for the operation to reach a terminal status: the queue
  * retries three times with a doubling backoff, so a permanently refused solve takes minutes to report
@@ -143,7 +143,7 @@ export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
     if (view.live === null) {
       // A DIFFERENT STATE FROM A REFUSED SOLVE, and kept in its own list for that reason. This week is
       // outside the horizon, which is what happens to the third week early in a week: `today + 14 days`
-      // stops short of it. Putting it in `refused` would make the print attribute it to ticket 1570's
+      // stops short of it. Putting it in `refused` would make the print attribute it to
       // `past_disagreement`, which is a different cause and would be a lie on a Monday.
       unplanned.push(isoWeek);
       continue;

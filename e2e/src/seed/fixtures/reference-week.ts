@@ -2,7 +2,7 @@
  *
  * The same shapes the solver's own `reference_week` holds, declared through the API instead of
  * through the solver's input types, so a rendering question and a solver question can be asked about
- * the same data. Section 20's fixture table names ten of them and each is here:
+ * the same data. Every shape it declares:
  *
  * | Shape | Where |
  * |---|---|
