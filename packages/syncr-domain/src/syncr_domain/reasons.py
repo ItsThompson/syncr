@@ -1,6 +1,6 @@
 """The reason record: why a block is where it is, as values rather than as prose.
 
-Explainability is a P0 feature, and a sentence that cannot be traced to a value the solver
+Explainability is a product commitment, and a sentence that cannot be traced to a value the solver
 computed is worse than no sentence. So the reason is a structured record and the interface
 renders it through one template per clause kind. No language model sits in the placement
 loop, and the panel draws labeled rows rather than a paragraph, because a paragraph implies

@@ -131,7 +131,8 @@ def longest_consecutive_run(weeks: Iterable[IsoWeek]) -> tuple[IsoWeek, ...]:
     promotion, and an item skipped week after week is escalated. Both ask this question and neither
     may answer it differently, because a user reading "four consecutive weeks" on one surface and
     "three" on another has no way to tell which is right. A repeated collision is deliberately NOT
-    one of them: its story says "three or more weeks", so it counts distinct weeks instead.
+    one of them: its threshold is three or more weeks rather than three consecutive ones, so it
+    counts distinct weeks instead.
 
     Consecutive is checked against the week's own successor rather than by counting distinct weeks.
     Weeks 7, 9 and 11 are a repeated behaviour rather than a run, and counting three of them would

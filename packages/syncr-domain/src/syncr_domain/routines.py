@@ -25,7 +25,7 @@ enumerator: the default makes it false for every routine the user has not opted 
 ``flex_band_minutes`` is how far a placement may MOVE the target time. No operation
 resizes a routine: a span arrives at the solver already resolved, and the frame defines
 the search space rather than competing inside it. The effective duration of one
-occurrence, and its clamp to the minimum, are the week assembler's (ticket 25).
+occurrence, and its clamp to the minimum, are the week assembler's.
 
 ## A target time is wall time, at minute resolution
 

@@ -13,9 +13,9 @@ observed share is understated by exactly the days nobody answered for. Reporting
 as behaviour would propose a smaller share for an Area whose real failing was that the user
 stopped confirming, which is the review inventing a budget from an absence.
 
-A partly confirmed week is still REPORTED: `16-frontend-shell.md`'s review states the
-confirmed and unconfirmed day counts of its period, so the reader is told how much of the
-period the figures rest on. What such a week does not do is move a percentage.
+A partly confirmed week is still REPORTED: the review states the confirmed and unconfirmed
+day counts of its period, so the reader is told how much of the period the figures rest on.
+What such a week does not do is move a percentage.
 
 **A quarter is thirteen weeks**, and until thirteen contributing weeks exist there is no
 proposal at all. The review then shows the gap between actual and target and says why the
@@ -76,8 +76,8 @@ if TYPE_CHECKING:
 
     from syncr_domain.identifiers import AreaId
 
-# A quarter of confirmed data, in weeks. Thirteen, which is a calendar quarter, and the count
-# `02-user-stories.md` US-REV-03 means by "before a quarter of confirmed data exists".
+# A quarter of confirmed data, in weeks. Thirteen, which is a calendar quarter, and the count a
+# review needs before it proposes a share at all.
 QUARTER_WEEKS: Final = 13
 
 # The whole of a share, as `budget_percent` is authored: 25 means a quarter.
@@ -151,8 +151,8 @@ def uncovered_minutes(discretionary_minutes: int, claimed_minutes: int) -> int:
     `budgets.unallocated_minutes` is the canonical form and takes the two interval SETS, which is
     what makes it non-negative by construction. A review cannot: its denominator is the plan of
     record's own stored figure, a scalar, and the set that figure was taken over is not stored
-    beside it. Rebuilding that set is what ticket 1310 is for, and rebuilding it from the document
-    alone overstates it by the preceding week's frame overhang.
+    beside it. Rebuilding it from the document alone overstates it by the preceding week's frame
+    overhang.
 
     So the figure is a subtraction of counts, and the clamp is load-bearing rather than defensive.
     It is reachable: a ``moved`` outcome carries a user-supplied interval, and one reported inside

@@ -38,7 +38,7 @@ from syncr_domain.snap import SNAP_MINUTES
 
 
 class TaskStatus(StrEnum):
-    """Where a task is. Two of the three are endings, and neither is reversible in P0."""
+    """Where a task is. Two of the three are endings, and nothing here returns a task to open."""
 
     OPEN = "open"
     COMPLETED = "completed"
