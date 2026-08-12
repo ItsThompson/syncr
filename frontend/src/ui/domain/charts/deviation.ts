@@ -16,9 +16,8 @@ import type { DeviationRow } from "./series";
  *
  * The kit's glyph table makes the same choice for `--glyph-minus`, which the number stepper's decrease control
  * and the indeterminate checkbox draw, and `__tests__/deviation.test.ts` reads that entry out of the table and
- * asserts this is the same codepoint. It is real text rather than
- * generated content because the sign IS the reading here: a decorative glyph would leave a screen reader saying
- * "two hours" for a two-hour shortfall.
+ * asserts this is the same codepoint. It is real text rather than generated content because the sign IS the
+ * reading here: a decorative glyph would leave a screen reader saying "two hours" for a two-hour shortfall.
  */
 export const MINUS_SIGN = "\u2212";
 
