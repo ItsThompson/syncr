@@ -191,7 +191,14 @@ def test_no_two_spans_this_week_names_share_a_member_of_the_committed_union() ->
     ``IntervalSet`` merges adjacent members as well as overlapping ones, so two of this week's spans
     that touched would answer as one member for two bindings, and a producer reading the wrong one
     would be indistinguishable from one reading the right one.
-    """
-    named = [span for _, span in _spans_by_binding(a_week_holding_every_state_a_pin_can_be_in())]
 
+    The count is asserted against the week's own blocks and pins first, because a disjointness claim
+    over a reading that returned nothing is a claim about nothing.
+    """
+    week = a_week_holding_every_state_a_pin_can_be_in()
+    held = week.live_plan
+    assert held is not None
+    named = [span for _, span in _spans_by_binding(week)]
+
+    assert len(named) == len(held.blocks) + len(week.pins)
     assert len(IntervalSet(named)) == len(named)
