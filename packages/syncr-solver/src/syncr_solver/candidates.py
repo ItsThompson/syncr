@@ -37,11 +37,19 @@ slot that wanted it reports that its Area has no eligible content.
 **The draw reads every open task rather than the ones this round still has work for**, so the name
 is a function of the inputs rather than of how far the packing has got: drawn from the round, an
 occurrence would lose its content the moment the task it names was fully placed, and the same week
-would bind three sessions and then stop. **It also does not net the task's minutes.** A queue
-habit's session is its own demand: the habit says "an hour of this Area, three times a week" and the
-task says how much work it needs, and a user who declared both declared both. Whether a session
-should discharge the work it is named after needs a rule nothing in this spec states, and ticket
-1372 carries it.
+would bind three sessions and then stop.
+
+**A queue habit's session is its own demand, and drawing a task does not net that task's minutes.**
+The habit says "an hour of this Area, three times a week" and the task says how much work it needs,
+and a user who declared both declared both, so a week holds the cadence AND the task's own
+remaining work. Discharging the work instead is not this package's to do, for two reasons. The
+figure such a discharge would reduce, ``EligibleTask.remaining_minutes``, arrives already netted,
+so reducing it here is the re-netting ``inputs.py`` is shaped to prevent. And the assembler that
+nets it cannot know WHICH task the draw will pick, so it would have to reserve the habit's minutes
+against a task chosen by a rule of its own, which makes the choice the producer's rather than the
+solver's. What the overlap costs is read by ``budget_deviation``, which compares the minutes an
+Area receives against what it was budgeted and so charges them as far as they take that Area past
+its target.
 """
 
 from __future__ import annotations
@@ -97,8 +105,8 @@ class Candidate:
     # The unmet floor of this candidate's Area, as it stands in the round this candidate was built
     # for. The ordering's first term.
     floor_shortfall_minutes: int
-    # The clause the block carries, built here so ticket 38's reason record is a projection of
-    # what the solver chose rather than a reconstruction of it.
+    # The clause the block carries, built here so the reason record is a projection of what the
+    # solver chose rather than a reconstruction of it.
     bound: Bound
 
     @property
