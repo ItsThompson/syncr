@@ -7,10 +7,9 @@ than one per seam: the placement seam and the habit outcome seam went stale in t
 second walk of the same shape is how two guards come to cover different spellings of one claim.
 
 **The composition is read from the source, not imported.** What is under test is which class the
-keyword is bound to at each place the service is composed, and the module that composes it also has
-to have imported that class from the module that defines it: a local class of the same name
-satisfies
-a name check while reading nothing, which is the shape a stub takes.
+keyword is bound to at each place the service is composed, and the module that composes it also
+has to have imported that class from the module that defines it: a local class of the same name
+satisfies a name check while reading nothing, which is the shape a stub takes.
 
 **Every name a source can reach the composed service by is resolved.** The bare name, the
 module-qualified attribute, and any local name an ``import from`` binds it to, through
@@ -18,8 +17,7 @@ module-qualified attribute, and any local name an ``import from`` binds it to, t
 service bound by assignment (``Composer = WeekAssembler`` and then ``Composer(...)``), and a keyword
 bound to anything but a direct call, such as an already-built reader or a helper's return. A reader
 under another name does not hide, because what is returned is the name the keyword binds and a
-caller
-asserting an exact name fails loudly on any other.
+caller asserting an exact name fails loudly on any other.
 """
 
 from __future__ import annotations

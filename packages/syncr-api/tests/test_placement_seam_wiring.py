@@ -25,8 +25,7 @@ name does not hide, whether by alias, subclass or ``getattr``: the mapping asser
 exact name, so such a wiring fails loudly rather than passing quietly. What is left is a false
 sentence about the seam that is not one of the statements named below. The walk itself is
 ``seam_census.seam_wirings``, shared with the habit outcome seam's own guard, which is what keeps
-one
-spelling of a composition from being covered for one seam and missed for the other.
+one spelling of a composition from being covered for one seam and missed for the other.
 
 **Two shapes a stub takes in a suite are refused as well**: a class defined in front of the reader's
 own name, and a fixture whose body does nothing, which any number of signatures can declare while

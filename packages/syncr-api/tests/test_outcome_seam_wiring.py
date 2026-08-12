@@ -5,26 +5,29 @@ components that each acquire it through the same protocol: the week assembler, t
 the weekly session. A consumer wired to a different reader from its siblings is invisible to every
 type check, because the seam is a Protocol, and invisible to every unit test, because each passes
 its own double. So the plan can place a rotation habit on one variant while that habit's own screen
-names
-another, and nothing in either surface says which is wrong.
+names another, and nothing in either surface says which is wrong.
 
 **The consumers are discovered from the protocol, not listed here.** Any class that annotates a
 constructor parameter with the reader's name is one, so a fourth consumer comes under this rule
 without an edit, and a class that takes some other reader under the same keyword name does not. That
 is the census's own boundary and both edges of it are controlled below.
 
+**Discovery is not the same as completeness, and the two are read separately.** A census that
+narrows by one consumer rather than by all of them would go on reporting a clean sweep of whatever
+it still found, so its membership is crossed against a second reading of the same population taken
+a different way: the annotation as the source writes it, walked as text over ``src``. Neither
+reading is derived from the other, and neither is a list maintained here.
+
 **The compositions are read from the source rather than imported**, and by the same walk the
 placement seam's guard reads with. What the keyword is bound to is the claim; the module that binds
-it
-also has to have imported that class from the module that defines it, because a local class of the
-same name satisfies a name check while reading nothing.
+it also has to have imported that class from the module that defines it, because a local class of
+the same name satisfies a name check while reading nothing.
 
 **The prose is crossed against that reading rather than asserted on its own.** The scan refuses the
 statements a wired log makes false, over this member's own sources and suites and over the runbook
 that carries a row for the read, and it runs only after the wiring has been read: unwire a consumer
-and the
-wiring case fails first, which is the order that keeps the two from disagreeing. Whitespace is
-collapsed before matching, so a sentence that comes back re-wrapped across two lines is still
+and the wiring case fails first, which is the order that keeps the two from disagreeing. Whitespace
+is collapsed before matching, so a sentence that comes back re-wrapped across two lines is still
 refused.
 
 What escapes it: a false sentence about the seam that is not one of the statements named below, and
@@ -33,6 +36,7 @@ the two shapes ``seam_census`` states it cannot see.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
 from pathlib import Path
@@ -67,7 +71,8 @@ RUNBOOK = REPOSITORY / "docs" / "runbooks" / "assembly-slow.md"
 
 # The two consumers this seam is named for: the log the habit endpoint reads and the log the
 # assembly reads. Named so the census cannot quietly stop finding one of them and still report a
-# clean sweep of whatever it did find.
+# clean sweep of whatever it did find. It is a floor for these two rather than for the population,
+# which the crossing against the source reading is what covers.
 THE_SEAMS_TWO_SIDES = (WeekAssembler, HabitService)
 
 # The statements a wired log makes false. Each existed in this repository while the assembler read
@@ -120,6 +125,41 @@ def _parameter_annotated(cls: type, annotation: str) -> str | None:
             if annotation in re.split(r"\W+", str(parameter.annotation))
         ),
         None,
+    )
+
+
+def consumers_named_in_source(source_root: Path, protocol: str) -> frozenset[str]:
+    """Every class under ``source_root`` whose ``__init__`` annotates a parameter with ``protocol``.
+
+    The second reading of the population the census above discovers, taken over the tree as text
+    rather than through the import system, so a consumer that stops being importable, is renamed, or
+    has its annotation moved is a disagreement between two readings rather than a silent narrowing
+    of one. ``__init__`` because that is the signature the other reading inspects: a parameter of
+    that name on any other method is not a collaborator this composition binds.
+    """
+    found: set[str] = set()
+    for module in sorted(source_root.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            found.update(
+                node.name
+                for inner in node.body
+                if isinstance(inner, ast.FunctionDef | ast.AsyncFunctionDef)
+                and inner.name == "__init__"
+                and _annotates(inner, protocol)
+            )
+    return frozenset(found)
+
+
+def _annotates(function: ast.FunctionDef | ast.AsyncFunctionDef, protocol: str) -> bool:
+    """Whether any parameter of this function is annotated with ``protocol``."""
+    arguments = function.args
+    every = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+    return any(
+        one.annotation is not None and protocol in re.split(r"\W+", ast.unparse(one.annotation))
+        for one in every
     )
 
 
@@ -232,6 +272,47 @@ def test_the_census_reads_a_consumer_and_ignores_another_reader() -> None:
     assert _parameter_annotated(TakesTheLog, HabitOutcomeReader.__name__) == "outcomes"
     assert _parameter_annotated(TakesTheLogOrNothing, HabitOutcomeReader.__name__) == "outcomes"
     assert _parameter_annotated(TakesAnotherReader, HabitOutcomeReader.__name__) is None
+
+
+def test_the_census_finds_every_consumer_the_source_declares() -> None:
+    """Completeness, as a disagreement between two readings rather than as a list to maintain.
+
+    The census imports and inspects; this reads the tree as text. A census that dropped one
+    consumer while still finding the rest would report a clean sweep of what it found and nothing
+    would say so, and one consumer leaving the rule with no edit here is the same defect the rule
+    exists to prevent.
+    """
+    discovered = {one.__name__ for one in consumers_of(HabitOutcomeReader)}
+
+    declared = consumers_named_in_source(SOURCE, HabitOutcomeReader.__name__)
+
+    assert discovered == declared, {
+        "imported and not in the source reading": sorted(discovered - declared),
+        "in the source reading and not imported": sorted(declared - discovered),
+    }
+
+
+def test_the_source_reading_sees_a_consumer_and_ignores_another_annotation(tmp_path: Path) -> None:
+    """Its control, on both edges, and on the boundary the two readings have to share.
+
+    The keyword on a method that is not the constructor is the edge that matters: the census
+    inspects the constructor's signature, so a source reading that counted any method would
+    disagree with it for a reason that is not a narrowing.
+    """
+    protocol = HabitOutcomeReader.__name__
+    (tmp_path / "consumers.py").write_text(
+        f"class TakesTheLog:\n"
+        f"    def __init__(self, *, outcomes: {protocol}) -> None: ...\n\n\n"
+        f"class TakesItInAUnion:\n"
+        f"    def __init__(self, *, outcomes: {protocol} | None = None) -> None: ...\n\n\n"
+        f"class TakesAnotherReader:\n"
+        f"    def __init__(self, *, outcomes: HabitOutcomeLog) -> None: ...\n\n\n"
+        f"class TakesItSomewhereElse:\n"
+        f"    def read(self, outcomes: {protocol}) -> None: ...\n",
+        encoding="utf-8",
+    )
+
+    assert consumers_named_in_source(tmp_path, protocol) == {"TakesTheLog", "TakesItInAUnion"}
 
 
 def test_the_walk_reports_a_log_seam_wired_to_something_else(tmp_path: Path) -> None:
