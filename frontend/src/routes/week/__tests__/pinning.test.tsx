@@ -361,7 +361,8 @@ describe("the drag that issues no request", () => {
  *
  * WHAT THE STUBBED BOX CANNOT SEE. Every canvas answers the same box, so no case in this file can tell one column from
  * another: what is asserted is that a position outside the ORIGIN box states nothing, not that the position was over
- * Tuesday. A page with seven real columns is what would tell those two apart. */
+ * Tuesday. Telling those two apart needs a page whose columns carry boxes of their own, which is a different
+ * instrument from this file. */
 describe("the drag's degrees of freedom", () => {
   /** Two positions well inside the stubbed box, so a refusal below is the bound rather than the press. */
   const PRESSED_X = 60;
