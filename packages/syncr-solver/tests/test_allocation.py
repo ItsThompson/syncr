@@ -25,7 +25,7 @@ from syncr_domain.zones import to_instant
 from syncr_solver.allocation import area_daily_cap, area_floor
 from syncr_solver.constraints import ConstraintCheck, ConstraintRule
 from syncr_solver.rules import HARD_RULES
-from syncr_solver.state import PartialPlan
+from syncr_solver.state import PartialPlan, Placement
 from tests.materialized_weeks import (
     CAREER,
     FITNESS,
@@ -538,6 +538,46 @@ def test_a_reservation_outlives_the_candidate_that_takes_the_arriving_deficit_up
     )
     assert refused is not None
     assert refused.detail == "Fitness would be left 200m short of its floor, with 150m free"
+
+
+def test_the_room_a_block_fixed_by_derivation_left_is_what_decides_a_reservation() -> None:
+    # A derived block is immovable for a reason of the derivation's rather than the user's, and the
+    # time it takes is as unavailable to a floor as a pin's is. It is the one immovable the Area
+    # figures did NOT arrive netted of, so the two predicates disagree about it, and that is what
+    # this case drives: everything is held fixed and only the length derivation took varies. With 60
+    # of the 180 minutes on a transit block, Fitness's 120-minute floor exactly fits what is left
+    # and is reserved, so the identical Study candidate is refused. With 120 taken, 60 minutes are
+    # free, that floor is unreachable however the solver places, and there is nothing here to
+    # protect.
+    def a_week_derivation_took(minutes: float) -> tuple[PartialPlan, Placement]:
+        transit = a_transit_block(
+            anchor_id=UUID(int=61),
+            interval=Interval(at(0), at(minutes / HOUR)),
+            area_id=CAREER,
+        )
+        week = inputs(
+            **NARROW_WEEK,
+            areas=(
+                an_area_budget(floor_minutes=2 * HOUR),
+                an_area_budget(area_id=CAREER, name="Career"),
+            ),
+            shadow_blocks=(transit,),
+        )
+        derived = a_candidate(
+            transit.interval, area_id=CAREER, binding=transit.binding, title=transit.title
+        )
+        return PartialPlan.of(week).with_placed(derived), derived
+
+    reserved, _ = a_week_derivation_took(60)
+    unreachable, derived = a_week_derivation_took(120)
+    study = a_candidate(Interval(at(2), at(2.25)), area_id=STUDY, binding=STANDUP)
+
+    assert unreachable.holds(derived)
+    assert not unreachable.already_netted(derived.binding)
+    refused = area_floor(study, reserved)
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 120m short of its floor, with 105m free"
+    assert area_floor(study, unreachable) is None
 
 
 def test_one_areas_placement_never_nets_against_another_areas_floor() -> None:

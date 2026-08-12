@@ -193,6 +193,13 @@ class _Reading:
     before ``floor_minutes`` arrived has one statement, read through the checker's own answer to
     which placements those are.
 
+    **The arrival and the netting read two different questions of a placement, and one placement
+    answers them differently.** A block fixed by derivation is one the solve may not move, so the
+    time it takes is time no floor ever had; and it is NOT one ``floor_minutes`` arrived netted of,
+    so its minutes still count toward its own Area's floor. Both are true of it at once, and reading
+    one question through the other's answer counts its minutes as room the floors arrived with while
+    ``_free`` counts the same minutes as occupied.
+
     **The per-Area split is a bucketing rather than a re-read.** Each placement is examined once and
     dropped into the bucket of the Area that claims it, so the cost of the reading does not grow
     with the number of Areas the week declares.
@@ -210,9 +217,11 @@ class _Reading:
         for held in state.placed:
             if held.area_id is None:
                 continue
-            if state.already_netted(held.binding):
+            if state.holds(held):
                 arrived.append(held.interval)
-            elif (spans := owed.get(held.area_id)) is not None:
+            if state.already_netted(held.binding):
+                continue
+            if (spans := owed.get(held.area_id)) is not None:
                 spans.append(held.interval)
         claimable = state.discretionary()
         arriving_free = claimable.subtract(IntervalSet(arrived)).total_minutes()
@@ -244,10 +253,11 @@ def _reserved(areas: Sequence[AreaBudget], arriving_free: int) -> tuple[AreaBudg
     with is unreachable whatever the solver does, so it is a shortfall the verdict reports rather
     than one a refusal here can protect.
 
-    ``arriving_free`` is measured over the placements the Area figures arrived netted of, which is
-    the state the week was handed to the solver in: a pin can take the capacity a floor needed, and
-    a floor the solver's own choices have eaten into is still one it must not eat further.
-    ``floor_minutes`` is what each Area arrived owing, by the definition of the quantity.
+    ``arriving_free`` is measured over the placements the solve MAY NOT MOVE, which is the state the
+    week was handed to the solver in: a pin, a block that has begun and a block fixed by derivation
+    each take capacity a floor never had, and a floor the solver's own choices have eaten into is
+    still one it must not eat further. ``floor_minutes`` is what each Area arrived owing, by the
+    definition of the quantity.
     """
     return tuple(area for area in areas if area.floor_minutes <= arriving_free)
 
