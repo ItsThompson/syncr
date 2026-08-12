@@ -1,29 +1,40 @@
 """The spellings this package restates, held against the packages that own them.
 
 This package must not import ``syncr_solver`` or ``syncr_api``: the solver ships in the api image
-and this one pulls scipy, so the arrow only runs one way. The cost is that four things are spelled
-twice, and this file is what stops the two copies drifting. Both owners are DEV dependencies,
-declared as such, and the image's export runs ``--no-dev``.
+and this one pulls scipy, so the arrow only runs one way. The cost is that the spellings below are
+each written twice, and this file is what stops the two copies drifting. Both owners are DEV
+dependencies, declared as such, and the image's export runs ``--no-dev``.
 
-Exhaustive rather than sampled. All twenty-four hours of the bucketing, all seven term names, and
-every key of the stored context and the weight-set row, because a sample passes on the day the two
-disagree about the one value it did not draw.
+Exhaustive rather than sampled. All twenty-four hours of the bucketing, all seven term names, every
+key of the stored context and the weight-set row, and every parameter a corpus at the gate produces,
+because a sample passes on the day the two disagree about the one value it did not draw.
 """
 
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime
 
 import pytest
 
 from syncr_api.learned.config import P0_WEIGHTS
 from syncr_api.learned.models import WeightSet as WeightSetRow
+from syncr_api.learned.subjects import subject_of
 from syncr_api.plans import stored_contexts
 from syncr_api.plans.edit_context import EditContext
 from syncr_learning import artifact, config
-from syncr_learning.gates import ParameterMaturity
+from syncr_learning.fitting import fit_everything
+from syncr_learning.fixtures import AREA, at_the_gate
+from syncr_learning.gates import ParameterMaturity, parameter_of
 from syncr_learning.storage import spelling
 from syncr_solver import weights as solver_weights
+
+# What the corpus's one Area is called, and when the fit ran. Neither is read by the grammar under
+# test; they are what a fit needs to run at all.
+AREA_NAME = "Fitness"
+FIT_AT = datetime(2026, 2, 16, 3, 0, tzinfo=UTC)
+SWITCH_COST_IN_FORCE = 1.0
+CHURN_TOLERANCE_IN_FORCE = 3.0
 
 
 class TestTheObjectiveVocabulary:
@@ -157,3 +168,40 @@ class TestTheEditContextKeysTheFitterReads:
         from syncr_api.pins.costs import UNCHANGED
 
         assert set(UNCHANGED) == set(config.OBJECTIVE_TERMS)
+
+
+class TestTheKeyInsideAParameterToken:
+    """The key this package writes into a token, read back by the api that names the Area from it.
+
+    :func:`syncr_learning.gates.maturity` composes ``name[key]`` and
+    :mod:`syncr_learning.applied` joins a pair key as the Area then the bucket. The api takes that
+    key back out to say what a row is about, and nothing else crosses the two: a respelling on
+    either side answers no Area for every row, which is a change no assertion inside either package
+    can see.
+
+    Driven through the real fitter over the shared corpus, so every token is composed by the writer
+    rather than typed here.
+    """
+
+    def test_every_parameter_a_corpus_at_the_gate_produces_names_the_right_subject(self) -> None:
+        rows = fit_everything(
+            at_the_gate(),
+            in_force=P0_WEIGHTS,
+            switch_cost_in_force=SWITCH_COST_IN_FORCE,
+            churn_tolerance_in_force=CHURN_TOLERANCE_IN_FORCE,
+            area_names={str(AREA): AREA_NAME},
+            at=FIT_AT,
+        ).artifact.maturity
+
+        # Pairs rather than a mapping, so a parameter that produces several rows cannot hide one
+        # behind another, and spelled out rather than derived from the resolver under test.
+        assert {
+            (parameter_of(row), subject_of(row.parameter, {AREA: AREA_NAME})) for row in rows
+        } == {
+            (config.DURATION_MULTIPLIER, AREA_NAME),
+            (config.TIME_OF_DAY_FITNESS, AREA_NAME),
+            (config.SKIP_PROBABILITY, AREA_NAME),
+            (config.CONTEXT_SWITCH_COST, None),
+            (config.CHURN_TOLERANCE, None),
+            (config.OBJECTIVE_WEIGHTS, None),
+        }
