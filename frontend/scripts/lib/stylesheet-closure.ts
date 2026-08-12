@@ -7,10 +7,10 @@
  *   `ui/primitives/glyphs.css` and a domain component's key hint legitimately draws its brackets from it, so the
  *   narrow model reported a reference the browser resolves
  *
- *   every sheet in the tree is too wide, and the width is not theoretical: a review measured
- *   `status/status.css` reading `--gutter-w`, which is declared inside `.gutter` in `layout/Gutter.css` and which
- *   `StatusSurface` never imports. The reference resolves to nothing twice over -- the sheet is not loaded, and
- *   the property is scoped to a class this element is not inside -- and the wide model passed it
+ *   every sheet in the tree is too wide, and the width is not theoretical: a component sheet may reference a
+ *   property declared inside a class in a sheet its own component never imports, as `--gutter-w` is declared
+ *   inside `.gutter` in `layout/Gutter.css`. Such a reference resolves to nothing twice over -- the sheet is
+ *   not loaded, and the property is scoped to a class this element is not inside -- and the wide model passes it
  *
  * So the closure is walked. For each stylesheet, the modules that import it are found, each module's transitive
  * imports are followed, and the stylesheets reached that way are what that sheet may read from. A sheet imported by

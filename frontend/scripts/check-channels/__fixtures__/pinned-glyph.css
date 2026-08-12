@@ -1,8 +1,8 @@
 /* Fixture: two kit files each assigning the GLYPH SLOT for the same state.
  *
- * Section 14 gives the pinned mark, the proposal-source mark, the overlap count and the origin mark
- * one channel between them and warns that they must not collide. Ticket 8's pinned mark and ticket
- * 35's overlap count are the first two things that will claim it. */
+ * The pinned mark, the proposal-source mark, the overlap count and the origin mark have one channel
+ * between them and must not collide. All four are in the kit, and `src/ui/domain/marks/occupant.ts`
+ * settles which of them wins the slot. */
 
 .block[data-pinned]::before {
   content: "\25CF";
