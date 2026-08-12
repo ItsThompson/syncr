@@ -67,7 +67,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import re
 import textwrap
 from datetime import timedelta
 from http import HTTPStatus
@@ -116,6 +115,7 @@ from tests.boundaries import (
     METHODS_WITHOUT_A_BODY,
     RouteView,
     api_routes,
+    path_parameters,
     read_paths,
     resolved_dependencies,
     route_identity,
@@ -1082,12 +1082,7 @@ def test_every_verdict_bearing_read_is_driven_by_a_week_the_guard_can_supply(
 
     for path in verdict_bearing_reads(settings):
         assert path in driven, path
-        assert _parameters_of(path) == {ISO_WEEK_PARAMETER}, path
-
-
-def _parameters_of(path: str) -> set[str]:
-    """Every path parameter this route declares, by the name the route template spells."""
-    return set(re.findall(r"\{([^}]+)\}", path))
+        assert path_parameters(path) == {ISO_WEEK_PARAMETER}, path
 
 
 # --------------------------------------------------------------------------------
