@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from hypothesis import event, given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from syncr_domain.identity import TASK_OCCURRENCE_KEY, BindingKind, BindingRef
@@ -226,6 +226,10 @@ def test_a_placed_piece_counts_the_numbers_in_use_and_not_the_pieces_beside_it()
     unnumbered=st.booleans(),
     chosen=st.sets(st.integers(min_value=0, max_value=7), max_size=6),
 )
+# The set where the floor is what keeps the count legal: two pieces, and the only number in use is
+# zero, so one above the highest number is one. Stated rather than left to a draw, because the
+# generated sequence moves whenever this function's own source does.
+@example(numbers={0}, unnumbered=True, chosen={0})
 @settings(max_examples=200, deadline=None, derandomize=True)
 def test_every_number_a_division_stores_is_one_the_count_beside_it_admits(
     numbers: set[int], unnumbered: bool, chosen: set[int]
