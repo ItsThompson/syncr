@@ -3,16 +3,16 @@
  *
  * THE FIXTURE THREE OBSERVATIONS SHARE. `reference_week`'s plan week holds 5565 minutes of
  * discretionary time against 480 minutes of declared floor, so a floor reservation that nets nothing
- * still fits there: the B1 assertions have nothing to discriminate on a week that roomy, and they were
- * measured green under a bite that reverted the netting rule. S25 needs the same tightness from the
- * other direction, a week where pinning two hours of unrelated work moves a shortfall. And a verdict
- * that one mutation can flip is what makes a session-attributed infeasibility episode constructible at
- * all.
+ * still fits there: the floor cases in `b1-s34-floors-and-unallocated.spec.ts` have nothing to
+ * discriminate on a week that roomy, and they were measured green under a bite that reverted the
+ * netting rule. S25 needs the same tightness from the other direction, a week where pinning two hours
+ * of unrelated work moves a shortfall. And a verdict that one mutation can flip is what makes a
+ * session-attributed infeasibility episode constructible at all.
  *
  * HOW THE WEEK IS MADE TIGHT: by the FRAME, not by an oversized demand. Two routines cover twenty and a
  * half hours of every day, so three and a half hours a day are discretionary, and the Area slots
- * declared in them are what the floors are met by. That is the shape B1 is about: a healthy solved week
- * is one whose floors are met by UNPINNED solver-placed blocks.
+ * declared in them are what the floors are met by. That is the shape the floor cases are about: a
+ * healthy solved week is one whose floors are met by UNPINNED solver-placed blocks.
  *
  * HOW THE DEADLINE IS MADE UNMEETABLE: by the CAPACITY IN FRONT OF IT, for the same reason. The
  * deadline task is one minimum chunk larger than the discretionary time that precedes its own deadline,
@@ -39,7 +39,8 @@
  * So the correct floor reservation is zero once the week is solved, because every floor minute is
  * already placed, and zero fits in whatever the solve leaves. A reservation that netted immovable
  * placements only would be 960 against that remainder, which is smaller than the floors themselves,
- * and would report a floor shortfall on a week that is fully scheduled, which is the defect B1 names.
+ * and would report a floor shortfall on a week that is fully scheduled, which is the defect this
+ * fixture exists to make observable.
  */
 
 import type { ApiClient } from "../../api/client.ts";

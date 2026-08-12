@@ -1,4 +1,4 @@
-/* The Blocker 1 observation, and S34.
+/* The floor-reservation observation, and S34.
  *
  * Both are about a figure that is right or wrong rather than present or absent, which is the class of
  * failure this product cannot detect any other way: neither throws, and both render plausibly.
@@ -6,12 +6,12 @@
  * WHY THIS FILE USES `tight_capacity` AND NOT `reference_week`. The first version of these cases ran on
  * `reference_week`, whose plan week holds 5565 minutes of discretionary time against 480 minutes of
  * declared floor: roomy by a factor of eleven. Both fit under either netting rule, so a bite reverting the
- * probe's floor reservation to the pre-B1 immovable-only rule left both cases GREEN, and the at-risk loop
- * iterated zero times because no task was at risk. The case bounded nothing. `tight_capacity` is the week
- * B1 is actually about: 1470 discretionary minutes against 960 of floor, met by unpinned solver-placed
+ * probe's floor reservation to an immovable-only rule left both cases GREEN, and the at-risk loop iterated
+ * zero times because no task was at risk. The case bounded nothing. `tight_capacity` is the week this file
+ * is actually about: 1470 discretionary minutes against 960 of floor, met by unpinned solver-placed
  * blocks, and less left free once solved than those floors reserve, so a reservation that netted nothing
- * would be 960 against that remainder and would report a shortfall on a week that is fully scheduled.
- * The fixture states that arithmetic and the first case here asserts it.
+ * would be 960 against that remainder and would report a shortfall on a week that is fully scheduled. The
+ * fixture states that arithmetic and the first case here asserts it.
  *
  * WHICH VERDICT THE AT-RISK COLUMN IS CROSSED AGAINST. The backlog is not week-scoped: the marking reads
  * the CURRENT week's verdict, through `served_verdicts.CurrentWeekVerdict`, which is the same rule the
@@ -67,7 +67,7 @@ const withOffers = (verdict: Verdict | null): string =>
 
 const FLOOR_KINDS: readonly string[] = ["floors_exceed_capacity", "area_floor_unreachable"];
 
-/** One interval in minutes. B1's own cases compute this inline and are deliberately left untouched. */
+/** One interval in minutes. The floor cases compute this inline and are deliberately left untouched. */
 const spanMinutes = (span: { readonly start: string; readonly end: string }): number =>
   (Date.parse(span.end) - Date.parse(span.start)) / 60_000;
 
@@ -199,7 +199,7 @@ test("B1 a solved week whose floors are met by unpinned blocks reports no floor 
 
   // THE PRECONDITION, ASSERTED RATHER THAN ASSUMED: every Area that declares a floor has that floor met
   // by blocks the solver placed and nobody pinned. That is what a healthy solved week IS, and it is the
-  // state under which the pre-B1 rule reported a gap.
+  // state under which an immovable-only reservation reported a gap.
   const areas = await api.get<{
     areas: readonly { id: string; name: string; floorHours: number }[];
   }>("/api/v1/areas");
@@ -285,8 +285,9 @@ test("B1 pinning an already-placed block leaves the verdict unchanged", async ({
   const offered = withOffers(before.verdict);
 
   // Pinned WHERE IT ALREADY IS, which is also how rejecting a proposed move is implemented. It frees
-  // nothing and commits nothing, so nothing the verdict reads may move. Under the pre-B1 rule the pin
-  // makes the block immovable, the reservation falls, and the pin IMPROVES the verdict.
+  // nothing and commits nothing, so nothing the verdict reads may move. Under an immovable-only
+  // reservation the pin makes the block immovable, the reservation falls, and the pin IMPROVES the
+  // verdict.
   const pinned = await api.post<{ verdict: Verdict }>(`/api/v1/weeks/${week}/pins`, {
     blockId: floored!.id,
     start: floored!.interval.start,
