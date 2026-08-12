@@ -41,6 +41,36 @@ def as_one_line(text: str) -> str:
     return " ".join(text.split())
 
 
+def paragraphs_of(text: str) -> list[str]:
+    """Each paragraph of a docstring on one line, so a reading of it survives a rewrap."""
+    return [as_one_line(block) for block in text.split("\n\n") if block.strip()]
+
+
+# The whole of the module's prose, one entry per paragraph. All four are held rather than the one
+# that carries the answer, because a paragraph ADDED beside the answer can take it back: a closing
+# "whether accept should create the entry instead is still open" leaves a reading of the answer's
+# own paragraph green and reverses what the module says. Normalizing each paragraph is what lets the
+# whole prose be pinned without pinning where its lines happen to break.
+_THE_PROSE: Final = (
+    "What a promotion can absorb, and the sentence for a pattern it cannot.",
+    '**A promotion moves the template entry the pattern is about.** The offer is a move: "You have '
+    'pinned Gym to 13:00 for three consecutive weeks. Move it in your Weekday template?" A block '
+    "that materialized from a day shape carries that entry as its binding, so the entry is named "
+    "by the candidate itself and moving it needs nothing the pattern does not already state.",
+    "**Accept moves an entry and never creates one**, and the refusal below is that answer rather "
+    "than a placeholder for a later one. An entry declares a duration and a flex band that a pin "
+    "states nothing about, so creating one would have syncr choose the shape of a reader's day out "
+    "of the single thing a pattern does state, which is a time. So every other kind of content is "
+    "still RAISED -- the pattern is real and worth stating -- and the raise carries the reason the "
+    "template cannot take it and the one act that can, which is the reader declaring the entry "
+    "themselves.",
+    "**The set is closed by the type checker, not by a list.** The reason is chosen in a ``match`` "
+    "ending in :func:`assert_never`, so an eighth ``BindingKind`` is a mypy failure here rather "
+    "than a candidate whose accept answers with a sentence about something else, or a ``KeyError`` "
+    "inside a request.",
+)
+
+
 def pointers_in(text: str) -> list[str]:
     return _PLANNING_ARTIFACT.findall(text)
 
@@ -130,18 +160,8 @@ class TestTheAnswerTheModuleRecords:
     code cannot open.
     """
 
-    def test_the_module_states_that_accept_moves_an_entry_and_never_creates_one(self) -> None:
-        stated = as_one_line(absorption.__doc__ or "")
-
-        assert "Accept moves an entry and never creates one" in stated
-        assert "the refusal below is that answer rather than a placeholder" in stated
-
-    def test_the_module_states_what_a_created_entry_would_have_syncr_choose(self) -> None:
-        stated = as_one_line(absorption.__doc__ or "")
-
-        assert (
-            "An entry declares a duration and a flex band that a pin states nothing about" in stated
-        )
+    def test_the_docstring_states_the_answer_and_nothing_that_takes_it_back(self) -> None:
+        assert paragraphs_of(absorption.__doc__ or "") == list(_THE_PROSE)
 
     def test_the_module_points_at_no_planning_artifact(self) -> None:
         assert pointers_in(_module_source()) == []
