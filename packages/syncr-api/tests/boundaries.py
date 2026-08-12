@@ -29,6 +29,8 @@ from typing import (
     get_type_hints,
 )
 
+from pydantic import BaseModel
+
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.principal import Principal
 from syncr_api.core.settings import API_PREFIX
@@ -72,6 +74,10 @@ METHODS_WITHOUT_A_BODY = frozenset({"GET", "HEAD", "OPTIONS"})
 # driver would have to invent in the same spelling, so the two are compared as tokens rather than
 # as prose.
 PATH_PARAMETER = re.compile(r"\{([^}]+)\}")
+
+# The field a response shape declares when it carries a verdict to a client. The contribution below
+# is stated over it, so a read added later comes under the rule without any file naming its path.
+VERDICT_FIELD = "verdict"
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,9 +208,33 @@ def week_addressed_reads(app: FastAPI) -> list[str]:
     Published here rather than filtered beside the guards that drive it, because a filter is not a
     contribution: it answers what it matches and leaves the reads it does not match unaccounted
     for. Derived from the route table, so a week read a later feature module adds is driven by
-    whoever consumes this without that ticket remembering to extend a list.
+    whoever consumes this with no list to extend.
     """
     return [path for path in read_paths(app, parameterized=True) if path.startswith(WEEKS_PREFIX)]
+
+
+def verdict_bearing_reads(app: FastAPI) -> list[str]:
+    """Every GET path whose response shape carries a verdict to a client.
+
+    Derived from the response models, so a read that starts answering a verdict comes under the rule
+    that a read records no transition when it ships rather than when someone remembers it.
+
+    Published beside :func:`week_addressed_reads` because it is the second derivation over this
+    route table, and one of the reads it derives sits under the review prefix rather than the week
+    one: a census that read only the first would call that read a gap while a guard was driving it.
+    """
+    paths = []
+    for route in api_routes(app):
+        if "GET" not in route.methods:
+            continue
+        answered = get_type_hints(route.endpoint).get("return")
+        if (
+            isinstance(answered, type)
+            and issubclass(answered, BaseModel)
+            and VERDICT_FIELD in answered.model_fields
+        ):
+            paths.append(route.path)
+    return sorted(paths)
 
 
 type DrivenReads = Callable[[FastAPI], list[str]]
@@ -213,7 +243,12 @@ type DrivenReads = Callable[[FastAPI], list[str]]
 # application's own route table rather than a list of paths, so a read arriving under a prefix a
 # driver already covers is driven with no edit here, and nothing enters the driven set by being
 # named.
-DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads,)
+#
+# A DERIVATION THE SUITE ALREADY HAS AND THIS TUPLE DOES NOT HOLD IS THE ONE FAILURE THIS CENSUS
+# CANNOT SEE: the reads it derives are then declared gaps while a guard drives them. Both of these
+# were written before the census and were found by sweeping the suite for readers of the route
+# table, which is the sweep to repeat rather than a list to trust.
+DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads, verdict_bearing_reads)
 
 # The parameterized reads no contribution drives, each naming the value a driver would have to
 # invent to address it. Written out and crossed against the route table in BOTH directions, so a
@@ -245,10 +280,6 @@ EXEMPT_PARAMETERIZED_READS: Mapping[str, str] = {
     f"{API_PREFIX}/off-plan/{{period_id}}": "{period_id} names a declared off-plan period",
     f"{API_PREFIX}/operations/{{operation_id}}": "{operation_id} names an enqueued operation",
     f"{API_PREFIX}/projects/{{project_id}}": "{project_id} names a declared project",
-    f"{API_PREFIX}/reviews/week/{{iso_week}}": (
-        "{iso_week} is the value the week contribution invents, and this read sits under the "
-        "review prefix rather than the week one, so that contribution does not derive it"
-    ),
     f"{API_PREFIX}/routines/{{routine_id}}": "{routine_id} names a declared routine",
     f"{API_PREFIX}/tasks/{{task_id}}": "{task_id} names a declared task",
     f"{API_PREFIX}/tasks/{{task_id}}/preference": (

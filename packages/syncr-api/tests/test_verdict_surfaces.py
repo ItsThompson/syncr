@@ -70,12 +70,11 @@ import inspect
 import textwrap
 from datetime import timedelta
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, NamedTuple, get_type_hints
+from typing import TYPE_CHECKING, Any, NamedTuple
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
 from sqlalchemy import select
 from starlette.requests import Request
 
@@ -113,6 +112,7 @@ from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import Origin, is_placed_by_the_solver
 from tests.boundaries import (
     METHODS_WITHOUT_A_BODY,
+    VERDICT_FIELD,
     RouteView,
     api_routes,
     path_parameters,
@@ -120,6 +120,7 @@ from tests.boundaries import (
     resolved_dependencies,
     route_identity,
     service_calls,
+    verdict_bearing_reads,
 )
 from tests.conftest import TEST_SERVICE
 from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
@@ -166,10 +167,6 @@ WITHOUT_A_PRODUCER = {VerdictSurface.MUTATION}
 # The methods a caller computes a verdict through. Read as names because they are the probe's whole
 # public surface.
 PROBE_METHODS = {"verdict_for", "offered_verdict_for"}
-
-# The field a response shape declares when it carries a verdict to a client. The census below is
-# stated over it, so a read added later comes under VE6 without this file naming its path.
-VERDICT_FIELD = "verdict"
 
 # The one path parameter a verdict-bearing read may take, which is the value the guard substitutes.
 # Ticket 1363 settled the spelling across the week routes and the weekly session takes the same one.
@@ -405,10 +402,11 @@ def verdict_reading_packages(settings: ServiceSettings) -> set[str]:
     packages those are is derived from the routes whose response shape carries a verdict rather than
     named here, so this exemption widens only when a package starts answering such a read.
     """
-    bearing = set(verdict_bearing_reads(settings))
+    app = create_app(settings)
+    bearing = set(verdict_bearing_reads(app))
     return {
         _package_of(route)
-        for route in api_routes(create_app(settings))
+        for route in api_routes(app)
         if route.path in bearing and "GET" in route.methods
     }
 
@@ -1025,24 +1023,14 @@ def test_no_mutation_leaves_its_flip_to_whatever_next_reads_the_week(
 # --------------------------------------------------------------------------------
 
 
-def verdict_bearing_reads(settings: ServiceSettings) -> list[str]:
-    """Every GET path whose response shape carries a verdict to a client.
+def verdict_bearing_reads_of(settings: ServiceSettings) -> list[str]:
+    """The published derivation, over an app built from these settings.
 
-    Derived from the response models rather than from the three paths ``VE6`` names, so the
-    weekly-session payload comes under the rule when it ships rather than when someone remembers.
+    The derivation itself is ``tests.boundaries.verdict_bearing_reads``, which is where the read
+    census subtracts it from what the application declares: this set is one of the two the census
+    calls driven, so it cannot be a filter local to this module.
     """
-    paths = []
-    for route in api_routes(create_app(settings)):
-        if "GET" not in route.methods:
-            continue
-        answered = get_type_hints(route.endpoint).get("return")
-        if (
-            isinstance(answered, type)
-            and issubclass(answered, BaseModel)
-            and VERDICT_FIELD in answered.model_fields
-        ):
-            paths.append(route.path)
-    return sorted(paths)
+    return verdict_bearing_reads(create_app(settings))
 
 
 def test_the_reads_that_carry_a_verdict_are_the_four_that_exist(
@@ -1055,7 +1043,7 @@ def test_the_reads_that_carry_a_verdict_are_the_four_that_exist(
     answers the verdict the solve that filled the slot produced, which is a stored value rather than
     a computation, and it must still write nothing.
     """
-    assert verdict_bearing_reads(settings) == [
+    assert verdict_bearing_reads_of(settings) == [
         f"{REVIEWS_PREFIX}{SESSION_PATH}",
         f"{WEEKS_PREFIX}/{{iso_week}}",
         f"{WEEKS_PREFIX}/{{iso_week}}/proposal",
@@ -1080,7 +1068,7 @@ def test_every_verdict_bearing_read_is_driven_by_a_week_the_guard_can_supply(
     """
     driven = set(read_paths(create_app(settings), parameterized=True))
 
-    for path in verdict_bearing_reads(settings):
+    for path in verdict_bearing_reads_of(settings):
         assert path in driven, path
         assert path_parameters(path) == {ISO_WEEK_PARAMETER}, path
 
@@ -1227,7 +1215,7 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     """
     await a_planned_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
-    paths = verdict_bearing_reads(settings)
+    paths = verdict_bearing_reads_of(settings)
 
     for _ in range(2):
         for path in paths:
