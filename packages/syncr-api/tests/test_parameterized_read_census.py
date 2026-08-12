@@ -267,13 +267,13 @@ def test_the_census_reports_an_exemption_for_a_read_the_application_does_not_dec
 def test_the_census_reports_an_exemption_for_a_read_that_is_driven_after_all(
     settings: ServiceSettings,
 ) -> None:
-    driven, *_ = sorted(census_of_reads(create_app(settings)).driven)
+    """Stated over a planted read a contribution derives, so no real exemption has to be wrong."""
+    app = app_with_a_read(READ_UNDER_THE_WEEK_PREFIX, settings)
+    reason = f"{{{SYNTHETIC_PARAMETER}}} names a record something stored"
 
-    census = census_of_reads(
-        create_app(settings), exemptions={driven: f"{{{SYNTHETIC_PARAMETER}}} names one"}
-    )
+    census = census_of_reads(app, exemptions={READ_UNDER_THE_WEEK_PREFIX: reason})
 
-    assert census.exempt_but_driven == frozenset({driven})
+    assert census.exempt_but_driven == frozenset({READ_UNDER_THE_WEEK_PREFIX})
 
 
 def test_the_census_reports_a_reason_that_names_another_routes_parameter(
