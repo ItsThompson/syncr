@@ -16,7 +16,8 @@ from uuid import uuid4
 
 from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.habits import BindingSource
-from syncr_domain.identity import is_placed_by_the_solver
+from syncr_domain.identity import BindingKind, is_placed_by_the_solver
+from syncr_domain.reasons import Bound
 from syncr_solver.attempt import Attempt
 from syncr_solver.binding import bind_slots
 from syncr_solver.candidates import candidates_for
@@ -44,6 +45,7 @@ from tests.objective_weeks import (
 from tests.solve_weeks import QUICK, a_week, blocks_titled, minutes_toward, solved
 
 if TYPE_CHECKING:
+    from syncr_domain.plan import PlanDocument
     from syncr_solver.inputs import SolveInputs
 
 A_QUEUE_HABIT = uuid4()
@@ -113,6 +115,85 @@ def test_a_queue_occurrence_names_the_backlog_item_it_drew_and_the_habit_it_is()
     assert bound[0].title == "Leetcode session · Trees"
     assert bound[0].reason.clauses[0].source is BindingSource.QUEUE  # type: ignore[union-attr]
     assert bound[0].reason.clauses[0].selected == "Trees"  # type: ignore[union-attr]
+
+
+def a_career_week_drawing_its_backlog(*, source: BindingSource) -> SolveInputs:
+    """Three 45-minute Career sessions, one Career task of 120 minutes, and nothing else.
+
+    ``source`` is the arm. Under ``queue`` every session draws the task's name; under ``fixed``
+    each names the habit alone, which is the same week with the draw taken away.
+    """
+    return a_week(
+        habit_occurrences=tuple(
+            an_occurrence(
+                habit_id=A_QUEUE_HABIT,
+                index=index,
+                minutes=45,
+                title="Leetcode session",
+                binding_source=source,
+                area_id=CAREER,
+            )
+            for index in range(3)
+        ),
+        eligible_tasks=(
+            an_eligible_task(task_id=A_TASK, remaining_minutes=120, area_id=CAREER, title="Trees"),
+        ),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=600),),
+    )
+
+
+def minutes_whose_clause_names(document: PlanDocument, content: str, *, kind: BindingKind) -> int:
+    """Minutes this document places under one binding kind whose ``bound`` clause selects this.
+
+    The CLAUSE rather than the title, because that is the vocabulary the panel, the calendar
+    description and the stored record all read: a session that drew this task says so here.
+    """
+    return sum(
+        block.interval.total_minutes()
+        for block in document.blocks
+        if block.binding.kind is kind
+        and any(
+            isinstance(clause, Bound) and clause.selected == content
+            for clause in block.reason.clauses
+        )
+    )
+
+
+def minutes_whose_title_names(document: PlanDocument, content: str) -> int:
+    """Minutes this document places on blocks whose title names this content, however composed.
+
+    ``blocks_titled`` reads a prefix, and a drawn session's title opens with the habit, so the
+    total a reader of the grid would add up needs the name wherever it sits in the title.
+    """
+    return sum(
+        block.interval.total_minutes() for block in document.blocks if content in block.title
+    )
+
+
+def test_the_minutes_a_week_places_for_a_task_its_areas_queue_habit_draws() -> None:
+    """A queue session is its own demand, so the week holds the cadence AND the task's own work.
+
+    Three readings, each keyed to something different, because a total taken from the same reading
+    as its parts cannot disagree with them: the task's own pieces by IDENTITY, the drawn sessions by
+    CLAUSE, and the whole by the TITLE a reader of the grid adds up.
+
+    The second arm is the same week with the draw taken away, and it is what makes the first arm's
+    figure an answer rather than a capacity: 255 minutes name the task when a session draws it and
+    120 when the sessions name themselves, on a week that places all 255 either way.
+    """
+    drawn = solved(a_career_week_drawing_its_backlog(source=BindingSource.QUEUE)).document
+    alone = solved(a_career_week_drawing_its_backlog(source=BindingSource.FIXED)).document
+
+    # Three sessions at the habit's 45-minute cadence, plus the 120 minutes the task itself claims.
+    # Spelled as literals rather than read back off the week: an expected value taken from the
+    # fixture moves with it, and a cadence that changed would leave this green.
+    assert minutes_toward(drawn, A_TASK) == 120
+    assert minutes_whose_clause_names(drawn, "Trees", kind=BindingKind.HABIT) == 3 * 45
+    assert minutes_whose_title_names(drawn, "Trees") == 255
+
+    assert minutes_whose_clause_names(alone, "Trees", kind=BindingKind.HABIT) == 0
+    assert minutes_whose_title_names(alone, "Trees") == 120
+    assert sum(block.interval.total_minutes() for block in alone.blocks) == 255
 
 
 def test_a_queue_occurrence_whose_area_has_an_empty_backlog_is_not_eligible_at_all() -> None:
