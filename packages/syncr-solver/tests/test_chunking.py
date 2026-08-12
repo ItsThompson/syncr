@@ -15,8 +15,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from syncr_domain.identity import TASK_OCCURRENCE_KEY, BindingKind, BindingRef
-from tests.materialized_weeks import a_frame_entry, a_live_plan, a_pin, an_area_budget, between
+from syncr_domain.plan import MIN_SPLIT_COUNT
+from syncr_solver.attempt import Placed
+from syncr_solver.chunking import numbered
+from tests.materialized_weeks import (
+    a_block,
+    a_frame_entry,
+    a_live_plan,
+    a_pin,
+    a_sizing,
+    an_area_budget,
+    between,
+)
 from tests.objective_weeks import A_TASK, a_chunk_block, an_eligible_task
 from tests.solve_weeks import a_week, blocks_titled, minutes_toward, solved
 
@@ -25,6 +39,8 @@ if TYPE_CHECKING:
     from syncr_solver.inputs import SolveInputs
 
 PINNED_CHUNK = BindingRef.for_task(A_TASK, split_index=5)
+THE_WHOLE_TASK = BindingRef.for_task(A_TASK)
+THE_FIRST_CHUNK = BindingRef.for_task(A_TASK, split_index=0)
 THE_PINNED_HOUR = between(9, 10)
 WHERE_THE_PIN_CAME_FROM = between(14, 15)
 
@@ -94,8 +110,7 @@ def test_a_pin_on_a_high_chunk_stores_the_count_the_numbers_reach_and_not_the_pi
     assert {piece.split_index for piece in pieces} == {0, 1, 5}
     assert {piece.split_count for piece in pieces} == {6}
     assert minutes_toward(document, A_TASK) == 300
-    # The pin still names the block it pins: the binding it was stored against, component by
-    # component, and the id that binding derives.
+    # The pin still names the block it pins.
     assert pinned_after.binding == held_before.binding
     assert (
         pinned_after.binding.kind,
@@ -169,3 +184,85 @@ def test_the_pinned_chunk_keeps_the_count_it_arrived_with_when_the_pieces_reach_
     assert pinned_after.split_count == 8
     assert pinned_after.binding == held_before.binding
     assert pinned_after.id == held_before.id
+
+
+def test_a_placed_piece_counts_the_numbers_in_use_and_not_the_pieces_beside_it() -> None:
+    """A week holding an unnumbered piece of a task beside its chunk zero, and one more placed.
+
+    Three pieces, and the numbers in use run only to one, because an unnumbered piece and chunk zero
+    both read as chunk zero when the next number is issued. So the placed piece states two: one
+    above the highest number in use, which is the identity rule, rather than three, which is how
+    many pieces the week holds.
+
+    The shape is one the pin path produces: :func:`syncr_solver.inheritance._from_content` builds
+    the block for a pin the live plan does not hold from the candidate's binding, and a task
+    candidate's binding carries no chunk, so a pin naming a chunk the plan no longer holds arrives
+    as an unnumbered piece beside the numbered ones. Both pieces are inherited here, which is what
+    the live plan of the solve after that one holds.
+    """
+    week = _a_week_of_three_gaps(
+        live_plan=a_live_plan(
+            a_block(binding=THE_WHOLE_TASK, interval=THE_PINNED_HOUR),
+            a_chunk_block(index=0, of=2, interval=between(14, 15)),
+        ),
+        pins=(
+            a_pin(binding=THE_WHOLE_TASK, interval=THE_PINNED_HOUR),
+            a_pin(binding=THE_FIRST_CHUNK, interval=between(14, 15)),
+        ),
+        eligible_tasks=(an_eligible_task(remaining_minutes=120, min_chunk_minutes=60),),
+    )
+
+    pieces = _pieces_in(solved(week).document)
+    placed = next(piece for piece in pieces if piece.split_index == 1)
+
+    assert len(pieces) == 3
+    assert {piece.split_index for piece in pieces} == {None, 0, 1}
+    assert placed.split_count == 2
+    assert {piece.split_count for piece in pieces} == {None, 2}
+
+
+@given(
+    numbers=st.sets(st.integers(min_value=0, max_value=7), max_size=6),
+    unnumbered=st.booleans(),
+    chosen=st.sets(st.integers(min_value=0, max_value=7), max_size=6),
+)
+@settings(max_examples=200, deadline=None, derandomize=True)
+def test_every_number_a_division_stores_is_one_the_count_beside_it_admits(
+    numbers: set[int], unnumbered: bool, chosen: set[int]
+) -> None:
+    """Over placement sets the numbering can reach, no piece names a chunk that does not exist.
+
+    The generated axis is the one hand-written cases keep missing: which pieces carry a number,
+    which of them this solve chose, and whether an unnumbered piece sits beside them. The count of
+    pieces and the highest number in use are read from different sets, so the two can disagree, and
+    this is the assertion that holds however far apart they are.
+
+    A raise counts as a failure: the numbering builds its blocks through the domain, so a count that
+    does not admit its own number never returns.
+    """
+    placements = [
+        Placed.of(
+            a_chunk_block(
+                index=number, of=max(MIN_SPLIT_COUNT, number + 1), interval=between(9, 10)
+            ),
+            sizing=a_sizing(),
+            chosen=number in chosen,
+        )
+        for number in sorted(numbers)
+    ]
+    if unnumbered:
+        placements.append(
+            Placed.of(
+                a_block(binding=THE_WHOLE_TASK, interval=between(9, 10)),
+                sizing=a_sizing(),
+                chosen=0 not in numbers,
+            )
+        )
+
+    for block in numbered(placements):
+        if block.split_index is None:
+            assert block.split_count is None
+            continue
+        assert block.split_count is not None
+        assert block.split_count >= MIN_SPLIT_COUNT
+        assert 0 <= block.split_index < block.split_count
