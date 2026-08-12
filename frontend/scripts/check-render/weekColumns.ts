@@ -10,10 +10,13 @@
  * restatement would stay green with the horizontal comparison deleted from the module that ships, which is the one
  * defect these readings exist to catch.
  *
- * WHAT IS MEASURED IS THE READ, NOT A RELEASE. `DayColumn` captures the pointer on press, and `setPointerCapture`
- * throws on a dispatched, untrusted `PointerEvent`: a page cannot press and release without a debugging protocol this
- * gate does not speak. What it can do is put a pointer position over the next column and ask the shipped function what
- * that position names, against that column's box and against the box of the column the drag began in.
+ * WHAT IS MEASURED IS THE READ, NOT A RELEASE, and the reason is the size of the instrument rather than a refusal from
+ * the platform. A page may dispatch a `pointerdown` and capture the mouse's own pointer id without either being
+ * trusted; only an id no pointer holds is refused, with `NotFoundError`. The whole horizontal decision is inside
+ * `pointAt`, so a position over the next column and the box it is read against is the entire question, and pressing
+ * for real would add a React runtime, a fixture in generated code and a mount to wait for to answer the same
+ * comparison. One thing a dispatched sequence cannot reach either way: it emits no `gotpointercapture` and no
+ * `lostpointercapture` at all, so the drag's cancel-on-capture-loss is not observable from a page that presses itself.
  *
  * THE COLUMNS CARRY NO BLOCKS, NO BANDS AND NO GRID LINES. All of those are absolutely positioned, so none can move
  * the box a read is taken against, and the nine title cases already stand in for a block. What remains is the column
