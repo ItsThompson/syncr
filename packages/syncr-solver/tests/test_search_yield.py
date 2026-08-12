@@ -240,16 +240,32 @@ def test_a_week_with_nothing_unallocated_offers_no_relocation_at_all() -> None:
     The empty gap tuple is the precondition rather than a second assertion of the same thing: a week
     that stopped being saturated would offer relocations again, and the columns below would be a
     reading of a different week under the same name.
+
+    **That acceptance's iteration is then crossed through ``improve`` alone**, at the two budgets on
+    either side of it, because the tail this week reports is the figure a stop condition would be
+    sized against and the instrument must not be its only witness. The crossing shares this case's
+    construction: on a week this size that is the expensive half, and a case of its own would pay it
+    again to state one more figure.
     """
     weights = hand_tuned_weights()
     attempt = constructed(a_saturated_week(), weights, budget=SHIPPED)
     found = descend(attempt, weights, budget=SHIPPED)
+    before = improve(
+        attempt, weights, budget=SolveBudget(move_evaluations=39), cancelled=never_cancelled
+    )
+    after = improve(
+        attempt, weights, budget=SolveBudget(move_evaluations=40), cancelled=never_cancelled
+    )
 
     assert attempt.gaps() == ()
     assert found.of_kind(RELOCATE).considered == 0
     assert found.of_kind(SWAP).considered == SHIPPED.move_evaluations
     assert (found.accepted, found.last_acceptance, found.tail) == (1, 39, 161)
     assert [taken.kind for taken in found.acceptances] == [SWAP]
+    # The same iteration, reached without the instrument: 39 stops on the move it would accept and
+    # 40 buys it, for a strictly cheaper plan.
+    assert (before.accepted, after.accepted) == (0, 1)
+    assert after.breakdown.total() < before.breakdown.total()
 
 
 # --------------------------------------------------------------------------------------
