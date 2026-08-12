@@ -655,8 +655,8 @@ async def test_a_burst_of_version_bumps_writes_to_the_provider_zero_times(
 ) -> None:
     """A pin bumps the week's input version and changes no live plan, so it enqueues no projection.
 
-    Driven over the bump itself rather than over the pin route, which is a later ticket's: what the
-    rule is about is that a mutation which appends no revision reaches the provider zero times.
+    Driven over the bump itself rather than over the pin route: what the rule is about is that a
+    mutation which appends no revision reaches the provider zero times.
     """
     await declare_a_planned_week(sessions, context, owner.tenant_id)
     await drain(context, calendar)
@@ -953,8 +953,8 @@ async def test_the_arming_state_is_exported_whether_or_not_anything_is_due(
     """The term an alert inhibits on has to be present, or the alert is silent or always firing.
 
     Set on every pass rather than where a write is composed, so an idle deployment still exports it:
-    a deployment with writes off produces a failure per plan change, and this is what lets ticket 54
-    state ``ProjectionFailing`` as "failures AND writes enabled" instead of choosing between an
+    a deployment with writes off produces a failure per plan change, and this is what lets
+    ``ProjectionFailing`` be stated as "failures AND writes enabled" instead of choosing between an
     alert that never fires and one that always does.
     """
     await declare_the_minimum(sessions, owner.tenant_id)

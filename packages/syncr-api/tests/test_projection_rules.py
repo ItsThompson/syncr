@@ -7,7 +7,7 @@ rather than per clause.
 
 Five groups.
 
-**The table.** Every origin, driven individually, against the answer the spec's own table states.
+**The table.** Every origin, driven individually, against the answer the rule requires.
 The mapping is also asserted total over the origin vocabulary, so a new kind of block cannot
 silently arrive or silently vanish.
 
@@ -84,7 +84,7 @@ if TYPE_CHECKING:
     from syncr_domain.reasons import BoundSource
     from syncr_domain.zones import ZoneId
 
-# The spec's what-projects table, as one expectation per origin. Written out rather than derived
+# What projects, as one expectation per origin. Written out rather than derived
 # from the mapping under test, which would assert the mapping against itself.
 PROJECTS: dict[Origin, bool] = {
     Origin.TASK: True,
@@ -572,8 +572,8 @@ def test_no_two_bound_sources_render_the_same_phrase() -> None:
 
 
 def test_a_record_with_no_bound_clause_renders_nothing() -> None:
-    """Ticket 38 is where a record first carries a clause beyond ``bound``, so until then there is
-    nothing else to render and inventing a sentence here would be inventing that ticket's copy."""
+    """Only a ``bound`` clause has copy, so a record carrying another kind renders nothing rather
+    than a sentence assembled from a clause kind this has no wording for."""
     dominant = ReasonRecord((Dominant(term="context_switch", share=0.5, baseline=ChurnBaseline()),))
 
     assert rendered_reason(dominant) is None
