@@ -31,9 +31,9 @@ duration has none, even when its Area declares one. That is the whole reason the
 takes no strength, so a pin made for UI convenience cannot fabricate a strong training label
 the learning layer would then fit against.
 
-**A window's bounds land on the quarter hour.** Whether a user-chosen wall time owes the
-fifteen-minute grid is an open product question, held from opposite sides by tickets 1151 and
-1161; this module implements the side that says it does, and states why at the refusal.
+**A window's bounds land on the quarter hour.** A wall time the user chose owes the
+fifteen-minute grid, which `syncr_domain.snap` states as the rule of record; this module
+refuses a bound off the grid and says why at the refusal.
 """
 
 from __future__ import annotations
@@ -179,13 +179,11 @@ class LocalTimeWindow:
                     f"a preferred window is minute-resolution, got {bound.isoformat()}. Every "
                     "figure the placement arithmetic derives is a count of minutes",
                 )
-            # The side this module takes on an open product question: a wall time the USER
-            # chose owes the grid, because a placement does and a window is where the user
-            # asked for one. The rule rests on the PRD's own example being grid-aligned and on
-            # one rule holding wherever a user authors a wall time; the narrow window below is
-            # what makes it NECESSARY rather than what makes it sufficient. Tickets 1151 and
-            # 1161 hold the question for the whole product from opposite sides; if it resolves
-            # the other way, this call is the line that goes.
+            # A wall time the USER chose owes the grid, because a placement does and a window
+            # is where the user asked for one. The rule rests on the PRD's own example being
+            # grid-aligned and on one rule holding wherever a user authors a wall time; the
+            # narrow window below is what makes it NECESSARY rather than what makes it
+            # sufficient.
             if not is_wall_time_on_snap_grid(bound):
                 raise PreferenceError(
                     PreferenceField.WINDOWS,
@@ -246,7 +244,7 @@ class Preference:
     strength: PreferenceStrength
     # The ideal length of one session, and only ever an ideal: a task's minimum chunk stays a
     # hard constraint, so a split below this duration is placed and charged to the
-    # fragmentation objective term rather than refused. Ticket 34 owns that term.
+    # fragmentation objective term rather than refused.
     preferred_duration_minutes: int | None
     # An Area's hard daily ceiling, in minutes. Null on every other owner, by the rule below.
     max_per_day_minutes: int | None
