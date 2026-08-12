@@ -163,11 +163,11 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     if candidate.area_id is None or state.holds(candidate):
         return None
     reading = _Reading.of(state)
-    already = max(0, _shortfall(reading, offered=None))
+    already_short = max(0, _shortfall(reading, offered=None))
     owing = _unmet(reading, offered=candidate)
     free = _free(reading, offered=candidate)
     shortfall = sum(owed for _, owed in owing) - free
-    if shortfall <= already:
+    if shortfall <= already_short:
         return None
     # The largest unmet floor names the rejection, which is the axis the solver's own tie-breaking
     # orders candidates by. `max` keeps the first of equal ones and the Areas are in identity
@@ -215,13 +215,12 @@ class _Reading:
             elif (spans := owed.get(held.area_id)) is not None:
                 spans.append(held.interval)
         claimable = state.discretionary()
+        arriving_free = claimable.subtract(IntervalSet(arrived)).total_minutes()
         return cls(
             claimable=claimable,
             claimed=_spans(state.placed),
             owed_spans={area_id: IntervalSet(spans) for area_id, spans in owed.items()},
-            reserved=_reserved(
-                state.areas, claimable.subtract(IntervalSet(arrived)).total_minutes()
-            ),
+            reserved=_reserved(state.areas, arriving_free),
         )
 
     def owed_in(self, area_id: AreaId, offered: Placement | None) -> IntervalSet:
