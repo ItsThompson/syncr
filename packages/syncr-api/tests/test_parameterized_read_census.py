@@ -2,13 +2,15 @@
 
 ``tests/boundaries.py`` splits this api's GET routes by whether they carry a path parameter, because
 driving a parameterized read needs a value invented for the parameter. The two halves are then
-driven separately. The parameterless half is driven whole by the never-writes guard in
-``test_horizon_maintainer.py``. The parameterized half was driven by the week guards in
+driven separately. The parameterless half is driven by the never-writes guard in
+``test_horizon_maintainer.py``, which drives all of them but one endless read it excludes by name
+and asserts the existence of. The parameterized half was driven by the week guards in
 ``test_week_routes_integration.py``, which took whatever matched the week prefix.
 
 A filter answers what it matches and cannot report what it leaves out. So every parameterized read
 outside the week prefix was inherited undriven by any guard stated over the route table, and nothing
-in the suite said so.
+in the suite said so. A named exclusion that has to exist is the shape the other half already had;
+this is that shape for this one.
 
 This module equates the two accounted-for sets with what the application declares, so a read named
 by neither fails by name. Four ways that equality goes quiet are asserted beside it: an exemption
