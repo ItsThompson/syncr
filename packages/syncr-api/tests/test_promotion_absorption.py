@@ -27,9 +27,11 @@ GYM = UUID(int=7)
 
 # A pointer to something outside this repository, in the two spellings this tree has carried: a bare
 # ticket number and a story identifier. Neither resolves for a reader holding only the code.
-_PLANNING_ARTIFACT: Final = re.compile(
-    r"\btickets?\s*[/#]?\s*\d{1,4}\b|\b[A-Z]{1,3}-[A-Z]+-\d{1,3}\b"
-)
+#
+# The second half also matches a hyphenated standard spelling such as ``US-ASCII-7``, which a
+# comment is allowed to cite. That over-match is why the reading is scoped to the one module below,
+# whose prose carries no such spelling, rather than run over the tree.
+_PLANNING_ARTIFACT: Final = re.compile(r"\btickets?\s*[/#]?\s*\d+\b|\b[A-Z]{1,3}-[A-Z]+-\d{1,3}\b")
 
 
 def a_ref(kind: BindingKind, *, minute_of_day: int = 780) -> PromotionRef:
@@ -167,12 +169,14 @@ class TestTheAnswerTheModuleRecords:
         assert pointers_in(_module_source()) == []
 
     def test_the_reading_that_finds_a_pointer_can_see_one(self) -> None:
-        # The control on the case above. An emptiness assertion over a reading that matches nothing
-        # passes whatever the module says, so both spellings the reading exists for are shown to
-        # bite, and prose that carries neither is shown not to.
+        # The control on `test_the_module_points_at_no_planning_artifact`. An emptiness assertion
+        # over a reading that matches nothing passes whatever the module says, so both spellings the
+        # reading exists for are shown to bite, and prose that carries neither is shown not to.
         assert pointers_in("the reason the template cannot take it") == []
         assert pointers_in("tickets/1550 holds the product question") == ["tickets/1550"]
         assert pointers_in("US-TPL-05's own example is a move") == ["US-TPL-05"]
+        # No upper bound on the digits: a five-figure ticket is the same unresolvable pointer.
+        assert pointers_in("tickets/15500 holds it as well") == ["tickets/15500"]
 
 
 def _module_source() -> str:
