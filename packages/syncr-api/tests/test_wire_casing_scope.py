@@ -450,21 +450,25 @@ def test_the_casing_clause_names_spellings_the_contract_declares(
 ) -> None:
     """The clause crossed against the artifact it describes.
 
-    The docstring's examples are read out of it and looked up in the contract: a snake_cased one
-    has to be a path parameter and a camelCased one has to be a query parameter, which is the
-    clause's own claim stated where a machine can refuse it. Deleting the clause empties both
-    sides and reddens here.
+    The docstring's examples are read out of it and looked up in the contract, so a clause quoting
+    a spelling the contract does not declare on the surface it assigns it reddens. Deleting the
+    clause empties every arm below.
+
+    **The misplacement check runs on a camel-humped spelling only, and the asymmetry is not an
+    oversight.** Nothing on this wire camelCases a path parameter and no RFC camelCases anything,
+    so "camelCased implies query" cannot refuse a true sentence. The mirror rule would: five query
+    parameters are snake_cased because RFC 6749 and RFC 7636 fix their names, so a clause that
+    explained those by name would be refused for stating a fact.
     """
     declared = {one.name: one.location for one in parameters_the_operations_declare(document)}
     quoted = [one for one in spellings_the_clause_quotes() if one in declared]
 
     misplaced = {
-        one: declared[one]
-        for one in quoted
-        if declared[one] != (QUERY if is_camel_humped(one) else PATH)
+        one: declared[one] for one in quoted if is_camel_humped(one) and declared[one] != QUERY
     }
     assert misplaced == {}, (
-        f"the casing docstring quotes a spelling the contract declares elsewhere: {misplaced}"
+        f"the casing docstring quotes a camelCased spelling the contract declares outside the "
+        f"query surface: {misplaced}"
     )
     assert [one for one in quoted if declared[one] == PATH], (
         "the casing docstring quotes no path parameter the contract declares, so the clause "

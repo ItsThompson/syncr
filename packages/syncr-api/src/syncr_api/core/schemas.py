@@ -9,8 +9,8 @@ schema cannot ship half-converted, which would be a contract that reads two ways
 ``iso_week``, ``source_id``, ``anchor_type_id`` -- and a multi-word query parameter this api
 names itself is camelCased -- ``areaId``, ``atRisk``. So a new route spells its path parameter
 in snake_case, which is the surface this base does not reach. The other body surface it does not
-reach is the OAuth endpoints' form-encoded requests, whose member names RFC 6749 section 4.1.3
-fixes as ``grant_type`` and the rest.
+reach is the OAuth endpoints' form-encoded requests, whose member names RFC 6749, RFC 7009 and RFC
+7636 fix, ``grant_type`` among them.
 
 ``populate_by_name`` is on so a request body is accepted under either spelling. The
 document advertises the camelCase alias, which is what a generated client sends; the
