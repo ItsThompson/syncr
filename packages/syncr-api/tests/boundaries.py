@@ -254,19 +254,33 @@ type DrivenReads = Callable[[FastAPI], list[str]]
 #
 # A DERIVATION THE SUITE ALREADY HAS AND THIS TUPLE DOES NOT HOLD IS THE ONE FAILURE THIS CENSUS
 # CANNOT SEE: the reads it derives are then declared gaps while a guard drives them. Both of these
-# were written before the census and were found by sweeping the suite for readers of the route
-# table, which is the sweep to repeat rather than a list to trust.
+# were written before the census, and both were found by sweeping the suite for modules that read
+# the route table and drive what they read.
+#
+# THAT SWEEP'S UNIT IS ONE MODULE, WHICH IS ITS BLIND SPOT. A set derived in one module and driven
+# in another is invisible to it: the deriving module requests nothing and the driving module reads
+# no route table. The api suite has exactly that shape in its CLI perimeter, where one module spells
+# a set of routes and another fills their parameters and requests every one. Sweeping for a missing
+# contribution therefore means following the SET, not reading one module at a time.
 #
 # What a member of this tuple may NOT be is a list of paths wearing a function's clothes. The census
 # hands each one an application declaring no routes: a derivation answers nothing there, and a
 # spelled path answers itself, which is how a contribution that covers a read by naming it is told
-# from one that covers it by deriving it.
+# from one that covers it by deriving it. That rule catches a typed path and a function deriving
+# from an application of its own making. IT DOES NOT CATCH a typed path filtered through the passed
+# route table, in either the intersecting or the read-then-answer form, because both answer nothing
+# for an empty table: no single-input probe can separate those from a derivation. Both stay pinned
+# to the table, so neither outlives its route, and each covers only the path it names.
 DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads, verdict_bearing_reads)
 
 # The parameterized reads no contribution drives, each naming the value a driver would have to
 # invent to address it. Written out and crossed against the route table in BOTH directions, so a
 # route the application stops declaring is reported here rather than sitting in the table forever,
 # and a route it starts declaring is reported rather than inherited unguarded.
+#
+# EACH REASON NAMES WHAT A DRIVER ASSERTING THE ROUTE'S OWN MEANING WOULD NEED, which is more than a
+# perimeter driver needs: the CLI perimeter guard reaches two of these with a value naming no stored
+# record, because all it asserts is that the answer is neither 401 nor 403. Those two say so.
 #
 # What a route here is exempt from is the drivers of this census: guards that take their paths FROM
 # the route table, which is what lets one cover a route nobody wrote it for. A feature's own
@@ -285,13 +299,19 @@ EXEMPT_PARAMETERIZED_READS: Mapping[str, str] = {
     f"{API_PREFIX}/calendar-sources/{{source_id}}/remote-calendars": (
         "{source_id} names a declared feed, and this read reaches the provider behind it"
     ),
-    f"{API_PREFIX}/days/{{date}}": "{date} is a date the tenant's plan has blocks on",
+    f"{API_PREFIX}/days/{{date}}": (
+        "{date} is a date the tenant's plan has blocks on, for a driver reading the ledger; the "
+        "CLI perimeter guard reaches this route with a date that has none"
+    ),
     f"{API_PREFIX}/habits/{{habit_id}}": "{habit_id} names a declared habit",
     f"{API_PREFIX}/habits/{{habit_id}}/preference": (
         "{habit_id} names a declared habit, and the preference is the one stored against it"
     ),
     f"{API_PREFIX}/off-plan/{{period_id}}": "{period_id} names a declared off-plan period",
-    f"{API_PREFIX}/operations/{{operation_id}}": "{operation_id} names an enqueued operation",
+    f"{API_PREFIX}/operations/{{operation_id}}": (
+        "{operation_id} names an enqueued operation, for a driver reading its outcome; the CLI "
+        "perimeter guard reaches this route with an identifier that names nothing"
+    ),
     f"{API_PREFIX}/projects/{{project_id}}": "{project_id} names a declared project",
     f"{API_PREFIX}/routines/{{routine_id}}": "{routine_id} names a declared routine",
     f"{API_PREFIX}/tasks/{{task_id}}": "{task_id} names a declared task",
@@ -312,7 +332,11 @@ def census_of_reads(
 
     Returns data rather than asserting, and takes both sets as arguments, so the same reading runs
     against the real application and against one carrying a route neither set names.
+
+    Builds one bare ``FastAPI`` of its own, which is the input the derivation rule needs. Every
+    consumer of the census pays for that, not only the rule that reads it.
     """
+    without_routes = FastAPI()
     declared = frozenset(read_paths(app, parameterized=True))
     derived = tuple(
         (contribution.__name__, frozenset(contribution(app))) for contribution in contributions
@@ -333,7 +357,7 @@ def census_of_reads(
         ),
         contributions_deriving_nothing=tuple(name for name, paths in derived if not paths),
         contributions_ignoring_the_route_table=tuple(
-            contribution.__name__ for contribution in contributions if contribution(FastAPI())
+            contribution.__name__ for contribution in contributions if contribution(without_routes)
         ),
     )
 
