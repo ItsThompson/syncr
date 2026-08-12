@@ -38,11 +38,11 @@ revisions are produced rather than the rate a human approves them. A corpus narr
 would meet a figure written for the unnarrowed one, and there is no measured approval rate to
 re-derive it against.
 
-**What reopens this is the churn term becoming measurable.** The term this tolerance shapes charges
-nothing today: a baseline naming the revision the user approved carries no plan to compare against,
-so both readings feed a cost of zero and no solve can tell them apart. Once that baseline carries
-its plan, the two readings produce different plans over one history, and the reading is settled by
-measuring which one the user objects to less rather than argued from the direction of the error.
+**What reopens this is the churn term becoming measurable, and it now is.** A baseline naming the
+revision the user approved carries that revision's plan, so the term charges what a rearrangement
+cost instead of feeding a cost of zero whichever reading produced it. The two readings therefore
+produce different plans over one history, and the reading is settled by measuring which one the user
+objects to less rather than argued from the direction of the error.
 """
 
 from __future__ import annotations

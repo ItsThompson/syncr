@@ -249,13 +249,14 @@ class TestWhatWouldReopenTheQuestion:
         assert baseline.is_measured is True
         assert baseline.reason == ChurnBaseline.APPROVED_REVISION
 
-    def test_no_shipped_caller_hands_the_baseline_a_plan(self) -> None:
-        # The record says the churn term charges nothing today. The term reads the baseline's
-        # document, and this is what would change first: a third argument at a producer.
+    def test_a_shipped_caller_hands_the_baseline_a_plan(self) -> None:
+        # The record's reopening condition, crossed against the tree rather than trusted. Three
+        # arguments at the one shipped producer: the revision, the instant of assent, and the plan
+        # that revision stored, which is what the term reads.
         producers = _approved_baseline_producers()
 
         assert producers, "no shipped module builds an approved churn baseline"
-        assert set(producers.values()) == {2}
+        assert set(producers.values()) == {3}
 
 
 def _spelled_names() -> set[str]:
