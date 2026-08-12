@@ -195,8 +195,12 @@ def report_yield() -> None:
     dense week is the one the budget's own numbers were sized against, and it still leaves 330
     minutes in no block. The saturated week is the dense week with none.
 
-    The solve's own wall time is measured beside the descent's, so the search's share of it is a
-    figure rather than an impression.
+    The share the search takes is measured in ONE window: the construction and the descent are timed
+    back to back in the same process, and the share is the descent against their sum. Divided by the
+    median of separately timed solves instead, the ratio spans the load the machine saw between two
+    measurements rather than the work the phases did, and it read 95.7% and 64.0% on weeks whose
+    counts had not moved. The p50 is still printed, as an absolute figure and with no ratio taken
+    against it, because it is what the budget's own table is stated over.
     """
     weights = hand_tuned_weights()
     budget = SolveBudget()
@@ -205,8 +209,11 @@ def report_yield() -> None:
         ("dense", a_dense_week()),
         ("reference", reference_week()),
     ):
+        started = time.perf_counter()
         attempt = constructed(week, weights, budget=budget)
+        building = time.perf_counter() - started
         found = descend(attempt, weights, budget=budget)
+        phases = building + found.seconds
         median, _, _, iterations = timed(week, budget, runs=3)
         solved = solve(week, weights, budget=budget)
         print(f"=== {label} week")
@@ -215,10 +222,12 @@ def report_yield() -> None:
             f"the plan the descent starts from; {len(solved.document.blocks)} once it ends"
         )
         print(f"unallocated    {solved.document.unallocated_minutes:8d} m")
-        print(f"solve p50      {median * 1000:8.1f} ms   over three runs")
+        print(f"construction   {building * 1000:8.1f} ms")
         print(
-            f"descent        {found.seconds * 1000:8.1f} ms   {found.seconds / median:5.1%} of it"
+            f"descent        {found.seconds * 1000:8.1f} ms   "
+            f"{found.seconds / phases:5.1%} of the two, one window"
         )
+        print(f"solve p50      {median * 1000:8.1f} ms   over three later runs")
         print(f"iterations     {found.iterations:8d}      solve reports {iterations}")
         print(f"accepted       {found.accepted:8d}")
         print(f"last accepted  {_at(found.last_acceptance):>8}      tail {found.tail} iterations")
