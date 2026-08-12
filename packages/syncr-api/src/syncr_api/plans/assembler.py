@@ -20,7 +20,8 @@ assemble(iso_week, now, extra_adjustment=None)
   ├── resolve the week span, DST-correct, across a possible travel boundary
   ├── resolve each day's active zone
   ├── read the input version, from which the seed derives
-  ├── name the churn baseline: the last approved revision, or never-approved
+  ├── name the churn baseline: the last approved revision and the plan it stored, or
+  │     never-approved
   ├── read what the week already holds: the live plan, its pins and its outcomes, keeping
   │     only the pins whose placement the week has not yet reached
   ├── load off-plan periods, over this week and the one before it, and clip them per week
@@ -87,6 +88,7 @@ from syncr_api.plans.cadence import habit_occurrences
 from syncr_api.plans.calendar_occupancy import calendar_occupancy, typed_anchors
 from syncr_api.plans.candidates import reductions_of
 from syncr_api.plans.demand import deadline_demands, eligible_tasks, task_demands
+from syncr_api.plans.errors import StoredDocumentCorrupt
 from syncr_api.plans.folding import Concessions, fold
 from syncr_api.plans.materialization import (
     OffPlanSuppression,
@@ -100,6 +102,7 @@ from syncr_api.plans.overhang import frame_overhang
 from syncr_api.plans.placements import constraining
 from syncr_api.plans.reservations import area_budgets
 from syncr_api.plans.resolved_preferences import area_caps, resolved_preferences
+from syncr_api.plans.stored_documents import plan_document
 from syncr_api.user_settings.zone_reading import as_domain, zone_profile
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY, measured
@@ -132,6 +135,7 @@ if TYPE_CHECKING:
     from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_domain.off_plan import OffPlanPeriod
+    from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import Date
     from syncr_solver.inputs import FrameEntry
@@ -411,11 +415,35 @@ def _churn_baseline(approved: PlanRevisionRecord | None) -> ChurnBaseline:
     """The revision churn is measured against, which is the last one the user approved.
 
     A week with no approved revision has none, and the baseline states that rather than naming
-    a proposal nobody assented to.
+    a proposal nobody assented to. One that has one carries its PLAN as well as its name, because
+    the term measures the difference between two documents and a name is not one.
     """
     if approved is None or approved.approved_at is None:
         return ChurnBaseline.never_approved()
-    return ChurnBaseline.approved(approved.id, approved.approved_at)
+    return ChurnBaseline.approved(approved.id, approved.approved_at, _baseline_plan(approved))
+
+
+def _baseline_plan(approved: PlanRevisionRecord) -> PlanDocument | None:
+    """The approved revision's plan, or nothing when this deployment cannot rebuild it.
+
+    Degraded rather than raised, which is the opposite of what the live plan's reader does with
+    the same refusal, and the difference is what each document is load-bearing for. Every netting
+    rule reads the live plan, so a week whose plan of record cannot be rebuilt describes nothing
+    and ``StoredPlacements`` refuses it. Churn is one term among the objective's others, and the
+    baseline carries a third state saying its plan is unreadable with ``is_measured`` false in it,
+    so a week whose APPROVED document cannot be rebuilt is solved with churn uncharged rather than
+    not solved at all.
+    """
+    try:
+        return plan_document(approved.document)
+    except StoredDocumentCorrupt as refused:
+        _log.warning(
+            "plans.churn_baseline.unreadable",
+            iso_week=str(approved.iso_week),
+            revision_id=str(approved.id),
+            refusal=str(refused),
+        )
+        return None
 
 
 def _discretionary_minutes(
