@@ -5,10 +5,8 @@ weight set anywhere in this suite, because there is none in the code it exercise
 makes a materialized week reproducible from stored data, and it is why this phase could be built
 before the solver exists.
 
-**Traceability.** The criterion these tests carry is that a degraded plan still explains itself,
-which is verified by scenario S24 and story US-SOLVE-10. It is NOT S32 or US-SOLVE-11: those are
-the recovery window's scope and the stability of a re-solve, and neither is about a plan derived
-without a solver.
+**What these tests carry.** A degraded plan still explains itself. They are not about the recovery
+window's scope or the stability of a re-solve: neither is about a plan derived without a solver.
 
 The figures a document carries, and the determinism property over them, are in
 ``test_materialized_figures.py``. This file is about what is placed, what is refused, and what

@@ -23,8 +23,8 @@ import pytest
 
 LOCKFILE = Path(__file__).resolve().parents[3] / "uv.lock"
 
-# scipy and scikit-learn are the two the spec names. The rest are here so a future
-# "just one small model" import is caught by the same gate. numpy is deliberately
+# scipy and scikit-learn are the two an api image would actually reach for. The rest are here so a
+# future "just one small model" import is caught by the same gate. numpy is deliberately
 # absent: it is not an ML library, and forbidding it would be stricter than the
 # rule the API image actually needs.
 ML_PACKAGES = frozenset(

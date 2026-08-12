@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 
 GOLDEN: Final = Path(__file__).with_name("reference_week_golden.txt")
 
-# A clause kind as the design language names it: the spec's rows read `instead of`, not the type's
+# A clause kind as the design language names it: the rendered rows read `instead of`, not the type's
 # own spelling. Split on the capitals rather than mapped, so a seventh kind would need no table.
 _CAMEL_BOUNDARY: Final = re.compile(r"(?<!^)(?=[A-Z])")
 

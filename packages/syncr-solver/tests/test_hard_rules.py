@@ -647,8 +647,8 @@ def _a_drawn_candidate(
 def test_no_plan_of_generated_candidates_violates_any_rule(
     rule: ConstraintRule, offered: list[Placement]
 ) -> None:
-    # The property section 20 asks for, one per rule, over generated inputs. Parametrized by rule so
-    # a failure names the rule that was broken rather than reporting a single opaque red.
+    # One property per rule, over generated inputs. Parametrized by rule so a failure names the rule
+    # that was broken rather than reporting a single opaque red.
     attempt = place(offered, PartialPlan.of(RICH_WEEK), HARD_RULES)
 
     assert ORACLE_BY_RULE[rule](attempt.state) is False

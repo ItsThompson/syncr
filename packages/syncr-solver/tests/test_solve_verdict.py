@@ -3,7 +3,7 @@
 The derivation under test is one sentence: the probe's shortfalls plus one packing failure per
 deadline-bearing demand the attempt could not place. So the tests come in three groups: that the
 probe's half is carried through, that the synthesised half exists at all, and that the two together
-produce the transition ``S8`` observes on a week that passes the arithmetic and fails to pack.
+produce the transition on a week that passes the arithmetic and fails to pack.
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ def test_the_weeks_denominator_is_the_probes_rather_than_a_second_subtraction() 
 
 
 # --------------------------------------------------------------------------------------
-# S8: a week that passes the probe and fails to pack
+# A week that passes the probe and fails to pack
 # --------------------------------------------------------------------------------------
 
 

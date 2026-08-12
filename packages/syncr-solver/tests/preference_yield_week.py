@@ -1,7 +1,7 @@
 """One week where a strong preferred window cannot be honored, for the yield's own rendering.
 
-Section 08 prints the three clauses a yielded preference reports, and they are clauses the closed
-vocabulary already has rather than a seventh kind:
+A yielded preference reports three clauses, and they are clauses the closed vocabulary already has
+rather than a seventh kind:
 
 ```
 Gym · Shoulder & Arms
