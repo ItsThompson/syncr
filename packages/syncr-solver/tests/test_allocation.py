@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID
 
+from syncr_domain.feasibility import ShortfallKind, probe
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import LOCAL_MIDNIGHT, IsoWeek
@@ -28,6 +29,7 @@ from syncr_solver.state import PartialPlan
 from tests.materialized_weeks import (
     CAREER,
     FITNESS,
+    MONDAY_MIDNIGHT,
     WEEK,
     a_block,
     a_candidate,
@@ -431,6 +433,38 @@ def test_one_areas_arriving_shortfall_leaves_every_other_areas_floor_reserved() 
     control = area_floor(whole_week, arrives_satisfiable)
     assert control is not None
     assert control.detail == "Fitness would be left 180m short of its floor, with 0m free"
+
+
+def test_the_shortfall_the_rule_leaves_unprotected_is_the_one_the_verdict_reports() -> None:
+    # The other half of the same week, and the reason the 20 minutes are safe to leave. The capacity
+    # arithmetic the verdict is taken from reads this week and reports exactly those 20 minutes, so
+    # the user is told about the part no placement can reach. What the rule tolerates is that figure
+    # and nothing beyond it: Fitness may take the 180 minutes the week holds for it, and 15 minutes
+    # of Study, which serves no floor at all, is refused.
+    #
+    # `now` is the week's own start here because the probe clips free capacity to it and the
+    # claimable set this rule reads is a whole-week denominator that does not.
+    week = inputs(
+        **WIDER_WEEK,
+        now=MONDAY_MIDNIGHT,
+        areas=(
+            an_area_budget(floor_minutes=200),
+            an_area_budget(area_id=CAREER, name="Career", floor_minutes=30),
+        ),
+    )
+    state = PartialPlan.of(week)
+
+    reported = probe(week.for_probe()).shortfalls
+
+    assert [(one.kind, one.minutes) for one in reported] == [
+        (ShortfallKind.FLOORS_EXCEED_CAPACITY, 20)
+    ]
+    assert area_floor(a_candidate(Interval(at(0), at(3)), binding=GYM), state) is None
+    refused = area_floor(
+        a_candidate(Interval(at(0), at(0.25)), area_id=STUDY, binding=STANDUP), state
+    )
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 200m short of its floor, with 195m free"
 
 
 def test_a_candidate_of_one_area_is_refused_over_another_areas_reservation() -> None:
