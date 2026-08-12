@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from decimal import Decimal
 
     from syncr_api.anchors.records import AnchorTypeId
+    from syncr_api.core.columns import JsonObject
     from syncr_api.habits.outcome_log import HabitOutcomeReader
     from syncr_api.plans.config import AdjustmentKind
     from syncr_api.plans.placements import WeekPlacementReader
@@ -379,14 +380,20 @@ def an_adjustment(
     )
 
 
-def an_approved_revision(*, approved_at: datetime) -> PlanRevisionRecord:
+def an_approved_revision(*, approved_at: datetime, document: JsonObject) -> PlanRevisionRecord:
+    """One revision the user assented to, carrying the plan it stored.
+
+    ``document`` has no default, so every caller states the plan its week was approved with. The
+    baseline reads it, and a default nothing could rebuild would put a caller in the unreadable
+    state without asking for it.
+    """
     return PlanRevisionRecord(
         id=uuid4(),
         tenant_id=TENANT,
         iso_week=WEEK,
         status="approved",
         reason="user_approved",
-        document={},
+        document=document,
         objective_breakdown={},
         weight_set_version=1,
         input_version=3,

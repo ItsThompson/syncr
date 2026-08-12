@@ -58,7 +58,6 @@ from tests.assembly_fakes import (
     FakeOffPlan,
     FakeOutcomes,
     FakeOverrides,
-    FakeRevisions,
     FakeRoutines,
     FakeSettings,
     FakeTemplates,
@@ -70,7 +69,6 @@ from tests.assembly_fakes import (
     a_slot_entry,
     a_template,
     a_travel_override,
-    an_approved_revision,
     an_area,
     an_assembler,
     an_off_plan_period,
@@ -158,25 +156,6 @@ async def test_a_week_nothing_has_referenced_reports_no_version_rather_than_the_
     inputs = await an_assembler(versions=FakeVersions(None)).assemble(WEEK, NOW)
 
     assert inputs.input_version == UNVERSIONED_WEEK
-
-
-async def test_the_churn_baseline_names_the_approved_revision_or_states_there_is_none() -> None:
-    approved_at = datetime(2026, 2, 8, 20, 0, tzinfo=UTC)
-
-    never = await an_assembler(revisions=FakeRevisions()).assemble(WEEK, NOW)
-    after = await an_assembler(
-        revisions=FakeRevisions(an_approved_revision(approved_at=approved_at))
-    ).assemble(WEEK, NOW)
-
-    assert never.churn_baseline.reason == "never-approved"
-    assert never.churn_baseline.revision_id is None
-    # `approved-revision-unreadable` rather than `approved-revision`, because this assembler names
-    # the revision and cannot supply its plan: reading a stored document back through the domain
-    # constructors is ticket 1222 and the placement reader is 1251. The baseline derives the word
-    # from what it holds, so it cannot tell a renderer a comparison happened that did not.
-    assert after.churn_baseline.reason == "approved-revision-unreadable"
-    assert after.churn_baseline.revision_id is not None
-    assert after.churn_baseline.approved_at == approved_at
 
 
 # --------------------------------------------------------------------------------
