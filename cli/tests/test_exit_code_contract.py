@@ -8,11 +8,10 @@ what is asserted is what a shell and an agent see.
 The case table is bounded by ``ExitCode`` itself: a member with no case fails a test, which is what
 stops the documented table from rotting as the code grows.
 
-**Every code is reached through the script now, and the exemption set is empty.** Ticket 50 could
-not provoke 9 or 10 from a command, because no command in that slice dispatched long-running work,
-so both were reached in its own interpreter and the gap was pinned rather than hidden.
-``plan solve --wait`` dispatches work, so a supersession and a timeout are both a real process
-exiting with a real number.
+**Every code is reached through the script, and the exemption set is empty.** ``plan solve --wait``
+is the one command that dispatches long-running work, so it is what makes a supersession and a
+timeout a real process exiting with a real number rather than a number reached inside a test's own
+interpreter.
 """
 
 from __future__ import annotations
@@ -146,12 +145,11 @@ def test_every_documented_exit_code_has_a_case() -> None:
 
 
 def test_every_case_runs_the_console_script_rather_than_this_interpreter() -> None:
-    """What ticket 50 could not say, asserted over this module's own source.
+    """The empty exemption set, asserted over this module's own source.
 
-    Two codes were reached in ticket 50's own interpreter because no command dispatched work.
-    ``plan solve --wait`` does, so the exemption set is gone, and this is what stops one coming
-    back: an in-interpreter case would have to reach the wait loop or build a result directly, the
-    way the two tests it replaced did. So the guard is that no name in this file does.
+    An in-interpreter case would have to reach the wait loop or build a result directly, so the
+    guard is that no name in this file does either. That is what stops an exemption coming back now
+    that ``plan solve --wait`` makes every code reachable through the script.
 
     Read from the AST rather than by searching the text, because the text includes this sentence: a
     substring guard matches the names it is written to forbid and fails on its own prose. Names

@@ -75,7 +75,7 @@ def test_every_duration_in_the_json_is_an_integer_count_of_minutes(
     tmp_path: Path, in_memory_keychain: InMemoryKeyring
 ) -> None:
     # Every member of the document, not just the strip's: `data` is the api's own object, so this is
-    # the whole statement of the criterion rather than one nested part of it.
+    # the whole claim rather than one nested part of it.
     sent = payloads.week(week_verdict=payloads.verdict(), week_operation=payloads.operation())
     with FakeApi() as api:
         api_serving(api, week=sent)

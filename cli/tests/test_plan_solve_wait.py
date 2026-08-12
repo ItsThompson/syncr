@@ -4,10 +4,9 @@ Four endings and three of them are not failures, which is the reason the exit-co
 10 at all: an agent that read a supersession as a failure would re-dispatch onto a chain that is
 already running, and one that read a timeout as a failure would abandon work that is still going.
 
-**Every ending here is reached through the runner rather than through the wait function.** Ticket
-50's exit-code contract could only reach 9 and 10 in its own interpreter, because no command in that
-slice dispatched work; ``plan solve --wait`` is what makes both end to end, and the two exemptions
-that recorded the gap are deleted with this file.
+**Every ending here is reached through the runner rather than through the wait function.** ``plan
+solve --wait`` is the one command that dispatches long-running work, so it is what makes exit 9 and
+exit 10 reachable end to end rather than only inside a test's own interpreter.
 
 **The clock is the test's and the loop is the process's.** A supersession and a timeout are reached
 in no time at all, because the sleep advances a clock rather than the machine's; nothing about the

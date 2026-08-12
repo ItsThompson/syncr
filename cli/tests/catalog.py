@@ -1,9 +1,9 @@
 """The command catalog, read off the parser rather than listed.
 
 Three suites are stated over "every command": the help each carries, that none of them reads stdin,
-and that each answers the wrapper and exits by its own code. Each had its own list, and a list is
-exactly what a new command does not join: ticket 50's held four names while the catalog grew to
-sixteen, so three guards would have gone on passing over a third of the surface.
+and that each answers the wrapper and exits by its own code. A hand-written list is exactly what a
+new command does not join, so a guard stated over one goes on passing while the catalog grows past
+it.
 
 Read from the parser because the parser is what a caller reaches. Nothing here knows which commands
 exist.
