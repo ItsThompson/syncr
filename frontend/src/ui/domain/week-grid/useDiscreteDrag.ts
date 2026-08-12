@@ -227,8 +227,13 @@ function dropOf(live: Live): BlockDrop | null {
  * THE SNAP IS COMPUTED HERE RATHER THAN THROUGH `snapMinutes`, which floors at zero. A column's minute offset may be
  * negative: a frame occurrence beginning at 23:00 on Sunday is a block of Monday's column, so Monday's axis starts
  * before Monday did, and flooring would refuse every quarter hour above the day's own start.
+ *
+ * EXPORTED FOR THE RENDERED-PIXEL GATE, because the horizontal bound cannot be observed anywhere else. jsdom lays
+ * nothing out, so a test gives the canvas a box and gives every canvas the SAME box, which puts a position "over the
+ * next column" inside the origin column as well. `scripts/check-render` compiles this function into a page that lays
+ * out seven real day columns and asks it what a position over one of them names against the box of the one beside it.
  */
-function pointAt(
+export function pointAt(
   clientX: number,
   clientY: number,
   origin: DragOrigin | null,

@@ -21,6 +21,14 @@
  * because a `<button>` centres its content, which put a two-line title 26.70px from its block's top instead of 4px:
  * the pixel comparisons catch that only as a side effect, on the wrong cases, so the figure is asserted directly.
  *
+ * THE FOURTH READING IS THE ONLY ONE THAT IS NOT ABOUT A TITLE. Seven day columns are laid out beside each other and
+ * the drag's own pointer read is asked what a position over one of them names against the box of the column beside it.
+ * That question has no answer anywhere else in this repository: the read takes one box, the box comes from
+ * `getBoundingClientRect`, and jsdom answers it with whatever a test stubbed -- one rectangle for every canvas, which
+ * puts "over the next column" inside the origin column too. `horizontalRead.ts` states what each of its findings is
+ * about, and they fail apart so a page that could not measure is never mistaken for a drag that placed a block in a
+ * day the reader had left.
+ *
  * A MISSING BROWSER IS A FINDING. A check that passes when it cannot look reports a claim it never tested. */
 
 import path from "node:path";
@@ -28,6 +36,8 @@ import path from "node:path";
 import { LINE_HEIGHT_PX } from "../../src/ui/domain/week-grid/metrics.ts";
 import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { BROWSER_ENV, findBrowser, screenshot } from "./browser.ts";
+import { buildDragRead, DRAG_READ_SCRIPT } from "./dragRead.ts";
+import { horizontalRead } from "./horizontalRead.ts";
 import { differencesBetween, imageOf, lastInkedColumn, sketch, type Region } from "./pixels.ts";
 import {
   CASES,
@@ -35,12 +45,15 @@ import {
   geometryOf,
   idOf,
   PAGE_PITCH_PX,
+  PAGE_WIDTH_PX,
   pageHeightPx,
   probePage,
+  READINGS_ID,
   WIDE_COLUMN_PX,
   type CaseGeometry,
   type PageReading,
 } from "./page.ts";
+import { COLUMN_READINGS_ID } from "./weekColumns.ts";
 
 export interface CheckRenderInput {
   /** The built stylesheet a browser downloads, by name and content, from the build the bundle gate reads. */
@@ -74,17 +87,26 @@ export async function checkRender({ bundleName, css }: CheckRenderInput): Promis
   }
 
   const cases = geometryOf(CASES);
+  const compiled = await compiledRead();
   const shot = await screenshot({
     browser,
-    html: probePage({ bundleName, cases }),
-    beside: { [bundleName]: css },
-    widthPx: WIDE_COLUMN_PX + 40,
+    html: probePage({
+      bundleName,
+      cases,
+      ...(compiled.code === null ? {} : { scriptName: DRAG_READ_SCRIPT }),
+    }),
+    beside: {
+      [bundleName]: css,
+      ...(compiled.code === null ? {} : { [DRAG_READ_SCRIPT]: compiled.code }),
+    },
+    widthPx: PAGE_WIDTH_PX,
     heightPx: pageHeightPx(cases),
   });
   const image = imageOf(shot.png);
-  const readings = parseReadings(shot.readings);
+  const readings = parseReadings(shot.readings[READINGS_ID] ?? "");
+  const columns = horizontalRead(shot.readings[COLUMN_READINGS_ID] ?? "");
 
-  const findings: Finding[] = [];
+  const findings: Finding[] = [...compiled.findings, ...columns.findings];
   for (const [index, each] of cases.entries()) {
     findings.push(...cappedAgainstUncapped(image, each));
     findings.push(...cappedAgainstUntruncatable(image, each, index, readings));
@@ -101,8 +123,31 @@ export async function checkRender({ bundleName, css }: CheckRenderInput): Promis
           `  ${each.name}: ${String(each.durationMinutes)}m at ${String(each.visibleHours)}h is ` +
           `${each.heightPx.toFixed(3)}px, ${each.tier} tier, ${String(each.lines)} line(s)`,
       ),
+      ...columns.notes,
     ],
   };
+}
+
+/* THE SHIPPED POINTER READ, OR THE REASON THERE IS NONE. A build that failed is a fault in this gate and it is
+ * reported as one: the page then reports that it loaded no read, and neither is mistaken for a drag that placed a
+ * block in the wrong day. */
+async function compiledRead(): Promise<{ code: string | null; findings: Finding[] }> {
+  try {
+    return { code: await buildDragRead(), findings: [] };
+  } catch (failure) {
+    return {
+      code: null,
+      findings: [
+        {
+          file: path.join("frontend", "scripts", "check-render", "dragRead.ts"),
+          check: "column-readings",
+          message:
+            "the drag's own pointer read did not compile, so the page could not be asked what a position over the " +
+            `next column names: ${failure instanceof Error ? failure.message : String(failure)}`,
+        },
+      ],
+    };
+  }
 }
 
 /* Where one case's copies sit. The geometry already carries each top, so the copy's NAME is all this needs. */

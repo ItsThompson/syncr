@@ -54,8 +54,8 @@ export interface ShotRequest {
 /** One page, rendered, as the PNG bytes AND whatever the page reported about itself. */
 export interface Shot {
   readonly png: Buffer;
-  /** The text of the page's own `<pre id="readings">`, or an empty string where it wrote none. */
-  readonly readings: string;
+  /** The text of each of the page's own `<pre id="...">` blocks, by id. Absent ids reported nothing. */
+  readonly readings: Readonly<Record<string, string>>;
 }
 
 /**
@@ -99,15 +99,17 @@ export async function screenshot(request: ShotRequest): Promise<Shot> {
   return { png: await readFile(shot), readings: readingsIn(dom) };
 }
 
-/** The text the page put in its own `<pre id="readings">`, unescaped. */
-function readingsIn(dom: string): string {
-  const found = /<pre id="readings">([\s\S]*?)<\/pre>/.exec(dom);
-  if (found === null) return "";
-  return found[1]
-    .replaceAll("&quot;", '"')
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&");
+/** The text the page put in each of its own `<pre id="...">` blocks, by id, unescaped. */
+function readingsIn(dom: string): Record<string, string> {
+  const found: Record<string, string> = {};
+  for (const block of dom.matchAll(/<pre id="([^"]+)">([\s\S]*?)<\/pre>/g)) {
+    found[block[1]] = block[2]
+      .replaceAll("&quot;", '"')
+      .replaceAll("&lt;", "<")
+      .replaceAll("&gt;", ">")
+      .replaceAll("&amp;", "&");
+  }
+  return found;
 }
 
 function run(command: string, args: readonly string[]): Promise<void> {

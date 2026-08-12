@@ -32,7 +32,12 @@
  *
  * THE TWO COLUMNS ARE STACKED RATHER THAN SIDE BY SIDE. Beside each other they are two flex items, a flex item
  * shrinks, and the narrow column collapsed to 14px: every region then read pixels belonging to nothing. Stacked, each
- * container keeps its declared width and every region's Y is a figure this file computes. */
+ * container keeps its declared width and every region's Y is a figure this file computes.
+ *
+ * BELOW BOTH OF THEM THE WEEK'S SEVEN DAY COLUMNS ARE LAID OUT SIDE BY SIDE, which is the one thing on this page that
+ * has to be. They carry no block and no title: what they are here for is seven boxes a browser computed, so the drag's
+ * own pointer read can be asked what a position over one column names against the box of the one beside it.
+ * `weekColumns.ts` owns them. */
 
 /* `metrics.ts` is import-free, so a script can read it. Its siblings import `./metrics` without an extension and are
  * therefore unreachable here, which is why the three formulas below are restated and asserted rather than imported. */
@@ -45,7 +50,9 @@ import {
   BOTTOM_RULE_PX,
   GRID_H_PX,
   LINE_HEIGHT_PX,
+  VISIBLE_HOURS_DEFAULT,
 } from "../../src/ui/domain/week-grid/metrics.ts";
+import { COLUMN_READINGS_ID, weekColumns } from "./weekColumns.ts";
 
 /** The narrowest supported day column, `--col-min`, which is where a title is tightest. */
 export const COLUMN_PX = 137;
@@ -55,6 +62,9 @@ export const WIDE_COLUMN_PX = 900;
 
 /** How far apart the renderings of one case are placed, so no case's clipping reaches another. */
 const CASE_PITCH_PX = 220;
+
+/** Air around the widest thing the page holds, so nothing sits against the window's own edge. */
+const PAGE_MARGIN_PX = 40;
 
 /** The uncapped control's own line allowance: more lines than any title here needs. */
 const UNCAPPED_LINES = 99;
@@ -235,7 +245,22 @@ export interface PageRequest {
   /** The name the built stylesheet is written under, beside the page, so the link is relative. */
   readonly bundleName: string;
   readonly cases: readonly CaseGeometry[];
+  /** The name the compiled pointer read is written under, or absent where compiling it failed. */
+  readonly scriptName?: string | undefined;
 }
+
+/* The seven day columns, at the default zoom on the reference display, which is where the title cases are measured
+ * too. `weekColumns` owns everything about them; the page places the section and links the script. */
+export const WEEK_SECTION = weekColumns({
+  pxPerMin: heightOf(1, VISIBLE_HOURS_DEFAULT),
+  columnPx: COLUMN_PX,
+});
+
+/** How wide a window has to be to hold the widest thing on the page, which is the week's seven columns. */
+export const PAGE_WIDTH_PX = Math.max(WIDE_COLUMN_PX, WEEK_SECTION.widthPx) + PAGE_MARGIN_PX;
+
+/** The channel the page reports each block's own geometry on. */
+export const READINGS_ID = "readings";
 
 /** The element id of one case's rendering, so an in-page reading can name what it measured. */
 export function idOf(index: number, copy: "capped" | "uncapped" | "wide"): string {
@@ -255,7 +280,7 @@ export interface PageReading {
   readonly firstLineWidthPx: number;
 }
 
-export function probePage({ bundleName, cases }: PageRequest): string {
+export function probePage({ bundleName, cases, scriptName }: PageRequest): string {
   const narrow = cases
     .flatMap((each, index) => [
       block(each, each.lines, each.cappedTopPx, idOf(index, "capped")),
@@ -278,6 +303,7 @@ export function probePage({ bundleName, cases }: PageRequest): string {
      makes every region's Y a figure this file computes rather than one the layout negotiates. */
   #column { position: relative; width: ${String(COLUMN_PX)}px; background: var(--paper-raised) }
   #wide { position: relative; width: ${String(WIDE_COLUMN_PX)}px; background: var(--paper-raised) }
+  ${WEEK_SECTION.style}
 </style></head>
 <body>
 <div id="column" style="height:${String(stackTopPx(cases))}px">
@@ -286,7 +312,10 @@ ${narrow}
 <div id="wide" style="height:${String(stackTopPx(cases))}px">
 ${wide}
 </div>
-<pre id="readings"></pre>
+${WEEK_SECTION.html}
+<pre id="${READINGS_ID}"></pre>
+<pre id="${COLUMN_READINGS_ID}"></pre>
+${scriptName === undefined ? "" : `<script src="./${scriptName}"></script>`}
 <script>
   const readings = [...document.querySelectorAll(".week-block")].map((block) => {
     const title = block.querySelector(".week-block__title");
@@ -300,8 +329,9 @@ ${wide}
       firstLineWidthPx: title.getBoundingClientRect().width,
     };
   });
-  document.getElementById("readings").textContent = JSON.stringify(readings);
+  document.getElementById(${JSON.stringify(READINGS_ID)}).textContent = JSON.stringify(readings);
 </script>
+<script>${WEEK_SECTION.script}</script>
 </body></html>
 `;
 }
@@ -311,9 +341,9 @@ export function stackTopPx(cases: readonly CaseGeometry[]): number {
   return cases.length * CASE_PITCH_PX;
 }
 
-/** How tall a window has to be to hold both columns, so no region reads past the screenshot. */
+/** How tall a window has to be to hold both columns and the week below them, so no region reads past the screenshot. */
 export function pageHeightPx(cases: readonly CaseGeometry[]): number {
-  return 2 * stackTopPx(cases) + CASE_PITCH_PX;
+  return Math.ceil(2 * stackTopPx(cases) + CASE_PITCH_PX + WEEK_SECTION.heightPx);
 }
 
 export const PAGE_PITCH_PX = CASE_PITCH_PX;
