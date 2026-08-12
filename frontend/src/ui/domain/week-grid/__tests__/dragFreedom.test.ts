@@ -127,8 +127,8 @@ describe("the drag's keyboard equivalent, as the design language states it", () 
   });
 });
 
-/* THE OTHER SURFACE THE HEADER CITES. The table is this ticket's whole deliverable to a reader of the document, and
- * the header points at it, so deleting or gutting it is a failure here rather than a silence. */
+/* THE OTHER SURFACE THE HEADER CITES. The table is where a reader of the document meets the refusal rather than
+ * inferring it from a component, and the header points at it, so gutting it is a failure here rather than a silence. */
 describe("the drag table the header points at", () => {
   it("states the refusal and answers all three of the questions it raises", async () => {
     const section = await sectionOf("The week grid");
