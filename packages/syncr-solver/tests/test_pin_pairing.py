@@ -12,10 +12,10 @@ begun, the plan holds it somewhere else, the plan holds it nowhere -- and one bi
 which is where the agreement stops: an unpinned future block is committed time the solver may still
 move, so the union holds it and the other two claim nothing for it.
 
-Every pin here moves its block, because a pin at the span the plan already holds cannot separate a
-producer that reads the pin from one that reads the block. And every pin names a span still to come,
-because an assembly carries only the pins it has not reached: a pin at a span that has begun is a
-record rather than a constraint, so a week holding one is a week no assembler produces.
+Every pin here moves its block, so a producer that reads the pin is distinguishable from one that
+reads the block. And every pin names a span still to come, because an assembly carries only the pins
+it has not reached: a pin at a span that has begun is a record rather than a constraint, so a week
+holding one is a week no assembler produces.
 
 Every span the week names is disjoint from every other and touches none of them: ``IntervalSet``
 merges adjacent members as well as overlapping ones, so two spans that merged would let one member
@@ -107,7 +107,7 @@ def spans_the_union_holds_for(week: SolveInputs, binding: BindingRef) -> tuple[I
     )
 
 
-def the_span_the_index_holds_for(week: SolveInputs, binding: BindingRef) -> tuple[Interval, ...]:
+def spans_the_index_holds_for(week: SolveInputs, binding: BindingRef) -> tuple[Interval, ...]:
     """Where the index of what the solver may not move holds this binding, if it holds it at all."""
     held = PartialPlan.of(week).immovable.get(binding)
     return () if held is None else (held.interval,)
@@ -155,7 +155,7 @@ def test_all_three_producers_hold_a_pinned_binding_at_the_span_the_user_chose(
 
     assert {
         "committed_occupancy": spans_the_union_holds_for(week, binding),
-        "state.immovable": the_span_the_index_holds_for(week, binding),
+        "state.immovable": spans_the_index_holds_for(week, binding),
         "inherited": spans_the_seeded_placements_hold_for(week, binding),
     } == {
         "committed_occupancy": (pinned_at,),
@@ -176,7 +176,7 @@ def test_a_block_nobody_pinned_is_committed_time_nothing_else_claims() -> None:
 
     assert {
         "committed_occupancy": spans_the_union_holds_for(week, HELD_BUT_NOT_PINNED),
-        "state.immovable": the_span_the_index_holds_for(week, HELD_BUT_NOT_PINNED),
+        "state.immovable": spans_the_index_holds_for(week, HELD_BUT_NOT_PINNED),
         "inherited": spans_the_seeded_placements_hold_for(week, HELD_BUT_NOT_PINNED),
     } == {
         "committed_occupancy": (NOT_PINNED_SPAN,),
