@@ -1,10 +1,10 @@
 /* The kit's import zones, checked against the RESOLVED module graph.
  *
  * This exists because the oxlint-backed probe matrix cannot find a shape its own table omits. The
- * matrix derives its probes from `CAPABILITIES`, so a specifier absent from that table is never
- * crossed with any zone: the table is both the input and the oracle. Three holes got through that
- * way, the last being `../../api/client.ts`, which the config's enumeration permitted and the
- * matrix never asked about.
+ * matrix derives its probes from `CAPABILITIES`, so a specifier absent from that table is never crossed
+ * with any zone: the table is both the input and the oracle. Three holes got through that way, the last
+ * being `../../api/client.ts`, which the config's enumeration permitted and the matrix never asked
+ * about.
  *
  * So this check takes a different input. It reads every import in the kit, RESOLVES each one against
  * the filesystem, and asks which directory under `src/` the resolved file actually lives in. A

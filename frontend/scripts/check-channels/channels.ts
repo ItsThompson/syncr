@@ -4,13 +4,12 @@
  * owns exactly one channel, so combinations add instead of overwrite.
  *
  * WHAT THIS ASSERTS, AND WHY IT IS THE PAIR RATHER THAN THE CHANNEL ALONE. `docs/DESIGN-LANGUAGE.md`
- * deals several states onto one channel on purpose: the fill carries the block's existence, hover,
- * the frame and the current nav item, and the left rule carries conflict, selected and split. So
- * "one file per channel" is not implementable against the vocabulary it comes from. What IS
- * checkable, and what the rule is actually protecting, is the PAIR: a given state's given channel
- * is assigned in exactly one file. Two files assigning hover's fill is how two surfaces come to
- * disagree about what hover looks like, and nothing on a rendered screen reveals the disagreement
- * until the two states co-occur.
+ * deals several states onto one channel on purpose: the fill carries the block's existence, hover, the
+ * frame and the current nav item, and the left rule carries conflict, selected and split. So "one file
+ * per channel" is not implementable against the vocabulary it comes from. What IS checkable, and what
+ * the rule is actually protecting, is the PAIR: a given state's given channel is assigned in exactly
+ * one file. Two files assigning hover's fill is how two surfaces come to disagree about what hover
+ * looks like, and nothing on a rendered screen reveals the disagreement until the two states co-occur.
  *
  * A channel is assigned either by a CSS declaration inside a rule that selects on a state, or by a
  * variant-prefixed utility in markup. Both are read, because a rule enforced on only one of them is

@@ -5,13 +5,13 @@
  * plain string, a `__fixtures__` file, an `@apply`, and whatever Tailwind spells next all reach the
  * artifact or they do not.
  *
- * It exists because checks that read source called the stylesheet clean while it shipped
- * `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and `backdrop-filter`, each one sourced from a
- * file written to PROVE that shape is refused. The content scan was narrowed in response, and the
- * narrowing was itself an enumeration of files: `@source` matched a set and the markup scan's
- * `filesUnder` ignored a different set, so a utility named in a test's string or in a comment still
- * compiled into the bundle with all seven checks green. `backdrop-filter` was in the stylesheet a
- * browser downloaded, from the comment documenting the incident.
+ * It exists because checks that read source called the stylesheet clean while it shipped `box-shadow:
+ * 0 0 8px red`, `rotate:`, `--tw-blur` and `backdrop-filter`, each one sourced from a file written to
+ * PROVE that shape is refused. The content scan was narrowed in response, and the narrowing was itself
+ * an enumeration of files: `@source` matched a set and the markup scan's `filesUnder` ignored a
+ * different set, so a utility named in a test's string or in a comment still compiled into the bundle
+ * with all seven checks green. `backdrop-filter` was in the stylesheet a browser downloaded, from the
+ * comment documenting the incident.
  *
  * The same artifact answers what a barrel's stylesheet side effect costs, which is why the two barrel
  * payloads are judged here rather than described in a comment somewhere: see `barrels.ts`.

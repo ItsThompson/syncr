@@ -179,8 +179,8 @@ describe("hidden until focused", () => {
  * one with every check green: `color` and `letter-spacing` on the current row passed this script, the
  * combination matrix and the layer rules alike. Modelling text colour as a channel was the other candidate
  * fix and was rejected, because three control families legitimately mute their own label and the pair rule
- * would report all three as drift. So the model names what carries no channel instead, and its
- * silence is the finding. */
+ * would report all three as drift. So the model names what carries no channel instead, and its silence is
+ * the finding. */
 describe("a property no channel names", () => {
   it("is reported, naming the state and the property", async () => {
     const outcome = await check(["unmodelled-property.css"]);
