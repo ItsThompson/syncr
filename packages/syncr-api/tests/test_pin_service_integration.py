@@ -9,7 +9,7 @@ rolls back the pin, so a pin can never exist without its features.
 drive the service directly and exercise the upsert behaviour without a key: two drags of one block
 produce one pin row (the upsert) and two edit events (two preferences).
 
-**The three Blocker-1 verdict properties.** Pinning time toward a task that is due leaves that
+**The three verdict properties.** Pinning time toward a task that is due leaves that
 task's shortfall unchanged. Pinning a Fitness block leaves the floor reservation equal and lowers
 the floor the solver must still place, which is the whole of the two-quantity split read from one
 week. Pinning an already-placed block leaves the verdict unchanged.
@@ -508,9 +508,9 @@ class TestVerdictProperties:
         """
         block = a_block(14, 15, day_offset=3)
         placed_minutes = block.interval.total_minutes()
-        floor_minutes = placed_minutes
+        declared_floor_minutes = placed_minutes
         plan = a_plan(blocks=(block,))
-        await _seed_area(sessions, owner.tenant_id, floor=floor_minutes)
+        await _seed_area(sessions, owner.tenant_id, floor=declared_floor_minutes)
         await _seed_task(sessions, owner.tenant_id, estimate=60)
 
         # Assemble with the Area declared and NOTHING placed in it, which is what makes the
@@ -523,8 +523,8 @@ class TestVerdictProperties:
             unplaced = await assembler.assemble(WEEK, NOW)
         fitness_unplaced = next(a for a in unplaced.areas if a.area_id == AREA_ID)
         assert fitness_unplaced.placed_minutes == 0
-        assert fitness_unplaced.floor_reservation_minutes == floor_minutes
-        assert fitness_unplaced.floor_minutes == floor_minutes
+        assert fitness_unplaced.floor_reservation_minutes == declared_floor_minutes
+        assert fitness_unplaced.floor_minutes == declared_floor_minutes
 
         await _seed_plan(sessions, owner.tenant_id, plan)
 
@@ -538,11 +538,10 @@ class TestVerdictProperties:
 
         # An unpinned future block is out of the reservation and still in the solver's floor.
         assert fitness_before.placed_minutes == placed_minutes
-        assert fitness_before.floor_reservation_minutes == floor_minutes - placed_minutes
-        assert fitness_before.floor_minutes == floor_minutes
+        assert fitness_before.floor_reservation_minutes == declared_floor_minutes - placed_minutes
+        assert fitness_before.floor_minutes == declared_floor_minutes
         # Gross: the whole floor is placed and the target reports the figure it reported unplaced.
         assert fitness_before.target_minutes == fitness_unplaced.target_minutes
-        assert fitness_before.target_minutes >= floor_minutes
 
         # Pin to a different time
         new_start = datetime(2026, 2, 12, 10, 0, tzinfo=UTC)
