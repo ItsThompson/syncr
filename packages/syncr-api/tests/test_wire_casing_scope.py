@@ -28,10 +28,10 @@ the one the application declares today. A committed file can be older than the r
 describes, and the regenerate-and-diff CI job is the only gate that sees them disagree.
 
 The two body surfaces are told apart by the media type that reaches them rather than by name: the
-OAuth endpoints take ``application/x-www-form-urlencoded`` requests whose member names RFC 6749
-fixes, and no JSON body reaches those schemas. The exception is therefore structural, and it is
-asserted to be non-empty, because an exception that describes nothing is a sentence in the
-docstring that has stopped being true.
+OAuth endpoints take ``application/x-www-form-urlencoded`` requests whose member names RFC 6749,
+RFC 7009 and RFC 7636 fix, and no JSON body reaches those schemas. The exception is therefore
+structural, and it is asserted to be non-empty, because an exception that describes nothing is a
+sentence in the docstring that has stopped being true.
 """
 
 from __future__ import annotations
@@ -70,6 +70,10 @@ SNAKE_CASED: Final = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*")
 # The shape a body member is spelled in, and a query parameter this api names itself.
 CAMEL_CASED: Final = re.compile(r"[a-z][a-zA-Z0-9]*")
 
+# The shape a header parameter is spelled in: capitalized words joined by hyphens, which is what a
+# generated client spells even though a header name is case-insensitive on the wire.
+HEADER_CASED: Final = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z][A-Za-z0-9]*)*")
+
 # A placeholder in a path template.
 PLACEHOLDER: Final = re.compile(r"\{([^{}]*)\}")
 
@@ -78,6 +82,7 @@ QUOTED: Final = re.compile(r"``([^`]+)``")
 
 PATH: Final = "path"
 QUERY: Final = "query"
+HEADER: Final = "header"
 
 # Every method an OpenAPI path item may carry an operation under. Named rather than inferred from
 # the keys present, so a path-item-level `parameters` list is read as the shared declaration it is
@@ -108,6 +113,11 @@ def is_snake_cased(name: str) -> bool:
 def is_camel_cased(name: str) -> bool:
     """Whether ``name`` is a lowercase-initial run of letters and digits, humps allowed."""
     return CAMEL_CASED.fullmatch(name) is not None
+
+
+def is_header_cased(name: str) -> bool:
+    """Whether ``name`` is capitalized words joined by hyphens, as a header is written."""
+    return HEADER_CASED.fullmatch(name) is not None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -303,6 +313,7 @@ def test_each_reading_of_the_contract_finds_something(document: Mapping[str, Any
     # contract, and the two schema sets are asserted to partition the named schemas so that a
     # shape reached by neither cannot sit uncensused.
     declared = parameters_the_operations_declare(document)
+    by_reference = parameters_declared_by_reference(document)
     from_json = schemas_reached_through(document, JSON_BODY)
     from_form = schemas_reached_through(document, FORM_BODY)
     members = properties_of(document, from_json)
@@ -317,13 +328,13 @@ def test_each_reading_of_the_contract_finds_something(document: Mapping[str, Any
         f"{PATH_PARAMETER_NAMES_AT_LEAST} measured when this floor was written"
     )
     assert parameters_in_the_templates(document), "no path template carries a placeholder"
-    assert {one.location for one in declared} >= {PATH, QUERY}, (
-        "no query parameter was read, so the claim that camelCase belongs to the query surface "
-        "holds over nothing"
+    assert {one.location for one in declared} >= {PATH, QUERY, HEADER}, (
+        "a parameter surface the clause states a spelling for was not read at all, so that "
+        f"spelling's claim holds over nothing: read {sorted({one.location for one in declared})}"
     )
-    assert parameters_declared_by_reference(document) == (), (
+    assert by_reference == (), (
         "a parameter is declared by reference, which the declaration reading cannot follow: "
-        f"{parameters_declared_by_reference(document)}"
+        f"{by_reference}"
     )
     assert len(members) >= BODY_MEMBERS_AT_LEAST, (
         f"{len(members)} members reached through a JSON body, fewer than the "
@@ -423,8 +434,8 @@ def test_the_form_bodies_are_where_a_snake_cased_member_lives(
     document: Mapping[str, Any],
 ) -> None:
     """The exclusion's other edge, which is what stops the body claim from being a rule with a
-    hole nobody stated: the members RFC 6749 fixes are snake_cased, and they are reached only
-    through a form-encoded request.
+    hole nobody stated: the members RFC 6749, RFC 7009 and RFC 7636 fix are snake_cased, and they
+    are reached only through a form-encoded request.
     """
     fixed = properties_of(document, schemas_reached_through(document, FORM_BODY))
 
@@ -432,6 +443,35 @@ def test_the_form_bodies_are_where_a_snake_cased_member_lives(
     assert [member for member in fixed if "_" in member.split(".", 1)[1]], (
         f"no form-encoded member is snake_cased, so the exception is describing nothing: {fixed}"
     )
+
+
+def test_no_form_member_carries_a_camel_hump(document: Mapping[str, Any]) -> None:
+    """The bound on the members this api adds to a form body rather than reads from an RFC.
+
+    The RFCs fix all but one of those names, so the exclusion above says nothing about the one
+    this api owns and nothing about the next one. This is what the casing docstring's "none of
+    them is camelCased" rests on, and it is the arm a multi-word api-owned member reddens.
+    """
+    members = properties_of(document, schemas_reached_through(document, FORM_BODY))
+
+    humped = [member for member in members if is_camel_humped(member.split(".", 1)[1])]
+    assert humped == [], f"a form-encoded member is camelCased: {humped}"
+
+
+def test_every_header_parameter_is_spelled_as_a_header(document: Mapping[str, Any]) -> None:
+    """The third parameter surface, which is the second one the casing rule does not reach.
+
+    One name holds this surface today, so the claim is thin, and the location floor in
+    ``test_each_reading_of_the_contract_finds_something`` is what keeps it from becoming a claim
+    about nothing.
+    """
+    otherwise = [
+        str(one)
+        for one in parameters_the_operations_declare(document)
+        if one.location == HEADER and not is_header_cased(one.name)
+    ]
+
+    assert otherwise == [], f"a header parameter is spelled as neither a header is: {otherwise}"
 
 
 def test_no_body_shape_is_declared_inline_under_a_path(document: Mapping[str, Any]) -> None:
@@ -496,6 +536,7 @@ def test_the_readings_answer_from_the_shape_rather_than_from_the_document() -> N
                     "parameters": [
                         {"name": "thingId", "in": PATH},
                         {"name": "sinceWhen", "in": QUERY},
+                        {"name": "Trace-Id", "in": HEADER},
                     ],
                     "responses": {
                         "200": {"content": {JSON_BODY: {"schema": {"$ref": "#/x/Thing"}}}}
@@ -526,6 +567,7 @@ def test_the_readings_answer_from_the_shape_rather_than_from_the_document() -> N
         "GET /things/{thingId} [path] shared_id",
         "GET /things/{thingId} [path] thingId",
         "GET /things/{thingId} [query] sinceWhen",
+        "GET /things/{thingId} [header] Trace-Id",
     ], "a path item's shared parameters belong to each of its operations, and `summary` is not one"
     assert schemas_reached_through(invented, JSON_BODY) == frozenset({"Thing", "Deep"}), (
         "a JSON body reaches the shapes its own members name"
@@ -547,6 +589,9 @@ def test_the_readings_answer_from_the_shape_rather_than_from_the_document() -> N
     assert is_camel_cased("atRisk")
     assert not is_camel_cased("grant_type")
     assert not is_camel_cased("Problem")
+    assert is_header_cased("Idempotency-Key")
+    assert not is_header_cased("idempotency_key")
+    assert not is_header_cased("Idempotency-key"), "each word of a header name is capitalized"
 
 
 def test_the_inline_reading_sees_a_shape_written_under_an_operation() -> None:

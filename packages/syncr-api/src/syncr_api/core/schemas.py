@@ -5,12 +5,15 @@ document this application emits, and TypeScript reads ``lastSeenAt`` rather than
 ``last_seen_at``. Fixing the casing in one base rather than per field means a new
 schema cannot ship half-converted, which would be a contract that reads two ways.
 
-**The rule scopes to a request or response body.** A path parameter is snake_cased --
-``iso_week``, ``source_id``, ``anchor_type_id`` -- and a multi-word query parameter this api
-names itself is camelCased -- ``areaId``, ``atRisk``. So a new route spells its path parameter
-in snake_case, which is the surface this base does not reach. The other body surface it does not
-reach is the OAuth endpoints' form-encoded requests, whose member names RFC 6749, RFC 7009 and RFC
-7636 fix, ``grant_type`` among them.
+**The rule scopes to a request or response body.** Each parameter surface has its own spelling: a
+path parameter is snake_cased -- ``iso_week``, ``source_id``, ``anchor_type_id`` -- a multi-word
+query parameter this api names itself is camelCased -- ``areaId``, ``atRisk`` -- and a header
+parameter is spelled as a header, ``Idempotency-Key``. So a new route takes its parameter spelling
+from the surface the parameter sits on rather than from this base.
+
+The other body surface this base does not reach is the OAuth endpoints' form-encoded requests. RFC
+6749, RFC 7009 and RFC 7636 fix every one of those member names but ``decision``, which this api
+adds and spells as a single lowercase word. None of them is camelCased.
 
 ``populate_by_name`` is on so a request body is accepted under either spelling. The
 document advertises the camelCase alias, which is what a generated client sends; the
