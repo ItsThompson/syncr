@@ -139,7 +139,9 @@ async function measure(): Promise<Reading[]> {
   const run = await mkdtemp(path.join(tmpdir(), "syncr-current-probe-"));
   const css = await bundleCss();
   process.stdout.write(
-    `measured over ${String(css.length)} bytes of built css, sha256 ${createHash("sha256")
+    `measured over ${String(Buffer.byteLength(css))} bytes of built css, sha256 ${createHash(
+      "sha256",
+    )
       .update(css)
       .digest("hex")
       .slice(0, 16)}\n`,
