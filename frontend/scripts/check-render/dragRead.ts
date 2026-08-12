@@ -10,9 +10,13 @@
  * THE ENTRY EXISTS ONLY FOR THE LENGTH OF THE BUILD, which is the shape `check-bundle/build.ts` established for the
  * same reason: a probe file in the tree would be scanned by every other check as if a screen had written it.
  *
- * IT CARRIES NO STYLE. The barrel the snap arrives through imports the kit's stylesheets, and a bundle that injected
- * them would restyle a page whose other nine cases are measured in pixels. Style imports are resolved to nothing and
- * an emitted stylesheet is a failure rather than a file this ignores. */
+ * IT CARRIES NO STYLE, AND THAT IS STRUCTURAL RATHER THAN TRUSTED. The barrel the snap arrives through imports the
+ * kit's stylesheets: 30 `.css` ids reach this build's resolver, and left alone they turn a 1261-byte chunk into a
+ * 12783-byte one that creates a `<style>` element carrying them, which would restyle a page whose other nine cases are
+ * measured in pixels. Two things stop that. Style imports resolve to nothing, and `cssCodeSplit` is off, so a sheet
+ * that does reach the graph is EXTRACTED as an asset rather than injected into the script the page runs. The build then
+ * has to produce exactly one artifact, the script, and anything else is a failure rather than a file this ignores:
+ * with the stub removed, that refusal names the extracted stylesheet. */
 
 import path from "node:path";
 import { build, type InlineConfig, type Plugin } from "vite";
@@ -65,29 +69,34 @@ const CONFIG: InlineConfig = {
   plugins: [entry()],
   build: {
     write: false,
+    /* OFF SO A STYLESHEET CANNOT BE INJECTED. With code splitting on, a sheet reaching the graph is written into the
+     * chunk as a `<style>` element the page would then run; extracted, it is an asset this never writes and the
+     * refusal below can see. */
+    cssCodeSplit: false,
     /* A classic script rather than a module: a page opened over `file://` runs one without asking a server's
      * permission for it. */
     rollupOptions: { input: SPECIFIER, output: { format: "iife" } },
   },
 };
 
-/** The compiled read, or a throw naming what the build produced instead. */
+/**
+ * The compiled read, or a throw naming what the build produced instead.
+ *
+ * ONE REFUSAL RATHER THAN TWO, because one of the two could not fire. `format: "iife"` sets `codeSplitting: false`, so
+ * a dynamic import is inlined and a second chunk is not reachable: a count of chunks alone had no input. What is
+ * reachable is the artifact SET, which gains an extracted stylesheet the moment the style stub stops suppressing one.
+ */
 export async function buildDragRead(): Promise<string> {
   const result = await build(CONFIG);
   const outputs = (Array.isArray(result) ? result : [result]).filter((one) => "output" in one);
   const assets = outputs.flatMap((output) => output.output);
-  const styles = assets.filter((asset) => asset.fileName.endsWith(".css"));
-  if (styles.length > 0) {
+  const script = assets.length === 1 && assets[0].type === "chunk" ? assets[0] : null;
+  if (script === null) {
     throw new Error(
-      `compiling the pointer read emitted ${String(styles.length)} stylesheet(s), which would restyle the page`,
+      `compiling the pointer read produced ${String(assets.length)} artifact(s) rather than one script: ` +
+        `${assets.map((asset) => `${asset.type} ${asset.fileName}`).join(", ")}. Style imports resolve to nothing ` +
+        "here, so a stylesheet among them means the kit's own sheets reached the graph.",
     );
   }
-
-  const chunks = assets.filter((asset) => asset.type === "chunk");
-  if (chunks.length !== 1) {
-    throw new Error(
-      `compiling the pointer read produced ${String(chunks.length)} chunk(s) rather than one`,
-    );
-  }
-  return chunks[0].code;
+  return script.code;
 }
