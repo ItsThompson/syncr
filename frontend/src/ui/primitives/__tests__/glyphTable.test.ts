@@ -28,6 +28,12 @@ import { kitStylesheet } from "../../../testing/kitStylesheets";
 
 const GLYPH_DECLARATION = /--glyph-([a-z-]+):\s*("(?:[^"\\]|\\.)*")/g;
 
+/** The classes in one selector's subject, which is the compound after its last combinator. */
+function subjectClasses(selector: string): string[] {
+  const subject = selector.split(/[\s>+~]+/).at(-1) ?? "";
+  return [...subject.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((match) => match[1]);
+}
+
 async function glyphTable(): Promise<Map<string, string>> {
   const css = await kitStylesheet("glyphs.css");
   const table = new Map<string, string>();
@@ -41,6 +47,11 @@ async function glyphTable(): Promise<Map<string, string>> {
  * A component names a CLASS and never a mark, so a mark's consumer is one hop away: the class whose rule
  * assigns it. A mark may be reached by more than one, which is why this is a mark-to-classes map rather than a
  * pair: the bracket pair is composed by the key hint's own rules, and the slot classes assign the rest.
+ *
+ * ONLY THE SELECTOR'S SUBJECT CARRIES THE MARK. An ancestor in a compound selector is a condition on when the
+ * mark is drawn, not a thing that draws it, so counting it as a carrier would let a live ancestor answer for a
+ * dead mark-bearing class: `.state-row[data-at-risk] .state-mark` is drawn on `.state-mark`, and a component
+ * that stopped naming that class would have been covered by the row it sits in.
  */
 async function classesByMark(): Promise<Map<string, Set<string>>> {
   const reached = new Map<string, Set<string>>();
@@ -48,9 +59,7 @@ async function classesByMark(): Promise<Map<string, Set<string>>> {
   const contents = await Promise.all(sheets.map((sheet) => readFile(sheet, "utf8")));
   for (const css of contents) {
     parse(css).walkRules((rule) => {
-      /* The class is matched by its tail and reassembled, because a pattern spelling the whole class name puts
-       * a hyphen against a character class and reads as Tailwind's arbitrary-value form to the markup scan. */
-      const classes = [...rule.selector.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((match) => match[1]);
+      const classes = rule.selectors.flatMap(subjectClasses);
       if (classes.length === 0) return;
       rule.walkDecls((declaration) => {
         for (const reference of declaration.value.matchAll(/var\(--glyph-([a-z-]+)\)/g)) {
