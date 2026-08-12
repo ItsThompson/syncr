@@ -9,11 +9,16 @@
  * the screen's own and `Enter` opens the panel; a surface that inherited the binding and drew no panel would leave a key
  * that silently does nothing.
  *
+ * THE PANEL IS DRAWN FROM THE SELECTION AND THE OPEN STATE TOGETHER. A selection with the panel closed is a reader who
+ * has chosen a block and not asked why it is there, which is the state the rail's control and `Enter` both answer; the
+ * state travels down as `data-panel`, so a rule can select on it without a second copy of the condition.
+ *
  * BELOW --bp-wide THE PANEL CLOSES TO A RAIL rather than narrowing: a narrower panel cannot hold a reason and a narrower
  * grid cannot hold a title. The rail is a reserved column, so the grid's width does not change when the panel opens. */
 
 import { WeekGrid } from "../../../ui/domain";
 import { DetailPanel } from "./DetailPanel";
+import { DetailRail } from "./DetailRail";
 import { columnLabel } from "../labels";
 import type { WeekInteraction } from "../hooks/useWeekScreenInteraction";
 import type { WeekWords } from "../hooks/useWeekWords";
@@ -31,7 +36,7 @@ export function WeekSurface({ screen, interaction, words, nowMs }: WeekSurfacePr
   const dates = screen.days.map((day) => day.date);
 
   return (
-    <div className="flex gap-3.25">
+    <div className="flex gap-3.25" data-panel={interaction.isDetailOpen ? "open" : "closed"}>
       <div className="min-w-0 grow">
         <WeekGrid
           days={screen.days}
@@ -47,8 +52,8 @@ export function WeekSurface({ screen, interaction, words, nowMs }: WeekSurfacePr
           visibleHours={interaction.visibleHours}
         />
       </div>
-      <div className="w-detail-closed shrink-0 border-l border-rule wide:hidden" />
-      {words.detail === null ? null : (
+      <DetailRail isPanelOpen={interaction.isDetailOpen} onToggle={interaction.onToggleDetail} />
+      {words.detail === null || !interaction.isDetailOpen ? null : (
         <div className="hidden w-detail shrink-0 wide:block">
           <DetailPanel
             actions={words.detail.actions}

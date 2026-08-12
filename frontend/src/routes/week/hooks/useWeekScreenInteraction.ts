@@ -18,7 +18,13 @@
  *
  * THE ZOOM IS SCREEN STATE RATHER THAN A SETTING WRITE. `z` cycles the visible hours within the display's own clamped
  * range, and cycling a stored setting would mean a request per keystroke on the densest surface in the product. The
- * reader's stored value is what the screen opens at, and what they cycle to is theirs until they leave. */
+ * reader's stored value is what the screen opens at, and what they cycle to is theirs until they leave.
+ *
+ * THE DETAIL PANEL IS OPEN WHERE THERE IS ROOM FOR ITS COLUMN AND CLOSED WHERE THERE IS NOT, and the panel is drawn
+ * from that state AND the selection rather than from the selection alone. Above --bp-wide the column is reserved and
+ * selecting a block is the whole gesture; below it the column would starve the grid of the width a title needs, so the
+ * panel starts closed and the rail's own control is the pointer's route to it. `Enter` opens it at either width,
+ * `Escape` closes it and clears the selection, and both of those and the rail's control set one state. */
 
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
@@ -33,6 +39,7 @@ import { useWeekWrites } from "../../../api/hooks/useWeekWrites";
 import { useServerEvents } from "../../../api/events";
 import type { BlockDrop, BlockStates, VerdictTradeoff, WeekDay } from "../../../ui/domain";
 import { isoWeekOf } from "../../today/isoWeek";
+import { hasRoomForDetailPanel } from "../panelRoom";
 import { stepColumn, stepInColumn, surviving, type Selected } from "../selection";
 import { weekAway } from "../weeks";
 import type { WeekView } from "../../../api/hooks/useWeek";
@@ -61,7 +68,7 @@ export interface WeekInteractionInput {
 
 export interface WeekInteraction {
   readonly selected: Selected | null;
-  /** True once the reader has asked for the detail panel, which happens on selection and never on hover. */
+  /** Whether the panel is open. Open where the viewport has room for its column, and never opened by hover. */
   readonly isDetailOpen: boolean;
   readonly visibleHours: number;
   readonly statesOf: (blockId: string) => BlockStates;
@@ -71,6 +78,8 @@ export interface WeekInteraction {
   readonly onApprove: () => void;
   readonly onResolveNow: () => void;
   readonly onCloseDetail: () => void;
+  /** The rail's own control, which is what opens the panel on a display with no room for its column. */
+  readonly onToggleDetail: () => void;
   /** Requesting a concession, which mutates nothing and dispatches an immediate solve. */
   readonly onPropose: (tradeoff: VerdictTradeoff) => void;
   /** Activating a band's gutter label, which is how an empty slot becomes an invitation to capture. */
@@ -84,7 +93,7 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
   const { isoWeek, days, view, today, visibleHours } = input;
   const navigate = useNavigate();
   const [held, setHeld] = useState<Selected | null>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(hasRoomForDetailPanel);
   const [zoomHours, setZoomHours] = useState<number | null>(null);
 
   const operation = useOperation(isoWeek);
@@ -224,6 +233,9 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
     },
     onCloseDetail: () => {
       setIsDetailOpen(false);
+    },
+    onToggleDetail: () => {
+      setIsDetailOpen((open) => !open);
     },
     onPropose: (tradeoff) => {
       void writes.requestTradeoff.submit({ kind: tradeoff.kind, targetId: tradeoff.targetId });
