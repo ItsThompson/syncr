@@ -88,7 +88,7 @@ _CHURN_KNEE_FLAT: Final = sqrt(sys.float_info.max)
 
 
 class StalenessInput(StrEnum):
-    """The two complaints the staleness term carries, named so a clause can say which dominated.
+    """The two complaints the staleness term carries, named so the split can say which dominated.
 
     Two members and no third. A term with two inputs has two names; a member for "neither" would
     be a name for the absence of a cost, which the split reports as nothing instead.
@@ -104,9 +104,13 @@ class StalenessSplit:
 
     **One term with two inputs, not two terms.** An overdue cadence item and a rotation that has
     not advanced are the same complaint, that something is falling behind, and splitting them
-    doubles a weight the learning layer must fit from sparse data. Nothing is lost in
-    explainability, because the reason record can still name which input dominated, and this is
-    where it reads that from.
+    doubles a weight the learning layer must fit from sparse data.
+
+    **Which input dominated is carried by the objective BREAKDOWN, and the reason record does not
+    name it.** The ``dominant`` clause names the TERM, ``staleness``, and holds no field an input
+    could go in, so a block's record says the week is falling behind and not which half of it is.
+    The breakdown reaches a plan revision as its seven costs alone, so the split does not survive
+    that row either: it is readable for as long as the solve that computed it and no longer.
 
     The two figures PARTITION the due occurrences rather than overlapping: an occurrence's
     content comes from a rotation cursor or it does not, so no occurrence is in both and the
@@ -127,7 +131,7 @@ class StalenessSplit:
         """Which input carried more of the cost, or nothing because neither carried any.
 
         A tie goes to the cadence, which is the order the two are declared in. Nothing to report
-        is reported as nothing rather than as a name at zero: a clause naming a dominant input
+        is reported as nothing rather than as a name at zero: a split naming a dominant input
         that cost nothing states something no arithmetic here computed.
         """
         if self.cadence_minutes == self.rotation_minutes == 0:

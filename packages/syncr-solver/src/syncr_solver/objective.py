@@ -15,8 +15,8 @@ another term's after its weight is applied.
 
 Two further fields carry what two terms would otherwise lose, and neither is a cost:
 
-- ``staleness_split`` names which of the staleness term's two inputs dominated, which is what
-  keeps one term with two inputs from costing anything in explainability;
+- ``staleness_split`` names which of the staleness term's two inputs dominated, which is the one
+  place that reading exists: no clause of a reason record and no stored column carries it;
 - ``churn_baseline`` names the plan churn was measured against, or states that there is none,
   which is what stops a churn of zero reading as a plan that never moved.
 
@@ -79,7 +79,7 @@ class ObjectiveBreakdown:
     staleness: float
 
     # Which of the staleness term's two inputs dominated, and both figures. Not a cost: the term
-    # above is the cost, and this is what the reason record names.
+    # above is the cost, and the `dominant` clause carries that term rather than either input.
     staleness_split: StalenessSplit = field(default_factory=StalenessSplit)
     # What churn was measured against, or the statement that there is nothing to measure against.
     # A breakdown built for its arithmetic alone states the truthful zero, which is a week no
@@ -197,8 +197,8 @@ def _require_a_split_for_a_charged_staleness(cost: float, split: StalenessSplit)
     """Staleness above zero names which of its two inputs it came from.
 
     The same shape as the churn guard: the term is one number over two inputs, and the split is
-    what keeps the single weight from costing anything in explainability. A charge whose split is
-    empty is a composition that read one and dropped the other.
+    the only thing that says which of them the charge came from. A charge whose split is empty is
+    a composition that read one and dropped the other.
     """
     if cost > 0 and split.dominant() is None:
         raise PlanError(
