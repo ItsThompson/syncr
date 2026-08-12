@@ -320,11 +320,12 @@ describe("the detail panel", () => {
   });
 
   /* THE PANEL'S OWN CLOSE CONTROL, DRIVEN RATHER THAN READ. It writes the same open state the rail's control and `Enter`
-   * write, and at this width it is the only control that can close the panel: the rail is fenced out at and above the
-   * threshold, so nothing else on the screen offers the gesture. It leaves the SELECTION alone, which is what separates
-   * it from `Escape`, and closing unmounts the control that held focus, so focus falls to the body and `Enter` reaches
-   * the screen's own binding rather than a button's activation. That reopen is asserted here because this is the width
-   * where the affordance is thinnest. */
+   * write, and IN A BROWSER at this width it is the only control that offers the gesture, because the rail's column is
+   * `display: none` above the threshold. jsdom applies no CSS, so the rail is in this render's DOM and would answer a
+   * click: the query is scoped to the panel for that reason, and the width is what the case is about rather than what
+   * it proves. It leaves the SELECTION alone, which is what separates it from `Escape`, and closing unmounts the control
+   * that held focus, so focus falls to the body and `Enter` reaches the screen's own binding rather than a button's
+   * activation. That reopen is asserted here because this is the width where the affordance is thinnest. */
   it("closes from the panel's own control, keeps the selection, and reopens with Enter", async () => {
     window.innerWidth = WIDE_MIN_WIDTH_PX;
     await renderWeek(buildWeekView());
