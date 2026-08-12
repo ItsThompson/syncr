@@ -28,8 +28,8 @@ any setup, a year boundary, week 53, a tenant far east and one far west, a week 
 boundary falls in a daylight-saving gap, no credential, another tenant's week, and a read that must
 not write.
 
-**Note 4 from ``reviews/spec-review-5.md``** is recorded in ``test_week_view_composition.py``,
-beside the traceability the note is about.
+The traceability this suite's own read is verified by is recorded in
+``test_week_view_composition.py``, beside the work it concerns.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ A_YEAR_WITH_NO_WEEK_53 = "2025-W53"
 
 MINUTES_PER_HOUR = 60
 
-# Roughly the block count section 19's latency budget is stated over.
+# Roughly the block count a full week holds, which the read-latency budget is stated over.
 BLOCKS_IN_A_FULL_WEEK = 210
 # How many reads the p95 is taken over, and the ceiling this suite fails at. The budget is p95 under
 # 300 ms; the ceiling here is deliberately looser, because a developer's machine and a CI runner are
@@ -855,7 +855,7 @@ def test_a_week_holding_a_day_whose_own_midnight_does_not_exist_still_holds_seve
 def test_the_strip_figures_are_the_budget_reports_own(
     http: TestClient, a_planned_week: tuple[dict[str, str], IsoWeek]
 ) -> None:
-    """The criterion: a figure on the strip cannot disagree with the same figure in the review."""
+    """The rule: a figure on the strip cannot disagree with the same figure in the review."""
     headers, week = a_planned_week
 
     readings = week_view(http, headers, week)["readings"]
@@ -1049,8 +1049,8 @@ def test_no_route_offers_a_method_that_could_change_a_revision(
 ) -> None:
     """The history is read-only, asserted over the app's own route table.
 
-    Bounded by every route whose path names the revisions collection rather than by the ones this
-    ticket added, so a later ticket cannot open a write path to it without this reddening.
+    Bounded by every route whose path names the revisions collection rather than by the ones that
+    exist today, so a write path opened later cannot reach it without this reddening.
     """
     revision_routes = {
         (method, path)
@@ -1136,7 +1136,8 @@ def test_no_parameterized_week_read_brings_a_row_into_existence(
     settings: ServiceSettings,
     source_root: Path,
 ) -> None:
-    """The criterion ticket 28's guard could not reach, because every week route is parameterized.
+    """The rule a guard over unparameterized routes could not reach, because every week route
+    takes the week.
 
     Every scoped table the application declares is counted before and after, ``verdict_events``
     among them, so a read that appended a transition would redden this without the table being
@@ -1345,7 +1346,7 @@ def test_the_week_view_is_read_in_well_under_the_budget_on_a_full_week(
     configured: dict[str, str],
     live_database_url: str,
 ) -> None:
-    """Section 19 budgets this read at p95 under 300 ms on a week of roughly 210 blocks.
+    """The budget is p95 under 300 ms on a week of roughly 210 blocks.
 
     Measured rather than asserted: the figure below is reported and the assertion is an order of
     magnitude looser, because a developer's machine and a CI runner are not the deployment. A

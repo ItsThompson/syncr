@@ -113,8 +113,8 @@ def kinds(verdict: Verdict) -> list[ShortfallKind]:
 
 
 async def test_a_week_whose_floors_are_met_by_unpinned_blocks_reports_no_floor_gap() -> None:
-    # Blocker 1, end to end. Fitness 5h and Career 3h, both met by unpinned solver-placed blocks,
-    # with two of the week's remaining ten hours genuinely uncommitted.
+    # The floor rule, end to end. Fitness 5h and Career 3h, both met by unpinned solver-placed
+    # blocks, with two of the week's remaining ten hours genuinely uncommitted.
     #
     # Under the superseded rule the probe read the solver's reservation, which nets IMMOVABLE
     # placements only. Neither block is immovable, so it reserved the whole 8h against 2h of free
@@ -181,7 +181,7 @@ async def test_the_projection_and_the_netting_pair_a_pin_with_its_block_the_same
     # Two statements of one pairing, crossed against each other. The projection unions the paired
     # intervals; the netting indexes the paired placements. A change to either that dropped the
     # pairing would leave the probe's free capacity counting a different set from the demands and
-    # reservations it is compared against, which is the defect class this ticket exists inside.
+    # reservations it is compared against, which is the defect class this pairing exists against.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     moved = BindingRef.for_task(FITNESS_TASK)
     placed = FakePlacements(
@@ -234,13 +234,12 @@ async def test_a_deadline_the_week_cannot_reach_names_the_task_and_honors_the_ot
 
 
 async def test_an_orphan_pin_takes_capacity_that_no_areas_reservation_nets() -> None:
-    # The Blocker-1 asymmetry one level deeper, recorded rather than fixed. A pin whose binding the
+    # The floor asymmetry one level deeper, recorded rather than fixed. A pin whose binding the
     # live plan no longer holds carries no Area, so the netting gives it `area_id=None` and no
     # Area's reservation nets it, while the probe's free capacity loses the hour. The floor gap is
     # therefore over-reported by the pinned minutes, which is the forbidden direction.
     #
-    # It is unreachable while nothing in this deployment writes a pin, and closing it needs an Area
-    # on the pin or a read of the binding's entity, which is ticket 1251's scope. This test states
+    # Closing it needs an Area on the pin or a read of the binding's entity. This test states
     # the direction so the next reader inherits a measurement instead of a surprise.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     # A week tight enough for the hour to matter: five hours of capacity from the stamped instant
@@ -282,12 +281,12 @@ async def test_a_verdict_carries_the_version_and_the_instant_its_assembly_was_bu
 
 
 async def test_a_routine_reduction_frees_capacity_the_area_targets_were_not_taken_over() -> None:
-    # A measurement rather than a rule, and the rule belongs to ticket 1254.
+    # A measurement rather than a rule, and which of the two figures is right is open.
     #
     # The assembler takes the week's denominator over the frame BEFORE the concessions are folded,
     # and the snapshot carries the frame after. So a reduce_routine concession frees minutes the
     # probe reports as discretionary and no Area's target was computed over. Both figures are
-    # asserted here, so whoever closes 1254 has the number and the direction rather than an
+    # asserted here, so whoever settles it has the number and the direction rather than an
     # argument, and so a change to either side is visible.
     #
     # 120 minutes a day off an eight-hour Sleep routine over seven days: 840 minutes.

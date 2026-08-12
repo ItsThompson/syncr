@@ -249,7 +249,7 @@ async def test_a_confirmed_outcome_longer_than_the_block_carries_the_truth() -> 
 
 
 async def test_a_confirmed_skip_raises_the_demand_for_the_task_it_was_placed_for() -> None:
-    # Ticket 1290, end to end through the assembly. The user's Monday hour was placed and then
+    # A confirmed skip, end to end through the assembly. The user's Monday hour was placed and then
     # marked skipped, so the four-hour task still owes four hours rather than three: the demand
     # RISES by the hour the user said they did not work, which is the truth and the opposite of
     # what the netting formula alone produced.
@@ -280,8 +280,8 @@ async def test_a_confirmed_skip_raises_the_demand_for_the_task_it_was_placed_for
 async def test_a_confirmed_skip_leaves_the_solvers_own_figure_where_it_was() -> None:
     # The asymmetry, pinned so it is not read as a rule. The solver's remaining work nets what it
     # cannot RE-PLACE, and a past hour stays unmovable whatever the user said happened in it. The
-    # two readings genuinely disagree here and only the probe's is settled; ticket 1320 owns
-    # whether the solver's should read the log too.
+    # two readings genuinely disagree here and only the probe's is settled; whether the solver's
+    # should read the log too is open.
     area = an_area()
     task = a_task(area_id=area.id, estimate_minutes=FOUR_HOURS, deadline=at(9, day=4))
     plan = a_plan(
@@ -880,7 +880,7 @@ async def test_a_stored_concession_and_a_candidate_on_one_target_compound() -> N
     # The storage index makes two STORED concessions on one kind and target unreachable, and it does
     # not cover a candidate, which is an argument rather than a row. So the two apply in turn. This
     # pins the shipped semantics rather than endorsing them: whether the enumerator offers an
-    # increment or an absolute figure is its own question, and ticket 1255 carries it.
+    # increment or an absolute figure is its own question, and it is open.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     stored = an_adjustment(
         kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=60

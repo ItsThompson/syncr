@@ -4,7 +4,7 @@ The rules suite proves the counting over hand-built values. This proves what onl
 a real database can:
 
 - the payload is addressed by the week it PLANS, and the retrospective covers the week before it,
-  which is what ``US-REV-01``'s "planning and retrospective in one pass" means on the wire
+  which is what planning and retrospective in one pass means on the wire
 - **it writes nothing at all**: no revision, no outcome, no week input version, and no
   ``VerdictEvent``. Driven twice, because a read that wrote on the first call and not the second
   would pass a one-call guard: the recorder writes only on a TRANSITION
@@ -384,7 +384,7 @@ def test_the_payload_plans_one_week_and_reviews_the_week_before_it(
 def test_every_review_states_its_confirmed_and_unconfirmed_days(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    """``US-REV-04``, over a week holding one unconfirmed block and nothing else."""
+    """Over a week holding one unconfirmed block and nothing else."""
     area_id = declare_area(http, signed_in)
     seed_plan(
         live_database_url,
@@ -484,7 +484,7 @@ def test_the_verdict_it_carries_is_the_one_the_week_view_serves(
 def test_six_weeks_of_confirmed_skips_are_raised_and_nothing_is_deprioritized(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    """``US-REV-02``, written through the outcome log's own writer rather than seeded as rows."""
+    """Written through the outcome log's own writer rather than seeded as rows."""
     area_id = declare_area(http, signed_in)
     weeks = [REVIEWED]
     for _ in range(SKIP_WEEKS - 1):
@@ -513,7 +513,7 @@ def test_six_weeks_of_confirmed_skips_are_raised_and_nothing_is_deprioritized(
 def test_a_repeated_collision_names_the_commitment_the_block_and_the_count(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    """``US-REV-05``, and ticket 1390's own acceptance: NO anchor row exists at all.
+    """The collision is named with NO anchor row in existence at all.
 
     The block's name comes from the blocks of the reviewed window, because the conflict row stores a
     binding and no title. So each week is planned with the block the commitment landed on, which is
@@ -595,7 +595,7 @@ def test_a_one_off_commitment_never_contributes_to_a_repeated_collision(
 def test_three_consecutive_weeks_of_one_pin_reach_the_payload_as_a_promotion_candidate(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    """``US-TPL-05``, through the same domain rule the nightly learning run reads."""
+    """Through the same domain rule the nightly learning run reads."""
     declare_area(http, signed_in)
     weeks = [REVIEWED.preceding().preceding(), REVIEWED.preceding(), REVIEWED]
     seed_pins(live_database_url, owner.tenant_id, weeks)

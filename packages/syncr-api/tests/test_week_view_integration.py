@@ -1,14 +1,15 @@
 """The composed read once every field has something in it, against a real Postgres.
 
-Ticket 31 shipped six fields present and always empty and this is where they are filled, so what
+Six fields of this response are populated from five different tables, so what
 this suite drives is the composition rather than any one collaborator. Five groups.
 
-**Which verdict a read serves.** Note 6 of ``reviews/spec-review-5.md``, over rows rather than over
+**Which verdict a read serves**, over rows rather than over
 values: a week that passed the probe and then failed to PACK reports the packing failure while its
-proposal is current, and falls back to a capacity check the moment approval clears the slot.
-``13``'s route table says the read "computes a verdict for display", which would report the capacity
-check forever; ``US-FEAS-02`` and ``S8`` both require the opposite, and the pending slot is the only
-place a solver verdict is persisted.
+proposal is current, and falls back to a capacity check the moment approval clears the slot. A read
+that computed a verdict fresh would report the capacity
+check forever, and the pending slot is the only
+place a solver verdict is persisted. ``S8`` in ``docs/smoke-scenarios.md`` is the scenario that
+walks it.
 
 **Neither branch writes anything.** Counted over every scoped table the application declares, on the
 week whose slot is current and on the week whose slot is empty, so both code paths are measured. The
@@ -159,9 +160,9 @@ def a_week_whose_solve_failed_to_pack(
 def test_a_week_holding_a_current_proposal_reports_the_solves_stronger_finding(
     http: TestClient, a_week_whose_solve_failed_to_pack: tuple[dict[str, str], IsoWeek]
 ) -> None:
-    """``US-FEAS-02``: the stronger finding replaces the reading once the solve lands.
+    """The stronger finding replaces the reading once the solve lands.
 
-    ``13``'s route table says this read computes a verdict, which would answer ``probe`` here and
+    A read that computed a verdict here would answer ``probe`` and
     lose the packing failure entirely. The finding is one no capacity arithmetic can produce, so its
     presence is what proves the slot was served rather than a fresh probe.
     """
@@ -179,7 +180,7 @@ def test_a_week_holding_a_current_proposal_reports_the_solves_stronger_finding(
 def test_the_earlier_reading_is_stated_to_have_been_a_capacity_check(
     http: TestClient, a_week_whose_solve_failed_to_pack: tuple[dict[str, str], IsoWeek]
 ) -> None:
-    """The other half of the criterion, and it is the two fields rather than a sentence.
+    """The other half of the rule, and it is the two fields rather than a sentence.
 
     ``feasible`` and ``capacityIsSufficient`` are two claims: the served verdict is authoritative,
     so a surface renders ``feasible``, and the ``provenance`` beside it is what says the earlier
@@ -776,8 +777,8 @@ def test_the_two_denominators_on_one_payload_differ_by_the_occupancy_the_budget_
     one, so the budget's figure is the whole span on a week with a circadian frame. The honest
     figure is the verdict's.
 
-    Pinned side by side the way the pie review's own crossing is: the seam that closes it is ticket
-    1310's and it moves both figures at once, so this reddens on the commit that lands it and is
+    Pinned side by side the way the pie review's own crossing is: the seam that closes it moves both
+    figures at once, so this reddens on the commit that lands it and is
     deleted with the difference.
     """
     headers, _area_id = configured

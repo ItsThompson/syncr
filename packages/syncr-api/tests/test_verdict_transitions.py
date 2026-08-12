@@ -156,8 +156,8 @@ def test_the_recorded_gap_is_the_largest_one_rather_than_their_sum() -> None:
     """Shortfalls can measure the same minutes twice, so their sum is not a duration.
 
     A deadline gap and the floor gap of the Area that deadline belongs to are the same capacity seen
-    two ways: summed, they can exceed the week. The largest single gap is a real quantity. Ticket
-    1430 records the decision and names the metric job as the reader who can overturn it.
+    two ways: summed, they can exceed the week. The largest single gap is a real quantity, and the
+    metric job that reads it is the one place that could argue for another.
     """
     verdict = a_verdict(shortfalls=(FLOOR_GAP, DEADLINE_GAP, ANOTHER_FLOOR_GAP))
 

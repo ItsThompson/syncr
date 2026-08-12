@@ -467,11 +467,11 @@ async def test_a_commitment_whose_type_this_read_did_not_see_is_busy_time_rather
 
 
 async def test_a_collision_the_read_does_not_cover_is_not_resolved_in_this_week() -> None:
-    # Measured rather than argued, and tracked as ticket 1262. Collisions are resolved over the
-    # loaded set, and the loaded set is every commitment that can cast INSIDE the week rather than
-    # every commitment that can cast over one of those products. A journey home that ends before
-    # the read begins truncates a prep block below the grid step in the week that reads both, and
-    # the week after it, which reads only the prep, keeps the half that falls inside it.
+    # Measured rather than argued, and recorded here as a known limit. Collisions are resolved over
+    # the loaded set, and the loaded set is every commitment that can cast INSIDE the week rather
+    # than every commitment that can cast over one of those products. A journey home that ends
+    # before the read begins truncates a prep block below the grid step in the week that reads both,
+    # and the week after it, which reads only the prep, keeps the half that falls inside it.
     #
     # The consequence is bounded: two derived blocks may cover the same minutes, which is a state
     # the grid draws, and each charges its own Area.

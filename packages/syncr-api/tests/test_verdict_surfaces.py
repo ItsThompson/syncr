@@ -12,14 +12,14 @@ a verdict yet. ``cli`` gained one the day a product route began accepting a bear
 path binds it, because a pin made by ``syncr block move`` and a pin made by dragging a block are the
 same write computed on two different surfaces.
 
-**The guard that said no product route accepts a CLI credential is re-keyed rather than deleted.**
-Ticket 43 keyed it on ``require_bearer_principal`` being declared on a route, which was the shape a
-CLI route was expected to have. Ticket 1500 settled that question the other way: one dependency
+**The guard that says no product route accepts a CLI credential is keyed on what admits one.**
+Keying it on ``require_bearer_principal`` being declared on a route would sit green while twelve
+routes admitted a CLI token, because one dependency
 accepts either credential and chooses by what the request presents, so a route serving both declares
-``require_client_principal`` and the bearer resolution is reached inside it rather than beside it. A
-guard on the old key would have sat green while twelve routes admitted a CLI token, which is the
-failure mode this file exists to prevent. So the key is now the function that actually admits one,
-and what is asserted is the rule the old guard was standing in for: a package the CLI can reach that
+``require_client_principal`` and the bearer resolution is reached inside it rather than beside it.
+That is the
+failure mode this file exists to prevent. So the key is the function that actually admits one,
+and what is asserted is the rule the key stands in for: a package the CLI can reach that
 computes a verdict binds the CLI surface. Which routes the CLI reaches is
 ``tests/test_authorization_boundary.py``'s inventory, read here rather than restated.
 
@@ -39,7 +39,7 @@ it sits under, because the weekly-session payload is a review rather than a week
 form refused a path the guard could drive perfectly well, which is a bound naming more than the set
 it can see.
 
-**The limit of the first three guards, stated because ticket 41 shipped one like it.** They read
+**The limit of the first three guards.** They read
 NAMES: the surface a call site binds, the method a package calls, the field a response declares. A
 recorder composed through a second indirection, a probe reached through an alias, or a read that
 computes a verdict and returns it under another name would escape them. What they catch is the
@@ -160,8 +160,8 @@ PRODUCERS = {
 }
 
 # The one member no production path can reach yet, and why. `mutation` is the surface for any other
-# mutation's probe, and no other mutation computes a verdict: the fifteen rows of ticket 40's
-# trigger table that bump a version and ask for no solve are ticket 1403's.
+# mutation's probe, and no other mutation computes a verdict: the trigger-table rows that bump a
+# version and ask for no solve reach no solve, so nothing on those paths computes one.
 WITHOUT_A_PRODUCER = {VerdictSurface.MUTATION}
 
 # The methods a caller computes a verdict through. Read as names because they are the probe's whole
@@ -169,7 +169,7 @@ WITHOUT_A_PRODUCER = {VerdictSurface.MUTATION}
 PROBE_METHODS = {"verdict_for", "offered_verdict_for"}
 
 # The one path parameter a verdict-bearing read may take, which is the value the guard substitutes.
-# Ticket 1363 settled the spelling across the week routes and the weekly session takes the same one.
+# The week routes and the weekly session take the same spelling.
 ISO_WEEK_PARAMETER = "iso_week"
 
 # How a service reaches a collaborator that matters here: the attribute its wiring hands it, and the
@@ -310,7 +310,7 @@ def test_the_six_members_are_the_producers_plus_the_one_that_has_none() -> None:
 def test_every_cli_reachable_mutation_that_records_a_verdict_binds_the_cli_surface(
     settings: ServiceSettings, source_root: Path
 ) -> None:
-    """The rule ticket 43's expiring guard was standing in for, keyed on what admits a CLI token.
+    """Keyed on what admits a CLI token, rather than on the dependency a CLI route would declare.
 
     Derived from two inventories rather than from a name here: the packages owning a route that
     accepts a bearer credential and can change state, and the modules that compose a recorder. Their

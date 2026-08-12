@@ -16,12 +16,12 @@ approvals appends a revision and the other is refused with the same conflict an 
 slot answers. An ``Idempotency-Key`` cannot cover this: two clicks carrying two keys are two
 requests.
 
-**What approval refuses, which is ticket 1391's decision.** A document that would change the live
+**What approval refuses.** A document that would change the live
 plan in a way its own diff never named, and a document that restates a part of the week that
 elapsed after it was classified. Both leave the plan of record alone. The control beside them is a
 proposal whose changes ARE the ones the diff named, which approves.
 
-**``US-FEAS-05``: approval is never blocked by an infeasibility.** An infeasible week approves, and
+**Approval is never blocked by an infeasibility.** An infeasible week approves, and
 the path reads no verdict at all, which is asserted against the module's own source: there is no
 state a shortfall could put this route into.
 """
@@ -292,8 +292,7 @@ class TestWhatOneApprovalWrites:
     async def test_approval_bumps_the_input_version(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Decision 31, the bump every mutation owes and the protection it gives a running solve,
-        and a trigger-table row, and no story's criteria stated it.
+        """The bump every mutation owes, and the protection it gives a running solve.
 
         The bump is what a solve running concurrently reads: without it that solve's conditional
         write matches on a version the approval did not change. The race itself is driven in
@@ -341,7 +340,7 @@ class TestWhatOneApprovalWrites:
     async def test_a_tradeoff_approval_persists_the_concession_and_records_which_act_it_was(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``US-FEAS-07``'s first criterion: the concession and the revision are one transaction.
+        """The concession and the revision are one transaction.
 
         The reason is decided by what the slot carries rather than by the caller, so a tradeoff
         approval cannot be recorded as an ordinary one.
@@ -495,7 +494,7 @@ class TestWhatApprovalRefuses:
     async def test_a_proposal_the_live_plan_has_moved_past_is_refused_rather_than_dropping_the_fill(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Ticket 1391's own sequence, and the answer this transaction takes.
+        """The sequence a stale proposal produces, and the answer this transaction takes.
 
         A task captured into a free gap auto-applies, so the live plan advances while the slot still
         holds a proposal computed before that block existed. Approving the slot would drop the block
@@ -639,7 +638,7 @@ class TestApprovalIsNeverBlockedByAnInfeasibility:
     async def test_an_infeasible_week_approves(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``US-FEAS-05``: syncr informs, it does not govern.
+        """syncr informs, it does not govern.
 
         The slot's verdict says the week cannot hold its commitments and names a gap. Approval
         appends the revision anyway: infeasibility is a notice at panel volume, and there is no

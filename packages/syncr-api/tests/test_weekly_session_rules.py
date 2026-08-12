@@ -49,7 +49,7 @@ NOW = datetime(2026, 3, 2, 9, 0, tzinfo=UTC)
 GYM = uuid4()
 LEETCODE = uuid4()
 
-# Six consecutive weeks, which is exactly what `US-REV-02` raises on.
+# Six consecutive weeks, which is exactly what a chronic skip is raised on.
 RUN = [IsoWeek(2026, number) for number in (2, 3, 4, 5, 6, 7)]
 
 # The one block every conflict below names, as the window's own blocks would answer for it. Keyed on
@@ -199,7 +199,7 @@ class TestAChronicSkipIsSixConsecutiveWeeks:
         assert chronic_skips(skipped_run(RUN[:5]), consecutive_weeks=6) == []
 
     def test_a_gap_in_the_middle_breaks_the_run(self) -> None:
-        # A week that did not propose the item holds no skip of it, so the run restarts. The story's
+        # A week that did not propose the item holds no skip of it, so the run restarts. The rule's
         # words are "proposed and skipped": an item the plan stopped offering is not one declined.
         #
         # SEVEN weeks with a gap in the fourth, so SIX of them hold a skip and the longest run is
@@ -370,9 +370,9 @@ class TestARepeatedCollisionIsThreeOrMoreWeeks:
         )
 
     def test_the_weeks_need_not_be_consecutive(self) -> None:
-        # The story's words are "three or more weeks", which is weaker than the consecutive run a
-        # chronic skip is stated over. A collision resolved one week and met again two weeks later
-        # is the same pattern.
+        # A repeated collision is stated over "three or more weeks", which is weaker than the
+        # consecutive run a chronic skip is stated over. A collision resolved one week and met again
+        # two weeks later is the same pattern.
         scattered = [a_conflict(iso_week=IsoWeek(2026, number)) for number in (2, 5, 9)]
 
         assert repeated_collisions(scattered, at_least_weeks=3)[0].week_count == 3
@@ -444,7 +444,7 @@ class TestARepeatedCollisionIsThreeOrMoreWeeks:
         assert "An imported commitment has landed on Leetcode in 3 weeks" in item.statement
 
     def test_the_raise_names_the_commitment_the_block_and_the_count(self) -> None:
-        # `US-REV-05`'s own example is `repeated collision: Standup over Leetcode, 4 weeks`, so both
+        # The raise reads `repeated collision: Standup over Leetcode, 4 weeks`, so both
         # ends and the count are named. The block's name comes from a block, because the conflict
         # row stores a binding and no title.
         rows = [a_conflict(iso_week=week) for week in RUN[:4]]
@@ -550,7 +550,7 @@ class TestTheFloorAndTheOverdueRaises:
 
 class TestTheHabitCapUsesTheSameSurfaceAsAChronicSkip:
     def test_a_habit_its_own_policy_raises_becomes_a_raised_item(self) -> None:
-        # `US-HAB-07`: reaching the cap raises the habit "through the same surface chronic skips
+        # Reaching the cap raises the habit "through the same surface chronic skips
         # use", so it is a kind of raised item rather than a second mechanism. Whether it is raised
         # at all is the domain reading's answer, not a condition restated here.
         raised = a_habit(title="Gym")

@@ -4,16 +4,6 @@ Six subjects, each a pure function or a pure mapping, so every case a request ca
 still driven: the eight readings, the three currency words, the three reasons a week holds no plan,
 the six reason clauses on the wire, the names an empty slot's Area is resolved to, and the
 response's own field set.
-
-**Note 4 from ``reviews/spec-review-5.md``**, recorded beside the work it concerns. The epic's
-done-criteria table maps "every week in the horizon has a plan, and one outside it says why" to S29
-and US-SOLVE-09, which is the row this endpoint is verified by, and that row is correct as written.
-The two mis-mapped rows in the same table belong to other work. "Approving during a running solve
-cannot lose either outcome" cites US-PLAN-07, whose subject is reading a revision history, while the
-behaviour is US-SOLVE-03's version guard plus US-PLAN-04's approval, and it is corrected in ticket
-40. "A degraded plan still explains itself" cites S32 and US-SOLVE-11, which are the recovery scope
-and the no-shrink rule, and it is corrected in ticket 27. A reader building a traceability matrix
-from that table without this note mis-files three items.
 """
 
 from __future__ import annotations
@@ -661,7 +651,7 @@ def test_a_slot_charged_to_an_area_the_read_did_not_name_is_refused_rather_than_
 # The response's own field set
 # --------------------------------------------------------------------------------
 
-# Section 13's `WeekView` interface, field for field, in the api's own camelCase spelling. The
+# The `WeekView` interface, field for field, in the api's own camelCase spelling. The
 # generated `schema.d.ts` needs no hand-written companion type, which is what this pins.
 SECTION_13_FIELDS = frozenset(
     {
@@ -687,7 +677,7 @@ SECTION_13_FIELDS = frozenset(
 # WHICH input is missing or how long the horizon is, and both are required of this response.
 BEYOND_THE_INTERFACE = frozenset({"emptyWeek"})
 
-# Section 13's `readings` block, field for field.
+# The `readings` block, field for field.
 SECTION_13_READINGS = frozenset(
     {
         "scheduledMinutes",
@@ -711,8 +701,8 @@ def optional_fields(model: type[BaseModel]) -> frozenset[str]:
     """The fields a client would have to narrow ``undefined`` on, in their wire spelling.
 
     A field with a default is not required, and the generated document leaves it out of the
-    ``required`` list, which openapi-typescript emits as ``field?:``. Section 13 declares every
-    field of this response required and the nullable ones nullable, which is also what thirty-six
+    ``required`` list, which openapi-typescript emits as ``field?:``. Every field of this response
+    is declared required and the nullable ones nullable, which is also what thirty-six
     other response fields in this api do, so the set below is asserted to be empty rather than
     merely small.
     """
