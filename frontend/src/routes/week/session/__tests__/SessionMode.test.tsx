@@ -42,6 +42,7 @@ import {
   buildPromotionCandidate,
   buildProposal,
   buildRaisedItem,
+  buildReadings,
   buildRetro,
   buildSession,
   buildShortfall,
@@ -73,8 +74,11 @@ const ACCEPTED = {
   statement: "Your Weekday shape now places this at 13:00, where it was at 07:00.",
 };
 
-function openTheSession(session = buildSession()): void {
-  installWeekReads(buildWeekView({ verdict: buildVerdict(), proposal: buildProposal() }));
+function openTheSession(
+  session = buildSession(),
+  week = buildWeekView({ verdict: buildVerdict(), proposal: buildProposal() }),
+): void {
+  installWeekReads(week);
   installSessionRead(session);
 }
 
@@ -360,6 +364,27 @@ describe("the retrospective half", () => {
     renderAt(SESSION_PATH);
 
     expect(await screen.findByText(/1 declared off-plan/)).toBeVisible();
+  });
+
+  /* THE BAND'S FIGURE AND THE RETROSPECTIVE'S ARE DIFFERENT PERIODS, and they arrive in different payloads: the band
+   * counts the unanswered days of the week being PLANNED and the retrospective reports the week under REVIEW. A mode
+   * drawing one from the other would report the reviewed week's figure on the week being planned. */
+  it("keeps the band's count of this week apart from the reviewed week's", async () => {
+    const thisWeek = 5;
+    const retro = buildRetro();
+    expect(retro.days.unconfirmed, "the reviewed week must disagree with this one").not.toBe(
+      thisWeek,
+    );
+    openTheSession(
+      buildSession({ retro }),
+      buildWeekView({ readings: buildReadings({ unconfirmedDays: thisWeek }) }),
+    );
+    renderAt(SESSION_PATH);
+
+    expect((await screen.findByText(/h visible/)).textContent).toContain(
+      `${thisWeek} days unconfirmed`,
+    );
+    expect(await screen.findByText(/5 confirmed days and 1 unconfirmed/)).toBeVisible();
   });
 
   it("reports a period with no confirmed day rather than charting nothing", async () => {
