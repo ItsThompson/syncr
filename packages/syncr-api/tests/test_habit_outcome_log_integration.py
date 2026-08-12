@@ -9,9 +9,8 @@ wired to. Wire the seam back to an empty log and both figures collapse, which is
 rotation cursor and the outstanding debt, the habit routes and the week assembler, and each acquires
 the log through its own composition. So the two crossings here read one figure from the habit
 resource and the same figure out of the assembled week, in one test: the resource alone proves the
-projection,
-the week alone proves an expansion, and only the pair proves the plan places the variant the habit's
-own screen names.
+projection, the week alone proves an expansion, and only the pair proves the plan places the variant
+the habit's own screen names.
 
 **The rows are written by the outcome routes rather than by this suite.** A binding reaches the
 table in the spelling ``stored_binding`` writes, and the projection extracts two of its keys, so a
@@ -184,9 +183,8 @@ def seed_plan(database_url: str, tenant_id: TenantId, blocks: Sequence[Block]) -
     Not through ``live_weeks.produce_a_plan``, which is the sibling a reader reaches for first: that
     solves the assembled week, so the solver chooses which occurrence index each block binds and
     what hour it sits at. Both are what these cases name: the outcome route is addressed by block,
-    and the
-    debt derivation clips on the instant an occurrence came due. There is no route to reach for
-    either, because no route produces a plan.
+    and the debt derivation clips on the instant an occurrence came due. There is no route to reach
+    for either, because no route produces a plan.
     """
     document = PlanDocument(
         iso_week=WEEK,
@@ -301,6 +299,10 @@ def test_the_debt_the_habit_resource_reports_arrives_in_the_week_capped_as_decla
     debt = read_habit(http, signed_in, habit_id)["debt"]
     week = assemble(live_database_url, owner.tenant_id).habit_occurrences
 
+    # The cap is pinned before it is used as an expectation. Read from the response and compared
+    # against nothing, a cap that had collapsed to zero would satisfy every assertion below while no
+    # made-up occurrence reached the week at all.
+    assert debt["cap"] == OVER_THE_CAP - 1
     assert (fresh, debt["misses"]) == (THREE_A_WEEK["timesPerWeek"], OVER_THE_CAP)
     assert (debt["outstanding"], debt["raisedInWeeklySession"]) == (debt["cap"], True)
     assert [occurrence.is_debt for occurrence in week] == [False] * fresh + [True] * debt["cap"]
