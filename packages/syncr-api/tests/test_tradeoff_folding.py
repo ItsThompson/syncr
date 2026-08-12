@@ -148,8 +148,9 @@ def test_every_declared_field_is_a_field_the_resolved_inputs_actually_hold() -> 
 async def test_approving_one_concession_moves_exactly_the_fields_it_declares(
     kind: AdjustmentKind,
 ) -> None:
-    # The whole of B2, asserted by observation. Every field of the resolved inputs is compared, so a
-    # kind that touches one of a pair fails, and so does one that reaches a field nobody declared.
+    # The whole of the declaration, asserted by observation. Every field of the resolved inputs is
+    # compared, so a kind that touches one of a pair fails, and so does one that reaches a field
+    # nobody declared.
     assembler, before, offer = await an_offered(kind)
 
     after = await assembler.assemble(
@@ -306,7 +307,7 @@ def _minutes(verdict: Verdict, key: tuple[ShortfallKind, AreaId | None]) -> int:
 
 
 async def test_breaching_a_floor_closes_the_floors_gap_the_probe_reports() -> None:
-    # Blocker 1's field pair, end to end. The user clicks "Breach the Fitness floor", approves, and
+    # The floor pair, end to end. The user clicks "Breach the Fitness floor", approves, and
     # the verdict panel must stop reporting the same gap: the probe reads the reservation and the
     # solver's floor check reads the floor, so a breach that lowered one and not the other would
     # change no reading the user can see.
@@ -359,9 +360,10 @@ async def test_reducing_a_routine_closes_the_gap_the_nights_were_chosen_for() ->
 
 
 async def test_a_candidate_and_a_stored_concession_of_one_kind_resolve_to_one_assembly() -> None:
-    # WA2's other half: requesting persists nothing, so the candidate path and the stored path have
-    # to produce the same inputs or a request would be evaluated against a week approval will not
-    # reproduce. Identical apart from the concession's own identity, which storage mints.
+    # The other half of requesting: requesting persists nothing, so the candidate path and the
+    # stored path have to produce the same inputs or a request would be evaluated against a week
+    # approval will not reproduce. Identical apart from the concession's own identity, which storage
+    # mints.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     stored = an_adjustment(
         kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=120
@@ -384,7 +386,7 @@ async def test_a_candidate_and_a_stored_concession_of_one_kind_resolve_to_one_as
 async def test_several_concessions_in_one_week_compose_because_each_names_a_distinct_target() -> (
     None
 ):
-    # WA3. Three kinds against three targets in one week, each applying in full: the fold is one
+    # Three kinds against three targets in one week, each applying in full: the fold is one
     # pass over one list, so composition is what it does rather than a case it handles.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     career = an_area(name="Career")
@@ -424,7 +426,7 @@ async def test_several_concessions_in_one_week_compose_because_each_names_a_dist
 
 
 async def test_a_concession_approved_for_another_week_reaches_none_of_this_weeks_figures() -> None:
-    # WA1: week-scoped and never carried forward, for the same reason a pin is not. A hard week must
+    # Week-scoped and never carried forward, for the same reason a pin is not. A hard week must
     # not silently become the new normal.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     elsewhere = replace(

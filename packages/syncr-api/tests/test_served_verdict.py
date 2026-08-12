@@ -1,8 +1,8 @@
 """Which verdict a read serves, over the real probe and the real assembler on fakes.
 
-Note 6 of ``reviews/spec-review-5.md`` is the rule these drive, and it is the one place a packing
-failure can survive a read: the pending slot holds the only persisted solver verdict, so a read that
-probed unconditionally would report the capacity check forever.
+The rule these drive is the one place a packing failure can survive a read: the pending slot holds
+the only persisted solver verdict, so a read that probed unconditionally would report the capacity
+check forever.
 
 **Four states, and the currency test is what separates two of them.** An empty slot, a slot at the
 week's own version, a slot behind it, and a slot ahead of it. The third is what a mutation leaves
@@ -217,7 +217,7 @@ async def test_the_live_branch_carries_a_tradeoff_for_each_gap_it_found() -> Non
 
 
 async def test_a_slot_at_the_weeks_own_version_serves_the_solves_verdict() -> None:
-    """The stronger finding survives the read, which is what US-FEAS-02 requires."""
+    """The stronger finding survives the read, which is what a served verdict is for."""
     held = a_slot()
 
     served = await a_reader().for_week(WEEK, now=NOW, input_version=THE_WEEKS_VERSION, held=held)
@@ -309,11 +309,11 @@ def a_current_week_reader(
 
 
 async def test_a_current_week_with_no_plan_has_no_verdict_at_all() -> None:
-    """The must-fix, at its source. ``US-TASK-03``'s equality is over the pair of screens.
+    """A week with no plan has no verdict, so the two screens cannot disagree about it.
 
     The week's own read answers ``None`` for a week holding no plan, so the reader the backlog is
     wired to has to answer the same or the two screens answer different questions: a marked task
-    with no verdict panel to explain it is the failure the criterion names.
+    with no verdict panel to explain it is the failure this rule exists against.
     """
     reader, _proposals = a_current_week_reader(weeks_with_a_plan=())
 

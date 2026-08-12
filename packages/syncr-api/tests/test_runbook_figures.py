@@ -5,7 +5,7 @@ have drifted from the deployment is worse than none: it will be trusted, and it 
 every figure these two quote is asserted against the constant that produces it, rather than against
 a second copy of the number here.
 
-The prose claims are asserted too, and each is one the ticket requires the runbook to make. They are
+The prose claims are asserted too, and each is one the runbook has to make. They are
 matched as substrings rather than by structure, because what has to survive is the STATEMENT: an
 operator searching the file for "lease" has to find what the lease is.
 """
@@ -283,12 +283,12 @@ class TestTheGoogleTokenExpiredRunbook:
             assert named in fields
 
     def test_it_claims_an_alert_that_can_now_fire(self) -> None:
-        """Ticket 30 asserted the metric was ABSENT, because the alert could not fire without it.
+        """The metric the alert needs exists, and the runbook says so.
 
-        That assertion was written to fail the moment the gap closed, and that is what it did: the
-        family exists, the worker's state duty sets it once a minute, and the runbook now says so.
-        A runbook whose trigger names an alert that cannot fire tells an operator they will be told,
-        which is exactly the silence that makes this failure dangerous.
+        The family exists, the worker's state duty sets it once a minute, and the runbook states
+        that rather than the absence. A runbook whose trigger names an alert that cannot fire tells
+        an operator they will be told, which is exactly the silence that makes this failure
+        dangerous.
         """
         text = read(GOOGLE_TOKEN_EXPIRED)
         # Imported for its registration: the family exists once the module that declares it is
@@ -461,8 +461,8 @@ class TestTheLiveGoogleSuiteProcedure:
 
         Bounded on the right by a space or an end of line, not by a space alone. A marker name is a
         prefix of every longer one, so `pytest -m google_livewire` satisfied an unbounded check; but
-        requiring a trailing space reddened on the ticket's own settling command, which carries no
-        flag after the marker.
+        requiring a trailing space fails on a command that ends at the marker, which the settling
+        command does.
         """
         marker = the_live_marker()
 

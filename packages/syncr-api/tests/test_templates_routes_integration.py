@@ -10,7 +10,7 @@ Three tests are worth reading. ``test_a_pattern_edit_leaves_an_approved_past_wee
 the immutability half of the invalidation rule, asserted on the stored document rather than on the
 absence of an error. ``test_neither_kind_of_entry_can_carry_a_cadence`` is the invariant that keeps
 recurrence on habits, and it is asserted for both kinds because a union rejects an unknown field
-per member. ``test_a_declared_shape_creates_no_pin_row`` is the distinction ticket 39 depends on:
+per member. ``test_a_declared_shape_creates_no_pin_row`` is the distinction the day shape rests on:
 an entry is fixed by derivation, which is not the same thing as pinned.
 
 The cookie is replayed by setting the header rather than through a cookie jar: the cookie is

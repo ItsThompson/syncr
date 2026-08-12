@@ -1,27 +1,27 @@
-"""Section 10's trigger table, and the version bump every mutating route owes, as two enumerations.
+"""The declared trigger table, and the version bump every mutating route owes, as two enumerations.
 
 Both rules degrade silently. A route added later that forgets its bump leaves a running solve
 believing it read current inputs, and a trigger the table names that reaches no solve leaves a
 mechanism with nothing to drive it. Neither shows up as a failing test unless something enumerates
 the whole set, so that is what this file does.
 
-## The trigger table is data here, one row per row of section 10
+## The trigger table is data here, one row per declared trigger
 
 Each row states two things: whether it bumps the week's input version, and whether it asks for a
 solve. A row is either WIRED, meaning the code performs what the row says, or it is EXCLUDED with a
-named owner ticket. There is no third state: a row that is neither fails.
+named owner. There is no third state: a row that is neither fails.
 
-**What the enumeration found, and it is the reason the criterion asked for it.** Fifteen of the
-nineteen mutation rows bump the version and request NO solve. `kind = "solve"` is created only
-through ``SolveCoordinator.request_solve``, which has four call sites, and the horizon maintainer
-enqueues ``materialize`` rather than ``solve``. So the debounce, the coalescing and the supersession
-machinery have four live triggers, one of which bypasses the debounce by design, and the
-weekly-session burst of pins the 1500 ms window was measured against is not reachable at all,
-because the pin endpoint was not built yet. It is now: ticket 41 wired the row.
+**What the enumeration found, and it is the reason it was asked for.** Fourteen of the twenty rows
+that ask for a solve reach none. `kind = "solve"` is created only through
+``SolveCoordinator.request_solve``, whose seven call sites are in `pins`, `learned`, `plans`,
+`conflicts` and `concessions`, and the horizon maintainer enqueues ``materialize`` rather than
+``solve``. So the debounce, the coalescing and the supersession machinery are driven by those call
+sites, two of which bypass the debounce window by design: the re-solve control asks for an immediate
+pass, and so does a tradeoff request.
 
-That is not a defect in any one of the fifteen: each bumps correctly, and a bump is what makes a
+That is not a defect in any one of the fourteen: each bumps correctly, and a bump is what makes a
 running solve's conditional write fail. What is missing is the request that follows it. The
-exclusions below name the ticket that owes each one.
+exclusions below name the owner that owes each one.
 
 ## The bump walk is stated over SOLVE-INPUT-mutating routes
 
@@ -29,7 +29,7 @@ exclusions below name the ticket that owes each one.
 token endpoint mutates a grant, and connecting a Google account mutates a credential. None of those
 touches a week's solve inputs, and requiring a bump of them would be requiring a bump of a week none
 of them names. So the walk is stated over the routes that change what a solve READS, the allowlist
-holds exactly the one row section 10 puts in it, and what is outside the rule is listed with the
+holds exactly the one row the table puts in it, and what is outside the rule is listed with the
 reason each is outside.
 """
 
@@ -65,9 +65,9 @@ BUMPS_A_VERSION: Final = ("versions.bump(", "from_the_week_holding(", "bump(Week
 
 
 class Trigger(NamedTuple):
-    """One row of section 10's trigger table, and what the code does about it.
+    """One row of the trigger table, and what the code does about it.
 
-    ``owner`` is ``None`` for a row the code performs. For a row it does not, it names the ticket
+    ``owner`` is ``None`` for a row the code performs. For a row it does not, it names the work
     that owes the wiring, so an unwired trigger is a diff a reviewer reads rather than a silence.
     """
 
@@ -79,11 +79,11 @@ class Trigger(NamedTuple):
 
 
 # ---------------------------------------------------------------------------
-# SECTION 10'S TRIGGER TABLE, one entry per row, in the table's own order.
+# THE TRIGGER TABLE, one entry per row, in the table's own order.
 #
 # `module` is where the trigger's own write lives, and it is what the walk below reads. A row with
 # an
-# `owner` is one the code does not perform yet: the ticket named owes it, and the row stays here so
+# `owner` is one the code does not perform yet: the owner named owes it, and the row stays here so
 # the gap is enumerated rather than absent.
 # ---------------------------------------------------------------------------
 TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
@@ -255,7 +255,7 @@ OUTSIDE_THE_RULE: Final = (
     f"{API_PREFIX}/events",
 )
 
-# The one route section 10 allows to mutate without bumping. It records a decision, changes no solve
+# The one route allowed to mutate without bumping. It records a decision, changes no solve
 # input and changes no live plan, so there is nothing for a running solve to be invalidated by.
 KEPT_BOTH_ROUTE: Final = f"{API_PREFIX}/conflicts"
 
@@ -375,7 +375,7 @@ def packages_that_bump() -> set[str]:
 
 class TestTheTriggerTable:
     def test_every_row_of_the_table_is_enumerated_once(self) -> None:
-        """Twenty-five rows, which is what section 10 states. Asserted so a row cannot be
+        """Twenty-five rows, the whole declared table. Asserted so a row cannot be
         dropped."""
         rows = [one.row for one in TRIGGER_TABLE]
 
@@ -396,7 +396,7 @@ class TestTheTriggerTable:
         A row with no module has no endpoint to read, and it is left out of the parametrization
         rather than skipped: a skip reports forever and says nothing, while its absence is covered
         by ``test_a_row_with_no_module_is_one_whose_endpoint_does_not_exist`` below, which names the
-        three and the ticket that owes each.
+        three and the owner of each.
         """
         body = module_source(trigger.module)
 
@@ -405,10 +405,8 @@ class TestTheTriggerTable:
     def test_every_row_that_bumps_names_a_module_that_exists(self) -> None:
         """Every row the table says invalidates a week now has somewhere to read that from.
 
-        Two rows had no module until ticket 42 built the approval endpoint, and they were named here
-        rather than skipped, because a skip reports forever and says nothing. What replaced that
-        assertion is this one: the set of unreadable rows is EMPTY, and a row added later without an
-        endpoint fails here rather than quietly leaving the walk above with nothing to read.
+        The set of unreadable rows is EMPTY, and a row added later without an endpoint fails here
+        rather than quietly leaving the walk above with nothing to read.
         """
         unreadable = {
             one.row: one.owner for one in TRIGGER_TABLE if one.module is None and one.bumps
@@ -519,7 +517,7 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     that gains its solve request without losing its owner here fails
     ``test_a_row_that_still_names_an_owner_has_not_been_wired``. Without that second half the
     enumeration could not see the one change it exists to track, so it would have gone stale in
-    exactly the direction the next ticket travels.
+    exactly the direction this area travels.
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
@@ -527,7 +525,7 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
 
         Thirteen of them are mutations a person makes. The fourteenth is the horizon maintainer,
         which is not a mutation at all, because time passing is what triggers it, and which
-        materializes instead of solving: that is ticket 1400.
+        materializes instead of solving.
         """
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
@@ -541,7 +539,7 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         ids=lambda one: one.row,
     )
     def test_a_row_that_still_names_an_owner_has_not_been_wired(self, trigger: Trigger) -> None:
-        """The reverse guard, and the direction the next ticket over this area actually travels.
+        """The reverse guard, and the direction this area actually travels.
 
         A row loses its owner when it gains its request, and this is what forces the pair to move
         together: wiring one without editing the table fails here, so the enumeration cannot report
@@ -675,7 +673,7 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
     def test_every_package_that_bumps_is_named_by_a_row_of_the_table(self) -> None:
         """The other direction, so the table and the tree are crossed rather than read separately.
 
-        A package that bumps and appears in no row is a mutation section 10 does not describe, which
+        A package that bumps and appears in no row is a mutation the table does not describe, which
         is either a missing row or a bump nothing asked for. Two packages are exceptions and neither
         is a trigger of its own.
 
@@ -694,7 +692,7 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
     def test_the_kept_both_allowlist_holds_exactly_one_route(
         self, settings: ServiceSettings
     ) -> None:
-        # Section 10 puts one row in it: `kept-both`, which records a decision and changes neither a
+        # One row is in it: `kept-both`, which records a decision and changes neither a
         # solve input nor the live plan. The route it lives on answers both resolutions, so what is
         # allowlisted is the route and the branch inside it is what its own suite drives.
         exempt = [
@@ -733,7 +731,7 @@ class TestEveryMutatingRouteBumpsOrIsTheAllowlistMember:
     def test_the_promotion_accept_bumps_through_the_day_shape_service(self) -> None:
         """The delegation the accept's exemption rests on, followed to the bump.
 
-        A promotion moves an entry of a day shape, which is section 10's "day shape or one of its
+        A promotion moves an entry of a day shape, which is the "day shape or one of its
         entries edited" row reached from a second route. The write is the day-shape service's, so
         the bump is in ``templates`` and the per-package reading cannot see it from ``promotions``.
         What makes that safe is this: the accept really does call that service, that method really

@@ -16,9 +16,9 @@ assembled and the tests are about which tasks each gap names. The arithmetic tha
 real and is driven over its own cases in ``test_at_risk_tasks.py``; what these assert is that this
 service reads it rather than comparing a deadline against a capacity of its own.
 
-T1 is asserted against the MERGED pair on a patch, not against the fields one request carried:
-lowering an estimate under a stored minimum chunk violates the same invariant as raising the
-minimum above a stored estimate, and neither request names both numbers.
+The chunk-bound invariant is asserted against the MERGED pair on a patch, not against the fields one
+request carried: lowering an estimate under a stored minimum chunk violates the same invariant as
+raising the minimum above a stored estimate, and neither request names both numbers.
 """
 
 from __future__ import annotations
@@ -403,8 +403,8 @@ async def test_capturing_with_a_title_and_an_area_fills_every_other_value(
 async def test_a_captured_task_is_immediately_eligible_for_the_next_solve(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # US-TASK-01's last criterion, asserted through the same predicate the week assembler will
-    # apply rather than through a comparison written here.
+    # A captured task is eligible at once, asserted through the same predicate the week assembler
+    # will apply rather than through a comparison written here.
     area = an_area(principal.tenant_id)
     service, _ = build(principal, versions, areas=[area])
 
@@ -505,7 +505,7 @@ async def test_an_unknown_project_is_refused_and_stores_nothing(
 async def test_a_project_in_another_area_is_refused_because_one_hour_counts_once(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # X2. A comparison between two stored rows, which is why it is here and not in a schema.
+    # A comparison between two stored rows, which is why it is here and not in a schema.
     career = an_area(principal.tenant_id, "Career")
     fitness = an_area(principal.tenant_id, "Fitness")
     project = a_project(principal.tenant_id, career.id)
@@ -532,7 +532,7 @@ async def test_a_project_in_the_task_s_own_area_is_accepted(
 
 
 # --------------------------------------------------------------------------------
-# Change, and T1 over the merged pair
+# Change, and the chunk bound over the merged pair
 # --------------------------------------------------------------------------------
 
 
@@ -744,7 +744,7 @@ async def test_another_tenant_s_task_is_a_404_rather_than_an_edit(
 async def test_completing_a_task_records_the_instant_and_keeps_the_recorded_time(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # T4. The recorded time is what a report reads, so completing must not touch it.
+    # The recorded time is what a report reads, so completing must not touch it.
     area = an_area(principal.tenant_id)
     stored = a_task(principal.tenant_id, area.id, estimate_minutes=90, recorded_minutes=30)
     service, tasks = build(principal, versions, areas=[area], tasks=[stored], now=LATER)
@@ -777,8 +777,8 @@ async def test_completing_a_task_takes_it_out_of_eligibility_immediately(
 async def test_a_partially_completed_splittable_task_keeps_its_time_and_reduces_what_is_left(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # US-TASK-04's last criterion. The recorded figure comes from confirmed outcomes, which no
-    # route here writes, so it is seeded.
+    # A partially completed task keeps its time. The recorded figure comes from confirmed outcomes,
+    # which no route here writes, so it is seeded.
     area = an_area(principal.tenant_id)
     stored = a_task(
         principal.tenant_id, area.id, estimate_minutes=90, recorded_minutes=30, splittable=True
@@ -795,7 +795,7 @@ async def test_a_partially_completed_splittable_task_keeps_its_time_and_reduces_
 async def test_recording_more_than_the_estimate_reports_no_remaining_work_rather_than_negative(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # T3 at its clamp, composed through the service: an estimate is a guess and an outcome is a
+    # The clamp, composed through the service: an estimate is a guess and an outcome is a
     # fact, so overrunning is ordinary and must not produce a negative quantity of work.
     area = an_area(principal.tenant_id)
     stored = a_task(principal.tenant_id, area.id, estimate_minutes=60, recorded_minutes=180)

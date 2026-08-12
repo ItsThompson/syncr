@@ -8,10 +8,10 @@ another tenant's identifier is a 404 rather than an edit.
 
 Three tests are worth reading. ``test_a_field_that_would_carry_a_preferred_time_is_refused`` covers
 the one field that must not exist: preferred times are a ``Preference``, so a task inherits its
-Area's windows unless it overrides them. The T1 test asserts the rejection comes from the DOMAIN
-rather than from the schema, by validating the same body through the request schema and finding it
-accepted there. ``test_the_week_input_version_is_bumped_by_every_mutating_route`` reads the counter
-row itself.
+Area's windows unless it overrides them. The chunk-bound test asserts the rejection comes from the
+DOMAIN rather than from the schema, by validating the same body through the request schema and
+finding it accepted there. ``test_the_week_input_version_is_bumped_by_every_mutating_route`` reads
+the counter row itself.
 
 The cookie is replayed by setting the header rather than through a cookie jar: the cookie is
 ``Secure``, and an HTTP client that honors that attribute will not send it back over
@@ -202,7 +202,7 @@ def record_progress(database_url: str, tenant_id: TenantId, minutes: int) -> Non
     """Record time against every one of the tenant's tasks.
 
     Written with SQL rather than through a route because NO route in this module writes
-    ``recorded_minutes``: it accumulates from confirmed outcomes, which the outcomes ticket owns.
+    ``recorded_minutes``: it accumulates from confirmed outcomes, which the outcome routes own.
     Seeding it here is how the read path over a partially completed task is asserted end to end.
     """
 
@@ -253,7 +253,7 @@ def test_capturing_with_two_values_fills_every_default_and_commits_it(
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
-    # US-TASK-01: `n` from any screen submits a title and an Area.
+    # Capture from any screen submits a title and an Area.
     created = capture(http, signed_in, areaId=area, title="Leetcode")
 
     assert created["title"] == "Leetcode"
@@ -268,7 +268,7 @@ def test_capturing_with_two_values_fills_every_default_and_commits_it(
     assert created["recordedMinutes"] == 0
     assert created["remainingMinutes"] == DEFAULT_ESTIMATE_MINUTES
     assert created["completedAt"] is None
-    # The criterion the assembler will read: the captured row is eligible immediately.
+    # The rule the assembler will read: the captured row is eligible immediately.
     assert created["eligibleForSolving"] is True
 
     rows = task_rows(live_database_url, owner.tenant_id)
@@ -428,8 +428,9 @@ def test_a_minimum_chunk_above_the_estimate_is_a_422_from_the_domain(
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
-    # T1. The second assertion is the load-bearing one: the SAME body validates cleanly through
-    # the request schema, so the rejection is the domain's and the rule is stated exactly once.
+    # A chunk bound above the estimate. The second assertion is the load-bearing one: the SAME body
+    # validates cleanly through the request schema, so the rejection is the domain's and the rule is
+    # stated exactly once.
     body = {"areaId": area, "title": "Leetcode", "estimateMinutes": 60, "minChunkMinutes": 61}
 
     response = http.post(TASKS, json=body, headers=signed_in)
@@ -464,7 +465,8 @@ def test_an_unknown_area_is_a_422_naming_the_field(
 def test_a_project_in_another_area_is_a_422_naming_the_field(
     http: TestClient, signed_in: dict[str, str], area: str
 ) -> None:
-    # X2 over HTTP: a comparison between two stored rows, so neither request schema could make it.
+    # A project in another Area, over HTTP: a comparison between two stored rows, so neither request
+    # schema could make it.
     other = declare_area(http, signed_in, "Fitness")
     project = declare_project(http, signed_in, other)
 
@@ -538,7 +540,7 @@ def test_a_status_outside_the_vocabulary_is_refused_rather_than_ignored(
 def test_the_at_risk_filter_partitions_the_list_and_moves_neither_header_figure(
     http: TestClient, signed_in: dict[str, str], area: str
 ) -> None:
-    """``atRisk`` is served rather than documented, which is what ticket 1521 asked for.
+    """``atRisk`` is served rather than documented, so a client reads it instead of deriving it.
 
     This tenant has no plan, so the current week's verdict is ``None`` and nothing is marked. That
     makes the assertion here the shape of the filter rather than the determination behind it: the
