@@ -21,9 +21,10 @@
  * they part as soon as the real chrome does. A reader cannot see that grid from here, so the hint names which of
  * the two figures they have been handed rather than leaving them to meet the disagreement on the other screen.
  *
- * `__tests__/geometry.test.ts` asserts `gridHeightFor(REFERENCE_WINDOW_HEIGHT_PX) === GRID_H_PX`, so a change to
- * either side reddens rather than quietly moving the cap by one level, and it crosses this screen's answer against
- * the grid's own so the agreement is a comparison rather than a restatement. */
+ * `__tests__/geometry.test.ts` asserts `gridHeightFor(REFERENCE_WINDOW_HEIGHT_PX) === GRID_H_PX`, which refuses
+ * any way of arriving at the height other than that subtraction. It is an identity rather than a measurement, so it
+ * does not move when either constant does: what holds the calibration is the case beside it that states the window
+ * as a figure of its own and crosses this screen's answer against the grid's own. */
 
 import { GRID_H_PX, ZOOM_MAX_HOURS } from "../../ui/domain/week-grid/metrics";
 import { MODAL_DURATION_MINUTES, zoomCap } from "../../ui/domain/week-grid/zoom";
