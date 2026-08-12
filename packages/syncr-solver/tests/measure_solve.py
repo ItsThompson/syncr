@@ -209,7 +209,11 @@ def report_yield() -> None:
         found = descend(attempt, weights, budget=budget)
         median, _, _, iterations = timed(week, budget, runs=3)
         solved = solve(week, weights, budget=budget)
-        print(f"=== {label} week: {len(attempt.document().blocks)} blocks")
+        print(f"=== {label} week")
+        print(
+            f"blocks         {len(attempt.document().blocks):8d}      "
+            f"the plan the descent starts from; {len(solved.document.blocks)} once it ends"
+        )
         print(f"unallocated    {solved.document.unallocated_minutes:8d} m")
         print(f"solve p50      {median * 1000:8.1f} ms   over three runs")
         print(
