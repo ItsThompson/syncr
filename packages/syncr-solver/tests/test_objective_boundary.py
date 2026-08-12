@@ -233,8 +233,8 @@ def test_the_objective_reads_exactly_the_declared_members_of_the_checkers_state(
     ``already_netted`` is the one statement of the set the assembler subtracted before its figures
     arrived, and the api's own statement of it is ``plans.netting.Placement.immovable``.
     ``discretionary`` is the one the document's denominator and H9 both take. A member of either
-    read directly here would be a second statement of a quantity, and two statements of one
-    quantity is what this pairing exists to prevent.
+    read directly here would be a second statement of a quantity, which is what this pairing exists
+    to prevent.
     """
     read = {member for member in _STATE_READ.findall(objective_source()) if member}
 
