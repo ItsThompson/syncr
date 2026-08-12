@@ -8,7 +8,8 @@ row a running solve is guarding against.
 
 Three tests are worth reading.
 
-``test_a_cap_on_an_override_is_refused_at_the_boundary`` is X13 over both other owners. It is a
+``test_a_cap_on_an_override_is_refused_at_the_boundary`` covers the rule that a daily cap belongs to
+an Area alone, over both other owners. It is a
 boundary refusal rather than a service refusal: the request shape has no field for a cap, so the
 framework rejects the body before a handler runs, and the response names the field.
 
@@ -16,7 +17,7 @@ framework rejects the body before a handler runs, and the response names the fie
 ``TIME WITHOUT TIME ZONE`` column drops an offset in silence, and this is the assertion that the
 strings stored here carry no offset to drop because the boundary refused one.
 
-``test_removing_an_override_restores_its_areas_preference`` is the criterion on the wire: the
+``test_removing_an_override_restores_its_areas_preference`` is the rule on the wire: the
 response states which preference is in effect and where it came from, before and after.
 
 The cookie is replayed by setting the header rather than through a cookie jar: the cookie is
@@ -383,7 +384,7 @@ def test_the_area_read_carries_no_preference_identifier_after_a_preference_is_se
 
 
 # --------------------------------------------------------------------------------
-# X13: a daily cap is an Area's alone
+# A daily cap is an Area's alone
 # --------------------------------------------------------------------------------
 
 
@@ -396,8 +397,8 @@ def test_a_cap_on_an_override_is_refused_at_the_boundary(
     live_database_url: str,
     owner: UserRecord,
 ) -> None:
-    # X13. The request shape has no field for a cap, so this is refused before a handler runs and
-    # there is no code path that could store one.
+    # A cap belongs to the Area. The request shape has no field for one, so this is refused before a
+    # handler runs and there is no code path that could store one.
     refused = http.put(
         owned.path(kind),
         json={"windows": [MIDDAY], "strength": "soft", "maxPerDayMinutes": 180},
@@ -433,7 +434,7 @@ def test_an_area_may_declare_a_cap_and_an_area_alone(
 
 
 # --------------------------------------------------------------------------------
-# P1: a strength is never hard
+# A strength is never hard
 # --------------------------------------------------------------------------------
 
 

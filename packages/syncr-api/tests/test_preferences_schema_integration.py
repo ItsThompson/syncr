@@ -257,8 +257,9 @@ def test_the_schema_refuses(
 
 @pytest.mark.parametrize("kind", ["habit", "task"], ids=["habit", "task"])
 def test_a_daily_cap_on_an_override_is_refused_by_the_table(table: LiveTable, kind: str) -> None:
-    # X13's backstop. The entity refuses this and the request shape has no field for it, so this is
-    # what stops a row carrying one arriving from `psql` or from a later migration.
+    # The backstop for the Area-only cap. The entity refuses this and the request shape has no field
+    # for it, so this is what stops a row carrying one arriving from `psql` or from a later
+    # migration.
     owner: dict[str, Any] = {
         "owner_kind": kind,
         "area_id": None,

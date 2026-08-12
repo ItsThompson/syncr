@@ -7,7 +7,7 @@ suite pass while an override was silently ignored.
 
 Three tests are the ones to read.
 
-``test_removing_an_overrides_preference_restores_its_areas`` is the criterion stated as behavior: a
+``test_removing_an_overrides_preference_restores_its_areas`` is the rule stated as behavior: a
 habit that overrode its Area reads its Area's preference again the moment the override is gone.
 
 ``test_an_override_that_states_no_ideal_duration_does_not_inherit_its_areas`` is what separates
@@ -395,7 +395,7 @@ class TestTheChain:
         assert read.in_effect is None
 
     async def test_exactly_one_preference_is_in_effect_per_owner(self) -> None:
-        # The criterion's own claim, over all three owners at once: each resolves to one
+        # The rule's own claim, over all three owners at once: each resolves to one
         # preference, and the two overrides resolve to their own rather than to their Area's.
         world = World()
         await world.service.replace(
@@ -667,8 +667,9 @@ class TestTheCapIsAnAreasAlone:
 
     @pytest.mark.parametrize("kind", ["habit", "task"], ids=["habit", "task"])
     async def test_a_cap_on_an_override_is_refused(self, kind: str) -> None:
-        # X13 at the service layer. The request shape has no field for a cap, so this is the layer
-        # below the boundary refusal: nothing that reaches the service can store one either.
+        # The Area-only cap at the service layer. The request shape has no field for a cap, so this
+        # is the layer below the boundary refusal: nothing that reaches the service can store one
+        # either.
         world = World()
         owner_id = world.habit.id if kind == "habit" else world.task.id
 
@@ -685,8 +686,8 @@ class TestTheCapIsAnAreasAlone:
         assert world.preferences.rows == []
 
     async def test_the_effective_preference_of_an_override_never_carries_a_cap(self) -> None:
-        # P3 and P5 together: the Area's cap is not something an override's resolution can report,
-        # so nothing downstream can read a relaxed one.
+        # The cap and the resolution together: the Area's cap is not something an override's
+        # resolution can report, so nothing downstream can read a relaxed one.
         world = World()
         await world.service.replace(
             world.principal,
