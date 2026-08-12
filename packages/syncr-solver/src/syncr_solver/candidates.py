@@ -30,9 +30,9 @@ values and nothing else.
 A habit whose binding source is ``queue`` takes its cadence from itself and its content from the
 backlog, so its content is the highest-ordered OPEN task in its own Area. The occurrence keeps its
 own identity and its own length: what the backlog supplies is the NAME, so the block names the
-chosen item rather than only the habit. An Area whose
-backlog holds nothing leaves the occurrence with no content, so it is not eligible at all, and a
-slot that wanted it reports that its Area has no eligible content.
+chosen item rather than only the habit. An Area whose backlog holds nothing leaves the occurrence
+with no content, so it is not eligible at all, and a slot that wanted it reports that its Area has
+no eligible content.
 
 **The draw reads every open task rather than the ones this round still has work for**, so the name
 is a function of the inputs rather than of how far the packing has got: drawn from the round, an
