@@ -1,8 +1,8 @@
 /* Fixture: the glyph slot assigned the way this kit assigns it, through `--glyph`.
  *
- * `glyphs.css` states `content: var(--glyph)` once, on the slot, and a state switches the MARK by setting
- * that property: a row becoming at risk is `[data-at-risk]` setting `--glyph`. A
- * channel model that read only `content` called the glyph slot unassigned while a state was driving it. */
+ * `glyphs.css` states `content: var(--glyph)` once, on the slot, and a state switches the MARK by setting that
+ * property, which is what `[data-state="open"]` does below. A channel model that read only `content` called the
+ * glyph slot unassigned while a state was driving it. */
 
 .row__own-mark {
   --glyph: var(--glyph-plus);
