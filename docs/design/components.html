@@ -333,7 +333,7 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
 .dialog>footer{display:flex;gap:9px;justify-content:flex-end;padding:9px 11px;
   border-top:var(--hairline) solid var(--rule)}
 
-/* ---------- 11 tabs and accordion ---------- */
+/* ---------- 11 tabs ---------- */
 .tabs{display:flex;border-bottom:var(--hairline) solid var(--rule-strong)}
 .tabs button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);
   text-transform:uppercase;background:transparent;border:0;color:var(--text-muted);
@@ -343,15 +343,6 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
 .tabs button .n{color:var(--text-muted);margin-left:6px;font-variant-numeric:tabular-nums}
 .tabpanel{border:var(--hairline) solid var(--rule-strong);border-top:0;padding:11px;
   background:var(--paper-raised);font-size:var(--fs-chrome);line-height:var(--lh-chrome)}
-.acc{border:var(--hairline) solid var(--rule-strong);background:var(--paper-raised)}
-.acc>div{border-bottom:var(--hairline) solid var(--rule)}
-.acc>div:last-child{border-bottom:0}
-.acc h4 button{font:inherit;font-size:var(--fs-label);letter-spacing:var(--ls-label);
-  text-transform:uppercase;width:100%;text-align:left;display:flex;gap:9px;align-items:center;
-  background:transparent;border:0;color:var(--ink-deep);height:var(--h-row);padding:0 10px;cursor:pointer}
-.acc h4 button .n{margin-left:auto;color:var(--text-muted);font-variant-numeric:tabular-nums}
-.acc .ap{padding:0 12px 10px 34px;font-size:var(--fs-chrome);line-height:var(--lh-chrome);color:var(--ink)}
-.disc{color:var(--ink-deep);letter-spacing:0}
 
 /* ============================================================================
    12 THE BLOCK. The .blk rules below are copied VERBATIM from
@@ -592,7 +583,7 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
 /* ---------- 20 key hints, help overlay, command palette ----------
    Key hints take ONE form everywhere: bracketed bare mono text, [ j ]. No bordered key cap,
    because a cap is a box that means nothing and the bracket already reads as a key in a mono
-   register. Same mark family as the accordion's [ + ] and [ - ]. */
+   register. The bracket pair is the glyph table's, stated once. */
 .k{color:var(--ink-deep);letter-spacing:0;white-space:nowrap}
 .overlay{border:var(--hairline) solid var(--ink-deep);background:var(--paper-raised);
   box-shadow:var(--shadow-hard);max-width:592px}
@@ -906,8 +897,8 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
   <br><br><b>The lift is one hard offset, because print has no blur.</b> <code>--shadow-hard</code> is 4px 4px 0 0 at <code>--rule-strong</code>, and its carriers are exactly three: this dialog, the date picker's popover in section 03, and the help overlay and command palette in section 20. Never a card, never a block, never a button. <b>There is no fade in:</b> the dialog is present or it is not. The dashed edge stands in for the scrim, which this sheet derives from <code>--ink-deep</code> at 30% with <code>color-mix</code>, because the token layer has no scrim token yet: see the provenance note.</div>
 </div><div class="s" data-spec="dialog"></div></div>
 
-<!-- ============ 11 TABS AND ACCORDION ============ -->
-<h2 class="sec" id="c11"><span><a href="#c11">11</a> &middot; Tabs and accordion</span><em>the active tab takes the --rule-emphasis bottom rule. disclosure is [ + ] and [ &minus; ]</em></h2>
+<!-- ============ 11 TABS ============ -->
+<h2 class="sec" id="c11"><span><a href="#c11">11</a> &middot; Tabs</span><em>the active tab takes the --rule-emphasis bottom rule. the Templates screen presents its sections as tabs</em></h2>
 <div class="cmp"><div class="d">
   <div class="tabs" role="tablist">
     <button type="button" role="tab" data-state="active">Plan</button>
@@ -916,15 +907,7 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
     <button type="button" role="tab">Unconfirmed<span class="n">3</span></button>
     <button type="button" role="tab">Learned<span class="n">0</span></button></div>
   <div class="tabpanel" role="tabpanel">Mon 10 &ndash; Sun 16 Feb &middot; 91 blocks &middot; 80.8h scheduled &middot; 52.1h discretionary &middot; 4 pins &middot; revision 12, proposed</div>
-  <span class="lab" style="margin-top:16px">Accordion &middot; the Weekday template, one section expanded</span>
-  <div class="acc">
-    <div data-state="closed"><h4><button type="button" aria-expanded="false"><span class="disc">[ + ]</span>Circadian frame<span class="n">6</span></button></h4></div>
-    <div data-state="open"><h4><button type="button" aria-expanded="true"><span class="disc">[ &minus; ]</span>Concrete entries<span class="n">3</span></button></h4>
-      <div class="ap">05:30 &middot; <code>Gym</code> &middot; 60 min &middot; flex &plusmn;45 &middot; rotation<br>07:00 &middot; <code>Leetcode</code> &middot; 150 min &middot; flex &plusmn;60 &middot; queue<br>19:30 &middot; <code>Topic List Questions</code> &middot; 60 min &middot; flex &plusmn;30 &middot; fixed</div></div>
-    <div data-state="closed"><h4><button type="button" aria-expanded="false"><span class="disc">[ + ]</span>Area slots<span class="n">2</span></button></h4></div>
-    <div data-state="closed"><h4><button type="button" aria-expanded="false"><span class="disc">[ + ]</span>Anchor types and shadows<span class="n">4</span></button></h4></div>
-  </div>
-  <div class="note" style="border:0;padding:11px 0 0"><b>The active tab takes a 2px <code>--rule-emphasis</code> bottom rule in <code>--ink-deep</code>.</b> That token is the emphasised weight, and its carriers are the Area top rule, this rule, the now rule and a matched-range underline. <b>Disclosure is <code>[ + ]</code> and <code>[ &minus; ]</code> with a typographic minus</b>, which is the same mark family as the key hints in section 20: one form for a bracketed control glyph, everywhere. <b>The Learned tab shows 0 rather than disappearing.</b> A tab that vanishes when its count is zero makes the reader wonder whether the feature exists, and on this screen a zero means <i>nothing new was learned this week</i>, which is information.</div>
+  <div class="note" style="border:0;padding:11px 0 0"><b>The active tab takes a 2px <code>--rule-emphasis</code> bottom rule in <code>--ink-deep</code>.</b> That token is the emphasised weight, and its carriers are the Area top rule, this rule, the now rule and a matched-range underline. <b>The Templates screen presents its sections as tabs</b>, which is the one screen that holds several sections of one editor: a strip of five tabs states what the screen contains, where a stack of collapsed rows hides it. <b>The Learned tab shows 0 rather than disappearing.</b> A tab that vanishes when its count is zero makes the reader wonder whether the feature exists, and on this screen a zero means <i>nothing new was learned this week</i>, which is information.</div>
 </div><div class="s" data-spec="tabs"></div></div>
 
 <!-- ============ 12 BLOCK ============ -->
@@ -1092,7 +1075,7 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
         <div class="r">Go to Learned<span class="hint">[ g l ]</span></div>
       </div></div>
   </div>
-  <div class="note" style="border:0;padding:11px 0 0"><b>A key hint is bracketed bare mono text and nothing else.</b> No bordered cap, no shaded well, no radius: a cap is a box that means nothing, and in a mono register the brackets already read as a key. It is the same mark family as the accordion's <code>[ + ]</code> and <code>[ &minus; ]</code>, so the product has one bracketed-glyph form rather than two. <b>The bracket keys are shown in the bracket form, which is ugly and correct:</b> <span class="k">[ [ ]</span> and <span class="k">[ ] ]</span>. Inventing a second form for two keys would cost more than the ugliness does.
+  <div class="note" style="border:0;padding:11px 0 0"><b>A key hint is bracketed bare mono text and nothing else.</b> No bordered cap, no shaded well, no radius: a cap is a box that means nothing, and in a mono register the brackets already read as a key. The bracket pair comes from the glyph table, which states it once, so the product has one bracketed-glyph form rather than two. <b>The bracket keys are shown in the bracket form, which is ugly and correct:</b> <span class="k">[ [ ]</span> and <span class="k">[ ] ]</span>. Inventing a second form for two keys would cost more than the ugliness does.
   <br><br><b>The first palette row carries both <code>data-highlighted</code> and <code>data-current</code>, and the two treatments add rather than overwrite.</b> <code>data-highlighted</code> is the keyboard cursor, so it owns the focus channel alone; <code>data-current</code> owns the 3px left rule, exactly as it does on a block or a table row. Giving the cursor the hover wash as well would make a hovered row indistinguishable from the highlighted one. Hover the second row to see the channel that stays free. <b>The palette rows carry Area chips</b>, which is legal because a palette row is a ledger row and the chip pairs with the block's title. <b>The overlay carries <code>--shadow-hard</code></b>, being one of the three surfaces that lift off the page.</div>
 </div><div class="s" data-spec="kbd"></div></div>
 <div class="pad" style="padding:0">
@@ -1207,7 +1190,7 @@ const TOC = [
   ['01','Buttons'],['02','Text, number, time'],['03','Select and date picker'],
   ['04','Checkbox, radio, textarea'],['05','Table'],['06','Card and panel'],
   ['07','Severity: volumes and pigments'],['08','Sidebar navigation'],['09','Form layout'],
-  ['10','Dialog'],['11','Tabs and accordion'],['12','Block',1],['13','AreaChip and legend',1],
+  ['10','Dialog'],['11','Tabs'],['12','Block',1],['13','AreaChip and legend',1],
   ['14','DeviationBar',1],['15','Pie wedge and stacked bar',1],['16','VerdictPanel',1],
   ['17','ReasonRows',1],['18','MaturityMeter',1],['19','LedgerRow',1],
   ['20','Key hints, help, palette',1],['21','Wizard steps',1],['22','Empty, pending, error',1]
@@ -1273,10 +1256,10 @@ dialog:{n:'Dialog',
   tokens:'--shadow-hard &middot; --ink-deep &middot; --on-ink &middot; --paper-raised &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --fs-chrome &middot; --lh-chrome &middot; --prose-gap &middot; --state-focus-ring-inverse &middot; --state-focus-offset &middot; --duration',
   state:'[data-state=open|closed] &middot; aria-modal &middot; focus is trapped and returned on close',
   notes:'The only component family carrying --shadow-hard, with the date picker\'s popover and the command palette. One hard offset, because print has no blur. <b>The header is the one ink-filled surface in the product</b>, so it takes --on-ink and scopes --state-focus-ring-inverse to the CONTAINER: the ring is chosen by the surface it lands on, and --ink-bright on --ink-deep measures 1.61:1 while --paper-raised on it measures 14.83:1. Scoping to the container means anything focusable added later inherits the right ring. No fade: the dialog is present or it is not. The scrim needs a token the color layer does not yet have.'},
-tabs:{n:'Tabs &middot; Accordion',
-  tokens:'--h-control &middot; --h-row &middot; --rule-emphasis &middot; --ink-deep &middot; --rule &middot; --rule-strong &middot; --paper-raised &middot; --text-muted &middot; --fs-label &middot; --ls-label &middot; --fs-chrome &middot; --lh-chrome',
-  state:'[data-state=active] on a tab &middot; [data-state=open] on an accordion item &middot; [aria-expanded] on the trigger',
-  notes:'The active tab takes a --rule-emphasis 2px --ink-deep bottom rule. That token is the emphasised weight and its carriers are the Area top rule, the active tab, the now rule and a matched-range underline. Disclosure is [ + ] and [ &minus; ] with a typographic minus, the same bracketed form the key hints use. A tab with a zero count shows the zero rather than disappearing: a tab that vanishes makes the reader wonder whether the feature exists.'},
+tabs:{n:'Tabs',
+  tokens:'--h-control &middot; --hairline &middot; --rule-emphasis &middot; --ink-deep &middot; --ink &middot; --rule-strong &middot; --paper-raised &middot; --text-muted &middot; --fs-label &middot; --ls-label &middot; --fs-chrome &middot; --lh-chrome',
+  state:'[data-state=active] on a tab &middot; [aria-selected] on the same trigger',
+  notes:'The active tab takes a --rule-emphasis 2px --ink-deep bottom rule. That token is the emphasised weight and its carriers are the Area top rule, the active tab, the now rule and a matched-range underline. The Templates screen presents its sections as tabs, which is the one screen holding several sections of one editor. A tab with a zero count shows the zero rather than disappearing: a tab that vanishes makes the reader wonder whether the feature exists.'},
 blocktier:{n:'Block &middot; the tier ladder',
   tokens:'--block-h-label &middot; --block-h-compact &middot; --block-h-sliver &middot; --block-pad-t &middot; --block-pad-x &middot; --block-pad-b &middot; --fs-block &middot; --lh-block &middot; --lh-block-px &middot; --fs-block-compact &middot; --lh-block-compact &middot; --px-per-min &middot; --grid-h &middot; --visible-hours &middot; --rule-emphasis &middot; --area-NN',
   state:'[data-tier=label|compact|sliver|hair], computed from the block\'s own height',
@@ -1320,7 +1303,7 @@ ledger:{n:'LedgerRow &middot; OutcomeControls',
 kbd:{n:'KeyHint &middot; HelpOverlay &middot; CommandPalette',
   tokens:'--ink-deep &middot; --shadow-hard &middot; --paper-raised &middot; --ink-wash &middot; --rule &middot; --rule-strong &middot; --hairline &middot; --h-row &middot; --fs-chrome &middot; --fs-eyebrow &middot; --ls-eyebrow &middot; --state-focus-ring &middot; --state-focus-offset &middot; --state-selected-border &middot; --state-selected-color &middot; --state-hover',
   state:'[data-state=open] &middot; [data-highlighted] on a palette row, the keyboard cursor &middot; [data-current] &middot; [aria-activedescendant]',
-  notes:'<b>One form everywhere: bracketed bare mono text, [ j ].</b> No bordered key cap, no shaded well, no radius. It is the same mark family as the accordion\'s [ + ] and [ &minus; ], so there is one bracketed-glyph form rather than two, and the bracket keys are shown in that form even though [ [ ] is ugly. One attribute, one channel: [data-highlighted] owns the focus channel alone and must not also take the hover wash, or a hovered row and the cursor row become indistinguishable. Its ring sits at a NEGATIVE offset because rows pitch at 28px. The overlay and the palette carry --shadow-hard.'},
+  notes:'<b>One form everywhere: bracketed bare mono text, [ j ].</b> No bordered key cap, no shaded well, no radius. The bracket pair comes from the glyph table, which states it once, so there is one bracketed-glyph form rather than two, and the bracket keys are shown in that form even though [ [ ] is ugly. One attribute, one channel: [data-highlighted] owns the focus channel alone and must not also take the hover wash, or a hovered row and the cursor row become indistinguishable. Its ring sits at a NEGATIVE offset because rows pitch at 28px. The overlay and the palette carry --shadow-hard.'},
 wizard:{n:'WizardSteps',
   tokens:'--rule &middot; --rule-strong &middot; --hairline &middot; --paper-raised &middot; --ink-wash &middot; --ink &middot; --ink-deep &middot; --verdigris-ink &middot; --text-muted &middot; --fs-chrome &middot; --fs-eyebrow',
   state:'[data-state=done|current|todo] &middot; steps are reachable out of order, so this is a checklist rather than a gate',

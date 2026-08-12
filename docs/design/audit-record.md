@@ -67,16 +67,16 @@ statement of a rule already absolute, and the absence of one is the strongest co
 rather than an omission.
 
 **Expanding a panel anchors the scroll position to the toggled element.** Instant collapse is a scroll
-problem rather than a motion problem: the accordion measures its trigger before and after the layout
-changes and takes the difference out of the scroll position, in a layout effect so the correction lands
-in the same frame. No screen mounts that component yet, so the arithmetic is asserted in jsdom with the
-two measurements supplied and there is no browser pass for it.
+problem rather than a motion problem: `useScrollAnchor` measures the element a reader touched before and
+after the layout changes and takes the difference out of the scroll position, in a layout effect so the
+correction lands in the same frame. No screen holds an element across a layout change yet, so the
+arithmetic is driven in jsdom over a simulated viewport, and there is no browser pass for it.
 
 ## Colour and contrast
 
 | Claim | Answered by |
 |---|---|
-| Every colour pair has a computed ratio against every surface it can reach | `docs/design/contrast-ledger.md`, generated from the token files: 484 pairs, 22 inks against 22 surfaces, read from 42 shipped stylesheets |
+| Every colour pair has a computed ratio against every surface it can reach | `docs/design/contrast-ledger.md`, generated from the token files: 484 pairs, 22 inks against 22 surfaces, read from 41 shipped stylesheets |
 | A pair without a ratio fails the audit | `frontend/scripts/audit-contrast`, which regenerates the ledger and refuses a difference, and reports any value that resolves to no colour |
 | A control's border clears 3:1 on every surface a control can sit on | the same gate, asserted per paper surface |
 | `--rule-strong` is banned on controls | the same gate, as a MEASUREMENT: it is refused because it measures 2.65:1 there, and a retune ABOVE the floor reports that the ban needs revisiting rather than being kept quietly |
@@ -172,7 +172,7 @@ Stated plainly, because an overstated bound is worse than a stated gap.
 |---|---|---|
 | The sliver tier in a browser | No seeded week holds a block short enough to render between 8 and 13px at any available zoom, measured across the whole ladder | ticket 1561 |
 | The stale-feed notice on the week screen's day headers | The day header is `--day-header-h` tall and holds a label and a count; an inline notice does not fit without changing the grid's settled geometry. The day-scoped notice ships on Today, which is the surface a reader answers for a day on | ticket 1560 |
-| The accordion's scroll anchoring in a browser | No screen mounts the component yet, so there is nothing to drive | ticket 1562 |
+| The scroll anchor in a browser | No screen holds an element across a layout change yet, so there is nothing to drive | ticket 1562 |
 | Bypassing the repeated block. **Eight tab stops precede `<main>` on every screen** -- the wordmark and the seven sidebar rows -- and no skip link exists anywhere in the frontend. Measured per screen. The two keyboard criteria this audit carries both hold: the order IS the visual order of a two-column layout, and every operation is reachable. What no criterion here names is WCAG 2.4.1, and section 19's accessibility table does not list it either | Adding an affordance the design language has not decided on, in the epic's last item, without the review every other kit component got, is how an undocumented control arrives and stays. Three of the decisions it needs are design ones: the state vocabulary has no channel for "hidden until focused", the inventory is described as built to demand, and it has to be settled whether a skip link or the existing chord table is the right second affordance | ticket 1563 |
 | A screen reader | No assistive technology is driven anywhere in this repository. What is asserted instead is the accessible tree: roles, names, `aria-*` state, and the announcements a pending or failed surface carries | not filed: it needs a real screen reader and a person |
 | The api's own problem-type inventory | The api publishes no catalog of problem types, so a client's error map cannot be bounded by it | ticket 1502 |
