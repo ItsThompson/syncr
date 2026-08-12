@@ -15,16 +15,17 @@
  *
  * WHAT THE BINDING CENSUS COVERS. `useKeyBinding` is the one mechanism in this tree that can require Shift, which
  * the last case measures rather than assumes; the drag's own window listener reads `Escape` alone, and a kit control
- * that answers an arrow inside itself answers it unshifted. So a `useKeyBinding` call is the whole population, and a
- * new reader of `shiftKey` reddens the case that says so. */
+ * that answers an arrow inside itself answers it unshifted. So a `useKeyBinding` call is the whole population, read
+ * through `scripts/lib/key-bindings.ts` so that this file and the shell's own check cannot read it two ways. A
+ * shifted binding whose key names a constant that reader cannot resolve is a refusal rather than a pass, because an
+ * unreadable spelling could be the very pair being refused. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { blankJsComments } from "../../../../../scripts/lib/comments.ts";
-import { filesUnder } from "../../../../../scripts/lib/files.ts";
-import { appSourceDir, repoRoot } from "../../../../../scripts/lib/paths.ts";
+import { keyRegistrations, shippedSources } from "../../../../../scripts/lib/key-bindings.ts";
+import { repoRoot } from "../../../../../scripts/lib/paths.ts";
 
 /** The gloss the drag's header cites as its authority, in the document's own words. */
 const EQUIVALENT_ROW =
@@ -41,22 +42,7 @@ const SHIFTED_ARROWS = [
 ];
 
 const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const BINDING_CALL = /useKeyBinding\(\s*\{([^}]*)\}/g;
 const SHIFTED_ARROW_CELL = /Shift\+[↑↓←→]/;
-
-/* Comments are blanked so a paragraph naming a binding is not read as one, and a test file is left out because a
- * binding a test mounts puts no key on a screen a reader can reach. */
-async function shippedSource(): Promise<{ file: string; code: string }[]> {
-  const files = (await filesUnder(appSourceDir, [".ts", ".tsx"])).filter(
-    (file) => !file.includes(".test."),
-  );
-  return Promise.all(
-    files.map(async (file) => ({
-      file: path.relative(repoRoot, file),
-      code: blankJsComments(await readFile(file, "utf8")),
-    })),
-  );
-}
 
 /** The design language's keyboard section, from its own heading to the next one. */
 async function keyboardSection(): Promise<string> {
@@ -84,21 +70,23 @@ describe("the keyboard equivalent of the drag", () => {
   });
 
   it("is bound as that pair, and nothing in the tree binds a horizontal one", async () => {
-    const bound = (await shippedSource()).flatMap(({ file, code }) =>
-      [...code.matchAll(BINDING_CALL)].flatMap((call) => {
-        const key = /key:\s*"([^"]*)"/.exec(call[1])?.[1] ?? "";
-        const withShift = /withShift:\s*true/.test(call[1]);
-        return withShift && ARROW_KEYS.has(key) ? [`${key} in ${file}`] : [];
-      }),
+    const shifted = (await keyRegistrations()).filter((registration) => registration.withShift);
+    const arrows = shifted.flatMap((registration) =>
+      registration.key !== null && ARROW_KEYS.has(registration.key)
+        ? [`${registration.key} in ${path.relative(repoRoot, registration.file)}`]
+        : [],
     );
 
-    expect(bound.toSorted()).toEqual(SHIFTED_ARROWS);
+    expect(arrows.toSorted()).toEqual(SHIFTED_ARROWS);
+    /* A shifted key spelt as a constant the reader cannot resolve could be the pair being refused, so an unreadable
+     * spelling fails the claim rather than dropping quietly out of it. */
+    expect(shifted.filter((registration) => registration.key === null)).toEqual([]);
   });
 
   it("is registered through the one mechanism that reads Shift, which is what makes that pair the whole set", async () => {
-    const readers = (await shippedSource())
+    const readers = (await shippedSources())
       .filter(({ code }) => code.includes("shiftKey"))
-      .map(({ file }) => file);
+      .map(({ file }) => path.relative(repoRoot, file));
 
     expect(readers).toEqual(["frontend/src/lib/keyboard/useKeyBinding.ts"]);
   });
