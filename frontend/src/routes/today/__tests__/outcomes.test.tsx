@@ -21,6 +21,7 @@ import { clockIn } from "../instants";
 import { isoWeekOf } from "../isoWeek";
 import {
   BLOCK_GYM,
+  DATE,
   ZONE,
   buildAreas,
   buildBackfill,
@@ -29,6 +30,7 @@ import {
   buildGymRow,
   buildOutcome,
   buildOutcomeRejection,
+  buildSleepRow,
 } from "./fixtures";
 import { heldResponse, hostToday, onHostToday, renderToday } from "./render";
 
@@ -357,6 +359,33 @@ describe("the minutes a block really took", () => {
       isoWeek: isoWeekOf(hostToday()),
       state: "partial",
       actualMinutes: 45,
+    });
+  });
+
+  /* WHAT THE FORM OPENS WITH IS ITS OWN STEP BASE, so the grid the browser holds a typed figure to does not
+     reach a prefilled one, and the two paths disagree. A routine's floor is bounded rather than snapped, an
+     occurrence reduced to that floor is the row's planned duration, and the field opens there: valid, and
+     recorded by the same Enter that refuses 47 above. This test is what says the disagreement is real. */
+  it("records a prefilled figure off the step's grid, which the refusal above cannot reach", async () => {
+    const reduced = buildSleepRow({
+      durationMinutes: 7,
+      interval: { start: `${DATE}T00:00:00+00:00`, end: `${DATE}T00:07:00+00:00` },
+    });
+    await renderToday(onHostToday(buildDay({ behind: [reduced, buildGymRow()] })));
+    const sent = stubRecording();
+    await focusRow("Sleep");
+    const user = userEvent.setup();
+
+    await user.keyboard("{Shift>}X{/Shift}");
+    const field = await screen.findByLabelText("actual minutes for Sleep");
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(sent.bodies).toHaveLength(1));
+    expect(sent.bodies[0]).toEqual({
+      isoWeek: isoWeekOf(hostToday()),
+      state: "partial",
+      actualMinutes: 7,
     });
   });
 
