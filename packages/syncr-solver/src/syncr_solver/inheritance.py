@@ -9,8 +9,8 @@ carries all of them into one set.
 
 They are what the week already holds, so they belong in the document: a task with four hours
 remaining and two of them pinned nets to two hours of work still to place, and if the pinned block
-were not carried the document would hold two hours of a four-hour task. That is the halving
-``US-SOLVE-11`` forbids, arriving from the other side.
+were not carried the document would hold two hours of a four-hour task. That is the shrinking a
+re-solve must never do, arriving from the other side.
 
 And they belong in the state, because three rules measure over what it holds. H4 reads the spans, so
 a solve that seeded nothing would place work over time that has already gone; H8 and H9 read an
@@ -27,8 +27,7 @@ the other way the pin would be refused by H11 for not being where it was derived
 **A block the derivation refused and the user pinned is not resurrected.** Derivation refuses a
 buffer whose span was already spent, and nothing here has the buffer's Area to rebuild it from
 without a second derivation path. The pin is then not honored, which is exactly what
-``materialize`` already does with it, so this is a disclosed limit rather than a regression: ticket
-1371 carries it.
+``materialize`` already does with it, so this is a disclosed limit rather than a regression.
 
 ## A pinned block renders a pin glyph only when it can say what it replaced
 

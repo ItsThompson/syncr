@@ -6,9 +6,9 @@ not place, because that is the only reading that preserves both the log's conten
 that the verdict panel and the backlog share one computation.
 
 Every other reading loses something. Taking the probe's alone would drop the packing failure the
-solve is the only component that can find, which is the transition ``US-FEAS-02`` requires and
-``S8`` observes. Taking the synthesised ones alone would drop the three capacity shortfalls the
-backlog's at-risk column reads, and the panel and the column would then disagree about one week.
+solve is the only component that can find on a week that passes the arithmetic and fails to pack.
+Taking the synthesised ones alone would drop the three capacity shortfalls the backlog's at-risk
+column reads, and the panel and the column would then disagree about one week.
 
 ## Why a solver verdict may claim what a probe verdict may not
 

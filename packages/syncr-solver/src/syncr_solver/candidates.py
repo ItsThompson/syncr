@@ -29,8 +29,8 @@ values and nothing else.
 
 A habit whose binding source is ``queue`` takes its cadence from itself and its content from the
 backlog, so its content is the highest-ordered OPEN task in its own Area. The occurrence keeps its
-own identity and its own length: what the backlog supplies is the NAME, which is what
-``US-HAB-04``'s "the chosen item is named on the block, not just the habit" asks for. An Area whose
+own identity and its own length: what the backlog supplies is the NAME, so the block names the
+chosen item rather than only the habit. An Area whose
 backlog holds nothing leaves the occurrence with no content, so it is not eligible at all, and a
 slot that wanted it reports that its Area has no eligible content.
 
