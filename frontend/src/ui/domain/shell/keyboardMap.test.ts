@@ -10,8 +10,9 @@
  * confusion the scope exists to end.
  *
  * TWO MECHANISMS ANSWER A KEYSTROKE IN A WAY THIS FILE CAN READ, and every other one is declared. `useKeyBinding`
- * is a call, found by reading the source. A `g` chord is resolved by `useScreenChords` against the screen table,
- * so a chord row is answered by a screen's own letter plus a file that mounts the hook over that table. The rest
+ * is a call, read out of the source by `scripts/lib/key-bindings.ts`, which the week grid's own keyboard claim
+ * reads through as well. A `g` chord is resolved by `useScreenChords` against the screen table, so a chord row is
+ * answered by a screen's own letter plus a file that mounts the hook over that table. The rest
  * are invisible here -- Radix's own dismiss, an element's own `onKeyDown`, the drag's window listener -- and a row
  * that needs one names the mechanism. A declaration is held at both edges: it must name a row the map holds, and
  * it must be needed, so a declaration for a row the scan can already see fails rather than passing the row twice
@@ -20,12 +21,14 @@
  * THE OTHER DIRECTION IS NOT THIS FILE'S. A binding with no row is a gap in the overlay rather than a false
  * statement in it, and the map does not yet carry a row for every binding the routes register. */
 
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { blankJsComments } from "../../../../scripts/lib/comments.ts";
-import { filesUnder } from "../../../../scripts/lib/files.ts";
+import {
+  keyRegistrationsIn,
+  shippedSources,
+  type KeyRegistration,
+} from "../../../../scripts/lib/key-bindings.ts";
 import { appSourceDir } from "../../../../scripts/lib/paths.ts";
 import {
   CAPTURE_KEY,
@@ -39,13 +42,7 @@ import {
 import { SCREENS } from "./navigation";
 
 /** A `useKeyBinding` call as the source makes it. `key` is null when its spelling cannot be resolved here. */
-interface Registration {
-  readonly file: string;
-  readonly key: string | null;
-  readonly options: string;
-  readonly withPlatformModifier: boolean;
-  readonly withShift: boolean;
-}
+type Registration = KeyRegistration;
 
 interface Census {
   readonly registrations: readonly Registration[];
@@ -75,42 +72,19 @@ const NAMED_KEYS = new Map<string, string>([
   ["PALETTE_KEY", PALETTE_KEY],
 ]);
 
-const BINDING_CALL = /useKeyBinding\(\s*\{([^}]*)\}/g;
 const CHORD_HOST = /useScreenChords\(\s*SCREENS\s*\)/;
 const CHORD_ROW = /^g (\S)$/;
 const PLATFORM_MODIFIER = "Cmd/Ctrl";
 const SHIFT = "Shift";
 const ROUTE_AREA = "routes";
 
-function keyOf(options: string): string | null {
-  const spelt = /key:\s*"([^"]*)"/.exec(options);
-  if (spelt !== null) return spelt[1];
-  const named = /key:\s*([A-Za-z_$][\w$]*)/.exec(options);
-  return named === null ? null : (NAMED_KEYS.get(named[1]) ?? null);
-}
-
-function registrationsIn(file: string, code: string): Registration[] {
-  return [...code.matchAll(BINDING_CALL)].map((match) => ({
-    file,
-    key: keyOf(match[1]),
-    options: match[1].trim(),
-    withPlatformModifier: /withPlatformModifier:\s*true/.test(match[1]),
-    withShift: /withShift:\s*true/.test(match[1]),
-  }));
-}
-
-/* Comments are blanked, so a paragraph naming a binding is not read as one. A test file is left out too: a test
- * mounting a binding of its own does not put that key on any screen a reader can reach. */
+/* The census reads the source through `scripts/lib/key-bindings.ts`, which owns the call shape and the two
+ * exclusions. The chord hook is read here, because a chord is this shell's own mechanism rather than a binding. */
 const census: Promise<Census> = (async () => {
-  const files = (await filesUnder(appSourceDir, [".ts", ".tsx"])).filter(
-    (file) => !file.includes(".test."),
-  );
-  const sources = await Promise.all(
-    files.map(async (file) => ({ file, code: blankJsComments(await readFile(file, "utf8")) })),
-  );
+  const sources = await shippedSources();
 
   return {
-    registrations: sources.flatMap(({ file, code }) => registrationsIn(file, code)),
+    registrations: sources.flatMap((source) => keyRegistrationsIn(source, NAMED_KEYS)),
     chordHosts: sources.filter(({ code }) => CHORD_HOST.test(code)).map(({ file }) => file),
   };
 })();
