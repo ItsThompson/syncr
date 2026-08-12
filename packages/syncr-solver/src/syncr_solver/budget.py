@@ -6,8 +6,8 @@ what lets a worker stop a solve whose result nobody will read.
 
 ## Where the numbers come from
 
-The objective measures **p50 1.509 ms and p99 1.709 ms on a 210-block week**, which is the size
-this product is sized against. The objective is what a solve spends its time on, so the
+Measured at **p50 1.509 ms and p99 1.709 ms on a 210-block week**, which is the size this product
+is sized against. The objective is what a solve spends its time on, so the
 budget is a count of evaluations rather than a wall clock:
 
 ```

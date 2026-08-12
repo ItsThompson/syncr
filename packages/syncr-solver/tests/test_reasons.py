@@ -861,9 +861,9 @@ class TestAStrongWindowThatCouldNotBeHonored:
     def test_the_three_clauses_a_yielded_preference_reports_are_reproducible(self) -> None:
         """The rejected preferred windows, the constraints that refused them, and the cost.
 
-        The rules and the windows are asserted verbatim; the misfit's share is 1.0 here rather than
-        a fraction, because every other term of this week is zero by construction and a share is a
-        fraction of what the plan costs.
+        The rules and the windows are asserted verbatim; the misfit's share is 1.0 here because
+        every other term of this week is zero by construction and a share is a fraction of what the
+        plan costs.
         """
         result = solved(preference_yield_week())
         clauses = clauses_of(result, f"Gym · {VARIANT}")
