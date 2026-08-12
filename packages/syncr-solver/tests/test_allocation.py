@@ -314,6 +314,10 @@ def test_two_areas_owing_a_floor_owe_the_sum_of_both() -> None:
     # `free` is a union of time and `owed` is a sum across Areas: one free minute can serve one
     # Area, so two Areas each owing ninety minutes owe three hours between them and three hours of
     # claimable time is exactly enough until something else takes any of it.
+    #
+    # The third candidate is what makes the SUM falsifiable rather than the largest floor alone.
+    # Thirty minutes of a Study Area that owes nothing leaves 150, which either floor fits inside on
+    # its own and the two together do not, so a rule reading one floor at a time would admit it.
     week = inputs(
         **NARROW_WEEK,
         areas=(
@@ -331,6 +335,13 @@ def test_two_areas_owing_a_floor_owe_the_sum_of_both() -> None:
 
     assert rejection is not None
     assert rejection.detail == "Career would be left 90m short of its floor, with 75m free"
+
+    jointly = area_floor(
+        a_candidate(Interval(at(0), at(0.5)), area_id=STUDY, binding=STANDUP), state
+    )
+
+    assert jointly is not None
+    assert jointly.detail == "Fitness would be left 90m short of its floor, with 150m free"
 
 
 def test_the_largest_unmet_floor_names_the_rejection() -> None:
