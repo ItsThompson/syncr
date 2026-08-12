@@ -318,6 +318,31 @@ describe("the detail panel", () => {
     expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
     expect(screen.getByLabelText(`${LEETCODE} · Career`)).not.toHaveAttribute("data-selected");
   });
+
+  /* THE PANEL'S OWN CLOSE CONTROL, DRIVEN RATHER THAN READ. It writes the same open state the rail's control and `Enter`
+   * write, and at this width it is the only control that can close the panel: the rail is fenced out at and above the
+   * threshold, so nothing else on the screen offers the gesture. It leaves the SELECTION alone, which is what separates
+   * it from `Escape`, and closing unmounts the control that held focus, so focus falls to the body and `Enter` reaches
+   * the screen's own binding rather than a button's activation. That reopen is asserted here because this is the width
+   * where the affordance is thinnest. */
+  it("closes from the panel's own control, keeps the selection, and reopens with Enter", async () => {
+    window.innerWidth = WIDE_MIN_WIDTH_PX;
+    await renderWeek(buildWeekView());
+    await userEvent.keyboard("j");
+    const detail = await screen.findByLabelText("Detail");
+
+    await userEvent.click(within(detail).getByRole("button", { name: "Close the detail panel" }));
+
+    expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
+    expect(panelState()).toBe("closed");
+    expect(screen.getByLabelText(`${LEETCODE} · Career`)).toHaveAttribute("data-selected");
+
+    expect(document.body).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(await screen.findByLabelText("Detail")).toBeInTheDocument();
+    expect(panelState()).toBe("open");
+  });
 });
 
 describe("a pending proposal", () => {

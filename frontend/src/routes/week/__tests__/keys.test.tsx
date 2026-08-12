@@ -194,12 +194,12 @@ describe("z cycles the visible hours", () => {
 
 describe("Enter and Escape", () => {
   /* THE ONE CASE THAT CAN TELL WHETHER `Enter` IS BOUND AT ALL, and the premise is the reason it is written this way. A
-   * selected block HOLDS FOCUS and a block is a real button, so `Enter` on it is the button's own activation: it opens
-   * the panel through the same handler the pointer uses whether or not this screen binds the key. With focus off the
-   * block -- a reader who selected with the keys and then clicked the page -- the document binding is the only thing
-   * left that can answer. Both halves of the premise are asserted rather than assumed, so this case fails loudly
-   * instead of going quiet if either stops holding. The version before it typed `j{Enter}` with focus on the block and
-   * stayed green with the binding deleted. */
+   * selected block HOLDS FOCUS and a block is a real button, and `useKeyBinding` calls `preventDefault()` on a match, so
+   * the two routes are mutually exclusive and land on the same observable: with the binding the document handler runs and
+   * suppresses the button's click, without it the click reaches `onSelect`, which also opens the panel. With focus off
+   * the block -- a reader who selected with the keys and then clicked the page -- the binding is the only route left.
+   * Both halves of the premise are asserted rather than assumed, so this case fails loudly instead of going quiet if a
+   * later change moves focus back onto an element its own activation would open the panel from. */
   it("Enter opens the detail panel for the selected block, with focus off the block itself", async () => {
     window.innerWidth = WIDE_MIN_WIDTH_PX - 1;
     await renderWeek();
