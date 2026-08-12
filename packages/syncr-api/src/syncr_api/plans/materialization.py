@@ -144,7 +144,7 @@ class OffPlanSuppression:
 def effective_duration_minutes(
     *, duration_minutes: int, min_duration_minutes: int, reduction_minutes: int = 0
 ) -> int:
-    """R6: one occurrence's duration after any approved reduction, clamped to its floor.
+    """One occurrence's duration after any approved reduction, clamped to its floor.
 
     The clamp is a domain validation on the assembler rather than a solver constraint, because
     no solver operation resizes a routine: the frame arrives already resolved. The sleep floor

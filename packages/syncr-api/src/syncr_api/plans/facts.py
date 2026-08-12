@@ -20,7 +20,8 @@ a set of shortfall kinds. Their shape is enforced by the Pydantic model that wri
 carries one pin per block, so a second drag of one block replaces the row and a release deletes it.
 What persists is the ``edit_events`` row every pin writes in the same transaction: it carries the
 same pair, the same objective delta and the same weight-set version, so the training label outlives
-the constraint. That is the distinction ``PN2`` draws between the binding and the record.
+the constraint. That is the distinction between the binding and the record: one is a live
+constraint on this week, the other a fact about a week that happened.
 """
 
 from __future__ import annotations

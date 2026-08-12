@@ -1,9 +1,8 @@
 """Whether the weekly session was open when a mutation arrived, read from the request that says so.
 
-``VE3``: only the caller knows whether the weekly session is open, because it is a mode of the
-client's own screen rather than a state this application holds. A verdict transition recorded during
-a session is what the early-catch product metric's numerator counts, so the answer has to cross the
-wire.
+Only the caller knows whether the weekly session is open, because it is a mode of the client's own
+screen rather than a state this application holds. A verdict transition recorded during a session is
+what the early-catch product metric's numerator counts, so the answer has to cross the wire.
 
 **A header rather than a field on each body.** It is a property of the client's state at the moment
 of the request rather than of the resource being changed, so a field would be repeated on every

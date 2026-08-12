@@ -38,9 +38,9 @@ Every module in this package appears in the table below.
 own, and it writes exactly one column: an Area's ``budget_percent``, and only when the user applies
 a revision.
 
-**Both reads write nothing at all**, including no ``VerdictEvent``. ``VE6`` forbids a read from
-recording the transition it observes, and the session's payload carries a verdict, so it is covered
-by the guard stated over the response shapes that declare that field.
+**Both reads write nothing at all**, including no ``VerdictEvent``. No read path records the
+transition it observes, and the session's payload carries a verdict, so it is covered by the guard
+stated over the response shapes that declare that field.
 
 **Three rules separate this from the budget report**, which is `syncr_api.budgets`. That report
 answers what a week PLANS to give each Area, over a recomputed denominator. This answers what each

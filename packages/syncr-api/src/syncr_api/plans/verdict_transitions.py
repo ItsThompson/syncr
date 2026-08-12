@@ -64,7 +64,7 @@ def as_recorded(
 
 
 def is_a_transition(recorded: VerdictToRecord, *, since: VerdictEventRecord | None) -> bool:
-    """Whether ``recorded`` says something this week's last recorded verdict did not. ``VE2``.
+    """Whether ``recorded`` says something this week's last recorded verdict did not.
 
     ``since`` is the newest row this week holds, so a verdict recomputed identically answers
     ``False`` and a burst of twelve pins writes at most one row.
@@ -74,18 +74,20 @@ def is_a_transition(recorded: VerdictToRecord, *, since: VerdictEventRecord | No
     baseline in the corpus at the moment a user first touches the week. The maintainer records only
     a discovery, so for it an absent row reads as "no episode is open", which is the same state a
     feasible row denotes: a periodic probe reporting that a week is fine is not a discovery, and
-    ``VE8`` is the same argument applied to provenance.
+    the same argument applies to provenance, which the maintainer never records a change in.
     """
     if since is None:
         return not (recorded.surface.records_only_a_feasible_flip and recorded.feasible)
     if recorded.feasible != since.feasible:
         return True
     if recorded.surface.records_only_a_feasible_flip:
-        # VE8. Its probe re-derives provenance from arithmetic, so recording a change in it would
-        # write a row on the tick after every solve and another on the next solve, forever.
+        # The maintainer writes on a feasible flip alone. Its probe re-derives provenance from
+        # arithmetic, so recording a change in it would write a row on the tick after every solve
+        # and another on the next solve, forever.
         return False
-    # A provenance change while infeasible: the pair VE4 keeps, which is what lets the metric tell a
-    # capacity warning from an authoritative finding. While feasible there is nothing to confirm.
+    # A provenance change while infeasible: the probe's warning and the solver's confirmation are
+    # two rows of one episode, which is what lets the metric tell a capacity warning from an
+    # authoritative finding. While feasible there is nothing to confirm.
     return not recorded.feasible and recorded.provenance is not since.provenance
 
 

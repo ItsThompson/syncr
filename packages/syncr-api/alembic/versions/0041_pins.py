@@ -17,11 +17,10 @@ accident of read order. The write path upserts, and this index is what makes tha
 rather than a rule the repository remembers.
 
 **Half the counterfactual becomes ``NOT NULL``, which is the half a writer can know at insert.**
-``PN3`` and ``B1`` say every pin persists the placement it superseded and what replacing it cost,
-permanently, because the reason panel renders both from the pin rather than by walking the edit log.
-The superseded placement is where the plan of record holds the block, so a route that has to find
-that block in a stored document always knows it: nullable made that a rule a writer remembers, and
-this makes it a shape.
+Every pin persists the placement it superseded and what replacing it cost, permanently, because the
+reason panel renders both from the pin rather than by walking the edit log. The superseded placement
+is where the plan of record holds the block, so a route that has to find that block in a stored
+document always knows it: nullable made that a rule a writer remembers, and this makes it a shape.
 
 **The price stays nullable, which is now vestigial.** The delta is known before the hold since the
 pre-pin frame fix, so the two-statement write and the nullable column can be collapsed into one

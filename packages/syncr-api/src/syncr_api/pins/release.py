@@ -6,12 +6,12 @@ training data. The conflict path declares the seam and this is the pin feature's
 is where the lifecycle question belongs: what a release does to the row is decided where pins are
 written.
 
-**A release deletes the row, and the record that persists is the edit event.** ``PN2`` says the
-record of a pin persists permanently and the resolution table says a released pin's record is
-retained; both are true because the two are different objects. The row is the live constraint on
-this week's solve. The ``edit_events`` row written in the same transaction as the pin is the fact
-about a week that happened, and it carries the same pair, the same objective delta and the same
-weight-set version. So a release loses nothing the learning layer reads.
+**A release deletes the row, and the record that persists is the edit event.** The record of a pin
+persists permanently, and the resolution table says a released pin's record is retained; both are
+true because the two are different objects. The row is the live constraint on this week's solve.
+The ``edit_events`` row written in the same transaction as the pin is the fact about a week that
+happened, and it carries the same pair, the same objective delta and the same weight-set version.
+So a release loses nothing the learning layer reads.
 
 The table could not express a released pin any other way. It holds no column for one, and adding one
 would mean every reader of a pin filtering on it: the assembler, the promotion detector, and the

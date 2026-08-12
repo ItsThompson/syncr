@@ -17,7 +17,7 @@ pin(week, blockId, start)
   │     ├── assembler.assemble(week, now)             POST-PIN frame. Reads the pin back
   │     ├── probe(post-pin inputs)                    provenance = probe
   │     ├── pins.price(delta)                         the pin's second statement
-  │     ├── verdicts.record(week, verdict)            VE2: only if it TRANSITIONED
+  │     ├── verdicts.record(week, verdict)            only if it TRANSITIONED
   │     ├── editEvents.append(...)                    E1: the pair, or neither
   │     └── coordinator.request_solve(week, version)
   └── { pin, verdict, operation }
@@ -43,11 +43,11 @@ frame serves, and the count of observations the two histograms take.
 a training label with no features, and the features are a fact about an instant that has passed, so
 the loss is unrecoverable. Nothing between the two writes can commit one without the other.
 
-**``VE5``: the verdict transition is written in the same transaction too**, and only when the
-verdict is a transition. So a burst of twelve drags writes at most one row, and a pin cannot commit
-without the transition it caused: the row feeds a product metric whose data is unrecoverable after
-the fact. The release path records none, because it computes no verdict; the transition its solve
-produces is recorded on the commit path, and the one time passing produces is the maintainer's.
+**The verdict transition is written in the same transaction too**, and only when the verdict is a
+transition. So a burst of twelve drags writes at most one row, and a pin cannot commit without the
+transition it caused: the row feeds a product metric whose data is unrecoverable after the fact.
+The release path records none, because it computes no verdict; the transition its solve produces is
+recorded on the commit path, and the one time passing produces is the maintainer's.
 
 ## Rejecting a proposed move is pinning the block where it already is
 
@@ -458,7 +458,7 @@ def _require_a_placement_the_week_has_not_reached(
 def _require_a_placement_inside_the_week(accepted: Interval, span: Interval) -> None:
     """A pin binds ONE week, so a placement whose start falls outside that week's span is refused.
 
-    ``PN1``: the pin constrains the week it was made in and the next week's solve is unconstrained
+    The pin constrains the week it was made in and the next week's solve is unconstrained
     by it, so a placement starting outside the span would be a constraint on a week no row names.
     Checked against the assembled span rather than a span derived here, because a week's real length
     is a resolution of the zone profile: it is 167 or 169 hours across a daylight-saving transition

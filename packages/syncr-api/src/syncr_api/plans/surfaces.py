@@ -21,9 +21,10 @@ that must not know which surface it is serving:
 attempts a placement. Stated here so the row a surface writes can be refused when the two disagree,
 and so the metric's label set is the reachable pairs rather than every combination.
 
-``records_only_a_feasible_flip`` is ``VE8``. The maintainer's probe re-derives provenance from
-arithmetic, so a tick after a solve would flip ``solver`` back to ``probe`` and the next solve would
-flip it again, writing a row each time. A periodic re-confirmation is not a discovery.
+``records_only_a_feasible_flip`` says the maintainer writes on a change in feasibility and never on
+a change in provenance. Its probe re-derives provenance from arithmetic, so a tick after a solve
+would flip ``solver`` back to ``probe`` and the next solve would flip it again, writing a row each
+time. A periodic re-confirmation is not a discovery.
 """
 
 from __future__ import annotations

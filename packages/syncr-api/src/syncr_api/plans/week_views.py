@@ -84,10 +84,10 @@ class PendingProposal:
     from: the live plan is already on the week view beside it, so carrying the whole candidate week
     would put a second document in a payload whose reader has one.
 
-    Both versions travel, and that is ``PP5`` from the read side. ``input_version`` is the state the
-    proposal was SOLVED against, so a client comparing it with the week's own can see that the week
-    moved on while this proposal waited, which is permitted and is what makes approval never
-    blocked.
+    Both versions travel, because a proposal may be approved while it is behind. ``input_version``
+    is the state the proposal was SOLVED against, so a client comparing it with the week's own can
+    see that the week moved on while this proposal waited, which is permitted and is what makes
+    approval never blocked.
     """
 
     iso_week: IsoWeek

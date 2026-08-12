@@ -24,12 +24,12 @@ verdict about nothing. Duty 1 is what brings that plan into existence, and this 
 revision rather than duty 1's tally so the two are independent: which of ``materialized``,
 ``horizon_advanced`` or an adopted solve produced the plan is not a thing this duty can read.
 
-**``VE7``: one instant.** ``now`` comes from the runner, is handed to the assembler, and the
-assembler stamps it onto its output, which the probe carries onto the verdict and the row carries
-from there. No clock is read here at all, so a tick's transitions cannot be evaluated against two
-instants.
+**One instant for the whole tick.** ``now`` comes from the runner, is handed to the assembler, and
+the assembler stamps it onto its output, which the probe carries onto the verdict and the row
+carries from there. No clock is read here at all, so a tick's transitions cannot be evaluated
+against two instants.
 
-**``VE3``: ``session_mode_active`` is ``False``**, stated as a literal below. The worker cannot know
+**``session_mode_active`` is ``False``**, stated as a literal below. The worker cannot know
 whether a weekly session is open, and a background probe is by definition not a user planning their
 week.
 """

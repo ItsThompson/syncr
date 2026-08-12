@@ -58,8 +58,8 @@ before it appends.
 are one transaction, so a loser's append rolls back with its failed DELETE wherever the statement
 sits. What may not be dropped is the answer being checked, and above it the lock.
 
-``PP3`` holds for the same reason: a failure at any step rolls every other write back, so the slot
-is intact and the proposal is still approvable.
+The rule that all five writes land together holds for the same reason: a failure at any step rolls
+every other write back, so the slot is intact and the proposal is still approvable.
 
 ## Why the bump is here rather than only an invariant elsewhere
 
@@ -75,11 +75,10 @@ they just accepted.
 
 ## The version the approved revision records is the one it was SOLVED against
 
-``PP5``: a proposal may be approved while its ``input_version`` is behind the week's current
-version. The user is approving what they can see, and the solve the newer mutation already
-enqueued will propose any correction. So the revision records the version the document was
-produced from, and the response reports both figures, which is what makes the discrepancy visible
-rather than hidden.
+A proposal may be approved while its ``input_version`` is behind the week's current version. The
+user is approving what they can see, and the solve the newer mutation already enqueued will propose
+any correction. So the revision records the version the document was produced from, and the response
+reports both figures, which is what makes the discrepancy visible rather than hidden.
 
 ## Infeasibility is not consulted, anywhere on this path
 

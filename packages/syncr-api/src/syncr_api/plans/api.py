@@ -8,8 +8,8 @@ The week is a path segment and its shape is validated in the service, by the dom
 the identifier, so no pattern is declared here that could drift from it.
 
 **Four of the five are reads and they write nothing at all**: no revision, no operation, no version
-bump, and no ``VerdictEvent``. Three of the four compute a verdict, which is what a read may do and
-what ``VE6`` forbids it from recording. The fifth asks for a solve and answers with the operation to
+bump, and no ``VerdictEvent``. Three of the four compute a verdict, which is what a read may do;
+recording one is what it may not. The fifth asks for a solve and answers with the operation to
 follow rather than with a plan, because the plan does not exist yet: a request that answered with a
 week would be answering with the week it is about to replace.
 """

@@ -72,9 +72,9 @@ class VerdictNotRecordable(Exception):
 
     The same class as the others: the surface is bound where a component is composed and the
     provenance comes off the verdict, so a row where the two disagree is a miswiring rather than
-    anything a request carried. It is refused at construction because ``VE1`` never prunes these
-    rows, so a wrong field is a permanent hole in the corpus the product metric is computed from,
-    and the write is the only moment it can be caught.
+    anything a request carried. It is refused at construction because these rows are never updated
+    and never pruned, so a wrong field is a permanent hole in the corpus the product metric is
+    computed from, and the write is the only moment it can be caught.
     """
 
 

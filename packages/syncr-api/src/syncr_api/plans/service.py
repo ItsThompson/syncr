@@ -10,9 +10,10 @@ either a reader or, in the budget's case, a service whose own read is stated to 
 Navigating between weeks with ``[`` and ``]`` is not a mutation, so a week fifty weeks out has no
 plan and says why instead of quietly queueing work.
 
-**That includes the verdict, which four of the five reads now compute.** ``VE6`` forbids a read from
-appending a transition, and ``VE8`` is the same argument from the metric's side: a transition a read
-observes is recorded by the next mutation or by the maintainer's next tick.
+**That includes the verdict, which four of the five reads now compute.** No read path appends a
+transition, and the maintainer writing only on a change in feasibility is the same argument from the
+metric's side: a transition a read observes is recorded by the next mutation or by the maintainer's
+next tick.
 
 ## ``live`` is nullable, and the reason is carried beside it
 
@@ -247,9 +248,10 @@ class WeekService:
         states: nothing has been computed about such a week, and a verdict about a plan that does
         not exist would be a claim about nothing.
 
-        It appends no ``VerdictEvent`` on either branch. ``VE6``: a read is deliberately absent from
-        the surfaces a transition may be recorded from, and ``VE8`` is the other half of the same
-        argument -- a fresh probe here would flip provenance back from ``solver`` after every solve.
+        It appends no ``VerdictEvent`` on either branch. A read is deliberately absent from the
+        surfaces a transition may be recorded from, and the maintainer writing only on a change in
+        feasibility is the other half of the same argument -- a fresh probe here would flip
+        provenance back from ``solver`` after every solve.
         """
         require_scope(principal, Scope.PLAN_READ)
         week = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)

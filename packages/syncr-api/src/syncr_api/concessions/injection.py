@@ -13,8 +13,8 @@ The operation lifecycle is the solving module's, and it is the only creation pat
 a second one here would be a second reading of the state machine.
 
 The verdict recorder is bound to the ``tradeoff`` surface and to whether this request states that
-the weekly session is open, because ``VE3`` says only the caller knows the second. A tradeoff is
-asked for during a weekly session more often than not, so a surface that reported false here would
+the weekly session is open, because only the caller knows the second. A tradeoff is asked for
+during a weekly session more often than not, so a surface that reported false here would
 under-report the metric's numerator on its most likely path.
 
 **Two dependencies rather than one, and the split is the header.** Only the tradeoff ``POST``

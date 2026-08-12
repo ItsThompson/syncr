@@ -164,5 +164,5 @@ def dates_of(inputs: SolveInputs) -> dict[str, Date]:
 
 
 def _give(entry: FrameEntry) -> int:
-    """How much one occurrence could be shortened by, which is what R6's clamp leaves."""
+    """How much one occurrence could be shortened by: what the clamp to its own floor leaves."""
     return entry.interval.total_minutes() - entry.min_duration_minutes

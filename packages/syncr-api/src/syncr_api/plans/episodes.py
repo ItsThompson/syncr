@@ -61,7 +61,7 @@ class Episode:
 
     @property
     def caught_early(self) -> bool:
-        """Whether the discovery happened while the weekly session was open. ``VE9``.
+        """Whether the discovery happened while the weekly session was open.
 
         The FIRST row decides it. A session transition confirmed by the worker an instant later
         carries ``session_mode_active = false`` on the confirming row, because the worker cannot

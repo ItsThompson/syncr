@@ -25,21 +25,21 @@ from the other.
 
 What it settles, and each was open before a pin route existed:
 
-**A pin on a block that has already begun.** ``syncr_solver.immovability`` documents H10 winning
-for that input -- the block stays where it ran, and H11 yields -- while ``inheritance._placed``
-seeds a pinned block at the pin unconditionally, which would move it. The two disagreed because the
-input was unreachable. It stays unreachable: the route refuses the drag, and a pin whose interval
-the week has since reached is not carried, so the block reaches the checker with no pin against it
-and H10 governs it exactly as its own prose says.
+**A pin on a block that has already begun.** ``syncr_solver.immovability`` documents the
+started-block rule winning for that input -- the block stays where it ran, and the pin yields --
+while ``inheritance._placed`` seeds a pinned block at the pin unconditionally, which would move it.
+The two disagreed because the input was unreachable. It stays unreachable: the route refuses the
+drag, and a pin whose interval the week has since reached is not carried, so the block reaches the
+checker with no pin against it and stays where it ran, exactly as that module's own prose says.
 
 **A pin whose interval elapses while its block lives only in a pending proposal.** Carried, the
 solver builds a block for pinned content the live plan does not hold, the guard reads that block as
 a past the live plan does not state, and every solve of that week fails from then on. Not carried,
 the producer never emits the block and nothing reaches the guard.
 
-What it costs is the pin's own hold on an elapsed span, and ``H4`` already protects that span from
-being placed into. The RECORD is untouched: the row stays until something releases it, and the edit
-event beside it is permanent.
+What it costs is the pin's own hold on an elapsed span, and the no-overlap rule already protects
+that span from being placed into. The RECORD is untouched: the row stays until something releases
+it, and the edit event beside it is permanent.
 """
 
 from __future__ import annotations

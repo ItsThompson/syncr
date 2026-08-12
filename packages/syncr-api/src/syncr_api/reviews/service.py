@@ -174,9 +174,9 @@ class WeeklySessionService:
         a chronic-skip run is walked over, and as the weeks a repeated pin is grouped across.
         Reading it three times would be three answers to how long each of those weeks was.
 
-        ``VE6``: no row, no operation, no version bump, and no ``VerdictEvent``. The guard that
-        holds it is stated over the response shapes that carry a verdict, so this payload is covered
-        by having declared the field.
+        A read appends nothing: no row, no operation, no version bump, and no ``VerdictEvent``. The
+        guard that holds it is stated over the response shapes that carry a verdict, so this payload
+        is covered by having declared the field.
         """
         require_scope(principal, Scope.PLAN_READ)
         planned = require_an_iso_week(iso_week, field=ISO_WEEK_FIELD)

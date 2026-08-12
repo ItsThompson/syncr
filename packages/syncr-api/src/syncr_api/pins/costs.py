@@ -9,10 +9,10 @@ preferred window, the approved baseline -- so evaluating the two documents again
 assemblies would produce a difference between two different questions. Which assembly it is matters
 far less: the pair is what the fitter consumes, and both sides have to be priced in the same frame.
 
-**``PN4`` and ``E2``: the figure is stored, never recomputed.** The weight set that produced it is
-versioned and will have moved on, so a later recomputation would answer a different question. That
-is why the delta is written onto the pin and onto the edit event rather than derived on read, and
-why both rows also carry the weight-set version it was priced under.
+**The figure is stored, never recomputed, on the pin and on the edit event alike.** The weight set
+that produced it is versioned and will have moved on, so a later recomputation would answer a
+different question. That is why the delta is written onto both rows rather than derived on read,
+and why both also carry the weight-set version it was priced under.
 
 **The breakdown is the plan's own, computed here rather than read off the stored revision.** The
 revision's column holds the breakdown the solve that produced it computed, under whichever weight

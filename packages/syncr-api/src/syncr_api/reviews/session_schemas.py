@@ -4,10 +4,10 @@ Separate from ``schemas`` because two reviews share a prefix and nothing else: t
 Areas-shaped arithmetic over a quarter, and this is one week's planning surface. One file holding
 both would be the module a reader has to search rather than open.
 
-**The verdict field is named ``verdict``, deliberately.** The guard that enforces ``VE6`` -- no read
-appends a ``VerdictEvent`` -- is stated over the response shapes that declare that field rather than
-over a list of paths, so declaring it is what brings this read under the rule. A field named
-anything else would have escaped a guard that was armed for this payload before it existed.
+**The verdict field is named ``verdict``, deliberately.** The guard that holds a read to appending
+no ``VerdictEvent`` is stated over the response shapes that declare that field rather than over a
+list of paths, so declaring it is what brings this read under the rule. A field named anything else
+would have escaped a guard that was armed for this payload before it existed.
 
 **A raised item carries its own sentence.** Every category the session raises renders as one row of
 one amber panel, and the words are composed server-side for the reason the pie review's statements

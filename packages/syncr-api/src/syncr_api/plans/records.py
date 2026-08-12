@@ -115,11 +115,11 @@ class PinRecord:
     a JSONB object and four columns, for the reason :class:`BlockOutcomeRecord` does: every reader
     wants the identity as one value and each span as one.
 
-    Neither half of the counterfactual is optional once the pin is complete, which is ``PN3`` and
-    ``B1``: a pin states the placement it replaced and what replacing it cost, so the reason panel
-    renders both from the pin rather than by walking the edit log. ``objective_delta`` is nullable
-    here for one statement's width: the row is held by one statement and priced by a second inside
-    one transaction, so a read between the two sees no cost yet.
+    Neither half of the counterfactual is optional once the pin is complete: a pin states the
+    placement it replaced and what replacing it cost, so the reason panel renders both from the pin
+    rather than by walking the edit log. ``objective_delta`` is nullable here for one statement's
+    width: the row is held by one statement and priced by a second inside one transaction, so a
+    read between the two sees no cost yet.
     """
 
     id: PinId

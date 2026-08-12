@@ -4,11 +4,10 @@ Flat rather than nesting the history's revision shape, because the two answer di
 the history lists what a week has been, and this says what one act just did. A client that wants
 the revision beside its siblings reads the history route, which is where a revision is described.
 
-**Both versions are on it, and that is ``PP5`` on the wire.** ``inputVersion`` is what the week
-holds now, after this approval bumped it, and ``solvedAgainstVersion`` is the input state the
-approved plan was produced from. A proposal may be approved while it is behind, so the two figures
-differ exactly when the week moved on between the solve and the approval, and a client can see that
-rather than having to infer it.
+**Both versions are on it.** ``inputVersion`` is what the week holds now, after this approval
+bumped it, and ``solvedAgainstVersion`` is the input state the approved plan was produced from. A
+proposal may be approved while it is behind, so the two figures differ exactly when the week moved
+on between the solve and the approval, and a client can see that rather than having to infer it.
 """
 
 from __future__ import annotations

@@ -59,10 +59,10 @@ version row, the row the guard created, which the follow-up is then guarded agai
 back instead would leave the follow-up finding no row either, superseded for the same reason,
 forever.
 
-The verdict transition is inside that transaction and after that guard, which is ``VE5`` and what
-makes it meaningful here: a discarded solve records nothing, because the plan it was about is not
-the plan the week holds. A row for it would tell the product metric that a week was confirmed
-impossible by a result nobody adopted.
+The verdict transition is inside that transaction and after that guard, which is what writes it
+with the job that computed it and what makes it meaningful here: a discarded solve records nothing,
+because the plan it was about is not the plan the week holds. A row for it would tell the product
+metric that a week was confirmed impossible by a result nobody adopted.
 
 ## Failure names what still works, and the last attempt keeps the inputs it read
 
@@ -311,9 +311,10 @@ class SolveDispatch:
                 self._candidate(op, loaded, solved),
                 at=now,
             )
-            # VE5, and it is the guard that makes it meaningful: a solve whose version moved returns
-            # above without writing, so a superseded solve records no transition. VE4's diagnostic
-            # pair is what this row is: the probe's warning, confirmed by an attempted placement.
+            # The transition commits with the solve that computed it, and the guard is what makes
+            # that meaningful: a solve whose version moved returns above without writing, so a
+            # superseded solve records no transition. This row is the second of a diagnostic pair:
+            # the probe's warning, confirmed by an attempted placement.
             await self._recorder(session).record(week, solved.verdict, caused_by=op.id)
             if adopted.changed_the_live_plan():
                 # The live plan IS a solve input, so the version moves with it, and the projection
@@ -501,10 +502,10 @@ class SolveDispatch:
     def _recorder(self, session: AsyncSession) -> VerdictRecorder:
         """The transition writer for this path, bound to the surface and to no open session.
 
-        ``VE3``: the worker cannot know whether the user's weekly session is open, so it reports
-        false. ``18-observability.md`` states that plainly and the episode definition depends on it:
-        the FIRST row of an episode decides whether the infeasibility was caught early, so a
-        confirming row that claimed a session was open would report a miss as a catch.
+        The worker cannot know whether the user's weekly session is open, so it reports false.
+        ``18-observability.md`` states that plainly and the episode definition depends on it: the
+        FIRST row of an episode decides whether the infeasibility was caught early, so a confirming
+        row that claimed a session was open would report a miss as a catch.
         """
         return build_verdict_recorder(
             session,

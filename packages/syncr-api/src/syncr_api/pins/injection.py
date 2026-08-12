@@ -25,9 +25,9 @@ cost of ONE of a request's two assemblies rather than of the request.
 
 The verdict recorder is bound to the surface the request's own credential names -- ``pin`` for a
 browser's drag, ``cli`` for ``syncr block move`` -- and to whether this request states that the
-weekly session is open, because ``VE3`` says only the caller knows the second: a transition recorded
-during a session is what the early-catch metric's numerator counts, and the service that records it
-cannot ask. Two literal compositions rather than one with a conditional surface, so
+weekly session is open, because only the caller knows the second: a transition recorded during a
+session is what the early-catch metric's numerator counts, and the service that records it cannot
+ask. Two literal compositions rather than one with a conditional surface, so
 ``tests/test_verdict_surfaces.py`` can read which surface this module binds out of the source.
 """
 

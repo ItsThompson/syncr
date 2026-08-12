@@ -23,10 +23,10 @@ changes the restatement changes with it.
 
 **That narrowing is a decision rather than a convenience, and the alternative was measured.** The
 guard's first draft bound all seven origins, on the premise that a well-behaved candidate satisfies
-it for free because the solver may not move a block that has started. The premise is false:
-``H10`` binds the solver's SEARCH, while ``syncr_solver.inheritance.inherited`` carries every
-derived block at the span THIS week's derivation determined, whether or not the week has reached it.
-Two ordinary upstream events therefore produce a disagreement no defect caused:
+it for free because the solver may not move a block that has started. The premise is false: that
+rule binds the solver's SEARCH, while ``syncr_solver.inheritance.inherited`` carries every derived
+block at the span THIS week's derivation determined, whether or not the week has reached it. Two
+ordinary upstream events therefore produce a disagreement no defect caused:
 
 ```
 a commitment the user corrected in their calendar after it began

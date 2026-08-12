@@ -5,7 +5,7 @@ same shape as the two task quantities in ``demand.py``.
 
 ```
                        floor_minutes                floor_reservation_minutes
-reader                 the SOLVER, through H9       the PROBE, via for_probe()
+reader                 the SOLVER, checking a floor the PROBE, via for_probe()
 nets                   IMMOVABLE placements only    EVERY placement in the Area
 ```
 
@@ -15,10 +15,10 @@ blocks, and solver-placed blocks are unpinned. With a Fitness floor of 5h fully 
 blocks and 2h of genuinely uncommitted capacity left, an immovable-only reservation reads 5h
 against 2h of free capacity and reports a 3h gap that does not exist.
 
-**Netted the other way, the solver under-places the floor.** H9 checks a plan the solver is
-building, so its reservation has to cover everything the solver can still place. Reserving
-against a block the solver is about to discard would let it place the floor short by whatever
-the previous solve happened to place.
+**Netted the other way, the solver under-places the floor.** The floor is checked against a plan
+the solver is still building, so its reservation has to cover everything the solver can still
+place. Reserving against a block the solver is about to discard would let it place the floor short
+by whatever the previous solve happened to place.
 
 One consequence of the split is worth stating, because it reads as asymmetric and is not.
 Pinning an already-placed block leaves the reservation UNCHANGED, which is what stops a pin

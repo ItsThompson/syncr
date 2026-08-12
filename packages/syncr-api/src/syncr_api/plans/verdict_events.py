@@ -1,13 +1,13 @@
 """``VerdictEventRepository``: the transition corpus, and the two reads the rule needs.
 
-``VE1`` says a row is appended, never updated and never pruned, so this extends
+A row is appended, never updated and never pruned, so this extends
 :class:`~syncr_api.core.repository.TenantScopedReader`, which carries no ``UPDATE`` and no
 ``DELETE`` builder at all. The rule is a shape rather than a sentence a future reader has to find,
 and the retention guard in ``tests/test_plan_storage_boundary.py`` reads the same shape.
 
-``VE5`` is the caller's to hold and this module's to make possible: the append takes no transaction
-of its own and opens no session, so a transition commits with the request or job that computed it or
-not at all.
+Writing the transition in the transaction that computed the verdict is the caller's to hold and
+this module's to make possible: the append takes no transaction of its own and opens no session, so
+a transition commits with the request or job that computed it or not at all.
 
 Two reads rather than one. :meth:`latest` is what the transition rule compares against, one indexed
 row per decision, and it is the whole cost of a tick that changes nothing. :meth:`for_week` hands

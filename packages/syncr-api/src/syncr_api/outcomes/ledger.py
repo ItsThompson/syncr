@@ -5,9 +5,9 @@ proportional grid, and its shape is the frontend's: a time range, the duration, 
 title, and the current outcome, grouped into what is behind now and what is ahead.
 
 **A block with no outcome row reads as ``presumed`` and unconfirmed.** That is not a gap being
-filled in: it is what O1 means. Every block defaults to presumed with no user action, which is what
-keeps daily interaction cost near zero, so the absence of a row is the common case rather than the
-exceptional one.
+filled in: every block defaults to presumed with no user action, which is what keeps daily
+interaction cost near zero, so the absence of a row is the common case rather than the exceptional
+one.
 
 **The grouping boundary is the block's END.** A block still running has not been RECORDED yet, so
 it sits under the section that says "presumed until you say otherwise" rather than under the one
@@ -23,9 +23,9 @@ answered for the day, and they answer for it as a whole. Two reasons, the first 
   to the day it begins in, so a rule that waited for every block to end would make today
   unconfirmable until tomorrow morning, for every user who sleeps. The evening pass the product is
   designed around would settle nothing.
-- Presuming a block that has not happened is what O1 already does for every block, all day.
-  Confirming says the user has nothing to add, and if the evening turns out otherwise they record an
-  exception and everything projected from the log re-derives, which is O5.
+- Presuming a block that has not happened is already the rule for every block, all day. Confirming
+  says the user has nothing to add, and if the evening turns out otherwise they record an exception
+  and everything projected from the log re-derives.
 
 So a confirmed ``presumed`` row on a block later today reads as a completion, and that is the
 presumption the product is built on rather than a gap in it.

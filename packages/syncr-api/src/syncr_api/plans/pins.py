@@ -7,9 +7,9 @@ section 07 are one rule once the pair is read together:
 
 | Rule | What holds it |
 |---|---|
-| ``PN2``: the record persists permanently | the edit event, which nothing here can reach |
-| ``PN3``: every pin persists what it superseded | ``NOT NULL``, and :meth:`price` for the cost |
-| ``PN4``: the objective delta is stored, never recomputed | no write here recomputes one |
+| the record of a pin persists permanently | the edit event, which nothing here can reach |
+| every pin persists the placement it superseded | ``NOT NULL``, and :meth:`price` for the cost |
+| the objective delta is stored, never recomputed | no write here recomputes one |
 | releasing a pin retains its record as training data | :meth:`release`, whose event survives it |
 
 **One pin per block, so :meth:`hold` upserts.** A person holds one answer at a time to "where does
@@ -100,12 +100,12 @@ class PinRepository(TenantScopedRepository):
     async def price(self, pin_id: PinId, *, objective_delta: float) -> PinRecord:
         """State what this pin's placement cost, which is what makes the row complete.
 
-        Separate from :meth:`hold` and in the same transaction as it, so ``PN3``'s cost half is a
-        property of what commits. **The separation is vestigial**: the caller knows the delta before
-        it holds the row, so folding this into the insert would serve ``PN3`` as well and would
-        close the window in which a row exists without its cost. The row is returned rather than
-        the caller reusing what ``hold`` answered: a record carrying a null cost is one nothing
-        should read twice.
+        Separate from :meth:`hold` and in the same transaction as it, so the cost a pin stores is a
+        property of what commits. **The separation is vestigial**: the caller knows the delta
+        before it holds the row, so folding this into the insert would store the cost just as well
+        and would close the window in which a row exists without its cost. The row is returned
+        rather than the caller reusing what ``hold`` answered: a record carrying a null cost is one
+        nothing should read twice.
         """
         written = await self._session.scalars(
             self.scoped_update(Pin)

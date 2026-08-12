@@ -220,8 +220,9 @@ class PlanHorizonRunner:
     ) -> VerdictPass:
         """One week's duty-2 probe, in its own transaction, with its own fault contained.
 
-        ``VE5``: the transaction is the job that computed the verdict, so a tick cannot record a
-        week's transition partially, and a week whose assembly raises leaves no row at all.
+        The transition is written in the transaction of the job that computed the verdict, so a
+        tick cannot record a week's transition partially, and a week whose assembly raises leaves
+        no row at all.
 
         The fault is contained here so the weeks after this one are still probed. What counts it is
         ``syncr_method_errors_total{component="horizon_verdicts"}`` from the raise itself, because a

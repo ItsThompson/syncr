@@ -11,14 +11,14 @@ enumeration of who records a transition is the set of places a recorder is compo
 ``tests/test_verdict_surfaces.py`` reads that set out of the source and holds it against the six
 members.
 
-**``VE3``: ``session_mode_active`` has no default.** Only the caller knows whether the weekly
-session is open, because it is a mode of the client's own screen. A request carries it in a header
-the edge reads; the worker's two callers bind ``False`` as a literal beside the reason, and a
-defaulted parameter is how a third caller would acquire that answer without stating it.
+**``session_mode_active`` has no default.** Only the caller knows whether the weekly session is
+open, because it is a mode of the client's own screen. A request carries it in a header the edge
+reads; the worker's two callers bind ``False`` as a literal beside the reason, and a defaulted
+parameter is how a third caller would acquire that answer without stating it.
 
-**``VE5``: no transaction of its own and no session of its own.** The repository is composed from
-the caller's session, so a transition commits with the mutation or the job that computed the verdict
-or not at all. A recorder is therefore as cheap to hold as a repository, which is why each request
+**No transaction of its own and no session of its own.** The repository is composed from the
+caller's session, so a transition commits with the mutation or the job that computed the verdict or
+not at all. A recorder is therefore as cheap to hold as a repository, which is why each request
 builds one.
 """
 

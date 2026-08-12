@@ -6,9 +6,9 @@ is the week being PLANNED: the retrospective covers the week before it.
 
 **Nothing here writes.** No revision, no operation, no version bump, and no ``VerdictEvent``. The
 verdict on this payload is computed the same way the Week screen's is, through the same
-collaborator, and ``VE6`` forbids a read from recording the transition it observes. That rule is
-enforced by a guard stated over the response shapes that carry a verdict rather than over a list of
-paths, so this payload came under it the moment it declared the field.
+collaborator, and no read path records the transition it observes. That rule is enforced by a guard
+stated over the response shapes that carry a verdict rather than over a list of paths, so this
+payload came under it the moment it declared the field.
 
 **Every figure is someone else's arithmetic.** The retrospective's actual-against-target is the pie
 review's ``categories_of``; the verdict and the concessions are the week view's; an at-risk task is

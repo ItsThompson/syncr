@@ -31,8 +31,8 @@ stays out of capacity and stops counting toward the task, which raises the deman
 user said they did not work.
 
 **Immovability is decided against ``now``, and ``now`` is the assembler's stamp.** A block that
-has started is immovable whether or not it has finished, which is the reading H10 takes. So a
-block starting exactly at ``now`` is immovable, and one starting a minute later is not.
+has started is immovable whether or not it has finished, which is the reading the solver takes
+too. So a block starting exactly at ``now`` is immovable, and one starting a minute later is not.
 
 Minutes are counted through :class:`~syncr_domain.intervals.IntervalSet`, so two placements
 covering one minute contribute one minute rather than two. That matters for an Area's figure in

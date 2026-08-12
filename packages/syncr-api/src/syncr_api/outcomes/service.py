@@ -6,8 +6,8 @@ block is, are ``ledger.py``'s; what a request has to satisfy is ``rules.py``'s.
 **Recording never confirms, and confirming never overwrites a recording.** They are two acts on
 one row. Marking a block skipped during the day says something about the block; confirming the day
 says the user has answered for all of it. A day with a skip on it and no confirmation is therefore
-excluded from reviews and from learning, which is O3, and correcting a state after a confirmation
-keeps the instant the day was settled at.
+excluded from reviews and from learning, and correcting a state after a confirmation keeps the
+instant the day was settled at.
 
 **A block is found through the week the request names.** A block id is a digest of the week and the
 binding, so the week cannot be recovered from the id, and the alternative is a walk over every
@@ -15,13 +15,13 @@ revision the tenant has stored. The 100 ms budget on the recording route is what
 decision rather than a preference.
 
 **Every write bumps the week input version from the current week onwards, and nothing projected is
-stored.** The rotation cursor and outstanding debt are derived from the log on every read, so O5
-needs no re-derivation step here: there is no stored value for a correction to disagree with. Both
-figures are inputs to weeks the user has NOT yet lived, so the range is the open-ended one and its
-floor is the week holding today's local date; a past week is deliberately not bumped, because its
-approved revision keeps the inputs it was computed with. What the bump buys is that a solve already
-running for a future week fails its conditional write. ``BacklogWideBump`` is the one implementation
-of those four steps.
+stored.** The rotation cursor and outstanding debt are derived from the log on every read, so
+correcting a past confirmation re-derives them with no step here: there is no stored value for a
+correction to disagree with. Both figures are inputs to weeks the user has NOT yet lived, so the
+range is the open-ended one and its floor is the week holding today's local date; a past week is
+deliberately not bumped, because its approved revision keeps the inputs it was computed with. What
+the bump buys is that a solve already running for a future week fails its conditional write.
+``BacklogWideBump`` is the one implementation of those four steps.
 
 ``require_scope`` maps the writes to ``plan:write`` and the reads to ``plan:read``. Recording an
 outcome is an act on a week rather than plan configuration, which is what separates it from a

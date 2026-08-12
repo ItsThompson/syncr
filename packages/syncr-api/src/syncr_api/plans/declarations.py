@@ -80,17 +80,17 @@ class VerdictToRecord:
     """One verdict transition, as the append-only row that records it.
 
     ``occurred_at`` is the instant the verdict was computed, taken from the verdict itself rather
-    than from a second clock read. That is ``VE7`` made structural for the maintainer: a tick hands
-    one instant to the assembler, the assembler stamps it onto its output, the probe carries it onto
-    the verdict, and this row carries it from there, so a tick's transitions cannot be evaluated
-    against two instants.
+    than from a second clock read. That is what makes one instant per tick structural for the
+    maintainer: a tick hands one instant to the assembler, the assembler stamps it onto its output,
+    the probe carries it onto the verdict, and this row carries it from there, so a tick's
+    transitions cannot be evaluated against two instants.
 
     ``feasible`` is the reading the surface reported, not :attr:`Verdict.feasible`. See
     :func:`syncr_api.plans.verdict_transitions.as_recorded`, which is the one place the two are
     reconciled.
 
-    ``session_mode_active`` has no default, which is ``VE3``: only the caller knows whether the
-    weekly session is open, and a defaulted field is how a surface would acquire that answer without
+    ``session_mode_active`` has no default, because only the caller knows whether the weekly
+    session is open, and a defaulted field is how a surface would acquire that answer without
     stating it.
     """
 

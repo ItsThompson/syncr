@@ -9,8 +9,9 @@ The alternative is what the route table describes, and it computes a probe verdi
 That yields ``provenance = "probe"`` always, so a week that passed the probe and then failed to
 PACK would report the capacity check forever and never the stronger finding. ``US-FEAS-02``
 requires the opposite: the stronger finding replaces the reading once the solve lands, and states
-that the earlier reading was a capacity check. ``VE8`` exists for the same reason from the metric's
-side -- a fresh probe would flip provenance back from ``solver`` after every solve.
+that the earlier reading was a capacity check. The maintainer writing on a change in feasibility
+and never on a change in provenance exists for the same reason from the metric's side -- a fresh
+probe would flip provenance back from ``solver`` after every solve.
 
 The only place a solver verdict is persisted is ``PendingProposal.verdict``, and approval clears
 that slot. So serving the slot is not a preference between two readings: it is the only reading
@@ -19,10 +20,11 @@ slot leaves.
 
 ## Both branches write nothing
 
-``VE6``. No revision, no operation, no version bump, and no ``VerdictEvent``. Reading the slot is a
-select; the fallback assembles and probes, and the assembler writes nothing by construction. A
-transition a read observes is recorded by the next mutation or by the maintainer's next tick, at
-most one tick later, which is the same answer the design gives for the tradeoff path's refusal.
+A read path writes nothing at all: no revision, no operation, no version bump, and no
+``VerdictEvent``. Reading the slot is a select; the fallback assembles and probes, and the assembler
+writes nothing by construction. A transition a read observes is recorded by the next mutation or by
+the maintainer's next tick, at most one tick later, which is the same answer the design gives for
+the tradeoff path's refusal.
 
 ## The slot and the version are both passed in, and for one reason
 
