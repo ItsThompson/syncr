@@ -42,16 +42,14 @@ sitting inside one is subtracted once rather than twice.
 The remaining eight rules belong to the subsystems they constrain rather than to this
 module. They are listed so a reader looking for one here learns that it is elsewhere:
 
-| Rule |
-|---|
-| Nothing materializes inside the span, and ``keep_frame`` decides whether routines do |
-| The solver places no task, habit occurrence, or Area slot inside the span |
-| A pin inside the span is honored as a hard constraint (H11 and H12) |
-| Anchors still ingest and shadows still generate, having nothing to forbid |
-| An anchor over a pinned block inside the span is still a conflict |
-| The span is excluded wholesale from reviews and from every fitter |
-| A majority-off-plan week is skipped by the engagement canary |
-| The span renders as a forbidden window, with no fourth use of hatch |
+* Nothing materializes inside the span, and ``keep_frame`` decides whether routines do.
+* The solver places no task, habit occurrence, or Area slot inside the span.
+* A pin inside the span is honored as a hard constraint (H11 and H12).
+* Anchors still ingest and shadows still generate, having nothing to forbid.
+* An anchor over a pinned block inside the span is still a conflict.
+* The span is excluded wholesale from reviews and from every fitter.
+* A majority-off-plan week is skipped by the engagement canary.
+* The span renders as a forbidden window, with no fourth use of hatch.
 
 The learning exclusion is unconditional and has no field. A split rule that preserved
 duration signal from confirmed pinned blocks inside the span was considered and rejected:
