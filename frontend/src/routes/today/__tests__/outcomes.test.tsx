@@ -284,9 +284,8 @@ describe("the minutes a block really took", () => {
     const field = await screen.findByLabelText(`actual minutes for ${GYM}`);
     expect(field).toHaveValue(60);
     expect(field).toHaveAttribute("step", "5");
-    /* No floor on the control: a number field takes `min` as the step BASE, so a floor of 1 would put the
-       browser's own arrow keys on 1, 6, 11 and step 420 to 416. The floor is stated beside the control and
-       applied to what is sent. */
+    /* No floor on the element, so its own arrow keys step by the five this field declares. The bound is the
+       api's, stated beside the control and applied to what is sent. */
     expect(field).not.toHaveAttribute("min");
     expect(screen.getByText("min of 60m planned")).toBeInTheDocument();
   });
@@ -306,9 +305,10 @@ describe("the minutes a block really took", () => {
   });
 
   /* Enter in the field is the browser's own submit rather than a keystroke this screen interprets, so
-     `Shift+X` then Enter records the planned duration as a partial. Stepping the figure with the arrow keys
-     is the browser's own too, and jsdom does not implement it: the arrow path is asserted in Chrome, and the
-     stepper's own buttons cover the step here. */
+     `Shift+X` then Enter records the planned duration as a partial. Nothing suppresses the browser's own
+     validity here: the field carries no floor, so its step base is the figure it opened with and a figure on
+     the five it steps by submits. The arrow keys that produce a figure belong to the kit's own tests, because
+     jsdom does not run the browser's step algorithm from a keystroke. */
   it("records what the field holds when Enter is pressed in it", async () => {
     await renderToday(onHostToday(buildDay()));
     const sent = stubRecording();
@@ -326,6 +326,37 @@ describe("the minutes a block really took", () => {
       isoWeek: isoWeekOf(hostToday()),
       state: "partial",
       actualMinutes: 60,
+    });
+  });
+
+  /* THE BROWSER NOW JUDGES THE FIELD IT IS ABLE TO JUDGE. The element carries no floor, so its step base is
+     the figure the form opened with and the five it steps by is the grid: a typed figure off that grid is a
+     step mismatch, and a browser refuses to submit a mismatched field. React holds the `value` attribute a
+     number field bases its step on still while the field has focus, which is why the typed figure is the one
+     case this reaches. Leaving the field snaps the figure onto the grid, and that figure records. */
+  it("refuses a typed figure off the step's grid until leaving the field snaps it", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    await focusRow(GYM);
+    const user = userEvent.setup();
+
+    await user.keyboard("{Shift>}X{/Shift}");
+    const field = await screen.findByLabelText(`actual minutes for ${GYM}`);
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    fireEvent.change(field, { target: { value: "47" } });
+    await user.keyboard("{Enter}");
+
+    expect(sent.bodies).toEqual([]);
+    expect(field).toHaveValue(47);
+
+    fireEvent.blur(field);
+    await user.click(screen.getByRole("button", { name: "record partial" }));
+
+    await waitFor(() => expect(sent.bodies).toHaveLength(1));
+    expect(sent.bodies[0]).toEqual({
+      isoWeek: isoWeekOf(hostToday()),
+      state: "partial",
+      actualMinutes: 45,
     });
   });
 

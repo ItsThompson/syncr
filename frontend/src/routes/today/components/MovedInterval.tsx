@@ -43,9 +43,7 @@ export function MovedInterval({ row, form, actions }: MovedIntervalProps) {
   };
 
   return (
-    /* `noValidate` for the reason the minutes form states: this screen judges the figure, and the browser's
-       own validity would refuse a submit over a rule the api does not apply. */
-    <form className="flex items-center gap-2" onSubmit={onSubmit} noValidate>
+    <form className="flex items-center gap-2" onSubmit={onSubmit}>
       <TimeRangeInput
         ref={start}
         value={form.range}

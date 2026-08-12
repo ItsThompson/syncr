@@ -8,7 +8,9 @@
  * opened the form unmounts, and the reader has to traverse the page to reach what they just opened.
  *
  * ENTER RECORDS THROUGH A REAL FORM, which is what makes `Shift+X`, a step, then Enter the whole of a
- * partial: the browser's own submit rather than a keystroke this screen interprets.
+ * partial: the browser's own submit rather than a keystroke this screen interprets. The browser's own validity
+ * applies to that submit, and the field takes its step base from the figure the form opened with, so a figure
+ * typed off the five it steps by is refused until leaving the field snaps it onto the grid.
  *
  * THERE IS NO ESCAPE BINDING, and it is a gap rather than a choice. A bare Escape yields to the field a
  * reader is typing into, which is by design in the shell's keyboard module, and the kit's fields accept no
@@ -20,11 +22,10 @@
  * back unsnapped and unclamped on purpose, so the surface that knows the bounds is the one that judges it,
  * and a stated bound beats a 422 the reader has to read to learn the same thing.
  *
- * THE FLOOR IS NOT PASSED TO THE CONTROL, which is deliberate rather than an omission. An `<input
- * type="number">` takes `min` as the STEP BASE, so a floor of 1 with a step of 5 puts the valid figures on 1,
- * 6, 11, and the browser's own arrow keys then step 420 to 416 rather than to 415: measured in Chrome.
- * Without it the grid is multiples of five, which is what the kit's step means, and the floor is the one
- * `isSendable` applies from the api's own bound, stated beside the control. */
+ * THE FLOOR IS NOT PASSED TO THE CONTROL, and the reason is this screen's rather than the browser's. The kit
+ * holds a `min` when a figure is committed, so stepping below one minute would quietly become one minute, and
+ * below one minute the outcome is a skip, which is its own state on this row. `isSendable` refuses the figure
+ * instead, and the message beside the control names the api's bound, which is something a reader can act on. */
 
 import { useEffect, useRef, type FormEvent } from "react";
 
@@ -54,12 +55,7 @@ export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
   };
 
   return (
-    /* A real form, so Enter in the field is the browser's own submit rather than a keystroke this screen
-       interprets. `noValidate` because the browser's own validity is not the rule that applies here: the
-       kit's stepper takes `min` as the step BASE, so with a floor of 1 and a step of 5 every figure it
-       produces is a step mismatch and the submit event would never fire. `isSendable` is the bound that
-       matters, it is the api's own, and the control states it. */
-    <form className="flex items-center gap-2" onSubmit={onSubmit} noValidate>
+    <form className="flex items-center gap-2" onSubmit={onSubmit}>
       <NumberStepper
         ref={field}
         value={form.minutes}
