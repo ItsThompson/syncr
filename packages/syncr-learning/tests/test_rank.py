@@ -15,8 +15,9 @@ from syncr_learning.observations import RankExample
 from syncr_learning.rank import fit_objective_weights, ranked_correctly
 
 # The version-1 hand-tuned vector, restated here as the incumbent every fit is compared against.
-# Held against the api's own `P0_WEIGHTS` in `test_solver_agreement.py`, so it cannot drift from the
-# numbers a real run would read out of the row.
+# `test_solver_agreement.py` crosses the api's `P0_WEIGHTS` against this package's two scalar priors
+# and against the term names, but nothing crosses these seven values, so a change to either copy has
+# to be made in both by hand.
 IN_FORCE = {
     "deadline_risk": 10.0,
     "budget_deviation": 3.0,
