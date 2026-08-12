@@ -261,8 +261,8 @@ class PartialPlan:
         the same for every candidate a week is offered: see :attr:`claimable`.
 
         **Kept as a method rather than collapsed into the field**, which is otherwise the reading a
-        pass-through invites. Three test modules ask the state this question by name, so collapsing
-        it into the field would edit all three.
+        pass-through invites. The field is a fact about the space and this is the question the rules
+        ask of it, and the field has exactly one reader, so the two cannot drift apart.
         """
         return self.claimable
 
