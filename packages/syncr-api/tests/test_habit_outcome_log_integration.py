@@ -5,6 +5,14 @@ it holds whatever the fake was given. This asserts the half a fake cannot: that 
 response answers from are rows in ``block_outcomes``, found by the projection the habit module is
 wired to. Wire the seam back to an empty log and both figures collapse, which is the whole claim.
 
+**And that the week the assembler produces answers from the same rows.** Two components derive the
+rotation cursor and the outstanding debt, the habit routes and the week assembler, and each acquires
+the log through its own composition. So the two crossings here read one figure from the habit
+resource and the same figure out of the assembled week, in one test: the resource alone proves the
+projection,
+the week alone proves an expansion, and only the pair proves the plan places the variant the habit's
+own screen names.
+
 **The rows are written by the outcome routes rather than by this suite.** A binding reaches the
 table in the spelling ``stored_binding`` writes, and the projection extracts two of its keys, so a
 seeded row spelled by hand would prove the reader matches the seeder rather than the writer. That
@@ -41,11 +49,18 @@ from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.outcomes.config import BLOCKS_PREFIX, DAYS_PREFIX
+from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.config import APPLIED, BLOCK_OUTCOMES_TABLE
+from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import BINDING, ENTITY_ID, KIND, stored_document
-from syncr_domain.habits import BindingSource
-from syncr_domain.identity import BindingRef
+from syncr_domain.habits import (
+    DEFAULT_DEBT_CAP_PERIODS,
+    BindingSource,
+    TimesPerWeek,
+    occurrences_per_period,
+)
+from syncr_domain.identity import BindingRef, index_occurrence_key
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, ReasonRecord
@@ -60,6 +75,7 @@ if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import AreaId, TenantId
     from syncr_domain.zones import Date
+    from syncr_solver.inputs import SolveInputs
 
 pytestmark = pytest.mark.integration
 
@@ -76,6 +92,12 @@ INDEX_DEFINITION = text(
 A_REASON = ReasonRecord((Bound(BindingSource.ROTATION, "Gym · rotation"),))
 GYM_SPLIT = ["Push", "Pull", "Legs"]
 THREE_A_WEEK: dict[str, Any] = {"kind": "times_per_week", "timesPerWeek": 3}
+
+# One skip more than the declared cap can hold, so the clamp is observable rather than assumed. The
+# cap is a product of the habit's own two figures, so it is derived here from the cadence every
+# habit below is declared with and the periods a habit that states none is created with.
+CADENCE = TimesPerWeek(THREE_A_WEEK["timesPerWeek"])
+OVER_THE_CAP = DEFAULT_DEBT_CAP_PERIODS * occurrences_per_period(CADENCE) + 1
 
 # Yesterday, so every block is behind `now`: a day that has not begun is not confirmable, and an
 # occurrence that has not come due is not missed.
@@ -160,10 +182,11 @@ def seed_plan(database_url: str, tenant_id: TenantId, blocks: Sequence[Block]) -
     """One applied revision holding ``blocks``, appended through the repository that owns it.
 
     Not through ``live_weeks.produce_a_plan``, which is the sibling a reader reaches for first: that
-    builds the week through ``build_week_assembler``, and the assembler's own outcome seam is still
-    wired to the empty log. Driving this suite through it would entangle these figures with the very
-    stub they exist to displace. There is no route to reach for either, because no route produces a
-    plan.
+    solves the assembled week, so the solver chooses which occurrence index each block binds and
+    what hour it sits at. Both are what these cases name: the outcome route is addressed by block,
+    and the
+    debt derivation clips on the instant an occurrence came due. There is no route to reach for
+    either, because no route produces a plan.
     """
     document = PlanDocument(
         iso_week=WEEK,
@@ -205,6 +228,85 @@ def record_skip(http: TestClient, headers: dict[str, str], block: Block) -> None
 def confirm_day(http: TestClient, headers: dict[str, str], on: Date) -> None:
     answered = http.post(f"{DAYS_PREFIX}/{on.isoformat()}/confirm", headers=headers)
     assert answered.status_code == HTTPStatus.OK, answered.text
+
+
+def assemble(database_url: str, tenant_id: TenantId) -> SolveInputs:
+    """The seeded week's solve inputs, composed exactly as every week route composes them.
+
+    Through the wiring rather than through a hand-built assembler, because the composition is what
+    decides which log the expansion derives from and that is the claim under test.
+    """
+
+    async def read() -> SolveInputs:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                assembler = build_week_assembler(session, tenant_id, caller=AssemblyCaller.REQUEST)
+                return await assembler.assemble(WEEK, utc_now())
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
+def variants_of(inputs: SolveInputs) -> list[str | None]:
+    return [occurrence.variant for occurrence in inputs.habit_occurrences]
+
+
+def test_the_cursor_the_habit_resource_reports_is_the_one_the_assembled_week_places(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The seam this crosses is the log the habit endpoint reads against the log the assembly reads.
+    # Either surface alone proves nothing: the resource could report a cursor no plan honors, and
+    # the week could place a rotation nothing else agrees with. Read at rest and again after one
+    # confirmation, because two surfaces that are both stuck agree at rest.
+    area_id = declare_area(http, signed_in)
+    habit_id = declare_habit(http, signed_in, area_id, bindingSource="rotation", variants=GYM_SPLIT)
+    seed_plan(
+        live_database_url,
+        owner.tenant_id,
+        [an_occurrence(habit_id=habit_id, index=0, hour=9, area_id=area_id)],
+    )
+
+    at_rest = read_habit(http, signed_in, habit_id)["cursor"]["variant"]
+    week_at_rest = variants_of(assemble(live_database_url, owner.tenant_id))
+    confirm_day(http, signed_in, YESTERDAY)
+    advanced = read_habit(http, signed_in, habit_id)["cursor"]["variant"]
+    week_advanced = variants_of(assemble(live_database_url, owner.tenant_id))
+
+    assert (at_rest, week_at_rest[0]) == (GYM_SPLIT[0], GYM_SPLIT[0])
+    assert (advanced, week_advanced[0]) == (GYM_SPLIT[1], GYM_SPLIT[1])
+    # The whole week, so a rotation that advanced its first occurrence and nothing after it fails.
+    assert week_advanced == [GYM_SPLIT[1], GYM_SPLIT[2], GYM_SPLIT[0]]
+
+
+def test_the_debt_the_habit_resource_reports_arrives_in_the_week_capped_as_declared(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The other derivation over the same read, crossed the same way, with one skip more than the cap
+    # so the clamp is observable: the cap is read from the resource rather than typed here, and the
+    # week is asserted to hold exactly that many made-up occurrences and no more.
+    area_id = declare_area(http, signed_in)
+    habit_id = declare_habit(http, signed_in, area_id, title="Anki", missPolicy="debt")
+    occurrences = [
+        an_occurrence(habit_id=habit_id, index=index, hour=9 + index, area_id=area_id)
+        for index in range(OVER_THE_CAP)
+    ]
+    seed_plan(live_database_url, owner.tenant_id, occurrences)
+
+    fresh = len(assemble(live_database_url, owner.tenant_id).habit_occurrences)
+    for occurrence in occurrences:
+        record_skip(http, signed_in, occurrence)
+    confirm_day(http, signed_in, YESTERDAY)
+    debt = read_habit(http, signed_in, habit_id)["debt"]
+    week = assemble(live_database_url, owner.tenant_id).habit_occurrences
+
+    assert (fresh, debt["misses"]) == (THREE_A_WEEK["timesPerWeek"], OVER_THE_CAP)
+    assert (debt["outstanding"], debt["raisedInWeeklySession"]) == (debt["cap"], True)
+    assert [occurrence.is_debt for occurrence in week] == [False] * fresh + [True] * debt["cap"]
+    assert [occurrence.binding.occurrence_key for occurrence in week] == [
+        index_occurrence_key(index) for index in range(fresh + debt["cap"])
+    ]
 
 
 def test_a_confirmed_completion_moves_the_cursor_the_habit_resource_reports(
