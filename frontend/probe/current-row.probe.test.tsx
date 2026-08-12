@@ -13,6 +13,14 @@
  * either. The first is the state; the last two are the reasons `states.css` gives for drawing the rule transparent
  * at rest rather than adding a width.
  *
+ * EACH CASE RENDERS TWO ROWS AND READS THE FIRST, because `.ledger__row:last-child` sets `border-bottom: 0` and a
+ * lone row is its own last child. That rule and `.state-row[data-current]` have equal specificity and the ledger's
+ * comes later in the bundle, so on a one-row fixture the ledger's wins and the bottom width is `0px` in BOTH
+ * readings for anything the state rule declares short of `!important`: the hairline reading would compare `0px`
+ * against `0px` and pass for the `:last-child` rule rather than for the state rule leaving the hairline alone. Two
+ * rows put the measured one in the middle of a run, where `.state-row[data-current]` outranks `.ledger__row` on
+ * specificity and a drift in either form shows up. It is also where a ledger row actually lives.
+ *
  * The markup is the component's own, rendered with `renderToStaticMarkup`, so the page cannot drift from the
  * product. The sheet is the built bundle rather than the two source files, because the reset and the token layer
  * only reach an element through the bundle, and a probe linking `states.css` alone would measure neither.
@@ -57,7 +65,7 @@ function markup({ name, isCurrent }: (typeof CASES)[number]): string {
       isCurrent={isCurrent}
     />,
   );
-  return `<div class="case" data-case="${name}" style="width: 600px">${row}</div>`;
+  return `<div class="case" data-case="${name}" style="width: 600px">${row}${row}</div>`;
 }
 
 const PAGE_SCRIPT = `
