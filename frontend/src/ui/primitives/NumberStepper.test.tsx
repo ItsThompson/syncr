@@ -154,6 +154,63 @@ describe("an actual-minutes stepper", () => {
   });
 });
 
+/* THE ELEMENT'S OWN GRID. The up and down arrow keys run the browser's step algorithm, which takes its base
+ * from a `min` attribute when there is one, so a floor on the element moves the grid off the declared step.
+ * `stepDown()` and `stepUp()` are that algorithm called by name: jsdom implements the algorithm but does not
+ * run it from a keystroke, and the four figures below are the ones Chrome gives for the same key. */
+describe("the element's own arrow keys", () => {
+  it("carries no floor, so the step decides the grid and the floor does not", () => {
+    renderStepper({ measure: "actual-minutes", value: 420, min: 1 });
+
+    expect(screen.getByRole("spinbutton")).not.toHaveAttribute("min");
+  });
+
+  it("leaves a five-minute step on the grid the step declares, not on the floor's", () => {
+    renderStepper({ measure: "actual-minutes", value: 420, min: 1 });
+    const field = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    field.stepDown();
+
+    expect(field).toHaveValue(415);
+  });
+
+  it("leaves a quarter-hour step on the quarter hour under a floor of one minute", () => {
+    renderStepper({ measure: "duration", value: 30, min: 1 });
+    const field = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    field.stepDown();
+
+    expect(field).toHaveValue(15);
+  });
+
+  /* The floor is the other edge of the same rule: the element is free to step past it, and the commit a blur
+     performs is what holds it. */
+  it("steps below the floor, and holds the floor when the figure is committed", () => {
+    const { onValueChange } = renderStepper({ measure: "actual-minutes", value: 5, min: 1 });
+    const field = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    field.stepDown();
+
+    expect(field).toHaveValue(0);
+
+    fireEvent.blur(field);
+
+    expect(onValueChange).toHaveBeenLastCalledWith(1);
+  });
+
+  /* A ceiling is not a step base, so it stays on the element and the element refuses to pass it. */
+  it("keeps the ceiling on the element, which refuses to step above it", () => {
+    renderStepper({ measure: "duration", value: 60, max: 60 });
+    const field = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    expect(field).toHaveAttribute("max", "60");
+
+    field.stepUp();
+
+    expect(field).toHaveValue(60);
+  });
+});
+
 describe("the stepper's own rendering", () => {
   it("renders the unit as prose beside the figure rather than inside it", () => {
     renderStepper({ unit: "min · 3h30m" });

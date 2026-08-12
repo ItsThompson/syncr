@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { apiServer } from "../../../testing/apiServer";
 import { jsonHandler, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
+import { MIN_FLOOR_MINUTES } from "../routineFloor";
 import {
   NOW,
   ROUTINE_NAP,
@@ -559,8 +560,30 @@ describe("the routine floors", () => {
 
     expect(screen.getByLabelText("Sleep · 23:00")).toHaveAttribute("max", "480");
     expect(screen.getByLabelText("Lunch · 13:00")).toHaveAttribute("max", "45");
-    expect(screen.getByLabelText("Lunch · 13:00")).toHaveAttribute("min", "1");
     expect(panelNamed("Routine floors")).toBeVisible();
+  });
+
+  /* The floor is held when a figure is committed rather than by the element, so what reaches the api is what
+     that bound produced and not what the control was stepped to. */
+  it("holds the api's own floor rather than sending a figure below it", async () => {
+    const routine = recordingHandler("patch", FIRST_ROUTINE, {
+      status: 200,
+      body: buildRoutine({ minDurationMinutes: MIN_FLOOR_MINUTES }),
+    });
+    apiServer.use(
+      routine.handler,
+      ...settingsHandlers({ routines: [buildRoutine({ minDurationMinutes: 10 })] }),
+    );
+    renderAt("/settings");
+    await settled();
+
+    await userEvent.click(
+      within(panelNamed("Routine floors")).getByRole("button", { name: "decrease 15 minutes" }),
+    );
+
+    await waitFor(() =>
+      expect(routine.bodies).toEqual([{ minDurationMinutes: MIN_FLOOR_MINUTES }]),
+    );
   });
 
   /* A TYPED FIGURE REACHES THE API UNCLAMPED, which the stepper documents as deliberate, so this control can be

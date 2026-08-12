@@ -9,6 +9,14 @@
  * The step is read from a table keyed by the variant, so a third variant cannot appear without naming its
  * step, and the buttons announce the step they will apply rather than a generic increase.
  *
+ * `MIN` IS A BOUND AND NOT A GRID, and it is held on commit rather than by the element. An `<input
+ * type="number">` reads a `min` attribute as its STEP BASE, so a floor of 1 under a step of 5 puts the
+ * element's own arrow keys on 1, 6, 11 and steps 420 down to 416, and every figure on the declared grid is
+ * then a step mismatch a form refuses to submit. With no `min` the base falls back to the `value` attribute,
+ * which React keeps equal to the figure shown, so an arrow key moves by the declared step from wherever the
+ * reader is. The element will therefore step below the floor; `commit` is where the floor holds. `max` stays
+ * on the element, because a ceiling moves no grid.
+ *
  * The value is snapped on every commit, not only on the buttons: typing 50 into a duration is the case
  * `docs/design/components.html` renders as invalid, and the caller decides whether to correct or to
  * refuse it. */
@@ -33,6 +41,7 @@ export interface NumberStepperProps {
   readonly onValueChange: (next: number) => void;
   /** `duration` steps by 15. `actual-minutes` steps by 5, and is the ledger's recorded figure. */
   readonly measure: NumberStepperMeasure;
+  /** The floor, held when a figure is committed. Not passed to the element, whose step base it would move. */
   readonly min?: number | undefined;
   readonly max?: number | undefined;
   readonly id?: string | undefined;
@@ -112,7 +121,6 @@ export function NumberStepper({
         name={name}
         value={draft ?? value}
         step={step}
-        min={min}
         max={max}
         disabled={isDisabled}
         aria-invalid={isInvalid === true ? true : undefined}
