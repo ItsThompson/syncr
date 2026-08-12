@@ -13,11 +13,11 @@ nothing crosses them.
 :mod:`syncr_learning.shrinkage` states the formula and works three cases at ``k = 10``, so ten is
 the documented default and every parameter takes it until one is measured to need otherwise.
 
-**The maturity thresholds. THESE ARE UNVALIDATED ESTIMATES.** They are the guesses ``docs/prd.md``'s
-maturity table states, not measurements of how fast each parameter converges, and they are stated as
-such on the Learned screen. Revising one against real data is a change to this file and nothing
-else: no migration, no schema change, and no reprocessing of history, because every run refits from
-the log.
+**The maturity thresholds. THESE ARE UNVALIDATED ESTIMATES.** They are guesses at how fast each
+parameter converges rather than measurements of it, and they are stated as such on the Learned
+screen. Where ``docs/prd.md``'s maturity table states a figure, the gate below is that figure.
+Revising one against real data is a change to this file and nothing else: no migration, no schema
+change, and no reprocessing of history, because every run refits from the log.
 
 ## Why the vocabulary is restated here rather than imported
 
@@ -174,7 +174,9 @@ MAX_CHURN_TOLERANCE: Final = 40.0
 
 
 # ---------------------------------------------------------------------------
-# The maturity thresholds. UNVALIDATED ESTIMATES, and the screen says so.
+# The maturity thresholds. UNVALIDATED ESTIMATES, and the screen says so. A gate that
+# ``docs/prd.md``'s maturity table gives a figure for takes that figure; the skip-probability and
+# switch-price gates have no figure there and are stated from the corpus each one needs.
 # ---------------------------------------------------------------------------
 
 THRESHOLD_DURATION_MULTIPLIER: Final = 12
