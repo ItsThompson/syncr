@@ -137,6 +137,18 @@ function recordRequests(
   return { paths, bodies };
 }
 
+/**
+ * The table row that holds one binding, found through the cell that names it.
+ *
+ * The cell's accessible name is the title exactly, so no title is ever compiled as a pattern: a `(` or a `.` in one
+ * would otherwise widen the lookup or throw.
+ */
+function rowHolding(title: string): HTMLElement {
+  const row = screen.getByRole("cell", { name: title }).closest("tr");
+  if (!(row instanceof HTMLElement)) throw new Error(`no row holds ${title}`);
+  return row;
+}
+
 describe("the mode is reachable by URL and is not a destination", () => {
   it("renders the session at `?mode=session` on the week's own route", async () => {
     openTheSession();
@@ -520,10 +532,11 @@ describe("the promotion candidates", () => {
   });
 
   it("draws the accept control in the absorbable row alone, in a panel holding one of each", async () => {
-    /* WHAT THE CASE ABOVE CANNOT SEE. With one refused candidate, "no accept control for this row" and "no accept
-     * control anywhere" are one reading, and a panel that had lost the control altogether satisfies it too. Two
-     * candidates separate them: the control is asserted in the row it belongs to rather than counted over the table,
-     * and the DECLINE in both rows, because the answer a decline records is about the asking rather than the template. */
+    /* WHAT A SINGLE REFUSED CANDIDATE CANNOT SHOW. Where the panel holds one refused row, "no accept control for
+     * this row" and "no accept control anywhere" are one reading, and a panel that had lost the control altogether
+     * satisfies it too. A pair separates them: the control is asserted in the row it belongs to rather than counted
+     * over the table, and the DECLINE in both rows, because the answer a decline records is about the asking rather
+     * than the template. */
     const refused = buildPromotionCandidate();
     const refusal = refused.acceptRefusal;
     if (refusal === null) throw new Error("the refused candidate carries no sentence");
@@ -531,9 +544,9 @@ describe("the promotion candidates", () => {
     renderAt(SESSION_PATH);
     await screen.findByLabelText("Repeated pins");
 
-    const table = screen.getByRole("table", { name: /Content pinned to one time/ });
-    const absorbableRow = within(table).getByRole("row", { name: new RegExp(GYM) });
-    const refusedRow = within(table).getByRole("row", { name: new RegExp(LEETCODE) });
+    /* The row is found through its binding cell rather than through a pattern built from the title. */
+    const absorbableRow = rowHolding(GYM);
+    const refusedRow = rowHolding(LEETCODE);
 
     expect(within(absorbableRow).getByRole("button", { name: "Accept" })).toBeVisible();
     expect(within(refusedRow).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
