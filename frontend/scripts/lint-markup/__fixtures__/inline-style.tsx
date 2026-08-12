@@ -3,7 +3,7 @@
  * Element 1 sets what the design language forbids absolutely, in CSS spelling.
  * Element 2 sets a computed length, a custom property and a square radius, which is how the week grid
  * has to work and how the sheets pass an Area's ink, so none of the three may be a finding.
- * Elements 3 and 4 are the escapes review iteration 5 proved: React writes camelCase, and every rule
+ * Elements 3 and 4 are two proved escapes: React writes camelCase, and every rule
  * here was written against the CSS property name with a word boundary in front of it, which does not
  * match inside a camelCase word. Both elements passed all seven checks, and element 3 rendered a real
  * blur on the real sidebar.

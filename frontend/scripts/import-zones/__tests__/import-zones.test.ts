@@ -1,9 +1,9 @@
 /* The kit's import zones, proved to fail, over the whole zone-by-capability matrix.
  *
- * Iteration 1 fixed the globs for the shapes a reviewer and I had thought of. Iteration 2 found the
- * same defect class one directory over, in a target neither of us had listed. So the cases are no
- * longer a list: they are every zone crossed with every specifier the policy names, and each
- * expected verdict is derived from `isRefusedByPolicy` rather than written beside the row.
+ * A glob list fixed for the shapes anyone had thought of missed the same defect class one directory
+ * over, in a target nobody had listed. So the cases are not a list: they are every zone crossed with
+ * every specifier the policy names, and each expected verdict is derived from `isRefusedByPolicy`
+ * rather than written beside the row.
  *
  * Adding a zone, a layer, or a path to a capability extends this matrix without touching the test,
  * and a specifier that names no capability throws rather than defaulting to allowed. */

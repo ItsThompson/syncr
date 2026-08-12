@@ -1,6 +1,6 @@
 /* The one list of refused declarations, and the conversion that made it reach a TSX object.
  *
- * `cssPropertyFor` is the whole of fix 2's mechanism: the inline-style rule enumerated CSS spellings
+ * `cssPropertyFor` is the whole of the mechanism: the inline-style rule enumerated CSS spellings
  * while React writes camelCase, so `backdropFilter`, `willChange`, `WebkitFilter` and `outline: "none"`
  * passed every check and rendered a blur on a kit element. Converting the key is what makes one list
  * serve both inputs, so these cases are the ones the rule's correctness rests on.

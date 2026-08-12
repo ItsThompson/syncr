@@ -269,10 +269,9 @@ describe("Tailwind v4 shapes the theme cannot fence", () => {
 /* THE INLINE STYLE PROP, which stylelint never sees. Only the absolutes are refused: a computed
  * length is how the week grid has to work, and a custom property is how an Area's ink is passed.
  *
- * The camelCase cases below are review iteration 5's finding, and they are the one defect in that
- * round that was applied CSS rather than dead bytes: a rendered blur on the real sidebar, a
- * `will-change` this repository's own stylelint list bans, and `outline: none` on a keyboard-first
- * product. Each passed all seven checks. */
+ * The camelCase cases below were applied CSS rather than dead bytes: a rendered blur on the real
+ * sidebar, a `will-change` this repository's own stylelint list bans, and `outline: none` on a
+ * keyboard-first product. Each passed all seven checks. */
 describe("an inline style prop", () => {
   async function styleFindings() {
     const outcome = await lint(["inline-style.tsx"]);

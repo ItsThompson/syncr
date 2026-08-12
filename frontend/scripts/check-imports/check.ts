@@ -2,8 +2,8 @@
  *
  * This exists because the oxlint-backed probe matrix cannot find a shape its own table omits. The
  * matrix derives its probes from `CAPABILITIES`, so a specifier absent from that table is never
- * crossed with any zone: the table is both the input and the oracle. Three holes reached a reviewer
- * that way, the last being `../../api/client.ts`, which the config's enumeration permitted and the
+ * crossed with any zone: the table is both the input and the oracle. Three holes got through that
+ * way, the last being `../../api/client.ts`, which the config's enumeration permitted and the
  * matrix never asked about.
  *
  * So this check takes a different input. It reads every import in the kit, RESOLVES each one against
@@ -11,7 +11,7 @@
  * specifier's spelling stops mattering: `../../api/client`, `../../api/client.ts`, `../../api/keys.js`
  * and `../../api/index` all resolve into `src/api/`, and the rule is about the directory.
  *
- * TWO ESCAPES CLOSED IN ITERATION 4, both of which worked in dev, test and production:
+ * TWO ESCAPES THIS CHECK CLOSES, both of which worked in dev, test and production:
  *
  *   A BACKTICK. `await import(`../../api/client`)` fetched, because the specifier pattern accepted
  *   single and double quotes only. So the quote style is now part of what is enumerated, and a
@@ -29,7 +29,7 @@
  * The zone model itself is in `zones.ts`: which directories exist under `src/`, what each kit zone may reach,
  * and why an area is denied. This file is the walk, and how a specifier is found and resolved lives in
  * `scripts/lib/module-graph.ts`, which `validate-tokens` reads too: a second copy of those patterns would be a
- * second chance to miss the backtick and the `.js` specifier that reached earlier reviews. */
+ * second chance to miss the backtick and the `.js` specifier that got through before. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";

@@ -1,4 +1,4 @@
-/* Fixture: every shape review iteration 3 compiled with Tailwind's own compiler while all six checks
+/* Fixture: every shape that compiled with Tailwind's own compiler while all six checks
  * stayed green. Four reach real CSS the design language forbids absolutely: a named colour, a raw
  * hex, a blurred shadow, and three negative transform utilities against "motion is zero, without
  * exception". None of them can be fenced by the theme, because none is namespace-driven. */

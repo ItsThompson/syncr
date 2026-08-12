@@ -5,7 +5,7 @@
  * plain string, a `__fixtures__` file, an `@apply`, and whatever Tailwind spells next all reach the
  * artifact or they do not.
  *
- * It exists because three review iterations called the stylesheet clean while it shipped
+ * It exists because checks that read source called the stylesheet clean while it shipped
  * `box-shadow: 0 0 8px red`, `rotate:`, `--tw-blur` and `backdrop-filter`, each one sourced from a
  * file written to PROVE that shape is refused. The content scan was narrowed in response, and the
  * narrowing was itself an enumeration of files: `@source` matched a set and the markup scan's

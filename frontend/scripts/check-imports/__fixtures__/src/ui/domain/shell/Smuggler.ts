@@ -1,6 +1,6 @@
-/* Fixture: the fetching kit component review iteration 3 built, which passed tsc, oxlint, prettier
- * and vite build. Every spelling of the same capability, so the check is proved against the shape
- * the language permits rather than the shape a table listed. */
+/* Fixture: a fetching kit component that passed tsc, oxlint, prettier and vite build. Every spelling
+ * of the same capability, so the check is proved against the shape the language permits rather than
+ * the shape a table listed. */
 
 import { client } from "../../../api/client.ts";
 import { readinessKey } from "../../../api/keys.js";

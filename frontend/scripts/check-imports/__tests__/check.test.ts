@@ -2,8 +2,8 @@
  *
  * The fixture tree is a miniature `src/` with a real `api/`, `app/`, `routes/`, `contract/` and
  * `lib/`, because this check RESOLVES rather than pattern-matches: it has to find files on disk. The
- * `Smuggler` fixture is the component review iteration 3 built, which passed tsc, oxlint, prettier
- * and vite build, in every spelling of the same capability. */
+ * `Smuggler` fixture is a fetching component that passed tsc, oxlint, prettier and vite build, in
+ * every spelling of the same capability. */
 
 import { stat } from "node:fs/promises";
 import path from "node:path";
@@ -102,8 +102,8 @@ describe("an import that resolves to nothing", () => {
   });
 });
 
-/* THE TWO ESCAPES THAT REACHED REVIEW ITERATION 4. Both worked in dev, in test and in production, and
- * one of them moved `vite build` from 118 to 119 modules with the fetch code in the chunk. */
+/* THE TWO ESCAPES THAT GOT THROUGH. Both worked in dev, in test and in production, and one of them
+ * moved `vite build` from 118 to 119 modules with the fetch code in the chunk. */
 describe("a backtick-quoted specifier", () => {
   it("is caught, because the quote style is not the rule", async () => {
     const outcome = await check(["ui/primitives/Backtick.ts"]);

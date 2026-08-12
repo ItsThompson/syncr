@@ -17,8 +17,7 @@
  * range of heights and requires this file's `linesOf`, `tierOf` and `heightOf` to agree with `titleLineCount`,
  * `tierFor` and `pxPerMinute` at every one. That pins BOTH directions, where literals in a test pinned only the probe:
  * a change to the ladder reddens here as well as in the ladder's own test, so the probe cannot silently keep measuring
- * a line count the product never sets. The case that shipped the round-1 defect is the modal block, which is exactly
- * the case a mis-calibrated probe would stop covering.
+ * a line count the product never sets. The modal block is exactly the case a mis-calibrated probe would stop covering.
  *
  * THE SHEET IS THE BUILT BUNDLE, not the component's own file: the block is a `<button>`, and its zero right edge
  * comes from Tailwind's preflight reset, which only the bundle carries. A probe linking `block.css` alone measures a

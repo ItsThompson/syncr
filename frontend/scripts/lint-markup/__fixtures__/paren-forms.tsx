@@ -1,4 +1,4 @@
-/* Fixture: the three families review iteration 4 proved reach `dist` with every check green.
+/* Fixture: the three families proved to reach `dist` with every check green.
  *
  * Tailwind's PAREN form of an arbitrary value, which its own documentation recommends for a CSS
  * variable and which both arbitrary-value patterns were blind to because both were written around

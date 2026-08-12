@@ -5,9 +5,9 @@
  * stylesheets a component actually loads, so a `var()` reference can be resolved against the cascade that reaches
  * a browser rather than against every sheet in the tree.
  *
- * The extraction matters because the escapes are in the FINDING, not in the walking. A backtick specifier reached
- * review iteration 4 of the primitives layer, and a `.js` specifier resolving to a `.ts` file reached the one
- * before it. A second copy of these patterns in a second check would be a second chance to miss the same shape. */
+ * The extraction matters because the escapes are in the FINDING, not in the walking. A backtick specifier got
+ * past the primitives layer's checks, and a `.js` specifier resolving to a `.ts` file got past them before
+ * that. A second copy of these patterns in a second check would be a second chance to miss the same shape. */
 
 import path from "node:path";
 
@@ -15,7 +15,7 @@ const QUOTED_SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)["']([^"']+)["']/g;
 
 /* A separate pattern, because a template literal may legally contain a quote character and so cannot
- * be folded into the one above. A backtick was the escape that reached review iteration 4. */
+ * be folded into the one above. A backtick was the escape that got through. */
 const TEMPLATE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)`([^`]*)`/g;
 
 /** A relative import as written, with where it was written. */
