@@ -1,11 +1,12 @@
 /* The main landmark's two halves: the fragment target, and the focus target that makes it work.
  *
- * A FRAGMENT MOVES FOCUS ONLY BECAUSE OF `tabindex`. Chromium navigates to `#main` and scrolls the
- * landmark into view whether or not it carries one, and the URL gains the fragment either way, but it
- * sets the focus to the landmark only when the landmark is a focusable area, which a `<main>` is not by
- * default. Measured in Chromium 140 against the built stylesheet: with the attribute, a trusted `Enter`
- * on a `href="#main"` link leaves `document.activeElement` on the landmark; without it, focus stays on
- * the body while the URL still reads `#main`.
+ * A FRAGMENT MOVES FOCUS ONLY BECAUSE OF `tabindex`. A browser navigates to `#main` whether or not the
+ * landmark carries one, and the URL gains the fragment either way, but it sets the focus to the landmark
+ * only when the landmark is a focusable area, which a `<main>` is not by default. Measured in headless
+ * Chromium 151, on a page carrying this landmark's markup, a `href="#main"` link and the built
+ * stylesheet: with the attribute, a trusted `Tab` then `Enter` leaves `document.activeElement` on
+ * `MAIN#main`; without it, the URL reads `#main` and `document.activeElement` is `BODY`, and a direct
+ * `focus()` call is refused there too.
  *
  * THE ATTRIBUTE IS WHAT THESE READ, AND NOT THE PROPERTY. `element.tabIndex` answers -1 on a `<main>`
  * that carries no attribute at all, in Chromium and in jsdom alike, so a case asserting the property
