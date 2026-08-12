@@ -31,6 +31,8 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
 from syncr_domain.identity import BindingRef
 from syncr_domain.preferences import PreferenceStrength
@@ -272,6 +274,34 @@ def test_the_two_boundary_tolerances_are_the_ones_the_flat_guard_sits_between() 
     """
     assert _AT_THE_FLAT_GUARD == _CHURN_KNEE_FLAT
     assert math.nextafter(_CHURN_KNEE_FLAT, math.inf) == _PAST_THE_FLAT_GUARD
+
+
+@given(
+    tolerance=st.floats(
+        min_value=5e-324, max_value=sys.float_info.max, allow_nan=False, allow_infinity=False
+    )
+)
+@settings(max_examples=200, deadline=None, derandomize=True)
+def test_no_tolerance_at_all_takes_the_curve_past_its_unit_or_makes_it_reward_a_move(
+    tolerance: float,
+) -> None:
+    """The same claim as the sweep, over the whole admitted range rather than seven points of it.
+
+    Every value drawn here is one a weight set admits, because it is finite and above zero, and each
+    is passed to a real one. The sweep pins figures at the regimes and their boundary; this pins the
+    two properties that have to hold between them: the cost stays inside the term's unit, and a user
+    who absorbs more never pays more for the same move.
+
+    Derandomized, like the package's other property tests, so a failure is reproducible rather than
+    a report about one seed.
+    """
+    absorbed = churn_of(1, flat_weights(churn_tolerance=tolerance))
+    more_tolerant = tolerance * 2
+    assume(math.isfinite(more_tolerant))
+
+    assert math.isfinite(absorbed)
+    assert 0.0 <= absorbed <= 1.0
+    assert absorbed >= churn_of(1, flat_weights(churn_tolerance=more_tolerant))
 
 
 def test_the_misfit_ceiling_counts_one_declared_component_because_two_cannot_both_fire() -> None:
