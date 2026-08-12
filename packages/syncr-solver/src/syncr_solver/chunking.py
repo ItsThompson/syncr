@@ -1,8 +1,19 @@
 """How a divided task's pieces are numbered, and the one thing placement cannot decide.
 
-A task is placed in pieces and the domain renders a piece as "2 of 3", so each piece carries a
-number and the count of the numbers the division occupies. Both are decided here, in two halves that
-run at two different moments.
+A task placed in pieces raises two questions, and this module answers the first of them.
+
+**Which piece of the division is this?** An identity. A block's id is derived from its binding and
+``split_index`` is part of that binding, so a pin names a block id and renumbering a chunk renames
+the block the pin points at. ``split_count`` travels with the number because the domain refuses a
+chunk numbered at or above the count it states: the count is what makes the number nameable.
+
+**How many pieces is a reader told about?** A label, decided where the other rendered strings are
+and not held by either field here. A pin on a high chunk is what separates the two: three pieces
+numbered 0, 1 and 5 store a count of six, so a count read as a label says "of six" for a week that
+holds three pieces. Where the numbers run from zero with no gap the two figures coincide, which is
+every division a solve places on its own.
+
+The identity is settled in two halves that run at two different moments.
 
 ## As a piece is placed: the lowest number no piece of that task has taken
 
@@ -17,13 +28,12 @@ derive the same identity and the document would refuse the pair.
 Most tasks are placed whole, so the first piece carries no number and a second piece starts at one.
 That is the one thing placement cannot know, and it is the only adjustment the document build makes.
 An inherited block is never renumbered: rewriting a pinned chunk's binding would change its id, and
-the pin would stop naming the block it pins.
+the pin would stop naming the block it pins. It keeps the count it arrived with too, so a pin can
+leave one piece of a division stating a higher count than the pieces beside it.
 
-**``split_count`` is the highest number the division occupies rather than the number of pieces it
-holds.** The two are equal wherever the numbers run from zero, and they differ when a pin holds a
-high chunk while the pieces around it were re-placed, which renders a sparse count: ticket 1370
-carries that question, and the ``max`` below is what keeps such a document constructible rather than
-refused.
+The count a placed piece states is one above the highest number the division occupies, floored at
+the fewest chunks a division can have. That is the whole rule: a count below the highest number in
+use names a chunk that does not exist and the domain refuses the document.
 """
 
 from __future__ import annotations
@@ -107,5 +117,5 @@ def _renumbered(
         binding=BindingRef.for_task(
             block.binding.entity_id, split_index=block.binding.split_index or 0
         ),
-        split_count=max(highest.get(key, 0) + 1, pieces[key]),
+        split_count=max(MIN_SPLIT_COUNT, highest.get(key, 0) + 1),
     )
