@@ -88,7 +88,7 @@ function rowsUnder(section: string, head: string): string[][] {
   return rows;
 }
 
-describe("the keyboard equivalent of the drag", () => {
+describe("the drag's keyboard equivalent, as the design language states it", () => {
   it("is the vertical pair the design language glosses, and it lists no horizontal pair", async () => {
     const rows = (await sectionOf("Keyboard"))
       .split("\n")
