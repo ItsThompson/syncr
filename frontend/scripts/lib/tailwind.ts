@@ -1,7 +1,7 @@
 /* Compiling utilities with Tailwind's own compiler, and attributing each emitted declaration to the
  * candidate that produced it.
  *
- * WHY A COMPILER AND NOT A PATTERN. Four times in this ticket a check matched on syntax the author
+ * WHY A COMPILER AND NOT A PATTERN. Four times in these checks, a check matched on syntax the author
  * had thought of and missed a spelling the language permits: a glob that missed a barrel import, a
  * regex that missed `-rotate-3`, a tokenizer that destroyed `[color:red]`, and two arbitrary-value
  * patterns written around `[` that were blind to Tailwind's `(--var)` form. Each fix added a pattern

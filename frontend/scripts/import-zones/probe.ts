@@ -6,7 +6,7 @@
  * would pass no matter what the globs said. Materialising the tree at the real paths inside a
  * temp copy of the real config is what makes the assertion mean something.
  *
- * This exists because the import zones were the one enforcement mechanism in this slice with no
+ * This exists because the import zones were the one enforcement mechanism in this frontend with no
  * fixture behind them, and they were the one with a hole. A glob that requires a path segment after
  * `domain` misses a bare barrel import, and a glob naming `ui` cannot match a relative specifier at
  * all. Both shapes are this codebase's own house style, so both were escaping. */

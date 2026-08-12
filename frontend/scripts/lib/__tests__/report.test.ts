@@ -1,8 +1,8 @@
 /* The module that decides whether a gate is red.
  *
  * Three CLIs depend on `reportOutcome` returning 1 when there is a finding and 0 when there is not.
- * Everything else in this slice is enforcement, and all of it is worthless if this one mapping is
- * wrong, so it gets a standing guard rather than a reviewer's one-off probe. */
+ * Everything else in `scripts/` is enforcement, and all of it is worthless if this one mapping is
+ * wrong, so it gets a standing guard rather than a one-off probe. */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 

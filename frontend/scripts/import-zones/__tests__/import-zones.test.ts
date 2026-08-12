@@ -31,8 +31,8 @@ describe("the kit's import zones", () => {
   /* One oxlint run for the whole matrix: spawning the binary per case would dominate the suite. */
   const results = lintZoneProbes(PROBES);
 
-  /* The matrix size is self-reporting, so a table that silently shrinks fails here and a changeset
-   * quoting a denominator has one number to quote. This is the OXLINT-BACKED count: the other cases
+  /* The matrix size is self-reporting, so a table that silently shrinks fails here and anything
+   * quoting the denominator has one number to quote. This is the OXLINT-BACKED count: the other cases
    * in this file are unit tests over `policy.ts` and cannot fail on a config change. */
   it("crosses every zone with every specifier the policy names", () => {
     expect(everySpecifier()).toHaveLength(38);

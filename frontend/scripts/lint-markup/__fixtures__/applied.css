@@ -1,9 +1,9 @@
 /* Fixture: `@apply` in a kit stylesheet, which escaped every check.
  *
- * The markup scan read .ts and .tsx only, and stylelint's rules are declaration-based rather than
- * utility-based, so this shipped a blur, an unfenced shadow and a transition-property with all seven
- * checks green. Motion written in CSS is the likeliest to be written by accident, and ticket 8 writes
- * twelve stylesheets in the next wave. */
+ * The markup scan read .ts and .tsx only, and stylelint's rules are declaration-based rather
+ * than utility-based, so this shipped a blur, an unfenced shadow and a transition-property
+ * with all seven checks green. Motion written in CSS is the likeliest to be written by
+ * accident. */
 
 .smuggled {
   @apply blur-(--haze) shadow-(--halo) transition-(--pace);
