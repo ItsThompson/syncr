@@ -127,6 +127,10 @@ class ReadCensus:
     exempt: frozenset[str]
     # Declared by the application and named by neither set: the case the census exists for.
     covered_by_neither: frozenset[str]
+    # Derived by a contribution and not declared by the application, so the contribution names a
+    # read nothing serves. It reddens the equality either way; naming it is what tells the operator
+    # which side of the equality moved.
+    driven_but_undeclared: frozenset[str]
     # Exempted and no longer declared, so the exemption covers a route that does not exist.
     exempt_but_undeclared: frozenset[str]
     # Exempted and driven, so the table states a gap that has since been closed.
@@ -310,6 +314,7 @@ def census_of_reads(
         driven=driven,
         exempt=exempt,
         covered_by_neither=declared - driven - exempt,
+        driven_but_undeclared=driven - declared,
         exempt_but_undeclared=exempt - declared,
         exempt_but_driven=exempt & driven,
         exempt_without_naming_its_parameter=frozenset(

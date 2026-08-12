@@ -13,9 +13,15 @@ in the suite said so. A named exclusion that has to exist is the shape the other
 this is that shape for this one.
 
 This module equates the two accounted-for sets with what the application declares, so a read named
-by neither fails by name. Four ways that equality goes quiet are asserted beside it: an exemption
+by neither fails by name. Five ways that equality goes quiet are asserted beside it: an exemption
 for a route that does not exist, an exemption for a route a driver reaches after all, a reason
-copied from another route, and a contribution that derives nothing.
+copied from a route addressed by another value, a contribution that derives nothing, and a
+contribution that derives a read the application does not serve.
+
+The registry holds every derivation of driven reads the suite has, and holding one fewer is the one
+failure this module cannot see: the reads that derivation drives become declared gaps, and each
+field above stays empty. Both contributions were written before the census, and the second was
+found by sweeping the suite for readers of the route table rather than for callers of one function.
 
 Every rule here runs against the real application and against a synthetic input built to fail it.
 The census returns data rather than asserting, which is what makes both readings the same reading.
@@ -160,8 +166,23 @@ def test_every_parameterized_read_is_driven_or_exempt(settings: ServiceSettings)
     assert census.driven | census.exempt == set(read_paths(app, parameterized=True)), (
         f"reads no contribution derives and no exemption names: "
         f"{sorted(census.covered_by_neither)}. Exemptions for a read the application does not "
-        f"declare: {sorted(census.exempt_but_undeclared)}"
+        f"declare: {sorted(census.exempt_but_undeclared)}. Contributions deriving a read the "
+        f"application does not declare: {sorted(census.driven_but_undeclared)}"
     )
+
+
+def test_no_contribution_derives_a_read_the_application_does_not_declare(
+    settings: ServiceSettings,
+) -> None:
+    """So a contribution cannot answer with a path nothing serves.
+
+    Reported as its own field because it is the third way the equality above can move, and the two
+    lists that equality names would both be empty: an operator would be handed a red test whose
+    message named nothing.
+    """
+    census = census_of_reads(create_app(settings))
+
+    assert census.driven_but_undeclared == frozenset()
 
 
 def test_no_exemption_names_a_read_a_contribution_drives(settings: ServiceSettings) -> None:
@@ -281,13 +302,32 @@ def test_the_census_reports_an_exemption_for_a_read_that_is_driven_after_all(
 def test_the_census_reports_a_reason_that_names_another_routes_parameter(
     settings: ServiceSettings,
 ) -> None:
-    """Which is what a reason pasted from the exemption above it looks like."""
+    """A reason describing a route addressed by a different value, which is what it can catch.
+
+    What a token comparison cannot catch is a reason pasted between two routes that take the SAME
+    parameter, and eight of the exemptions are such pairs: a resource and its preference or its
+    sub-collection. Those are the two cases a reader has to tell apart, and only the first is
+    mechanical.
+    """
     exempt, *_ = sorted(EXEMPT_PARAMETERIZED_READS)
     borrowed = f"{{{SYNTHETIC_PARAMETER}}} names something addressed by another route"
 
     census = census_of_reads(create_app(settings), exemptions={exempt: borrowed})
 
     assert census.exempt_without_naming_its_parameter == frozenset({exempt})
+
+
+def test_the_census_reports_a_contribution_deriving_a_read_the_application_does_not_declare(
+    settings: ServiceSettings,
+) -> None:
+    def derives_a_read_that_does_not_exist(app: FastAPI) -> list[str]:
+        return [*read_paths(app, parameterized=True), READ_UNDER_NO_CONTRIBUTION]
+
+    census = census_of_reads(
+        create_app(settings), contributions=(derives_a_read_that_does_not_exist,)
+    )
+
+    assert census.driven_but_undeclared == frozenset({READ_UNDER_NO_CONTRIBUTION})
 
 
 def test_the_census_reports_a_contribution_that_derives_nothing(
