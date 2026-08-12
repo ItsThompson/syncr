@@ -5516,10 +5516,10 @@ export interface components {
             id: string;
             kind: components["schemas"]["TemplateEntryKind"];
             /**
-             * Statement
-             * @description What the author is told about this entry, or null when there is nothing to say. Present on an entry naming a routine, because the frame places that routine and the entry's own time places nothing: a declaration nothing materializes is stated rather than silently ignored.
+             * Placementstatement
+             * @description What places this entry, or null when its own declaration does. Present on an entry naming a routine, because the frame places that routine and the entry's own time places nothing: a declaration nothing materializes is stated rather than silently ignored. Named for its subject rather than `statement`, because a response that nests an entry carries a statement of its own about a different thing.
              */
-            statement?: string | null;
+            placementStatement?: string | null;
             /**
              * Targettime
              * Format: time

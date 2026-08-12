@@ -65,10 +65,12 @@ BINDING_TARGET_DESCRIPTION = (
     "Which table bindingRef names. A routine and a habit are separate tables, so the "
     "identifier alone does not say which to read."
 )
-STATEMENT_DESCRIPTION = (
-    "What the author is told about this entry, or null when there is nothing to say. Present on "
-    "an entry naming a routine, because the frame places that routine and the entry's own time "
-    "places nothing: a declaration nothing materializes is stated rather than silently ignored."
+PLACEMENT_STATEMENT_DESCRIPTION = (
+    "What places this entry, or null when its own declaration does. Present on an entry naming a "
+    "routine, because the frame places that routine and the entry's own time places nothing: a "
+    "declaration nothing materializes is stated rather than silently ignored. Named for its "
+    "subject rather than `statement`, because a response that nests an entry carries a statement "
+    "of its own about a different thing."
 )
 
 _NOT_NULLABLE_MESSAGE = (
@@ -98,7 +100,9 @@ class TemplateEntryResponse(WireModel):
         description="The routine or habit a concrete entry names. Null on a slot, which binds "
         "its content at solve time."
     )
-    statement: str | None = Field(default=None, description=STATEMENT_DESCRIPTION)
+    placement_statement: str | None = Field(
+        default=None, description=PLACEMENT_STATEMENT_DESCRIPTION
+    )
 
     @classmethod
     def of(cls, record: TemplateEntryRecord) -> Self:
@@ -117,7 +121,7 @@ class TemplateEntryResponse(WireModel):
             area_id=record.area_id,
             binding_target=record.binding_target,
             binding_ref=record.binding_ref,
-            statement=(
+            placement_statement=(
                 THE_FRAME_PLACES_A_ROUTINE
                 if record.binding_target is BindingTarget.ROUTINE
                 else None

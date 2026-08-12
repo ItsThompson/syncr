@@ -72,7 +72,7 @@ def test_a_routine_backed_entry_is_placed_by_the_frame_whatever_it_declares(
     )
     binding = EntryBinding(target=BindingTarget.ROUTINE, entity_id=routine.id)
 
-    assert charged(entry, binding, content_by_binding([routine], [])) is PLACED_BY_THE_FRAME
+    assert charged(entry, binding, content_by_binding([routine], [])) == PLACED_BY_THE_FRAME
 
 
 def test_a_slot_carries_its_declared_area_and_no_name() -> None:

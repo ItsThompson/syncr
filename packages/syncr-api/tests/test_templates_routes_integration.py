@@ -571,7 +571,7 @@ def test_declaring_an_entry_that_names_a_routine_is_answered_with_the_frame(
     assert declared.status_code == HTTPStatus.CREATED, declared.text
     assert moved.status_code == HTTPStatus.OK, moved.text
     for answered in (declared, moved):
-        statement = answered.json()["statement"]
+        statement = answered.json()["placementStatement"]
         assert "frame" in statement, statement
         assert "target time" in statement, statement
     assert len(entry_rows(live_database_url, owner.tenant_id)) == 1
@@ -592,9 +592,11 @@ def test_declaring_an_entry_that_names_a_habit_is_answered_with_nothing_to_say(
     )
 
     assert declared.status_code == HTTPStatus.CREATED, declared.text
-    assert declared.json()["statement"] is None
+    assert declared.json()["placementStatement"] is None
     assert (
-        http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"][0]["statement"]
+        http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"][0][
+            "placementStatement"
+        ]
         is None
     )
 

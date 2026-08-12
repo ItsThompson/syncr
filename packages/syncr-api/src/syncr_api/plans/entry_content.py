@@ -11,8 +11,8 @@ week would find no name at all.
 
 ## The frame is the authority for a routine's placement
 
-A routine is already placed on every date at its own target time, so an entry naming one restates
-a fact the frame has already answered. It is not charged and it produces no block:
+A routine is already placed on every date its frame is not declared off, so an entry naming one
+restates a fact the frame has already answered. It is not charged and it produces no block:
 :data:`PLACED_BY_THE_FRAME` is what the resolution answers, the routine's minutes stay the frame's,
 and an Area the entry declares is a label rather than a charge. A second block would put the same
 content on one date twice and subtract one routine's minutes from the week twice, which contradicts
@@ -103,10 +103,11 @@ class PlacedByTheFrame:
 PLACED_BY_THE_FRAME: Final = PlacedByTheFrame()
 
 THE_FRAME_PLACES_A_ROUTINE: Final = (
-    "The frame is the authority for a routine's placement. This routine is already placed on every "
-    "date at its own target time, so the time named here places nothing and no second block "
-    "appears. An Area named here is a label rather than a charge: the routine's minutes belong to "
-    "the frame and no Area is charged for them. Change the routine itself to move it."
+    "The frame is the authority for a routine's placement. This routine is already placed at its "
+    "own target time on every date you have not declared off, so the time named here places "
+    "nothing and no second block appears. An Area named here is a label rather than a charge: the "
+    "routine's minutes belong to the frame and no Area is charged for them. Change the routine "
+    "itself to move it."
 )
 
 

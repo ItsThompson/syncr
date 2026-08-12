@@ -158,7 +158,7 @@ def test_an_entry_naming_a_routine_is_answered_with_the_rule_the_charge_applies(
         area_id=uuid4(),
     )
 
-    statement = TemplateEntryResponse.of(entry).statement
+    statement = TemplateEntryResponse.of(entry).placement_statement
 
     assert statement == THE_FRAME_PLACES_A_ROUTINE
     assert statement is not None
@@ -168,12 +168,12 @@ def test_an_entry_naming_a_routine_is_answered_with_the_rule_the_charge_applies(
 
 
 def test_no_other_entry_carries_a_statement() -> None:
-    # The control on the other edge: the field is null wherever there is nothing to say, so a
-    # sentence asserted above cannot be one every entry gets.
+    # The control on the other edge: the field is null wherever the entry's own declaration is what
+    # places it, so a sentence asserted above cannot be one every entry gets.
     habit_bound = a_concrete_entry(
         template_id=uuid4(), target=BindingTarget.HABIT, entity_id=uuid4()
     )
     slot = a_slot_entry(template_id=uuid4(), area_id=uuid4())
 
-    assert TemplateEntryResponse.of(habit_bound).statement is None
-    assert TemplateEntryResponse.of(slot).statement is None
+    assert TemplateEntryResponse.of(habit_bound).placement_statement is None
+    assert TemplateEntryResponse.of(slot).placement_statement is None

@@ -6919,7 +6919,7 @@
           "kind": {
             "$ref": "#/components/schemas/TemplateEntryKind"
           },
-          "statement": {
+          "placementStatement": {
             "anyOf": [
               {
                 "type": "string"
@@ -6928,8 +6928,8 @@
                 "type": "null"
               }
             ],
-            "description": "What the author is told about this entry, or null when there is nothing to say. Present on an entry naming a routine, because the frame places that routine and the entry's own time places nothing: a declaration nothing materializes is stated rather than silently ignored.",
-            "title": "Statement"
+            "description": "What places this entry, or null when its own declaration does. Present on an entry naming a routine, because the frame places that routine and the entry's own time places nothing: a declaration nothing materializes is stated rather than silently ignored. Named for its subject rather than `statement`, because a response that nests an entry carries a statement of its own about a different thing.",
+            "title": "Placementstatement"
           },
           "targetTime": {
             "description": "Wall time, no zone: 07:00 means 07:00 wherever the user is, resolved against the zone active on the date it materializes for. Lands on a 15-minute step of the grid, because the entry is fixed by derivation and nothing moves it onto the grid later.",
