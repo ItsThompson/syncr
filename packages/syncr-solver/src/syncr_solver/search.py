@@ -40,9 +40,9 @@ every machine.
 
 ## Cancellation is an optimization only
 
-Checked every ``checkpoint_every`` iterations. **Correctness comes from the version-checked
-write**, which refuses to store a plan whose input version has moved: a solve that misses its
-checkpoint finishes and is discarded exactly like one that stops at it.
+Checked every ``checkpoint_every`` iterations. **Correctness comes from the conditional write**,
+which refuses to store a plan whose input version has moved: a solve that misses its checkpoint
+finishes and is discarded exactly like one that stops at it.
 """
 
 from __future__ import annotations
