@@ -3,6 +3,10 @@
 Determinism rather than legality. A partial key fails silently, because a stable sort returns the
 arrival order when the key cannot separate two unequal values, so each test below builds one week
 TWICE with the pair permuted and compares. A single build can never see it.
+
+``held_key`` is driven the same way in ``test_occupancy.py``, beside H4, because it sorts no
+collection: it decides which of the started index's overlapping spans a refusal names, so the
+permuted pair is only observable through the rule that reads it.
 """
 
 from __future__ import annotations

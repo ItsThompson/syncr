@@ -229,9 +229,10 @@ class PartialPlan:
 
         ``placed`` is the caller's, because which of the week's existing placements the solver may
         not move is the caller's phase rather than a fact about the inputs: a derivation places
-        only what it derives, and a solve carries the past blocks and the pins in as well. H4, H8
-        and H9 measure over what the state holds, so a caller that seeds nothing is asking about a
-        week that holds nothing.
+        only what it derives, and a solve carries the past blocks and the pins in as well. H8 and
+        H9 measure over what the state holds, so a caller that seeds nothing is asking about a week
+        that holds nothing for them. H4 also reads the week's own begun spans, which no caller has
+        to state.
         """
         return cls(
             span=inputs.span,

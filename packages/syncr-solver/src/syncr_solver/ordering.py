@@ -1,4 +1,5 @@
-"""The orders each of a week's collections is held in, one key per collection.
+"""The orders each of a week's collections is held in, one key per collection, and one that sorts
+none.
 
 Determinism rather than legality. Each collection the checker reads is sorted, so a candidate
 overlapping two members is rejected by naming the earlier one whatever order the inputs arrived in,
@@ -8,6 +9,9 @@ input list would change a reason clause while changing no placement.
 Two of the keys order what a DOCUMENT holds rather than what the checker reads, and they are here
 for the same reason: a document's block order and its slot order are facts its readers depend on,
 and two statements of either would let a materialized week and a solved week hold one week two ways.
+:func:`held_key` sorts nothing: it decides which of a mapping's overlapping values a rule answers
+against, and it is here because the sentence above about naming the earlier member is exactly what
+it holds for a collection the state keys rather than sorts.
 
 **Every key reads the whole of the value it orders, or ends in an identity that makes the rest
 unreachable.** That is the property the module exists to hold, and it is the one a partial key
