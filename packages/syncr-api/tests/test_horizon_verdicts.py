@@ -1,6 +1,6 @@
 """Duty 2 against a real Postgres: the transition nothing but the clock caused.
 
-``US-FEAS-08``. A week becomes impossible most often because earlier slack went unused, and no
+A week becomes impossible most often because earlier slack went unused, and no
 mutation causes that: the user did nothing, the plan did not change, and Friday's deadline is now
 unreachable. Reads are forbidden from writing, so without this duty the early-catch metric's
 denominator would lose its most ordinary case while its numerator kept every session transition, and
@@ -28,7 +28,7 @@ another week's transition with it, and a failure after the append leaves no row 
 **The week list is the local one.** A tenant thirteen hours east probes the week its own date names.
 
 **How the plan came to exist is not something this duty reads.** The transition is the same whether
-the live revision was materialized or adopted from a solve, which is why ticket 1400 changing duty
+the live revision was materialized or adopted from a solve, which is why a change to duty
 1's producer cannot change duty 2.
 """
 
@@ -231,7 +231,7 @@ def method_errors(component: str, method: str) -> float:
 
 
 # --------------------------------------------------------------------------------
-# US-FEAS-08: a week becomes impossible because time passed
+# A week becomes impossible because time passed
 # --------------------------------------------------------------------------------
 
 
@@ -612,7 +612,7 @@ async def test_a_tenant_far_east_probes_the_week_its_own_date_names(
 
 
 # --------------------------------------------------------------------------------
-# Ticket 1400: what produced the plan is not something this duty reads
+# What produced the plan is not something this duty reads
 # --------------------------------------------------------------------------------
 
 
@@ -627,9 +627,8 @@ async def test_the_transition_is_the_same_whatever_produced_the_live_plan(
 ) -> None:
     """Duty 2 reads whether a week HAS a live revision, never which path appended it.
 
-    Ticket 1400 changes duty 1 from materializing a week to asking the coordinator to solve it, and
-    the revision reason changes with it. This is the assertion that says that change cannot reach
-    duty 2: the same transition is recorded under either reason.
+    A change to duty 1's producer moves the revision reason with it. This is the assertion that says
+    such a change cannot reach duty 2: the same transition is recorded under either reason.
     """
     await declare_the_minimum(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)

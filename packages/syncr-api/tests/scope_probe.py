@@ -1,9 +1,10 @@
 """A scope-guarded route, mounted only by the tests that drive it.
 
-The bearer credential is issued for routes that no ticket has built yet, and a dependency
+``BearerPrincipalDep`` has no product caller: a route the CLI reaches declares the dependency
+that resolves either credential, in ``accounts/injection.py``. A dependency
 with no caller is a dependency nothing proves: the chain from an ``Authorization`` header to
 a 403 has four links, and asserting the scope arithmetic on a hand-built principal exercises
-one of them. So this is the shape the first domain route will declare, mounted on the
+one of them. So this is the shape a bearer-only route would declare, mounted on the
 application under test: the route resolves the credential and delegates, and the method it
 delegates to checks the scope as its first act.
 

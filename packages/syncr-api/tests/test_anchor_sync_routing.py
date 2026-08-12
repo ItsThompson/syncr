@@ -334,14 +334,10 @@ async def test_a_failing_anchor_writer_propagates_and_records_no_partial_state()
     # WHAT PROPAGATION DEPENDS ON, stated here because this test is what blesses it.
     # Propagating is only contained if the WORKER LOOP catches per tenant. `worker/main.py` catches
     # per duty, so the process survives and the tick is counted either way. Whether the other
-    # TENANTS survive is `calendars/runner.py`'s to decide: if its per-tenant loop does not catch, a
-    # raise unwinds the whole pass and every tenant ordered after the failing one is skipped for
-    # that tick, and a persistent fault on the first starves the rest one tick at a time.
-    #
-    # Not this ticket's regression: that loop already awaits `SettingsRepository.read()` before a
-    # syncer exists, so a database fault could always unwind it, and P0 runs one tenant. It IS a
-    # property this contract leans on, so it is named where the contract is stated rather than left
-    # for the two files to drift apart. Per-tenant containment belongs to the runner's owner.
+    # TENANTS survive is `calendars/runner.py`'s: its per-tenant pass answers with an empty tally
+    # on a fault rather than re-raising, so a persistent fault on the first tenant does not starve
+    # the rest. That containment is a property this contract leans on, so it is named where the
+    # contract is stated rather than left for the two files to drift apart.
     anchors = FailingAnchors()
     sources = RecordingSources()
     outcome, state = a_read(events=3)

@@ -4,8 +4,8 @@ Every claim here is derived from an artifact rather than restated. Which conditi
 stale comes from ``SOURCE_STATES``; which role owns the failure comes from ``CALENDAR_ROLES``; the
 sentence about retained anchors is the one ``sync_state`` writes; and what survives comes from the
 single list the composer declares. A hand-typed phrase asserted as a substring would pass while the
-composer said something else, and the enumeration of a predicate's inputs is the shape this epic has
-found wrong every time it was checked.
+composer said something else, and the enumeration of a predicate's inputs is the shape that has
+been found wrong every time it was checked.
 
 Notice identity is asserted by full equality, never by containment. One identifier is a prefix of
 another, and a containment check then rests on a delimiter nothing documents.
@@ -605,8 +605,6 @@ def test_a_span_whose_local_midnight_falls_after_the_horizon_ends_still_resolves
 # The threshold does not reach the wire
 # --------------------------------------------------------------------------------
 
-# What a threshold field would be called. A name rather than a value, because the defect the ticket
-# forbids is a figure a client can read and apply, whatever number it happens to hold.
 # What a threshold field would be called, and the kind of value it would have to hold. A name alone
 # is not enough: `possiblyStale` is a real domain word on the anchors document, so a name-only
 # reading would report a legitimate field as this defect the moment one reached a calendar shape. A
@@ -657,7 +655,7 @@ def test_the_reading_of_the_calendar_wire_shapes_finds_something_to_read() -> No
 
 
 def test_no_calendar_wire_shape_carries_a_staleness_threshold() -> None:
-    # `SyncStateResponse` is where the input ticket asked for it, and the neighbours are where the
+    # `SyncStateResponse` is where such a field would first appear, and the neighbours are where the
     # same defect would reopen. A field here is a figure every surface can apply for itself, which
     # is three answers to one question.
     offending = {
