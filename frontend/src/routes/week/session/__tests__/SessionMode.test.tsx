@@ -35,6 +35,7 @@ import {
   LEETCODE,
   PROMOTED_ENTRY_ID,
   SESSION_PATH,
+  SETTINGS,
   WEEK_PATH,
   buildAbsorbablePromotion,
   buildApproved,
@@ -375,14 +376,14 @@ describe("the retrospective half", () => {
     expect(retro.days.unconfirmed, "the reviewed week must disagree with this one").not.toBe(
       thisWeek,
     );
-    openTheSession(
-      buildSession({ retro }),
-      buildWeekView({ readings: buildReadings({ unconfirmedDays: thisWeek }) }),
-    );
+    const readings = buildReadings({ unconfirmedDays: thisWeek });
+    openTheSession(buildSession({ retro }), buildWeekView({ readings }));
     renderAt(SESSION_PATH);
 
-    expect((await screen.findByText(/h visible/)).textContent).toContain(
-      `${thisWeek} days unconfirmed`,
+    /* The WHOLE line, because `5 days unconfirmed` is a substring of `15 days unconfirmed`: a case looking only for
+     * its own figure would accept any figure ending in it. */
+    expect((await screen.findByText(/h visible/)).textContent).toBe(
+      `${readings.blockCount} blocks · ${thisWeek} days unconfirmed · ${SETTINGS.visibleHours}h visible z`,
     );
     expect(await screen.findByText(/5 confirmed days and 1 unconfirmed/)).toBeVisible();
   });

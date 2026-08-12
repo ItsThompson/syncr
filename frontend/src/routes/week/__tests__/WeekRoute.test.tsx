@@ -41,6 +41,18 @@ async function bandLine(): Promise<string> {
   return (await screen.findByText(/h visible/)).textContent ?? "";
 }
 
+/**
+ * The whole line the band draws, which is what every case below is asserted against.
+ *
+ * WHOLE RATHER THAN A SUBSTRING. `5 days unconfirmed` is a substring of `15 days unconfirmed`, so a case looking
+ * only for its own figure accepts any figure ending in it, and only the singular reading would still bite, by the
+ * accident that `1 day` is not a substring of `21 days`. The zoom reading is the settings fixture's own, and the
+ * trailing `z` is the key hint inside the same paragraph.
+ */
+function wholeBandLine(blockCount: number, unconfirmedReading: string): string {
+  return `${blockCount} blocks · ${unconfirmedReading} · ${SETTINGS.visibleHours}h visible z`;
+}
+
 describe("the week the reader asked for", () => {
   it("renders seven columns from the payload's own zone map", async () => {
     installWeekReads(buildWeekView());
@@ -146,13 +158,11 @@ describe("the week's count of unconfirmed days", () => {
       SERVED,
     );
     expect(DATES.length, "and so must the seven columns").not.toBe(SERVED);
-    installWeekReads(buildWeekView({ readings: buildReadings({ unconfirmedDays: SERVED }) }));
+    const readings = buildReadings({ unconfirmedDays: SERVED });
+    installWeekReads(buildWeekView({ readings }));
     renderAt(WEEK_PATH);
 
-    const line = await bandLine();
-    expect(line).toContain(`${SERVED} days unconfirmed`);
-    expect(line).not.toContain(`${DAYS_HOLDING_A_BLOCK} days unconfirmed`);
-    expect(line).not.toContain(`${DATES.length} days unconfirmed`);
+    expect(await bandLine()).toBe(wholeBandLine(readings.blockCount, `${SERVED} days unconfirmed`));
   });
 
   /* NOUGHT IS PRINTED, NOT DROPPED, which is what the band's other cells do with theirs: the block count reads
@@ -164,9 +174,7 @@ describe("the week's count of unconfirmed days", () => {
     );
     renderAt(WEEK_PATH);
 
-    const line = await bandLine();
-    expect(line).toContain("0 blocks");
-    expect(line).toContain("0 days unconfirmed");
+    expect(await bandLine()).toBe(wholeBandLine(0, "0 days unconfirmed"));
   });
 
   /* THREE READINGS RATHER THAN ONE. A literal, a hard-coded plural and a figure read off a neighbouring field each
@@ -175,10 +183,11 @@ describe("the week's count of unconfirmed days", () => {
     [1, "1 day unconfirmed"],
     [DATES.length, `${DATES.length} days unconfirmed`],
   ])("reads %i as `%s`", async (unconfirmedDays, reading) => {
-    installWeekReads(buildWeekView({ readings: buildReadings({ unconfirmedDays }) }));
+    const readings = buildReadings({ unconfirmedDays });
+    installWeekReads(buildWeekView({ readings }));
     renderAt(WEEK_PATH);
 
-    expect(await bandLine()).toContain(reading);
+    expect(await bandLine()).toBe(wholeBandLine(readings.blockCount, reading));
   });
 });
 
