@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { appSourceDir } from "../../lib/paths.ts";
+import type { CheckOutcome } from "../../lib/findings.ts";
 import { UNCHANNELLED, unchannelledReason } from "../channels.ts";
 import { checkChannels, variantStates } from "../check.ts";
 
@@ -11,6 +12,11 @@ const fixture = (name: string): string => path.join(here, "..", "__fixtures__", 
 const themeFile = path.join(appSourceDir, "theme.css");
 
 const check = async (names: string[]) => checkChannels({ kitFiles: names.map(fixture), themeFile });
+
+/* The summary figures as one string, so a case reads one by its own words rather than by its position in
+ * the notes. Their order is presentation, and a case that breaks when it changes is reporting on the
+ * wrong thing. */
+const figuresIn = (outcome: CheckOutcome): string => outcome.notes.join("\n");
 
 describe("one file per state channel", () => {
   it("passes when one file owns a state's channels", async () => {
@@ -32,7 +38,7 @@ describe("one file per state channel", () => {
   it("does not count a property named only inside a comment", async () => {
     const outcome = await check(["table-row.css"]);
 
-    expect(outcome.notes[0]).toContain("1 state channel(s) assigned");
+    expect(figuresIn(outcome)).toContain("1 state channel(s) assigned");
   });
 
   it("counts a channel assigned from markup, so a variant class cannot dodge the rule", async () => {
@@ -50,7 +56,7 @@ describe("one file per state channel", () => {
   it("ignores a resting declaration, which is geometry rather than a channel", async () => {
     const outcome = await check(["Block.tsx"]);
 
-    expect(outcome.notes[0]).toContain("1 state channel(s) assigned");
+    expect(figuresIn(outcome)).toContain("1 state channel(s) assigned");
   });
 });
 
@@ -113,7 +119,7 @@ describe("hidden until focused", () => {
   it("names all six properties the treatment spends, so a missing one is a finding", async () => {
     const outcome = await check(["focus-reveal.css"]);
 
-    expect(outcome.notes[1]).toContain("6 declaration(s) carry one");
+    expect(figuresIn(outcome)).toContain("6 declaration(s) carry one");
   });
 
   it("fails when a second file reveals a control under the same state", async () => {
@@ -142,8 +148,8 @@ describe("hidden until focused", () => {
   it("leaves position to the exemption outside the focus state", async () => {
     const outcome = await check(["reveal-outside-focus.css"]);
 
-    expect(outcome.notes[1]).toContain("1 named as carrying none");
-    expect(outcome.notes[0]).toContain("0 state channel(s) assigned");
+    expect(figuresIn(outcome)).toContain("1 named as carrying none");
+    expect(figuresIn(outcome)).toContain("0 state channel(s) assigned");
   });
 
   /* THE MARKUP SPELLING OF THE SAME TREATMENT. `sr-only` and its inverse are the two utilities that carry
@@ -155,7 +161,7 @@ describe("hidden until focused", () => {
     const outcome = await check(["FocusReveal.tsx"]);
 
     expect(outcome.notes).toContain("  :focus-visible -> hidden until focused");
-    expect(outcome.notes[1]).toContain("1 declaration(s) carry one");
+    expect(figuresIn(outcome)).toContain("1 declaration(s) carry one");
   });
 
   it("fails when a stylesheet and a class string both reveal a control", async () => {
