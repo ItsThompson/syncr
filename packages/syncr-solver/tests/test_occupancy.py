@@ -543,6 +543,37 @@ def test_two_held_spans_over_one_candidate_report_the_earlier_in_either_arrival_
     assert forwards.detail == "Gym"
 
 
+def test_a_live_block_the_week_has_not_reached_is_a_candidate_rather_than_a_span_it_holds() -> None:
+    # The boundary of what is read, and the direction a widening would take it. A block the solve
+    # may still move is not the space: refused against, the whole of the previous week's plan would
+    # be frozen where it stands and a re-solve could improve nothing.
+    gym = BindingRef.for_task(UUID(int=1))
+    later = between(16, 17, day=4)
+    week = inputs(live_plan=a_live_plan(a_block(binding=gym, interval=later, title="Gym")))
+
+    assert a_check().check(a_candidate(between(16.5, 17.5, day=4)), PartialPlan.of(week)) is None
+
+
+def test_two_begun_spans_of_one_length_report_the_one_named_first_in_either_arrival_order() -> None:
+    # The second field of the order, driven at a tie the first cannot break: two blocks the week
+    # began at one span. Without it the answer would be the arrival order, which is the same defect
+    # one span apart.
+    gym, reading = BindingRef.for_task(UUID(int=1)), BindingRef.for_task(UUID(int=2))
+    began = between(8, 9)
+    one = a_block(binding=gym, interval=began, title="Gym")
+    other = a_block(binding=reading, interval=began, title="Reading")
+    candidate = a_candidate(between(8.5, 9.5))
+
+    forwards = a_check().check(candidate, PartialPlan.of(inputs(live_plan=a_live_plan(one, other))))
+    backwards = a_check().check(
+        candidate, PartialPlan.of(inputs(live_plan=a_live_plan(other, one)))
+    )
+
+    assert forwards is not None
+    assert forwards == backwards
+    assert forwards.detail == "Gym"
+
+
 def test_the_state_holds_its_members_in_span_order_whatever_order_they_arrived_in() -> None:
     # Two members overlapping one candidate would otherwise be reported by whichever the inputs
     # happened to list first, so permuting an input list would change a reason clause while
