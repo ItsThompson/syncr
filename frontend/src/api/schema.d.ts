@@ -13172,15 +13172,6 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Conflict with the current state */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
             /** @description Validation failed */
             422: {
                 headers: {
@@ -13240,15 +13231,6 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Conflict with the current state */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };

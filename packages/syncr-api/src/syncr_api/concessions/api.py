@@ -15,6 +15,10 @@ approved.
 The ``POST`` resolves a service of its own, and the difference is the weekly-session header: it is
 the only route here that computes a verdict, so it is the only one that may be refused for stating
 that header wrongly.
+
+Two routers rather than one, and the split is the resource: a tradeoff is a request about the week,
+an adjustment is a row the week holds. It is also the only conflict this module can answer, so the
+status each router declares is the status its own routes raise.
 """
 
 from __future__ import annotations
@@ -36,10 +40,11 @@ from syncr_api.concessions.schemas import (
 )
 from syncr_api.solving.schemas import OperationResponse
 
-router = APIRouter()
+tradeoff_router = APIRouter()
+adjustment_router = APIRouter()
 
 
-@router.post(
+@tradeoff_router.post(
     TRADEOFFS_PATH,
     status_code=HTTPStatus.ACCEPTED,
     summary="Solve this week against one tradeoff. Persists nothing; returns an operation",
@@ -55,7 +60,7 @@ async def request_tradeoff(
     return OperationResponse.of(await service.request(principal, iso_week, requested))
 
 
-@router.get(ADJUSTMENTS_PATH, summary="The concessions this week has absorbed")
+@adjustment_router.get(ADJUSTMENTS_PATH, summary="The concessions this week has absorbed")
 async def list_adjustments(
     iso_week: str, principal: PrincipalDep, service: ConcessionServiceDep
 ) -> AdjustmentsResponse:
@@ -64,7 +69,7 @@ async def list_adjustments(
     return AdjustmentsResponse(adjustments=[AdjustmentResponse.of(record) for record in found])
 
 
-@router.delete(
+@adjustment_router.delete(
     ADJUSTMENT_PATH,
     status_code=HTTPStatus.NO_CONTENT,
     response_class=Response,
