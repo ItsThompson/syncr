@@ -419,8 +419,7 @@ def every_week_read(settings: ServiceSettings) -> list[str]:
     contribution to the census in ``test_parameterized_read_census.py`` rather than filtered here.
     A filter reports what it matches and nothing about what it leaves out, so the reads no guard
     drives stayed invisible while this one looked complete. Still bounded by the routes rather than
-    by a list, so a week read a later ticket adds is driven by the guards below without that ticket
-    remembering to extend one.
+    by a list, so a week read added later is driven by the guards below with no list to extend.
     """
     return week_addressed_reads(create_app(settings))
 

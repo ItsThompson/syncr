@@ -224,12 +224,20 @@ def test_every_contribution_derives_at_least_one_read(settings: ServiceSettings)
 @pytest.mark.parametrize(
     "contribution", DRIVEN_READ_CONTRIBUTIONS, ids=lambda given: given.__name__
 )
-def test_every_contribution_is_read_by_a_guard_that_drives_it(contribution: DrivenReads) -> None:
+def test_every_contribution_is_imported_and_called_by_another_module(
+    contribution: DrivenReads,
+) -> None:
     """The other edge of the registry: a contribution nobody consumes drives nothing.
 
     Publishing a set of reads covers them only while a guard takes its paths from it. Without this,
-    a contribution could be added to silence the census with no request ever made, which is a
+    a contribution could be added to silence the census with nothing ever reading it, which is a
     coverage token rather than coverage.
+
+    **Named for what it reads, which is less than driving.** It answers that a module of this suite
+    imports the contribution and calls it, which every guard that drives one must do and which a
+    module that requested nothing could also do. Requiring a request would mean deciding from syntax
+    that a call is an HTTP request, and `.get` is a mapping read as often as it is a client call, so
+    the stronger form would be a predicate that cannot fail rather than a stronger guard.
     """
     readers = [
         path.name
