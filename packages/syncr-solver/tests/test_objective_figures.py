@@ -10,6 +10,11 @@ and reads every figure as a share of the week:
 - the misfit ceiling counts one declared component and the two fitted ones, because a block carries
   one strength, and a block that carries two reads above the unit rather than being clamped to it.
 
+Six cases carry them, because the churn rule needs three: the sweep, which states a figure at each
+regime and at the flat guard's boundary; the crossing, which says the boundary tolerances are the
+two the guard sits between; and a property over every tolerance a weight set admits, for the space
+the sweep does not sample.
+
 **The absorption is read as minutes rather than as a share, which is what separates it from the
 per-term assertion of the same behaviour.** ``test_objective_terms.py`` divides the same charge by
 the week, so a change to the denominator reddens there and not here, and a change to the absorption
