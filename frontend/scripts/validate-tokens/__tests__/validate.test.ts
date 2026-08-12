@@ -133,10 +133,11 @@ describe("a reference sheet", () => {
   });
 });
 
-/* Section 14's promotion table moves a component's geometry out of the token layer and beside the component when
- * that component is built, and calls the move "a rename of location, not of value". A check that resolved a
- * sheet's references against `tokens/` alone refused every such promotion, so the interim location had become a
- * rule. What keeps the sheet honest is the LINK: the value has to be on the same load the check approved. */
+/* `docs/DESIGN-LANGUAGE.md`'s token architecture moves a component's geometry out of the token layer and beside
+ * the component when that component is built, which changes where a value is declared and not the value. A check
+ * that resolved a sheet's references against `tokens/` alone refused every such promotion, so the interim
+ * location had become a rule. What keeps the sheet honest is the LINK: the value has to be on the same load the
+ * check approved. */
 describe("a token promoted out of the layer and beside its component", () => {
   const promoted = fixture("promoted-layer-2.css");
 

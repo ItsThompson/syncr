@@ -33,9 +33,9 @@ import { inlineStyleFindings } from "./inline-style.ts";
  *
  * TWO DELIMITERS, NOT ONE. Tailwind v4 accepts `w-[13px]` and `w-(--wide)`, and the paren form is
  * what its own documentation recommends for a CSS variable. Both patterns were written around `[`,
- * so the paren form was invisible and `w-(--wide)` shipped `width: var(--wide)`, which is criterion
- * 11's own `w-[13px]` case in a different spelling. Section 14's `--ai` makes the paren form the
- * first thing the week grid will reach for. */
+ * so the paren form was invisible and `w-(--wide)` shipped `width: var(--wide)`, which is the
+ * `w-[13px]` case in a different spelling. The kit passes an Area's ink as the `--ai` custom
+ * property, which is what makes the paren form the natural spelling for a utility that wants it. */
 const ARBITRARY_VALUE = /\b[a-z][a-z0-9-]*-\[[^\]\s]+\]/g;
 const ARBITRARY_VARIABLE = /\b[a-z][a-z0-9-]*-\(--[^)\s]+\)/g;
 

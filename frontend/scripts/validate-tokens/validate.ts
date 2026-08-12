@@ -262,10 +262,10 @@ function remedyFor(name: string, wasRefused: boolean): string {
 
 /* THE PROPERTIES A SHEET REACHES THROUGH ITS OWN `<link>` TAGS, following each linked sheet's `@import` chain.
  *
- * A reference sheet renders live from what ships, and what ships is not all in `tokens/`: section 14's promotion
- * table moves a component's own geometry down to a layer-2 sheet beside the component when that component is
- * built. Resolving a sheet's references against the token directory alone therefore refuses every legitimate
- * promotion, which made the interim location a rule rather than the interim measure the table calls it.
+ * A reference sheet renders live from what ships, and what ships is not all in `tokens/`: `docs/DESIGN-LANGUAGE.md`'s
+ * token architecture moves a component's own geometry down to a layer-2 sheet beside the component when that
+ * component is built. Resolving a sheet's references against the token directory alone therefore refuses every
+ * legitimate promotion, which made the interim location a rule rather than the interim measure it is.
  *
  * The honesty guarantee is unchanged and is what picks this over an allowlist: a name resolves only if the sheet
  * LINKS the file that declares it, so the browser has the value on the same load the check approved. */

@@ -3,10 +3,10 @@
  * A channel is the visual property a state spends. The rule the kit is built on is that a state
  * owns exactly one channel, so combinations add instead of overwrite.
  *
- * WHAT THIS ASSERTS, AND WHY IT IS THE PAIR RATHER THAN THE CHANNEL ALONE. Section 14's channel
- * table deals several states onto one channel on purpose: the fill carries the block's existence,
- * hover, the frame and the current nav item, and the left rule carries conflict, selected and
- * split. So "one file per channel" is not implementable against the table it comes from. What IS
+ * WHAT THIS ASSERTS, AND WHY IT IS THE PAIR RATHER THAN THE CHANNEL ALONE. `docs/DESIGN-LANGUAGE.md`
+ * deals several states onto one channel on purpose: the fill carries the block's existence, hover,
+ * the frame and the current nav item, and the left rule carries conflict, selected and split. So
+ * "one file per channel" is not implementable against the vocabulary it comes from. What IS
  * checkable, and what the rule is actually protecting, is the PAIR: a given state's given channel
  * is assigned in exactly one file. Two files assigning hover's fill is how two surfaces come to
  * disagree about what hover looks like, and nothing on a rendered screen reveals the disagreement
@@ -32,8 +32,8 @@ export interface Channel {
    * States this channel is specific to. Absent means it applies to any state.
    *
    * Needed because one property can carry two channels: `border-top-color` is the Area's 2px top
-   * rule on a block and the quarter line's weight during a drag. Section 14's table distinguishes
-   * them by the state, not by the property, so this model does too.
+   * rule on a block and the quarter line's weight during a drag. `docs/DESIGN-LANGUAGE.md`
+   * distinguishes them by the state, not by the property, so this model does too.
    */
   readonly states?: readonly string[] | undefined;
 }
@@ -70,9 +70,9 @@ export const CHANNELS: readonly Channel[] = [
     utilityPrefixes: ["text-", "p-", "pt-", "pb-", "leading-"],
   },
   /* THE GLYPH SLOT carries four occupants at once: the pinned mark, the proposal-source mark, the
-   * overlap count and the origin mark. Section 14 settles its precedence in the week grid and warns
-   * that the four must not collide. It is a channel like any other, so two files assigning it is the
-   * same drift as two files assigning the fill.
+   * overlap count and the origin mark. One glyph carries one meaning, so the four must not collide,
+   * and `src/ui/domain/marks/occupant.ts` settles which of them wins the slot. It is a channel like
+   * any other, so two files assigning it is the same drift as two files assigning the fill.
    *
    * A glyph reaches the DOM as generated content or as a pseudo-element's own text, which is why the
    * properties are the `::before`/`::after` family rather than a colour.

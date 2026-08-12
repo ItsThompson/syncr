@@ -60,8 +60,8 @@ describe("one file per state channel", () => {
   });
 });
 
-/* The two channels section 14 names that the script did not cover until iteration 3. Tickets 8 and
- * 35 assign them first, so they are the next two that would have drifted unseen. */
+/* The two channels the model did not name at first: the glyph slot and the quarter line's weight
+ * during a drag. Both are assigned in the kit, so both would have drifted unseen. */
 describe("the glyph slot and the quarter-line weight", () => {
   it("sees the glyph slot as a channel", async () => {
     const outcome = await check(["pinned-glyph.css"]);
@@ -176,10 +176,10 @@ describe("hidden until focused", () => {
 /* A PROPERTY THE MODEL DOES NOT NAME WAS UNSEEN RATHER THAN UNASSIGNED.
  *
  * `channelFor` returns null for a property in no channel, and the caller skipped it, so a state could spend
- * one with every check green: the review put `color` and `letter-spacing` back onto the current row and this
- * script, the combination matrix and the layer rules all passed. Modelling text colour as a channel was the
- * other candidate fix and was rejected, because three control families legitimately mute their own label and
- * the pair rule would report all three as drift. So the model names what carries no channel instead, and its
+ * one with every check green: `color` and `letter-spacing` on the current row passed this script, the
+ * combination matrix and the layer rules alike. Modelling text colour as a channel was the other candidate
+ * fix and was rejected, because three control families legitimately mute their own label and the pair rule
+ * would report all three as drift. So the model names what carries no channel instead, and its
  * silence is the finding. */
 describe("a property no channel names", () => {
   it("is reported, naming the state and the property", async () => {

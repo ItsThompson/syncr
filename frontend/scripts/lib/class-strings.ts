@@ -14,7 +14,7 @@ export interface ClassString extends Position {
   readonly text: string;
 }
 
-/* The helpers a variant map is written with. `cva` is the one section 14 names; the others are the
+/* The helpers a variant map is written with. `cva` is the one the kit uses; the others are the
  * conventional companions, listed so a kit component cannot route around the rules by picking a
  * different composer. */
 export const CLASS_COMPOSERS = ["cva", "cx", "cn", "clsx", "twMerge", "tv"];

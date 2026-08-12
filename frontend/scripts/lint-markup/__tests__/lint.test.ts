@@ -409,9 +409,9 @@ describe("the emitted-CSS verdict", () => {
     );
   });
 
-  /* `w-(--wide)` is criterion 11's own `w-[13px]` in another spelling. No emitted declaration
-   * distinguishes it from `w-sidebar`, since both emit `width: var(...)`, so the arbitrary-value rule
-   * is the only thing that can refuse it. Both halves are load-bearing. */
+  /* `w-(--wide)` is `w-[13px]` in another spelling. No emitted declaration distinguishes it from
+   * `w-sidebar`, since both emit `width: var(...)`, so the arbitrary-value rule is the only thing that
+   * can refuse it. Both halves are load-bearing. */
   it.each(["w-(--wide)", "bg-(--tint)", "blur-(--haze)", "shadow-(--halo)"])(
     "refuses the paren form %s as an arbitrary value",
     async (utility) => {
