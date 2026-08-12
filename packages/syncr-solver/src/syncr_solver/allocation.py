@@ -221,9 +221,10 @@ class _Reading:
                 continue
             if state.holds(held):
                 arrived.append(held.interval)
-            if state.already_netted(held.binding):
-                continue
-            if (spans := owed.get(held.area_id)) is not None:
+            if (
+                not state.already_netted(held.binding)
+                and (spans := owed.get(held.area_id)) is not None
+            ):
                 spans.append(held.interval)
         claimable = state.discretionary()
         arriving_free = claimable.subtract(IntervalSet(arrived)).total_minutes()

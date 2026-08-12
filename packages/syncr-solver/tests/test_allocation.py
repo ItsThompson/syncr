@@ -580,6 +580,78 @@ def test_the_room_a_block_fixed_by_derivation_left_is_what_decides_a_reservation
     assert area_floor(study, unreachable) is None
 
 
+def test_a_derived_blocks_minutes_serve_the_floor_of_the_area_that_claims_them() -> None:
+    # The other answer the disagreeing placement gives, and the case above cannot see it because its
+    # derived block sits in an Area with no floor. A block fixed by derivation is immovable, so the
+    # arrival subtracts its time; and the Area figures did NOT arrive netted of it, so its minutes
+    # count toward its own Area's floor exactly as a solver-chosen placement's would. Sixty derived
+    # minutes meet Career's sixty-minute floor, which leaves Fitness's sixty owing against ninety
+    # free minutes, so a thirty-minute candidate of an Area that owes nothing takes nothing from
+    # anybody. Read as content the figures had already netted, Career would owe its sixty again and
+    # the same candidate would be refused.
+    #
+    # The second arm is the control on the fixture: a candidate large enough to leave Fitness short
+    # IS refused on this week, so the first arm's silence is the rule's answer rather than an empty
+    # week.
+    transit = a_transit_block(
+        anchor_id=UUID(int=62), interval=Interval(at(0), at(1)), area_id=CAREER
+    )
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(
+            an_area_budget(floor_minutes=HOUR),
+            an_area_budget(area_id=CAREER, name="Career", floor_minutes=HOUR),
+        ),
+        shadow_blocks=(transit,),
+    )
+    derived = a_candidate(
+        transit.interval, area_id=CAREER, binding=transit.binding, title=transit.title
+    )
+    state = PartialPlan.of(week).with_placed(derived)
+
+    assert state.holds(derived)
+    assert not state.already_netted(derived.binding)
+    assert (
+        area_floor(a_candidate(Interval(at(1), at(1.5)), area_id=STUDY, binding=STANDUP), state)
+        is None
+    )
+    refused = area_floor(a_candidate(Interval(at(1), at(3)), area_id=STUDY, binding=STANDUP), state)
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 60m short of its floor, with 0m free"
+
+
+def test_the_room_a_block_that_has_begun_left_is_what_decides_a_reservation() -> None:
+    # The third way content reaches the arrival, and the one neither other case drives: a block that
+    # has BEGUN is immovable for a reason of the clock's rather than the user's or the derivation's,
+    # and it is held through a different index. Everything below is held fixed and only Fitness's
+    # floor varies against the 120 minutes the begun hour leaves: at 120 the floor fits and is
+    # reserved, so the identical Study candidate is refused; at 150 it does not fit, no placement
+    # can meet it, and there is nothing here to protect.
+    def a_week_with_an_hour_begun(fitness_floor: int) -> tuple[PartialPlan, Placement]:
+        begun = a_block(binding=STANDUP, interval=Interval(at(0), at(1)), area_id=CAREER)
+        week = inputs(
+            **NARROW_WEEK,
+            areas=(
+                an_area_budget(floor_minutes=fitness_floor),
+                an_area_budget(area_id=CAREER, name="Career"),
+            ),
+            live_plan=a_live_plan(begun),
+        )
+        started = a_candidate(begun.interval, area_id=CAREER, binding=begun.binding)
+        return PartialPlan.of(week).with_placed(started), started
+
+    reserved, started = a_week_with_an_hour_begun(2 * HOUR)
+    unreachable, _ = a_week_with_an_hour_begun(150)
+    study = a_candidate(Interval(at(2), at(2.5)), area_id=STUDY, binding=READING)
+
+    assert started.binding in reserved.started
+    assert started.binding not in reserved.immovable
+    refused = area_floor(study, reserved)
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 120m short of its floor, with 90m free"
+    assert area_floor(study, unreachable) is None
+
+
 def test_one_areas_placement_never_nets_against_another_areas_floor() -> None:
     # Each Area's floor nets that Area's own placements and nobody else's. Two floors of 120
     # minutes against 180 claimable, an hour of Career already placed and movable, and a Study
