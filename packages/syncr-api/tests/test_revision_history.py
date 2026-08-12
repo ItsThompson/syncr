@@ -1,7 +1,7 @@
 """One page of a week's revision history: what each row says auto-applied, and what it was conceded.
 
-The page is composed rather than mapped, and the two composed answers are the ones ``US-PLAN-07``
-asks for beyond the columns.
+The page is composed rather than mapped, and the two composed answers are the ones the history
+has to give beyond the columns.
 
 **What auto-applied is a difference between two revisions.** So it is asserted over pairs, including
 the pair a bounded page cannot see: the oldest row of a complete page has no predecessor and the

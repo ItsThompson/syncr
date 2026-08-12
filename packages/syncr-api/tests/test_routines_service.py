@@ -470,9 +470,10 @@ async def test_routines_are_listed_in_the_order_the_day_runs(
 
 
 def test_no_shape_in_this_module_carries_an_area() -> None:
-    # The entity-level half of "routines are excluded from Area budget arithmetic". Ticket 9's
-    # frame-only-week test asserts the arithmetic; this asserts that no path exists to give a
-    # routine an Area in the first place, so the two cannot disagree.
+    # The entity-level half of "routines are excluded from Area budget arithmetic".
+    # ``test_budget_service``'s ``test_a_frame_only_week_reports_a_zero_target_for_every_area``
+    # asserts the arithmetic; this asserts that no path exists to give a routine an Area in the
+    # first place, so the two cannot disagree.
     named = [
         *(field.name for field in fields(RoutineRecord)),
         *(field.name for field in fields(RoutineDeclaration)),

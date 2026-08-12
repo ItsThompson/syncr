@@ -217,8 +217,8 @@ def test_the_record_states_the_wait_the_session_actually_reads() -> None:
 # The record cites no planning artifact
 # --------------------------------------------------------------------------------
 
-# Scoped to the record rather than to the file: the module's opening paragraph names the story it
-# implements, which is this repository's existing convention and not this record's to change.
+# Scoped to the record rather than to the file: the rest of the module's prose is not this record's
+# to police.
 BANNED_SHAPES: Final = (
     ("a-ticket-number", re.compile(r"\bticket\s+\d+", re.IGNORECASE)),
     ("a-story-id", re.compile(r"\bUS-[A-Z]+-\d+")),

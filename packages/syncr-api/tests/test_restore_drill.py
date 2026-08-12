@@ -482,7 +482,7 @@ class TestTheVerdict:
 
 
 class TestTheEvidenceTables:
-    """The five the ticket names, and the fact that a drill is stated over them at all."""
+    """The five evidence tables, and the fact that a drill is stated over them at all."""
 
     def test_there_are_five_and_each_is_schema_qualified(self) -> None:
         assert len(EVIDENCE_TABLES) == 5

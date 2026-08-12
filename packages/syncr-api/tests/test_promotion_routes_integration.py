@@ -776,9 +776,9 @@ class TestTheDeclineSuppressesTheCandidate:
         signed_in: dict[str, str],
         live_database_url: str,
     ) -> None:
-        """`US-TPL-05`: declining does not re-raise for a stated interval.
+        """Declining does not re-raise for a stated interval.
 
-        Detection is re-run on every read of the payload, so this is the criterion's own words: the
+        Detection is re-run on every read of the payload, so this is the rule's own words: the
         pins are untouched, the pattern is still found, and the question is not asked.
         """
         seed_an_entry_pattern(http, signed_in, live_database_url, owner.tenant_id)
