@@ -1,10 +1,10 @@
 /* How the Learned screen reads a parameter: its name, its figure, and how much of it is still the prior.
  *
  * THE NAME IS THE API'S TOKEN, HUMANISED AND NOTHING MORE. `duration_multiplier[<uuid>]` becomes
- * `Duration multiplier`, and the Area the key names is carried by the row's own sentence, which is where the
- * api put it: `You estimate 60m for Fitness; your actual median is 82m`. Reading a label out of a UUID is
+ * `Duration multiplier`, and the Area the key names is the api's word rather than this module's: the row
+ * carries it as `subject`, resolved from the key server-side, and the row's own sentence states it in prose
+ * as well: `You estimate 60m for Fitness; your actual median is 82m`. Reading a label out of a UUID is
  * not something a client can do, and inventing one would put a second name for one Area on one screen.
- * `tickets/1551` holds whether the key should arrive named.
  *
  * THE FIGURES ARE THIS SCREEN'S OWN, NOT THE AREAS SCREEN'S. `asPercent` there is a share of discretionary
  * time already scaled to a hundred; a shrinkage weight is a share of ONE, and passing it through the other
