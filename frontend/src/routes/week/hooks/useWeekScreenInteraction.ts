@@ -218,7 +218,8 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
     statesOf,
     onSelect: (blockId) => {
       const date = days.find((day) => day.blocks.some((block) => block.id === blockId))?.date;
-      if (date !== undefined) select({ date, blockId });
+      if (date === undefined) return;
+      select({ date, blockId });
       setIsDetailOpen(true);
     },
     onDrop: (drop: BlockDrop) => {
