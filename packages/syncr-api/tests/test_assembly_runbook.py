@@ -36,8 +36,7 @@ from syncr_api.plans.assembler import (
     AssemblyCaller,
     WeekAssembler,
 )
-from tests.repository_census import reads as defined_reads
-from tests.repository_census import repository_classes
+from tests.repository_census import repository_classes, timed_reads
 from tests.test_alert_rules import (
     base_family,
     comparison_on,
@@ -47,6 +46,10 @@ from tests.test_alert_rules import (
     repo_root,
 )
 from tests.test_alert_rules import named as alert_named
+from tests.test_runbook_figures import alert_waits, minutes
+
+# The reading the count guard uses, imported rather than copied: a second reading of the same awaits
+# would agree with itself, and this module's ordered walk is crossed against this one on purpose.
 from tests.test_week_assembler import _awaited_collaborators
 
 RUNBOOK: Final = Path("docs/runbooks/assembly-slow.md")
@@ -92,7 +95,6 @@ _GROUPING = re.compile(r"sum by \(([^)]*)\) \(rate\((syncr_[a-z_]+)\[")
 _CALLER = re.compile(r'caller="([a-z]+)"')
 _ASSEMBLY_SELECTOR = re.compile(r'syncr_assembly_duration_seconds_bucket\{caller="([a-z]+)"\}')
 _MILLISECONDS = re.compile(r"(\d+) ms\b")
-_HOLDS_FOR = re.compile(r"(\d+)([mh])")
 _BUDGET = re.compile(r"p95 under (\d+) ms")
 _BASIS = re.compile(r"set against a figure of ([a-z]+)")
 _WIRED_CALLER = re.compile(r"caller=AssemblyCaller\.([A-Z]+)")
@@ -203,9 +205,17 @@ def wired_classes() -> dict[str, str]:
     return wired
 
 
-def registered_series() -> set[tuple[str, str]]:
-    """Every ``{repository, method}`` pair the read histogram registers, discovered per class."""
-    return {(cls.__name__, method) for cls in repository_classes() for method in defined_reads(cls)}
+def registered_series() -> frozenset[tuple[str, str]]:
+    """Every ``{repository, method}`` pair the read histogram has a series for.
+
+    Read from the metric's own samples, through the census that owns the question, rather than from
+    the class names: a class the census expects to be measured and that nothing actually wrapped has
+    no series, and a row an operator cannot grep in the panel is what this file exists to prevent.
+    ``repository_classes`` is called for the module walk those samples depend on, because a
+    decorator registers its series on import.
+    """
+    repository_classes()
+    return timed_reads()
 
 
 def groupings(text: str) -> list[tuple[str, frozenset[str]]]:
@@ -276,14 +286,6 @@ def milliseconds_the_rule_bounds() -> int:
     return round(comparison_on(alert_named(ALERT), ASSEMBLY_FAMILY).threshold * 1000)
 
 
-def wait_in_minutes(holds_for: str) -> int:
-    """The rule's ``for:`` as minutes, which is how a runbook states a wait."""
-    found = _HOLDS_FOR.fullmatch(holds_for)
-
-    assert found is not None, f"the rule waits {holds_for!r}, which this cannot read as minutes"
-    return int(found.group(1)) * (60 if found.group(2) == "h" else 1)
-
-
 def budgeted_milliseconds() -> int:
     """The assembly's own p95 budget, read from the pipeline that states it."""
     found = _BUDGET.search(one_line(assembler_module.__doc__ or ""))
@@ -346,14 +348,29 @@ class TestTheFiguresItQuotes:
         runbook = read(RUNBOOK)
 
         assert f"{bound.operator} {bound.threshold}" in one_line(runbook)
-        assert f"**{wait_in_minutes(rule.holds_for)} minutes**" in runbook
+        assert f"**{minutes(alert_waits(ALERT))} minutes**" in runbook
+
+    def test_each_place_it_names_the_threshold_names_the_rules_figure(self) -> None:
+        """The three prose copies, each asserted where it sits rather than as a set.
+
+        A set over every figure catches a copy that DRIFTS and not one that is DELETED: three copies
+        of one number collapse to one member, so removing the title's figure leaves the set intact.
+        Per site rather than by count, because a fourth legitimate mention of the threshold must not
+        redden a correct edit.
+        """
+        bound = milliseconds_the_rule_bounds()
+        runbook = read(RUNBOOK)
+
+        assert f"is over {bound} ms" in runbook.splitlines()[0]
+        assert f"## Why {bound} ms" in runbook
+        assert f"has reached {bound} ms" in runbook
 
     def test_every_millisecond_figure_it_states_is_one_the_tree_produces(self) -> None:
         """The two figures in milliseconds, as an exact set, so a fourth copy cannot drift alone.
 
-        The threshold appears in the title, the heading and the prose, and the assembly's own budget
-        twice more. Stated as an equality rather than a containment: a copy that drifts fails, and
-        so does a figure this crossing has no producer for.
+        This is the drift half and the case above is the removal half. Stated as an equality rather
+        than a containment: a copy that drifts fails, and so does a figure this crossing has no
+        producer for.
         """
         stated = {int(one) for one in _MILLISECONDS.findall(read(RUNBOOK))}
 
