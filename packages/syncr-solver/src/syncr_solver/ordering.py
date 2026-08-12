@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.plan import Block
     from syncr_solver.inputs import Anchor, AreaBudget, FrameEntry
+    from syncr_solver.state import Held
 
 
 def block_key(block: Block) -> tuple[Instant, Instant, str, str, BindingKind, UUID, str, int]:
@@ -59,6 +60,16 @@ def slot_key(slot: EmptySlot) -> tuple[Instant, Instant, AreaId, str]:
 def span_key(interval: Interval) -> tuple[Instant, Instant]:
     """Span order. Instants rather than their text, so two zones' spellings compare as instants."""
     return (interval.start, interval.end)
+
+
+def held_key(held: Held) -> tuple[Instant, Instant, str]:
+    """Span order, then what holds the span. Both fields a held span carries.
+
+    The index it orders is keyed by binding rather than sorted, so a candidate overlapping two of
+    its spans would otherwise be refused against whichever the inputs listed first. Two entries this
+    key ties hold one span under one name, which is one answer spelled twice.
+    """
+    return (*span_key(held.interval), held.detail)
 
 
 def frame_key(entry: FrameEntry) -> tuple[Instant, Instant, str, str, RoutineId]:
