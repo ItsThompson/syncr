@@ -164,7 +164,7 @@ export function useDiscreteDrag(options: DiscreteDragOptions): DiscreteDrag {
     /* The platform took the pointer away, so nothing was stated. Both events are listened for because a browser
      * sends `pointercancel` and a capture loss sends `lostpointercapture`, and either one ends this drag. Neither is
      * dispatched by jsdom, so the ordering the spec states -- `lostpointercapture` AFTER `pointerup`, which is what
-     * makes it a no-op on a real drop -- rests on the specification rather than on a test here. Ticket 1493. */
+     * makes it a no-op on a real drop -- rests on the specification rather than on a test here. */
     window.addEventListener("pointercancel", clear);
     window.addEventListener("lostpointercapture", clear);
     window.addEventListener("keydown", onKeyDown, CAPTURE);
