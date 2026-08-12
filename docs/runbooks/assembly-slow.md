@@ -72,7 +72,7 @@ process, so read it per `instance`.
 | One repository dominates | That read is the regression, and the list below names what it resolves. It is the usual case, and it is usually a missing index after a migration |
 | `syncr_db_pool_in_use` at 10 | The assembly is waiting for a connection rather than for the database. Pool exhaustion presents exactly like a slow query |
 | Every repository is up together | Look at the database, not the code: `pg_stat_activity`, and container memory on the System dashboard |
-| Nothing is up, but the assembly is | The cost is between the reads, or in one of the two reads that register no series of their own. Check whether the week has many more commitments than it did |
+| Nothing is up, but the assembly is | The cost is between the reads, or in the one read that registers no series of its own. Check whether the week has many more commitments than it did |
 
 ## What the assembly reads, in order
 
@@ -93,7 +93,7 @@ series the read histogram registers, so a row of the panel above is a row of thi
 | 10 | `WeekPatternRepository.read` | the week pattern, which names each day's type |
 | 11 | `TemplateRepository.list_all` | the template entries those day types materialize |
 | 12 | `WeightSetRepository.active` | the duration multipliers, gated by maturity |
-| 13 | `NoRecordedOutcomes.read` | the habit outcome log, from which each rotation cursor and the outstanding debt derive |
+| 13 | `HabitOutcomeLog.read` | the habit outcome log, from which each rotation cursor and the outstanding debt derive |
 | 14 | `AnchorTypeRepository.list_all` | the anchor types, read before the anchors they widen the span for |
 | 15 | `AnchorRepository.overlapping` | the anchors of that widened span, and what each casts into the week |
 | 16 | `TaskRepository.list_all` | the eligible tasks, and the demand per deadline |
@@ -107,9 +107,10 @@ series the read histogram registers, so a row of the panel above is a row of thi
   panel shows its statements under their own names rather than under the seam: `PlanRepository.latest`,
   `SettingsRepository.read`, `PinRepository.for_week` and `BlockOutcomeRepository.for_span`. So
   `SettingsRepository.read` is observed twice in one assembly, at row 1 and again inside row 5.
-- **Row 13 issues no statement in this deployment.** `plans/injection.py` wires the assembler's outcome
-  log to `NoRecordedOutcomes`, which answers with an empty log, registers no series and cannot be the
-  cost.
+- **Row 13 is bounded by the habits, not by the week.** It reads every outcome the tenant's habits
+  hold, because outstanding debt accumulates over the whole log, so its rows grow with the tenant's
+  history while its statement count stays at one. It is the same read the habit routes perform, and
+  a tenant with no habits reaches it without a statement.
 - **`WeekAdjustmentRepository.for_week` is read twice**, at rows 8 and 19, because each week's
   concessions have to be resolved as that week resolves them or the two weeks disagree about how long
   one night was.

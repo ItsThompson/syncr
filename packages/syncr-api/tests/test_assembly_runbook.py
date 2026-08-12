@@ -66,7 +66,6 @@ FACTORY: Final = "build_week_assembler"
 # rest.
 NO_SERIES_OF_ITS_OWN: Final = {
     "StoredPlacements": "composes repositories that are timed under their own names",
-    "NoRecordedOutcomes": "answers from memory and reads no table",
 }
 
 # Where a path this runbook cites is resolved from. The prose is written the way the other runbooks

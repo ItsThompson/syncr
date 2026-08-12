@@ -11,14 +11,12 @@ request-scoped dependency, because two of its three callers are not requests: th
 week and the horizon maintainer materializes one, and neither has a principal. The week service is
 request-only and takes the principal's own dependency.
 
-One seam is wired to a reader that answers with nothing, and it is the honest reading of this
-deployment rather than a placeholder:
+**No seam here answers with nothing.** Every collaborator the assembler takes reads the tables its
+own module owns, and the ones whose names invite the question say so below.
 
-``NoRecordedOutcomes`` for the ASSEMBLER's habit outcome log, which is a different question from the
-one the week view asks: it attributes a row to a habit occurrence, and the wiring that answers it is
-the habit module's own.
-
-Whoever brings it online changes one line here.
+``HabitOutcomeLog`` is plan storage's projection of ``block_outcomes``, and it is the SAME reader
+the habit routes acquire. One log, so the variant a plan places for a rotation habit and the variant
+that habit's own screen names come from one reading rather than from two that may disagree.
 
 ``StoredPlacements`` is NOT a stub: it reads the newest revision, the week's pins, the outcomes of
 the span, and the profile a pin's creation instant is dated in. Four statements behind one
@@ -47,7 +45,6 @@ from syncr_api.budgets.injection import build_budget_service
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
-from syncr_api.habits.outcome_log import NoRecordedOutcomes
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.repository import OffPlanPeriodRepository
@@ -56,6 +53,7 @@ from syncr_api.outcomes.planned_days import PlannedDayReader
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.assembler import AssemblyCaller, WeekAssembler
 from syncr_api.plans.conflicts import PlanConflictRepository
+from syncr_api.plans.habit_log import HabitOutcomeLog
 from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.placements import StoredPlacements
 from syncr_api.plans.proposals import PendingProposalRepository
@@ -115,7 +113,7 @@ def build_week_assembler(
         week_pattern=WeekPatternRepository(transaction, tenant_id),
         templates=TemplateRepository(transaction, tenant_id),
         habits=HabitRepository(transaction, tenant_id),
-        outcomes=NoRecordedOutcomes(),
+        outcomes=HabitOutcomeLog(transaction, tenant_id),
         tasks=TaskRepository(transaction, tenant_id),
         areas=AreaRepository(transaction, tenant_id),
         preferences=PreferenceRepository(transaction, tenant_id),

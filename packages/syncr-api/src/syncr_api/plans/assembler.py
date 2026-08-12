@@ -12,8 +12,8 @@ bullets below are counted to match it, because a latency budget and an alert are
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
 histogram's alert is read against that budget. **The budget and the alert were both set against a
 figure of eleven, which was never counted; recalibrating them is its own piece of work, and
-restating the figure here does not do it.** One of the eighteen is a stub today, named below with
-what it awaits, and one performs four statements behind a single call.
+restating the figure here does not do it.** One of the eighteen performs four statements behind a
+single call, named below.
 
 ```
 assemble(iso_week, now, extra_adjustment=None)
@@ -59,11 +59,7 @@ a tradeoff request from persisting anything.
 the week before it each have their own approved concessions, and the inherited occurrence has to
 be resolved as its own week resolves it or the two weeks disagree about how long one night was.
 
-## One resolution awaits another component, and it is honest rather than absent
-
-*The habit outcome log* comes through a reader whose production implementation answers with nothing.
-It is a seam rather than a silence: the cursor and the debt figure are exercised through the real
-arithmetic in the suite, and bringing a reader online changes one line of wiring.
+## One resolution costs four statements, and the read figure counts the call
 
 *The live plan, its pins and its outcomes* are read for real. One collaborator call, and four
 statements behind it: that gap is stated on the seam itself, because the p95 budgets in section 19
