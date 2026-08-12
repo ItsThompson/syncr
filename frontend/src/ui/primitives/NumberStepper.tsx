@@ -13,9 +13,10 @@
  * type="number">` reads a `min` attribute as its STEP BASE, so a floor of 1 under a step of 5 puts the
  * element's own arrow keys on 1, 6, 11 and steps 420 down to 416, and every figure on the declared grid is
  * then a step mismatch a form refuses to submit. With no `min` the base falls back to the `value` attribute,
- * which React keeps equal to the figure shown, so an arrow key moves by the declared step from wherever the
- * reader is. The element will therefore step below the floor; `commit` is where the floor holds. `max` stays
- * on the element, because a ceiling moves no grid.
+ * which React writes from the figure shown and then holds still while a number field has focus: an arrow key
+ * steps by the declared step from the figure the field held when the reader reached it, and a figure typed
+ * off that grid stays a step mismatch until a commit snaps it. The element will therefore step below the
+ * floor; `commit` is where the floor holds. `max` stays on the element, because a ceiling moves no grid.
  *
  * The value is snapped on every commit, not only on the buttons: typing 50 into a duration is the case
  * `docs/design/components.html` renders as invalid, and the caller decides whether to correct or to
