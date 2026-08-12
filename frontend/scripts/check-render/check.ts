@@ -38,6 +38,7 @@ import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { BROWSER_ENV, findBrowser, screenshot } from "./browser.ts";
 import { buildDragRead, DRAG_READ_SCRIPT } from "./dragRead.ts";
 import { horizontalRead } from "./horizontalRead.ts";
+import { frontendRoot } from "../lib/paths.ts";
 import { differencesBetween, imageOf, lastInkedColumn, sketch, type Region } from "./pixels.ts";
 import {
   CASES,
@@ -139,7 +140,7 @@ async function compiledRead(): Promise<{ code: string | null; findings: Finding[
       code: null,
       findings: [
         {
-          file: path.join("frontend", "scripts", "check-render", "dragRead.ts"),
+          file: path.join(frontendRoot, "scripts", "check-render", "dragRead.ts"),
           check: "column-readings",
           message:
             "the drag's own pointer read did not compile, so the page could not be asked what a position over the " +
