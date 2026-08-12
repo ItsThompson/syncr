@@ -59,7 +59,8 @@ const DRAG_QUESTIONS = [
 ];
 
 const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const SHIFTED_ARROW_CELL = /Shift\+[↑↓←→]/;
+/** A keys cell naming a shifted arrow, spelt as a glyph or in words, because either would be a horizontal pair. */
+const SHIFTED_ARROW_CELL = /Shift\+(?:[↑↓←→]|(?:Arrow)?(?:Up|Down|Left|Right)\b)/;
 
 /** One section of the design language, from its own heading to the next one at that level. */
 async function sectionOf(heading: string): Promise<string> {
