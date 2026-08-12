@@ -25,13 +25,15 @@ import {
 } from "../geometry";
 
 describe("the grid height a window leaves", () => {
-  /* THE PIN. `--grid-h` is the grid a 1440x900 window really gets, mirrored from the token and asserted against it
-   * by `metrics.test.ts`. This screen has no grid to measure, so it takes the difference at that window, and this
-   * case is what refuses any other way of arriving at the height. */
-  it("equals --grid-h at the window --grid-h is stated against", () => {
+  /* THE PIN. `--grid-h` is the height the token states for a 1440x900 display, mirrored by `metrics.ts` and
+   * asserted against the token by `metrics.test.ts`. This screen has no grid to measure, so it takes the
+   * difference at that window, and this case is what refuses any other way of arriving at the height. */
+  it("arrives at --grid-h by subtracting the allowance, and refuses any other route to it", () => {
     expect(gridHeightFor(REFERENCE_WINDOW_HEIGHT_PX)).toBe(GRID_H_PX);
   });
 
+  /* The five, in the order the module's header names them: the top bar, the page band, the page padding, the
+   * summary strip and the day header. */
   it("is the larger reading of the chrome than the bands measured directly", () => {
     const measuredBands = 43 + 63 + 66 + 64 + 28;
 
@@ -50,10 +52,14 @@ describe("the grid height a window leaves", () => {
 
 /* THE TWO ANSWERS, CROSSED AGAINST EACH OTHER RATHER THAN EACH AGAINST ITSELF.
  *
- * Settings answers from the window and the grid answers from the element it measured, so a case that reads this
- * module twice says nothing about the pair. Each helper below takes its answer from the module that ships it, and
- * `gridHeightPx(element - DAY_HEADER_H_PX)` is the expression `WeekGrid.tsx` runs on its own measurement: the
- * element-to-measurement half is `week-grid/__tests__/grid.test.tsx`'s.
+ * Settings answers from a window and the grid answers from an element, so a case that reads this module twice says
+ * nothing about the pair. Each helper below takes its answer from the module that ships it, and
+ * `gridHeightPx(element - DAY_HEADER_H_PX)` is the expression `WeekGrid.tsx` runs on its own measurement.
+ *
+ * WHAT THESE CASES DO NOT SHOW IS WHAT THE GRID'S ELEMENT MEASURES, and nothing in this suite can: jsdom is a DOM
+ * and not a layout engine, so every height here is one a case supplies. The element fed below is the one `--grid-h`
+ * describes, which is also the height the grid falls back on before a layout; whether a rendered grid measures that
+ * is a browser question and `week-grid/__tests__/grid.test.tsx` stubs it too.
  *
  * `zoomCap` is `floor(gridPx / 38)` clamped, so sixteen levels need 608px and the reference grid's 626 carries 18px
  * of slack. That is what the pair survives, and it is why 19px of chrome the allowance does not know about is the
@@ -71,13 +77,13 @@ const capTheGridDraws = (elementHeightPx: number) =>
  */
 const RECORD_WINDOW_PX = 900;
 
-/** The grid element at the reference window: `--grid-h`'s canvas, plus the day header that sits inside it. */
-const REFERENCE_ELEMENT_PX = GRID_H_PX + DAY_HEADER_H_PX;
+/** The element `--grid-h` describes: that canvas, plus the day header that sits inside the element with it. */
+const ELEMENT_GRID_H_DESCRIBES_PX = GRID_H_PX + DAY_HEADER_H_PX;
 
 describe("the cap this screen names and the cap the grid draws", () => {
-  it("are both 16 at the reference window, which is the display record's own figure", () => {
+  it("are both 16: this screen at a 900px window, the grid on the element --grid-h describes", () => {
     expect(capSettingsNames(RECORD_WINDOW_PX)).toBe(16);
-    expect(capTheGridDraws(REFERENCE_ELEMENT_PX)).toBe(16);
+    expect(capTheGridDraws(ELEMENT_GRID_H_DESCRIBES_PX)).toBe(16);
   });
 
   /* A first paint and a headless DOM both report zero, and the grid answers from `--grid-h` until a layout happens.
@@ -88,8 +94,8 @@ describe("the cap this screen names and the cap the grid draws", () => {
   });
 
   it("part at 19px of chrome the allowance does not carry, and hold at 18", () => {
-    expect(capTheGridDraws(REFERENCE_ELEMENT_PX - 18)).toBe(16);
-    expect(capTheGridDraws(REFERENCE_ELEMENT_PX - 19)).toBe(15);
+    expect(capTheGridDraws(ELEMENT_GRID_H_DESCRIBES_PX - 18)).toBe(16);
+    expect(capTheGridDraws(ELEMENT_GRID_H_DESCRIBES_PX - 19)).toBe(15);
     expect(capSettingsNames(RECORD_WINDOW_PX)).toBe(16);
   });
 });
