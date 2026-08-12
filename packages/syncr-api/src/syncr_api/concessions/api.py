@@ -17,8 +17,8 @@ the only route here that computes a verdict, so it is the only one that may be r
 that header wrongly.
 
 Two routers rather than one, and the split is the resource: a tradeoff is a request about the week,
-an adjustment is a row the week holds. It is also the only conflict this module can answer, so the
-status each router declares is the status its own routes raise.
+an adjustment is a row the week holds. Requesting is also the only act here that can conflict with
+the state of the week, so each router declares the statuses its own routes raise.
 """
 
 from __future__ import annotations
