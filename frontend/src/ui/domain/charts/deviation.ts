@@ -14,8 +14,9 @@ import type { DeviationRow } from "./series";
 /**
  * U+2212 MINUS SIGN, not a hyphen: it sets at the width of the plus, so a column of signed figures aligns.
  *
- * The kit's glyph table makes the same choice for the disclosure mark, and `__tests__/deviation.test.ts` reads
- * `--glyph-minus` out of that table and asserts this is the same codepoint. It is real text rather than
+ * The kit's glyph table makes the same choice for `--glyph-minus`, which the number stepper's decrease control
+ * and the indeterminate checkbox draw, and `__tests__/deviation.test.ts` reads that entry out of the table and
+ * asserts this is the same codepoint. It is real text rather than
  * generated content because the sign IS the reading here: a decorative glyph would leave a screen reader saying
  * "two hours" for a two-hour shortfall.
  */

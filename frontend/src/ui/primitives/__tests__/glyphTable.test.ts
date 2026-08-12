@@ -28,7 +28,11 @@ import { kitStylesheet } from "../../../testing/kitStylesheets";
 
 const GLYPH_DECLARATION = /--glyph-([a-z-]+):\s*("(?:[^"\\]|\\.)*")/g;
 
-/** The classes in one selector's subject, which is the compound after its last combinator. */
+/** The classes in one selector's subject, which is the compound after its last combinator.
+ *
+ * The class is matched by its tail and reassembled rather than spelled out, because a pattern naming a class
+ * family puts a hyphen against a character class and `lint:markup` reads that as Tailwind's arbitrary-value
+ * form: `/\.(state-[\w-]*)/` in this file fails the scan with `no-arbitrary-value`. */
 function subjectClasses(selector: string): string[] {
   const subject = selector.split(/[\s>+~]+/).at(-1) ?? "";
   return [...subject.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((match) => match[1]);
