@@ -355,9 +355,9 @@ describe("the drag that issues no request", () => {
  * stubbed box so that no press lands in a column leaves such a case green with its own premise destroyed. So each case
  * below states a target first and then watches it go.
  *
- * THE FIRST CASE IS WHAT MAKES THE OTHER TWO MEAN SOMETHING. A refusal on one axis with the other pinned cannot tell
- * "one axis is free" from "this axis is free": the pointer moves across the column here and states the same instant, so
- * the box bounds the horizontal axis without the minute ever reading it.
+ * THE FIRST CASE IS WHAT MAKES THE TWO REFUSALS MEAN SOMETHING. A refusal on one axis with the other pinned cannot
+ * tell "one axis is free" from "this axis is free": the pointer moves across the column here and states the same
+ * instant, so the box bounds the horizontal axis without the minute ever reading it.
  *
  * WHAT THE STUBBED BOX CANNOT SEE. Every canvas answers the same box, so no case in this file can tell one column from
  * another: what is asserted is that a position outside the ORIGIN box states nothing, not that the position was over
