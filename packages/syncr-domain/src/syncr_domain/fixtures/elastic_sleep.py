@@ -57,7 +57,7 @@ TITLE: Final = "Sleep"
 TARGET_TIME: Final = time(23, 0)
 DURATION_MINUTES: Final = 8 * 60
 MIN_DURATION_MINUTES: Final = 7 * 60 + 40
-# What one night could be shortened by: the target less the minimum R6 clamps to.
+# What one night could be shortened by: the target less the minimum the assembler clamps to.
 GIVE_MINUTES: Final = DURATION_MINUTES - MIN_DURATION_MINUTES
 
 # Tuesday 10 February 2026 at 09:00 local, which is 09:00Z. Monday night's occurrence ended two

@@ -23,7 +23,7 @@ from syncr_domain.snap import (
 from tests.instants import MONDAY, at
 
 # Every producer that owes the grid a quarter hour, with an off-grid instant each
-# would have to place. The solver's own H14 check reads the same predicate.
+# would have to place. The solver's own grid check reads the same predicate.
 SNAPPING_PRODUCERS: list[tuple[str, Instant]] = [
     ("solver output", at(9, 7)),
     ("drag", at(13, 22)),

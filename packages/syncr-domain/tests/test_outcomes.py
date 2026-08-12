@@ -261,7 +261,7 @@ class TestWhatEachStateAttributes:
     """
 
     def test_a_block_with_no_row_at_all_attributes_its_planned_span(self) -> None:
-        # O1: a block is presumed complete with no user action, so the absence of a row is a
+        # A block is presumed complete with no user action, so the absence of a row is a
         # reading rather than a gap. Without this the common case would attribute nothing.
         assert attributed_span(PLANNED, None) == PLANNED
 
@@ -318,7 +318,7 @@ class TestWhatEachStateAttributes:
 
 
 class TestTheDataTwoOfTheStatesCarry:
-    """O2 and O7's first half, each checked in both directions.
+    """A partial's minutes and a move's interval, each checked in both directions.
 
     The reverse direction is not tidiness. A figure on a state that does not name one is a value
     no reader looks at, so it can disagree with the span the block was planned for and nothing

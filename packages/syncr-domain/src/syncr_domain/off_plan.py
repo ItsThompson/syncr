@@ -44,7 +44,7 @@ module. They are listed so a reader looking for one here learns that it is elsew
 
 * Nothing materializes inside the span, and ``keep_frame`` decides whether routines do.
 * The solver places no task, habit occurrence, or Area slot inside the span.
-* A pin inside the span is honored as a hard constraint (H11 and H12).
+* A pin inside the span is honored as a hard constraint, and is the one placement it admits.
 * Anchors still ingest and shadows still generate, having nothing to forbid.
 * An anchor over a pinned block inside the span is still a conflict.
 * The span is excluded wholesale from reviews and from every fitter.

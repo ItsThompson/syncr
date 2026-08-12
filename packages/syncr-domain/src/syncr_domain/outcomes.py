@@ -236,7 +236,7 @@ def _reported_duration(outcome: RecordedOutcome) -> timedelta:
 def _require_the_minutes_only_a_partial_carries(
     state: OutcomeState, actual_minutes: int | None
 ) -> None:
-    """O2, in both directions, because the pair is the sole source of the duration signal."""
+    """Both directions, because that pair is the sole source of the duration-estimate signal."""
     if state is MINUTES_STATE and actual_minutes is None:
         raise OutcomeError(
             f"a {MINUTES_STATE.value!r} outcome states how many minutes it really took: it is the "
@@ -260,7 +260,7 @@ def _require_the_minutes_only_a_partial_carries(
 def _require_the_interval_only_a_move_carries(
     state: OutcomeState, actual_interval: Interval | None
 ) -> None:
-    """O7's first half, in both directions. The second half is that it creates no pin.
+    """Both directions, and the other half of the rule is that a move creates no pin.
 
     Where the work really happened is the signal the time-of-day fitness curve is fitted from, so
     a move that does not say when carries no signal at all. The other direction matters for the

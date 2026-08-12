@@ -74,7 +74,7 @@ def test_the_reduced_night_is_the_declaration_less_one_nights_reduction() -> Non
         fixture.TUESDAY_NIGHT_REDUCED.total_minutes()
         == fixture.DURATION_MINUTES - fixture.REDUCTION_EACH
     )
-    # Above the minimum, so this reduction is honoured in full rather than clamped by R6.
+    # Above the minimum, so this reduction is honoured in full rather than clamped to it.
     assert fixture.TUESDAY_NIGHT_REDUCED.total_minutes() >= fixture.MIN_DURATION_MINUTES
 
 

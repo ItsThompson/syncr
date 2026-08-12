@@ -126,8 +126,8 @@ def test_a_confirmed_skip_on_the_past_hour_raises_the_demand_by_that_hour() -> N
 
 def test_the_healthy_weeks_demand_is_re_derived_through_the_same_table() -> None:
     # The other side of the pair, so the two figures come from one mechanism: with no row at all the
-    # past hour attributes its planned span, which is what O1 means and what keeps the minutes from
-    # vanishing from both sides of the arithmetic.
+    # past hour attributes its planned span, because an absent row is the ordinary case rather than
+    # a gap, and that is what keeps the minutes from vanishing from both sides of the arithmetic.
     attributed_past = attributed_span(partial_progress.UNCONFIRMED_PAST, None)
 
     assert attributed_past == partial_progress.UNCONFIRMED_PAST

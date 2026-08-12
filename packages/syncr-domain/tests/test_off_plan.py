@@ -47,7 +47,7 @@ def off_plan_periods(draw: st.DrawFn) -> OffPlanPeriod:
 
 
 # --------------------------------------------------------------------------------
-# OP1: the bounds run forward and land on the quarter hour
+# The bounds run forward and land on the quarter hour
 # --------------------------------------------------------------------------------
 
 
@@ -118,7 +118,7 @@ def test_a_zero_length_span_is_refused_by_the_interval_itself() -> None:
 
 
 # --------------------------------------------------------------------------------
-# OP2: two periods never cover a common instant
+# Two periods never cover a common instant
 # --------------------------------------------------------------------------------
 
 
