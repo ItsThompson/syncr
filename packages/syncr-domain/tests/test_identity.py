@@ -1,6 +1,6 @@
 """Block identity: the seven keys, the mapping between two vocabularies, and the derived id.
 
-Four groups, and the third is the one the rest of the epic rests on.
+Four groups, and the third is the one the rest of the product rests on.
 
 **The two vocabularies.** Seven members each, three spelled differently, and one mapping
 between them asserted total and injective in both directions. Without injectivity a block's

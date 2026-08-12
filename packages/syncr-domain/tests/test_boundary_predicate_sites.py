@@ -8,8 +8,7 @@ of an interval's start against something that is not another bound, in every shi
 is enumerated and held against the set of places allowed to hold one.
 
 No count of sites appears here. Two were published in this module's first version and both were
-wrong, because a count in a comment is a measurement that has stopped being taken. The census
-belongs in the changeset, where it is dated.
+wrong, because a count in a comment is a measurement that has stopped being taken.
 
 The reading is symmetric: either side may carry the `.start`, and all four ordering operators
 count. A rule stated over a pair of predicates has to be enforced over both, and a rule about a
@@ -25,7 +24,7 @@ WHAT THIS WALK CANNOT SEE, stated so a green result is not read as more than it 
 
 * the comparison written through a local name. `start = interval.start` and then `start <= now`
   carries no attribute named `start` on either side, so it reads here as no comparison at all.
-  Unenforced. The sweep that found no such site is in the changeset, where it is dated.
+  Unenforced.
 * a comparison passed directly to `.where`, `.filter` or `.having`. Those are excluded on purpose,
   because a stored column compared against a span's bound is the same shape as this predicate and
   no property of the syntax separates them. The exclusion is structural rather than a list of

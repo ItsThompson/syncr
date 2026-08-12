@@ -1,6 +1,6 @@
 """The reason record: the six clause kinds, the widening, and the budget that bounds them.
 
-Three things are asserted here, and the second is the one the epic keeps at six kinds.
+Three things are asserted here, and the second is the one that keeps the vocabulary at six kinds.
 
 **The record is bounded and never empty.** Every block carries a reason with at least one
 clause, and no kind appears more often than the budget allows. A revision document is

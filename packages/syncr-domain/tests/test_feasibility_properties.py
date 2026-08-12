@@ -79,7 +79,7 @@ NAMES = {FITNESS: "Fitness", CAREER: "Career", STUDY: "Study"}
 # filters some draws out. At 600 three of the four sites reddened 5 runs of 5 and one reddened 4.
 # At 1200 all four reddened 5 of 5, and the file costs 6.7 s rather than 4.5 s.
 #
-# **A probabilistic guard on the ticket's central arithmetic is worth two seconds.** CI keeps no
+# **A probabilistic guard on the probe's central arithmetic is worth two seconds.** CI keeps no
 # hypothesis database, so CI sees the fresh-run rate rather than a replayed counterexample, and a
 # green run under a reintroduced site is the outcome this figure exists to prevent.
 HALL_EXAMPLES = 1200
@@ -121,7 +121,7 @@ def weeks(
     """A week with occupancy, a floor in each of two Areas, a demand in each, and scoped windows.
 
     Every shape here is drawn because a property is stated over it, and two of them were added
-    after a reviewer proved the generator could not reach the case the arithmetic got wrong:
+    because the generator could not otherwise reach the case the arithmetic got wrong:
 
     *Two demands in two Areas.* The accumulation across deadlines is what makes one demand's
     capacity depend on another's, and a generator with one demand cannot produce a competitor at
