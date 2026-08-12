@@ -1060,7 +1060,16 @@ def test_a_snapshot_whose_inputs_are_not_an_object_is_refused() -> None:
         inputs_of({FORM: SNAPSHOT_FORM, INPUTS: []})
 
 
-@pytest.mark.parametrize("stored", [[], "a snapshot", 7, None, ()])
+@pytest.mark.parametrize(
+    "stored",
+    [
+        pytest.param([], id="an array"),
+        pytest.param("a snapshot", id="text"),
+        pytest.param(7, id="a number"),
+        pytest.param(None, id="a null column"),
+        pytest.param((), id="an empty tuple"),
+    ],
+)
 def test_a_snapshot_that_is_not_an_object_at_all_is_refused(stored: Any) -> None:
     """The envelope, refused the way every level below it is rather than indexed first.
 
