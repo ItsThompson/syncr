@@ -157,6 +157,22 @@
      `ui/primitives/states.css` with the other row states and the mark in
      `ui/primitives/glyphs.css`, where the mark table is.
 
+     ONE STATE BELONGS TO A CONTROL RATHER THAN TO AN OBJECT A READER COMPARES ACROSS STATES,
+     and it is here for the reason the two row states are: the channel table is one table.
+
+       hidden until focused   the clip geometry         --state-hidden-*
+
+     A skip link is the case. It has no resting mark to compare against, because at rest it is
+     not on the screen at all, so the channel it spends is geometry: clipped to a 1px box, then
+     restored to its own box under :focus-visible. That is the only state it takes, and the
+     narrowing carries the weight, because the same six properties are ordinary layout under
+     every other state.
+
+     PERMANENTLY HIDDEN IS A DIFFERENT STATE. `sr-only` never reveals, and a control that does
+     reveal is written as a declaration under a state selector rather than as a variant utility:
+     `scripts/check-channels` reads a CSS declaration and skips a variant utility it does not
+     know, so only one of the two spellings can be enforced.
+
      A calendar block differs from a transcript row in one way that drives all of this:
      it must be a bounded object distinct from the grid's own lines, so IT SPENDS A FILL
      JUST TO EXIST. The fill channel therefore has three values rather than two, and they
@@ -198,6 +214,15 @@
                                         other. */
   --state-proposal-border: var(--hairline);
   --state-margin: 3px; /* live margin a focus ring needs to bleed into */
+  --state-hidden-size: 1px; /* the box a clipped control keeps so it stays focusable and reachable
+                                        by Tab. A separate name from --hairline, which is a border
+                                        width: the two are the same figure for unrelated reasons,
+                                        and one name would tie a control's reveal to the weight of
+                                        a line. */
+  --state-hidden-clip: inset(50%); /* what hides it. `clip` is deprecated, and `display: none` and
+                                        `visibility: hidden` both take the control out of the focus
+                                        order, so a control that must be reachable before it is
+                                        seen is clipped rather than removed. */
 
   /* ------------------------------------------------------------------------
      MOTION IS ZERO, WITHOUT EXCEPTION.
