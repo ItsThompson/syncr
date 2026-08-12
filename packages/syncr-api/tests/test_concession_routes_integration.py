@@ -17,10 +17,11 @@ candidate would fill empty space and be adopted as the plan of record with no ro
 anything had been conceded. Every request case therefore drives a week whose plan of record holds
 one block a solve placed: the state the route exists to serve.
 
-*A request never joins a pending solve.* A pin made two seconds earlier would absorb it and the
-proposal would look as though syncr ignored the user, so the pending operation is superseded and the
-replacement carries the candidate. The single-flight invariant still holds afterwards: exactly one
-non-terminal solve for the week.
+*A request never joins a solve already in flight.* A pin made two seconds earlier would absorb it
+and the proposal would look as though syncr ignored the user, so the operation in flight is
+superseded and the replacement carries the candidate. That holds for a solve already RUNNING as
+well as a pending one. The single-flight invariant still holds afterwards: exactly one non-terminal
+solve for the week.
 
 *Revoking does all three things WA8 asks for.* The row goes, the week's input version moves, and a
 plan without the concession is asked for.
@@ -57,8 +58,9 @@ from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.config import PENDING, SOLVE, SUPERSEDED
+from syncr_api.solving.config import NON_TERMINAL_STATUSES, PENDING, SOLVE, SUCCEEDED, SUPERSEDED
 from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.outcomes import Succeeded
 from syncr_api.solving.repository import OperationRepository
 from syncr_domain.identity import Origin, is_placed_by_the_solver
 from syncr_domain.intervals import Interval
@@ -319,6 +321,23 @@ def seeded_solve(database_url: str, tenant_id: TenantId, *, running: bool) -> Op
     return run(write())
 
 
+def a_solve_that_landed(database_url: str, tenant_id: TenantId) -> OperationRecord:
+    """One solve of the week that has already committed, as a worker winning the race leaves it."""
+    running = seeded_solve(database_url, tenant_id, running=True)
+
+    async def finish() -> OperationRecord:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                return await OperationLifecycle(
+                    OperationRepository(session, tenant_id), lambda: datetime.now(UTC)
+                ).finish(running.id, Succeeded())
+        finally:
+            await database.engine.dispose()
+
+    return run(finish())
+
+
 def seeded_concession(
     database_url: str, tenant_id: TenantId, *, iso_week: IsoWeek = WEEK
 ) -> WeekAdjustmentRecord:
@@ -471,15 +490,15 @@ def test_a_request_supersedes_a_pending_solve_rather_than_joining_it(
     assert [one.id for one in held.values() if one.status == PENDING] == [replacement.id]
 
 
-def test_a_request_while_a_solve_is_running_is_refused_rather_than_absorbed(
+def test_a_request_while_a_solve_is_running_supersedes_it_rather_than_being_refused(
     http: TestClient,
     owner: UserRecord,
     live_database_url: str,
     a_short_solved_week: tuple[dict[str, str], str],
 ) -> None:
-    # There is no second non-terminal solve to create while one runs, and joining the one that runs
-    # is the one thing this route may not do. So it refuses, names what still works, and leaves the
-    # running solve alone: the coordinator owns the queued alternative.
+    # Joining the running solve is the one thing this route may not do and queueing behind it would
+    # need a second non-terminal solve, so the running row is closed and the replacement carries the
+    # candidate. The reader gets an answer to the question they asked when they asked it.
     headers, area_id = a_short_solved_week
     running = seeded_solve(live_database_url, owner.tenant_id, running=True)
 
@@ -487,12 +506,46 @@ def test_a_request_while_a_solve_is_running_is_refused_rather_than_absorbed(
         http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
     )
 
-    assert status == HTTPStatus.CONFLICT, body
-    assert "already running" in body["detail"]
-    held = operations(live_database_url, owner.tenant_id)
-    assert [one.id for one in held] == [running.id]
-    assert held[0].candidate_adjustment is None
+    assert status == HTTPStatus.ACCEPTED, body
+    held = {operation.id: operation for operation in operations(live_database_url, owner.tenant_id)}
+    assert held[running.id].status == SUPERSEDED
+    replacement = held[UUID(body["id"])]
+    assert held[running.id].superseded_by == replacement.id
+    assert replacement.status == PENDING
+    assert replacement.candidate_adjustment is not None
+    # The single-flight invariant, after the exchange: one non-terminal solve for the week.
+    assert [one.id for one in held.values() if one.status in NON_TERMINAL_STATUSES] == [
+        replacement.id
+    ]
+    # Requesting still persists nothing: the candidate rides on the operation and nowhere else.
     assert stored_concessions(live_database_url, owner.tenant_id) == []
+
+
+def test_a_request_behind_a_solve_that_already_landed_answers_with_a_replacement(
+    http: TestClient,
+    owner: UserRecord,
+    live_database_url: str,
+    a_short_solved_week: tuple[dict[str, str], str],
+) -> None:
+    # The other order of the same race: the solve committed before the request reached the row, so
+    # there is nothing in flight and nothing to supersede. The answer is still the operation to
+    # follow, and the row the solve left is untouched: a request never rewrites a finished solve.
+    headers, area_id = a_short_solved_week
+    landed = a_solve_that_landed(live_database_url, owner.tenant_id)
+
+    status, body = request_tradeoff(
+        http, headers, kind=AdjustmentKind.BREACH_FLOOR.value, target_id=area_id
+    )
+
+    assert status == HTTPStatus.ACCEPTED, body
+    held = {operation.id: operation for operation in operations(live_database_url, owner.tenant_id)}
+    assert held[landed.id].status == SUCCEEDED
+    assert held[landed.id].superseded_by is None
+    replacement = held[UUID(body["id"])]
+    assert replacement.candidate_adjustment is not None
+    assert [one.id for one in held.values() if one.status in NON_TERMINAL_STATUSES] == [
+        replacement.id
+    ]
 
 
 def test_a_signed_out_caller_cannot_request_a_tradeoff(http: TestClient) -> None:

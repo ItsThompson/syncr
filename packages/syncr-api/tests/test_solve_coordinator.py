@@ -11,9 +11,10 @@ pending operation; with one pending and not immediate it leaves it, which is the
 with one pending and immediate it pulls the due instant forward; with one running it does nothing at
 all, because the mutation that asked has already bumped the version.
 
-**A tradeoff request is the exception**, and it may never join: it supersedes a pending operation
-and takes its place, it is refused rather than queued while a solve is running, and a pending
-tradeoff is left alone by an ordinary mutation so its concession is not lost.
+**A tradeoff request is the exception**, and it may never join: it supersedes whatever is in flight
+and takes its place, a running solve included, and a pending tradeoff is left alone by an ordinary
+mutation so its concession is not lost. Superseding a RUNNING solve races that solve's own terminal
+step, and the order the database picks decides which of the two answers the request gives.
 
 **The window is fixed from the first mutation of a burst, not slid by later ones.** A burst of two
 hundred edits resolves within one window of its start and creates exactly one operation, which is
@@ -36,17 +37,18 @@ import pytest
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.solving.config import (
+    NON_TERMINAL_STATUSES,
     PENDING,
     RUNNING,
     SOLVE,
+    SUCCEEDED,
     SUPERSEDED,
 )
 from syncr_api.solving.coordinator import SolveCoordinator
-from syncr_api.solving.errors import SolveIsRunning
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.metrics import SOLVE_TALLY
-from syncr_api.solving.outcomes import Superseded
+from syncr_api.solving.outcomes import Succeeded, Superseded
 from syncr_api.solving.repository import OperationRepository
 from syncr_common.metrics import REGISTRY
 from syncr_domain.weeks import IsoWeek
@@ -157,6 +159,18 @@ async def read(
         found = await OperationRepository(session, owner.tenant_id).find(operation.id)
     assert found is not None
     return found
+
+
+async def non_terminal_solves(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> list[object]:
+    """The ids of every solve of the week the partial unique index still counts.
+
+    Read from the status set rather than by naming ``pending``, so a solve left running counts here
+    too: what the index enforces is one non-terminal row, and a case that filtered to pending would
+    report the invariant held while a running row sat beside the replacement.
+    """
+    return [one.id for one in await solves(sessions, owner) if one.status in NON_TERMINAL_STATUSES]
 
 
 class TestIdempotencePerWeek:
@@ -282,21 +296,90 @@ class TestATradeoffNeverJoins:
         assert displaced.status == SUPERSEDED
         assert displaced.superseded_by == tradeoff.id
 
-    async def test_a_candidate_against_a_running_solve_is_refused_rather_than_queued(
+    async def test_a_candidate_against_a_running_solve_supersedes_it_and_takes_its_place(
         self,
         sessions: async_sessionmaker[AsyncSession],
         coordinator: Build,
         owner: UserRecord,
         clock: Ticking,
     ) -> None:
-        # Queueing it would need a second non-terminal solve for the week, which is the invariant
-        # this component exists to hold. The refusal is bounded by the solve's own budget.
-        await claimed(sessions, coordinator, owner, clock)
+        # The reader asked about the week in front of them, and the running solve is answering a
+        # question they have moved past. Queueing behind it would need a second non-terminal solve,
+        # which is the invariant this component holds, so the running row is closed instead.
+        running = await claimed(sessions, coordinator, owner, clock)
 
-        with pytest.raises(SolveIsRunning):
-            await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
 
-        assert len(await solves(sessions, owner)) == 1
+        assert tradeoff.id != running.id
+        assert tradeoff.candidate_adjustment == A_CANDIDATE
+        displaced = await read(sessions, owner, running)
+        assert displaced.status == SUPERSEDED
+        assert displaced.superseded_by == tradeoff.id
+        assert await non_terminal_solves(sessions, owner) == [tradeoff.id]
+
+    async def test_a_solve_that_committed_before_the_request_leaves_it_a_replacement(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+        clock: Ticking,
+    ) -> None:
+        # The ordinary form of the other order: the solve landed before this request read anything,
+        # so there is nothing in flight and nothing to supersede. Asserted through the row it left,
+        # because a succeeded solve that had been closed anyway would read the same from the
+        # replacement alone.
+        running = await claimed(sessions, coordinator, owner, clock)
+        async with sessions() as session, session.begin():
+            await OperationLifecycle(OperationRepository(session, owner.tenant_id), clock).finish(
+                running.id, Succeeded()
+            )
+
+        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+
+        assert tradeoff.candidate_adjustment == A_CANDIDATE
+        landed = await read(sessions, owner, running)
+        assert landed.status == SUCCEEDED
+        assert landed.superseded_by is None
+        assert await non_terminal_solves(sessions, owner) == [tradeoff.id]
+
+    async def test_a_solve_that_commits_inside_the_window_still_leaves_a_replacement(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+        clock: Ticking,
+    ) -> None:
+        """The narrow order, driven at the one instant it exists: after the read, before the close.
+
+        The window cannot be opened from outside a single call, because the request reads the row
+        and closes it in two statements of one transaction and a second session's commit is visible
+        to the second of them. So the read is the real one, the worker's commit is the real one, and
+        what is driven is the branch a real lost race reaches: the close applying to no row.
+
+        Left to raise, this is a 500 on a request that has changed nothing.
+        """
+        running = await claimed(sessions, coordinator, owner, clock)
+
+        async with sessions() as session, session.begin():
+            requesting = coordinator(session)
+            in_flight = await OperationRepository(session, owner.tenant_id).in_flight(
+                WEEK, kind=SOLVE
+            )
+            assert in_flight is not None
+            assert in_flight.status == RUNNING
+            async with sessions() as worker, worker.begin():
+                await OperationLifecycle(
+                    OperationRepository(worker, owner.tenant_id), clock
+                ).finish(running.id, Succeeded())
+            tradeoff = await requesting._for_a_candidate(
+                WEEK, in_flight, A_CANDIDATE, at_version=AT_VERSION
+            )
+
+        assert tradeoff.candidate_adjustment == A_CANDIDATE
+        landed = await read(sessions, owner, running)
+        assert landed.status == SUCCEEDED
+        assert landed.superseded_by is None
+        assert await non_terminal_solves(sessions, owner) == [tradeoff.id]
 
     async def test_an_ordinary_mutation_leaves_a_pending_tradeoff_alone(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, owner: UserRecord

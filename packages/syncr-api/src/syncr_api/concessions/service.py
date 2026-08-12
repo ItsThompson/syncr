@@ -22,23 +22,20 @@ The candidate then rides on the operation, which is the only object that crosses
 the worker, and the worker folds it in as an argument to the assembly. Nothing is written to the
 concession table, which WA2 requires and a test asserts.
 
-**A tradeoff request never joins a pending solve.** A pin made two seconds earlier would absorb it
-and the concession would silently vanish from a proposal the user is then asked to approve. So a
-pending solve for the week is superseded first, which is the state machine's own
-``pending``-to-``superseded`` edge, and the replacement is created after the row it replaces is
-closed.
+**A tradeoff request never joins a solve already in flight.** A pin made two seconds earlier would
+absorb it and the concession would silently vanish from a proposal the user is then asked to
+approve. So the week's in-flight solve is superseded first, which is the state machine's own edge
+from ``pending`` and from ``running`` alike, and the replacement is created after the row it
+replaces is closed. The interleaving that makes superseding a RUNNING solve safe is the
+coordinator's, and its module states it: the running worker's write is one transaction whose last
+statement is its own terminal step, so it either lands whole or rolls back whole.
 
 **A week holding nothing a solve placed is refused, before a solve is asked for.** A concession is
 an agreement to give something up, and on such a week there is nothing the product chose to give up:
 the candidate would fill empty space, so the authority rule would auto-apply it and the concession
 would become the plan of record with no row saying it had been conceded. The refusal is here rather
-than in the classifier, which knows nothing about concessions and must not learn.
-
-**A solve already RUNNING is refused rather than displaced.** The single-flight invariant is the
-database's: at most one non-terminal solve per week exists, so there is no second row to create
-while one runs. Waiting for it inside the request would hold a connection for up to two seconds,
-and joining it is the one thing this route may not do. The coordinator owns the queued
-alternative, and until it ships the honest answer is a conflict naming what still works.
+than in the classifier, which knows nothing about concessions and must not learn. **It is the one
+conflict this module produces**, and the only route that can answer it is the tradeoff request.
 
 ## Revoking
 
@@ -61,7 +58,6 @@ from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.plans.candidates import as_document
 from syncr_api.plans.solved import holds_a_solver_placed_block
-from syncr_api.solving.errors import SolveIsRunning
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
@@ -124,9 +120,8 @@ class ConcessionService:
 
         A request carrying a candidate never joins an existing operation, which is the coordinator's
         rule: a pin made two seconds earlier would otherwise absorb it and the proposal would look
-        as though syncr had ignored the concession. A solve already RUNNING cannot be displaced
-        either, so this is refused rather than queued, and the refusal says the request can be made
-        again once that solve lands.
+        as though syncr had ignored the concession. A solve already running is superseded for the
+        same reason, so the answer is an operation to follow rather than a refusal.
 
         A week whose plan holds nothing a solve placed is refused before the solve is asked for, so
         no operation exists for a request that could not have been honoured.
@@ -137,19 +132,12 @@ class ConcessionService:
         _require_a_solve_to_concede_against(week, inputs.live_plan)
         offer = await self._offered(inputs, requested)
 
-        try:
-            operation = await self._coordinator.request_solve(
-                week,
-                await self._current_version(week),
-                immediate=True,
-                candidate=as_document(offer.as_candidate(adjustment_id=uuid4())),
-            )
-        except SolveIsRunning as running:
-            raise Conflict(
-                "A solve of that week is already running, so a tradeoff cannot be evaluated yet. "
-                "Nothing was changed: the week keeps its plan and its concessions, and this "
-                "request can be made again once the solve lands."
-            ) from running
+        operation = await self._coordinator.request_solve(
+            week,
+            await self._current_version(week),
+            immediate=True,
+            candidate=as_document(offer.as_candidate(adjustment_id=uuid4())),
+        )
         _log.info(
             "concessions.tradeoff.requested",
             tenant_id=str(principal.tenant_id),

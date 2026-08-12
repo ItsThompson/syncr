@@ -9,10 +9,10 @@ nothing is rebased.
 request_solve(week, at_version, immediate, candidate)
   │
   ├── candidate is not None                 A TRADEOFF REQUEST
-  │     └──▶ supersede any PENDING operation and create a new one carrying the candidate, due now.
-  │          It may never join an existing operation: coalescing into one created by a pin made two
-  │          seconds earlier would answer with a proposal that does not contain the concession, and
-  │          the tradeoff would appear to have been ignored
+  │     └──▶ supersede whatever is in flight, PENDING or RUNNING, and create a new one carrying
+  │          the candidate, due now. It may never join an existing operation: coalescing into one
+  │          created by a pin made two seconds earlier would answer with a proposal that does not
+  │          contain the concession, and the tradeoff would appear to have been ignored
   ├── no operation exists
   │     └──▶ create one, due at now + (0 if immediate else the debounce window)
   ├── one is PENDING
@@ -39,18 +39,25 @@ It exists for the caller's RESPONSE, so a pin can tell the client which input st
 acknowledged. The guard is the conditional write, made against the version the worker stamped when
 it loaded the inputs, and there is nothing here that compares ``at_version`` to anything.
 
-## A tradeoff request arriving while a solve is RUNNING is refused
+## A tradeoff request arriving while a solve is RUNNING supersedes it
 
-Three answers were available and the refusal is the one that keeps the invariant. Joining is
-forbidden for the reason above. Queueing behind the running solve would need a second non-terminal
-solve for the week, which the partial unique index refuses and which is the invariant this module
-exists to hold. Superseding the running solve would be cancellation for convenience: it buys
-nothing the caller cannot get by asking again, and it opens a race where the solve commits its
-adoption between the read that found it running and the write that closed it.
+The reader asked about the week in front of them, and the running solve is answering a question they
+have moved past. Joining it is forbidden for the reason above, and queueing behind it would need a
+second non-terminal solve, which the partial unique index refuses. So a running row is closed and
+replaced exactly as a pending one is, and the request answers with the operation to follow.
 
-So the refusal is what ships, and it is bounded rather than a dead end: a solve is budgeted at
-under two seconds, and :class:`~syncr_api.solving.errors.SolveIsRunning` carries that, so the
-caller states it and the client asks again.
+What makes that safe is that the running worker's write is ONE transaction whose last statement is
+its own terminal step. The two orders are then decided by the database rather than by a flag:
+
+- **This request closes the row first.** The worker's step applies to no row, its transaction exits
+  with the refusal, and the adoption, the verdict transition, the version bump and the projection
+  enqueue roll back together. Nothing half-lands.
+- **The worker commits first.** Its own step took the row, so the close attempted here applies to
+  nothing. Nothing is in flight then, and the honest answer is the replacement rather than a
+  refusal: the row was running when it was read and terminal when it was written to.
+
+Either way the week is left holding exactly one non-terminal solve, because the replacement is
+created after the row it replaces is closed and the index is what enforces that order.
 
 ## Supersession names its successor, in two writes
 
@@ -66,8 +73,8 @@ from typing import TYPE_CHECKING, Protocol
 
 from prometheus_client import Counter
 
-from syncr_api.solving.config import PENDING, RUNNING, SOLVE
-from syncr_api.solving.errors import OperationMovedOn, SolveIsRunning
+from syncr_api.solving.config import PENDING, SOLVE
+from syncr_api.solving.errors import OperationMovedOn
 from syncr_api.solving.metrics import OPERATION_QUEUE_DELAY
 from syncr_api.solving.outcomes import Superseded
 from syncr_common.logging import get_logger
@@ -88,6 +95,11 @@ if TYPE_CHECKING:
 # A due operation something else finished between this scan's read and its claim. Counted rather
 # than only logged, because the scan answers by moving on: without this, a claim losing every race
 # would leave the runner reporting nothing to do and every counter at zero.
+#
+# THE CLAIM SCAN'S RACE AND NOTHING ELSE. A running solve whose own terminal step finds the row
+# already stepped is a different event with a different consequence -- a whole write discarded
+# rather than a row skipped before any work -- and it is counted on
+# :data:`~syncr_api.solving.metrics.SOLVE_TAKEN_OVER`.
 CLAIM_RACES_LOST = Counter(
     "syncr_solve_claim_races_lost_total",
     "Due solves another actor finished between this scan's read and its claim.",
@@ -148,8 +160,8 @@ class SolveCoordinator:
         to anything: the guard is the conditional write the worker makes against the version it
         stamped when it loaded the inputs.
 
-        Raises :class:`~syncr_api.solving.errors.SolveIsRunning` for a candidate arriving while a
-        solve of the week is running.
+        A request carrying a candidate supersedes whatever is in flight, running included, so it
+        always answers with an operation of its own.
         """
         in_flight = await self._operations.in_flight(week, kind=SOLVE)
         if candidate is not None:
@@ -244,21 +256,37 @@ class SolveCoordinator:
     ) -> OperationRecord:
         """A tradeoff's own solve, which never joins one that already exists.
 
-        A PENDING operation is closed and this request's operation takes its place, so the
+        Whatever is in flight is closed and this request's operation takes its place, so the
         supersession names this one rather than a follow-up: the replacement is the tradeoff, and
         enqueueing a follow-up as well would be a second non-terminal solve the index refuses.
         """
-        if in_flight is not None and in_flight.status == RUNNING:
-            raise SolveIsRunning(week)
-        closed = (
-            None if in_flight is None else await self._lifecycle.finish(in_flight.id, Superseded())
-        )
+        closed = None if in_flight is None else await self._closed(in_flight)
         created = await self._enqueued(
             week, due_at=self._clock(), candidate=candidate, at_version=at_version
         )
         if closed is not None:
             await self._named(closed, created)
         return created
+
+    async def _closed(self, in_flight: OperationRecord) -> OperationRecord | None:
+        """``in_flight`` closed as superseded, or nothing when it finished itself first.
+
+        A running solve's terminal step is the last statement of its own write transaction, so that
+        step and this one race on one row and the database decides which lands. Losing means the
+        solve committed: the row is terminal, nothing is in flight, and the replacement about to be
+        created is the honest answer rather than a refusal. Nothing survives to name a supersessor
+        on, which is what answering with nothing says.
+        """
+        try:
+            return await self._lifecycle.finish(in_flight.id, Superseded())
+        except OperationMovedOn as landed:
+            _log.info(
+                "solving.supersede.race_lost",
+                operation_id=str(in_flight.id),
+                held=landed.held,
+                attempted=landed.attempted,
+            )
+            return None
 
     def _week_of(self, op: OperationRecord) -> IsoWeek:
         """The week this solve names, which its table's check constraint requires it to have."""
