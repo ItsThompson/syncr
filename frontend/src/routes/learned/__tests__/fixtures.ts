@@ -33,6 +33,7 @@ export const THRESHOLDS_ARE_ESTIMATES =
 export function buildReadyParameter(overrides: Partial<LearnedParameter> = {}): LearnedParameter {
   return {
     parameter: `duration_multiplier[${FITNESS}]`,
+    subject: "Fitness",
     samples: 14,
     threshold: 12,
     state: "ready",
@@ -51,6 +52,9 @@ export function buildCollectingParameter(
 ): LearnedParameter {
   return buildReadyParameter({
     parameter: "objective_weights",
+    /* The subject is the Area the parameter's KEY names, and this parameter is fitted once for the whole
+     * account: a keyless parameter with a subject is a row the api cannot send. */
+    subject: null,
     samples: 0,
     threshold: 50,
     state: "collecting",

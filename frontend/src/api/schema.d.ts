@@ -4120,6 +4120,11 @@ export interface components {
              */
             state: string;
             /**
+             * Subject
+             * @description What this row is about: the name of the Area its key names, or null where the parameter carries no key or names an Area this account does not hold. The key is an identifier, so the name is resolved here rather than by a client.
+             */
+            subject: string | null;
+            /**
              * Threshold
              * @description How many it needs before it is applied. An ESTIMATE.
              */

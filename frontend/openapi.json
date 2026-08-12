@@ -4537,6 +4537,18 @@
             "title": "State",
             "type": "string"
           },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What this row is about: the name of the Area its key names, or null where the parameter carries no key or names an Area this account does not hold. The key is an identifier, so the name is resolved here rather than by a client.",
+            "title": "Subject"
+          },
           "threshold": {
             "description": "How many it needs before it is applied. An ESTIMATE.",
             "title": "Threshold",
@@ -4557,6 +4569,7 @@
         },
         "required": [
           "parameter",
+          "subject",
           "samples",
           "threshold",
           "state",
