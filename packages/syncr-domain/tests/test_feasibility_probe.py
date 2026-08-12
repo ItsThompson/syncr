@@ -135,9 +135,9 @@ def test_floors_that_together_exceed_the_capacity_left_report_the_difference() -
 
 
 def test_a_floor_already_met_by_unpinned_placed_blocks_reserves_nothing() -> None:
-    # A healthy solved week is by definition one whose floors are met
-    # by solver-placed blocks, and those are unpinned. The reservation arrives net of EVERY
-    # placement, so it is zero here, and free capacity has the same blocks out of it.
+    # A healthy solved week is by definition one whose floors are met by solver-placed blocks, and
+    # those are unpinned. The reservation arrives net of EVERY placement, so it is zero here, and
+    # free capacity has the same blocks out of it.
     #
     # Under the superseded rule the reservation netted immovable placements only, so this week
     # reported an eight-hour floor against two hours of uncommitted capacity: a six-hour gap on

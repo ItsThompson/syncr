@@ -215,8 +215,8 @@ class TestP5AnOverrideReplacesWholly:
         assert preference_in_effect(area) is area
 
     def test_exactly_one_preference_is_in_effect_for_every_shape_of_chain(self) -> None:
-        # A chain resolves to one preference, never two merged and
-        # never a list. Stated over all four shapes a chain can take.
+        # A chain resolves to one preference, never two merged and never a list. Stated over all
+        # four shapes a chain can take.
         area = a_preference(AREA)
         habit = a_preference(HABIT)
         chains = [(habit, area), (habit, None), (None, area), (None, None)]
