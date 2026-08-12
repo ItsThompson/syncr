@@ -1,6 +1,6 @@
 """Helpers for the boundary tests: route walking, dependency walking, AST reading.
 
-These exist because three rules in this application are enforceable only by a test that
+These exist because several rules in this application are enforceable only by a test that
 inspects the code itself. Each rule degrades silently as new code arrives, so what is
 needed is not a test of today's routes but a mechanism that examines whatever routes
 exist whenever it runs.
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
 import textwrap
 from dataclasses import dataclass, is_dataclass
 from importlib import import_module
@@ -28,12 +29,13 @@ from typing import (
     get_type_hints,
 )
 
+from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.principal import Principal
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.core.tenancy import IDENTITY_TABLES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
     from pathlib import Path
 
     from fastapi import FastAPI
@@ -68,6 +70,11 @@ PACKAGE_NAME = "syncr_api"
 
 METHODS_WITHOUT_A_BODY = frozenset({"GET", "HEAD", "OPTIONS"})
 
+# One path parameter, as a route template spells it. An exemption's reason below names the value a
+# driver would have to invent in the same spelling, so the two are compared as tokens rather than
+# as prose.
+PATH_PARAMETER = re.compile(r"\{([^}]+)\}")
+
 
 @dataclass(frozen=True, slots=True)
 class RouteView:
@@ -98,6 +105,34 @@ class SerializationView:
     path: str
     excludes_none: bool
     excludes_unset: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReadCensus:
+    """Every parameterized read the application declares, crossed against the sets that name one.
+
+    A filter local to one guard covers what it matches and reports nothing about what it does not,
+    so a read arriving under a prefix no guard reaches is inherited undriven and invisible. The
+    first two members are the two ways a read is accounted for; the rest are the ways the
+    accounting itself goes quiet, and each has to be empty for the census to mean anything.
+    """
+
+    # Reads a published contribution derives, so a guard drives them by consuming that contribution.
+    driven: frozenset[str]
+    # Reads the exemption table names, each with the value a driver would have to invent.
+    exempt: frozenset[str]
+    # Declared by the application and named by neither set: the case the census exists for.
+    covered_by_neither: frozenset[str]
+    # Exempted and no longer declared, so the exemption covers a route that does not exist.
+    exempt_but_undeclared: frozenset[str]
+    # Exempted and driven, so the table states a gap that has since been closed.
+    exempt_but_driven: frozenset[str]
+    # Exempted with a reason that does not name the route's own parameter, which is what a reason
+    # copied from another route looks like.
+    exempt_without_naming_its_parameter: frozenset[str]
+    # Contributions that derived nothing, by name. A contribution matching no route has gone blind,
+    # and the equality above cannot see the difference.
+    contributions_deriving_nothing: tuple[str, ...]
 
 
 def api_routes(app: FastAPI) -> list[RouteView]:
@@ -143,9 +178,10 @@ def read_paths(app: FastAPI, *, parameterized: bool) -> list[str]:
 
     The split exists because driving a parameterized read needs a value invented for the
     parameter, and which value is meaningful is the addressed resource's own business: a week
-    identifier, an anchor id, a period. So the two halves have two callers. The rule they serve
-    is the same one, that a read is not a mutation, and stating the predicate once is what keeps
-    the halves from overlapping or leaving a route in neither.
+    identifier, an anchor id, a period. So the two halves are driven separately, and the
+    parameterized half is censused against the drivers it has by :func:`census_of_reads`. The rule
+    they serve is the same one, that a read is not a mutation, and stating the predicate once is
+    what keeps the halves from overlapping or leaving a route in neither.
     """
     return sorted(
         {
@@ -154,6 +190,105 @@ def read_paths(app: FastAPI, *, parameterized: bool) -> list[str]:
             for method, path in route_identity(route)
             if method == "GET" and path.startswith(API_PREFIX) and ("{" in path) == parameterized
         }
+    )
+
+
+def path_parameters(path: str) -> set[str]:
+    """Every path parameter a route template declares, by the name the template spells."""
+    return set(PATH_PARAMETER.findall(path))
+
+
+def week_addressed_reads(app: FastAPI) -> list[str]:
+    """Every parameterized read under the week prefix, which one week identifier addresses.
+
+    Published here rather than filtered beside the guards that drive it, because a filter is not a
+    contribution: it answers what it matches and leaves the reads it does not match unaccounted
+    for. Derived from the route table, so a week read a later feature module adds is driven by
+    whoever consumes this without that ticket remembering to extend a list.
+    """
+    return [path for path in read_paths(app, parameterized=True) if path.startswith(WEEKS_PREFIX)]
+
+
+type DrivenReads = Callable[[FastAPI], list[str]]
+
+# Every published contribution of driven parameterized reads. Each is a derivation over the
+# application's own route table rather than a list of paths, so a read arriving under a prefix a
+# driver already covers is driven with no edit here, and nothing enters the driven set by being
+# named.
+DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads,)
+
+# The parameterized reads no contribution drives, each naming the value a driver would have to
+# invent to address it. Written out and crossed against the route table in BOTH directions, so a
+# route the application stops declaring is reported here rather than sitting in the table forever,
+# and a route it starts declaring is reported rather than inherited unguarded.
+#
+# What a route here is exempt from is the drivers of this census: guards that take their paths FROM
+# the route table, which is what lets one cover a route nobody wrote it for. A feature's own
+# integration test addressing one of these with a record it created is not a contribution, because
+# a test that spells its own path cannot cover a route it has never heard of.
+EXEMPT_PARAMETERIZED_READS: Mapping[str, str] = {
+    f"{API_PREFIX}/anchor-types/{{anchor_type_id}}": (
+        "{anchor_type_id} names a declared anchor type"
+    ),
+    f"{API_PREFIX}/anchors/{{anchor_id}}": "{anchor_id} names a stored anchor",
+    f"{API_PREFIX}/areas/{{area_id}}": "{area_id} names a declared area",
+    f"{API_PREFIX}/areas/{{area_id}}/preference": (
+        "{area_id} names a declared area, and the preference is the one stored against it"
+    ),
+    f"{API_PREFIX}/calendar-sources/{{source_id}}": "{source_id} names a declared feed",
+    f"{API_PREFIX}/calendar-sources/{{source_id}}/remote-calendars": (
+        "{source_id} names a declared feed, and this read reaches the provider behind it"
+    ),
+    f"{API_PREFIX}/days/{{date}}": "{date} is a date the tenant's plan has blocks on",
+    f"{API_PREFIX}/habits/{{habit_id}}": "{habit_id} names a declared habit",
+    f"{API_PREFIX}/habits/{{habit_id}}/preference": (
+        "{habit_id} names a declared habit, and the preference is the one stored against it"
+    ),
+    f"{API_PREFIX}/off-plan/{{period_id}}": "{period_id} names a declared off-plan period",
+    f"{API_PREFIX}/operations/{{operation_id}}": "{operation_id} names an enqueued operation",
+    f"{API_PREFIX}/projects/{{project_id}}": "{project_id} names a declared project",
+    f"{API_PREFIX}/reviews/week/{{iso_week}}": (
+        "{iso_week} is the value the week contribution invents, and this read sits under the "
+        "review prefix rather than the week one, so that contribution does not derive it"
+    ),
+    f"{API_PREFIX}/routines/{{routine_id}}": "{routine_id} names a declared routine",
+    f"{API_PREFIX}/tasks/{{task_id}}": "{task_id} names a declared task",
+    f"{API_PREFIX}/tasks/{{task_id}}/preference": (
+        "{task_id} names a declared task, and the preference is the one stored against it"
+    ),
+    f"{API_PREFIX}/templates/{{template_id}}": "{template_id} names a declared week template",
+}
+
+
+def census_of_reads(
+    app: FastAPI,
+    *,
+    contributions: Sequence[DrivenReads] = DRIVEN_READ_CONTRIBUTIONS,
+    exemptions: Mapping[str, str] = EXEMPT_PARAMETERIZED_READS,
+) -> ReadCensus:
+    """Cross every parameterized read the application declares against the two sets that name one.
+
+    Returns data rather than asserting, and takes both sets as arguments, so the same reading runs
+    against the real application and against one carrying a route neither set names.
+    """
+    declared = frozenset(read_paths(app, parameterized=True))
+    derived = tuple(
+        (contribution.__name__, frozenset(contribution(app))) for contribution in contributions
+    )
+    driven: frozenset[str] = frozenset().union(*(paths for _, paths in derived))
+    exempt = frozenset(exemptions)
+    return ReadCensus(
+        driven=driven,
+        exempt=exempt,
+        covered_by_neither=declared - driven - exempt,
+        exempt_but_undeclared=exempt - declared,
+        exempt_but_driven=exempt & driven,
+        exempt_without_naming_its_parameter=frozenset(
+            path
+            for path, reason in exemptions.items()
+            if not path_parameters(path) <= path_parameters(reason)
+        ),
+        contributions_deriving_nothing=tuple(name for name, paths in derived if not paths),
     )
 
 

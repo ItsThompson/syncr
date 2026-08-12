@@ -78,7 +78,7 @@ from syncr_api.solving.repository import OperationRepository
 from syncr_api.templates.config import DAY_TYPES_PREFIX, WEEK_PATTERN_PREFIX
 from syncr_domain.plan import RevisionReason
 from syncr_domain.weeks import IsoWeek, Weekday
-from tests.boundaries import read_paths
+from tests.boundaries import week_addressed_reads
 from tests.live_tenants import (
     PASSWORD,
     provision_owner,
@@ -415,16 +415,14 @@ def hours(span: dict[str, str]) -> float:
 def every_week_read(settings: ServiceSettings) -> list[str]:
     """Every parameterized GET under the week prefix, read off the app's own route table.
 
-    Bounded by the routes rather than by a list, so a week read a later ticket adds is driven by the
-    guards below without that ticket remembering to extend one. Five exist: the composed view, the
-    history, the verdict, the pending proposal, and the concession list another module declares on
-    the same prefix.
+    The set is ``tests.boundaries.week_addressed_reads``, published there as this suite's
+    contribution to the census in ``test_parameterized_read_census.py`` rather than filtered here.
+    A filter reports what it matches and nothing about what it leaves out, so the reads no guard
+    drives stayed invisible while this one looked complete. Still bounded by the routes rather than
+    by a list, so a week read a later ticket adds is driven by the guards below without that ticket
+    remembering to extend one.
     """
-    return [
-        path
-        for path in read_paths(create_app(settings), parameterized=True)
-        if path.startswith(WEEKS_PREFIX)
-    ]
+    return week_addressed_reads(create_app(settings))
 
 
 def test_every_week_read_needs_a_credential(http: TestClient, settings: ServiceSettings) -> None:
