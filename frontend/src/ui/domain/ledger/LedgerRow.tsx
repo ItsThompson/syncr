@@ -14,7 +14,11 @@
  * data. A routine carries no Area at all, and its column is simply empty.
  *
  * THE BORDERED BOX AROUND A RUN OF ROWS IS THE CALLER'S `Panel`. A row draws itself and its hairline; the block's
- * border and raised fill keep the one definition the layout layer gives them. */
+ * border and raised fill keep the one definition the layout layer gives them.
+ *
+ * THE CURRENT ROW'S MARK IS THE KIT'S ONE ASSIGNMENT. The row sets `data-current` and `states.css` says what it
+ * looks like, for every row-shaped surface at once. A screen declaring the fill and the left rule itself is the
+ * drift `scripts/check-channels` refuses. */
 
 import type { ReactNode } from "react";
 
@@ -39,13 +43,23 @@ export interface LedgerRowProps {
   readonly area?: LedgerRowArea | undefined;
   /** A `GlyphSlot`, where the row carries a mark. The column is reserved either way. */
   readonly mark?: ReactNode;
+  /** The row cursor's position. At most one row in a ledger carries it. */
+  readonly isCurrent?: boolean | undefined;
   /** The outcome controls, wired by the screen that owns the mutation. */
   readonly children?: ReactNode;
 }
 
-export function LedgerRow({ timeRange, duration, title, area, mark, children }: LedgerRowProps) {
+export function LedgerRow({
+  timeRange,
+  duration,
+  title,
+  area,
+  mark,
+  isCurrent,
+  children,
+}: LedgerRowProps) {
   return (
-    <div className="state-row ledger__row">
+    <div className="state-row ledger__row" data-current={isCurrent === true ? "" : undefined}>
       <Gutter>{mark}</Gutter>
       <span className="ledger__time">{timeRange}</span>
       <span className="ledger__duration">{duration}</span>

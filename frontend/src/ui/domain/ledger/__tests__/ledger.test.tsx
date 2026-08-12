@@ -84,6 +84,35 @@ describe("a ledger row", () => {
   });
 });
 
+/* THE ROW CARRIES THE STATE AND THE KIT SAYS WHAT IT LOOKS LIKE, which is the whole of the prop. A screen that
+ * wanted a row cursor without it would have to declare the fill and the left rule a second time, and two files
+ * assigning one state's channel drift apart with nothing on a rendered screen showing it. */
+describe("the current row", () => {
+  it("carries data-current when the screen marks it current", () => {
+    const { container } = render(
+      <LedgerRow timeRange="09:00-09:30" duration="30m" title="Standup" isCurrent />,
+    );
+
+    expect(container.firstElementChild).toHaveAttribute("data-current", "");
+  });
+
+  it("carries no attribute at all where the prop is absent, which is every existing caller", () => {
+    const { container } = render(
+      <LedgerRow timeRange="09:00-09:30" duration="30m" title="Standup" />,
+    );
+
+    expect(container.firstElementChild).not.toHaveAttribute("data-current");
+  });
+
+  it("carries none when the screen says the row is not current, so a cursor has an off position", () => {
+    const { container } = render(
+      <LedgerRow timeRange="09:00-09:30" duration="30m" title="Standup" isCurrent={false} />,
+    );
+
+    expect(container.firstElementChild).not.toHaveAttribute("data-current");
+  });
+});
+
 describe("the duration column", () => {
   it("is right-aligned and tabular, because a reader compares durations down the ledger", async () => {
     const css = await stylesheet();
