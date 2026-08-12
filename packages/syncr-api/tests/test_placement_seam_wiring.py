@@ -23,7 +23,10 @@ spellings of a direct construction are covered for the assembler, the bare name 
 module-qualified one, plus any local name an ``import from`` binds it to. A reader under another
 name does not hide, whether by alias, subclass or ``getattr``: the mapping asserts the reader's
 exact name, so such a wiring fails loudly rather than passing quietly. What is left is a false
-sentence about the seam that is not one of the statements named below.
+sentence about the seam that is not one of the statements named below. The walk itself is
+``seam_census.seam_wirings``, shared with the habit outcome seam's own guard, which is what keeps
+one
+spelling of a composition from being covered for one seam and missed for the other.
 
 **Two shapes a stub takes in a suite are refused as well**: a class defined in front of the reader's
 own name, and a fixture whose body does nothing, which any number of signatures can declare while
@@ -36,12 +39,13 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 from syncr_api.plans import injection
 from syncr_api.plans.assembler import WeekAssembler
 from syncr_api.plans.placements import StoredPlacements
-from tests.source_census import imported_as, named
+from tests.seam_census import Wiring, seam_wirings
+from tests.source_census import named
 from tests.test_habit_outcome_reader_seam import member_suite_roots
 
 if TYPE_CHECKING:
@@ -82,59 +86,14 @@ DENIALS_OF_THE_WIRING = (
 THE_SCANS_OWN_FILE = Path(__file__).resolve()
 
 
-class Wiring(NamedTuple):
-    """One composition of the week assembler: where it is, and what its placement seam reads."""
-
-    module: str
-    reader: str
-    imported_from: str | None
-
-
-def seam_wirings(source_root: Path) -> list[Wiring]:
+def placement_wirings(source_root: Path) -> list[Wiring]:
     """Every composition of the week assembler under ``source_root``, with the seam it binds.
 
-    The one reader of the tree. Returns data rather than asserting, so the census, its controls and
-    the prose crossing all drive one walk.
+    The one reader of the tree, and the walk behind it is the one the habit outcome seam's guard
+    reads with too. Returns data rather than asserting, so the census, its controls and the prose
+    crossing all drive one walk.
     """
-    found: list[Wiring] = []
-    for module in sorted(source_root.rglob("*.py")):
-        tree = ast.parse(module.read_text(encoding="utf-8"))
-        relative = str(module.relative_to(source_root))
-        composing = frozenset({ASSEMBLER}) | imported_as(
-            tree, module=ASSEMBLER_MODULE, names=(ASSEMBLER,)
-        )
-        found.extend(
-            Wiring(relative, reader, _imported_from(tree, reader))
-            for node in ast.walk(tree)
-            if (reader := _seam_of(node, composing)) is not None
-        )
-    return found
-
-
-def _seam_of(node: ast.AST, composing: frozenset[str]) -> str | None:
-    """The class this node's placement seam is constructed from, if it composes an assembler.
-
-    ``composing`` holds every local name this source can reach the assembler by, so a
-    module-qualified call and an ``as`` alias are read as compositions rather than passed over. A
-    keyword bound to anything but a call has no class to name.
-    """
-    if not isinstance(node, ast.Call) or named(node.func) not in composing:
-        return None
-    bound = {keyword.arg: keyword.value for keyword in node.keywords}
-    seam = bound.get(SEAM_KEYWORD)
-    if not isinstance(seam, ast.Call):
-        return None
-    return named(seam.func)
-
-
-def _imported_from(tree: ast.Module, name: str) -> str | None:
-    """The module a source imported ``name`` from, or nothing when it defines or shadows it."""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and any(
-            (alias.asname or alias.name) == name for alias in node.names
-        ):
-            return node.module
-    return None
+    return seam_wirings(source_root, composed=WeekAssembler, keyword=SEAM_KEYWORD)
 
 
 def sources_and_suites() -> tuple[Path, ...]:
@@ -262,7 +221,7 @@ def test_the_one_composition_of_the_assembler_wires_the_stored_reader(source_roo
     The import is asserted beside the name because the name alone is satisfied by a class defined in
     the composing module, and that is what a stub wired back in would look like.
     """
-    wired = seam_wirings(source_root)
+    wired = placement_wirings(source_root)
 
     assert wired, "no week assembler is composed in this package, so this asserted nothing"
     assert [(one.module, one.reader) for one in wired] == [(WIRING, PRODUCTION_READER)]
@@ -314,7 +273,7 @@ def test_the_walk_reports_a_seam_wired_to_something_else(tmp_path: Path) -> None
         encoding="utf-8",
     )
 
-    found = seam_wirings(tmp_path)
+    found = placement_wirings(tmp_path)
 
     assert found == [
         Wiring("aliased.py", "NoPlacements", "elsewhere"),
@@ -340,7 +299,7 @@ def test_a_tree_that_only_names_the_seam_reports_no_wiring(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
-    assert seam_wirings(tmp_path) == []
+    assert placement_wirings(tmp_path) == []
 
 
 def test_no_source_or_suite_of_this_member_denies_the_wiring(source_root: Path) -> None:
@@ -350,7 +309,7 @@ def test_no_source_or_suite_of_this_member_denies_the_wiring(source_root: Path) 
     stored reader, and a false statement about this seam is what let the authority rule read as
     unreachable in three places while it was being driven end to end.
     """
-    wired = seam_wirings(source_root)
+    wired = placement_wirings(source_root)
     assert [one.reader for one in wired] == [PRODUCTION_READER]
 
     scanned = [path for path in sources_and_suites() if path != THE_SCANS_OWN_FILE]
