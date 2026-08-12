@@ -44,13 +44,21 @@ describe("the day band", () => {
     expect(within(confirm).getByText("c", { selector: "kbd" })).toBeInTheDocument();
   });
 
-  /* The count is the api's own figure over the last 28 days. Four rows here are presumed and the response
-     says three days are outstanding: a screen counting its own rows would render four. */
+  /* The count is the api's own figure over the last 28 days, and the rows are today's. The fixture's own row count is
+     read here rather than restated, so a fixture that gains or loses a row cannot quietly come to agree with the
+     served figure and leave this case passing on nothing. */
   it("reads the count of unconfirmed days from the response rather than counting rows", async () => {
-    await renderToday(onHostToday(buildDay({ unconfirmedDays: 3 })));
+    const day = buildDay({ unconfirmedDays: 3 });
+    const rowsDrawn = day.behind.length + day.ahead.length;
+    expect(rowsDrawn, "the drawn rows must imply a figure the response does not serve").not.toBe(
+      day.unconfirmedDays,
+    );
+    await renderToday(onHostToday(day));
 
     const cell = (await screen.findByText("unconfirmed days")).parentElement;
-    expect(cell).toHaveTextContent("3");
+    expect(cell?.querySelector(".stat-cell__figure")?.textContent).toBe(
+      String(day.unconfirmedDays),
+    );
   });
 
   it("offers a backfill that states how many days it would settle", async () => {
