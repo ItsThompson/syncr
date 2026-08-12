@@ -210,6 +210,31 @@ NARROW_WEEK: dict[str, object] = {
     "off_plan": (an_off_plan_period(interval=Interval(at(3), at(0, day=7))),)
 }
 
+# Half an hour wider, 210 claimable minutes, which is what lets a week arrive short by an exact
+# figure while each of its floors still fits on its own: 200 and 30 against 210.
+WIDER_WEEK: dict[str, object] = {
+    "off_plan": (an_off_plan_period(interval=Interval(at(3.5), at(0, day=7))),)
+}
+
+
+def a_week_arriving_twenty_minutes_short(*, fitness_floor: int = 200) -> PartialPlan:
+    """210 claimable minutes against a 200-minute Fitness floor and a 30-minute Career one.
+
+    Both floors fit on their own and 20 minutes of the two together do not, which is the state the
+    aggregate reading left every Area unprotected in. ``fitness_floor`` is the one figure the tests
+    below vary, so a control week that arrives satisfiable is the same fixture with one number
+    changed.
+    """
+    return PartialPlan.of(
+        inputs(
+            **WIDER_WEEK,
+            areas=(
+                an_area_budget(floor_minutes=fitness_floor),
+                an_area_budget(area_id=CAREER, name="Career", floor_minutes=30),
+            ),
+        )
+    )
+
 
 def test_a_candidate_that_leaves_another_areas_floor_unreachable_is_refused() -> None:
     # Three hours claimable, a two-hour Fitness floor unmet, and a two-hour Career candidate: one of
@@ -385,33 +410,117 @@ def test_a_floor_a_placement_nothing_can_move_made_unreachable_refuses_nothing_a
     assert area_floor(a_candidate(Interval(at(2), at(3)), binding=GYM), state) is None
 
 
-def test_one_areas_arriving_shortfall_leaves_every_other_areas_floor_unprotected() -> None:
-    # The bound on the gate, measured rather than left to prose. The shortfall is ONE aggregate over
-    # every Area, floors summed and time unioned, so a twenty-minute deficit in Fitness opens the
-    # gate for Career's individually satisfiable thirty-minute floor as well: a week arriving twenty
-    # short can end two hundred and thirty short.
+def test_one_areas_arriving_shortfall_leaves_every_other_areas_floor_reserved() -> None:
+    # The fixture that measured the aggregate reading, driven as the inverse of what it held. The
+    # floors are reserved one at a time rather than summed into a single gate, so the 20 minutes of
+    # the two that the week cannot hold no longer opens it: a Study candidate taking the whole week
+    # is refused, where it used to leave the week 230 minutes short of floors it arrived 20 short
+    # of.
     #
     # The control is the same week with Fitness's floor lowered until nothing arrives short, and it
-    # refuses the identical candidate. So what varies is the arriving deficit and nothing else.
-    #
-    # This is the over-crediting direction rather than the unsafe one, and the answer is a per-Area
-    # reservation rather than one summed figure, which is a construction decision: ticket 1334.
-    span = {"off_plan": (an_off_plan_period(interval=Interval(at(3.5), at(0, day=7))),)}
+    # refuses the identical candidate. So what varies is the arriving deficit and nothing else, and
+    # what it now varies is the figure in the clause rather than whether there is one.
     whole_week = a_candidate(Interval(at(0), at(3.5)), area_id=STUDY, binding=READING)
-    career = an_area_budget(area_id=CAREER, name="Career", floor_minutes=30)
-
-    arrives_short = PartialPlan.of(
-        inputs(**span, areas=(an_area_budget(floor_minutes=200), career))
-    )
-    arrives_satisfiable = PartialPlan.of(
-        inputs(**span, areas=(an_area_budget(floor_minutes=180), career))
-    )
+    arrives_short = a_week_arriving_twenty_minutes_short()
+    arrives_satisfiable = a_week_arriving_twenty_minutes_short(fitness_floor=180)
 
     assert arrives_short.discretionary().total_minutes() == 210
-    assert area_floor(whole_week, arrives_short) is None
-    refused = area_floor(whole_week, arrives_satisfiable)
+    refused = area_floor(whole_week, arrives_short)
     assert refused is not None
-    assert refused.detail == "Fitness would be left 180m short of its floor, with 0m free"
+    assert refused.detail == "Fitness would be left 200m short of its floor, with 0m free"
+    control = area_floor(whole_week, arrives_satisfiable)
+    assert control is not None
+    assert control.detail == "Fitness would be left 180m short of its floor, with 0m free"
+
+
+def test_a_candidate_of_one_area_is_refused_over_another_areas_reservation() -> None:
+    # A candidate naming Career on the same week, and Career's own floor is not what refuses it:
+    # Fitness's 200 minutes are reserved whatever Career is doing with its 30. Under one summed
+    # shortfall this candidate took all 210 minutes and no rule had anything to say.
+    refused = area_floor(
+        a_candidate(Interval(at(0), at(3.5)), area_id=CAREER, binding=READING),
+        a_week_arriving_twenty_minutes_short(),
+    )
+
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 200m short of its floor, with 0m free"
+
+
+def test_the_area_arriving_short_places_what_the_week_holds_and_not_another_areas_floor() -> None:
+    # The other half of the same week: the 20 minutes nobody can place is a shortfall the verdict
+    # reports, and no refusal here is taken over it. Fitness may place 180 of its 200 minutes, which
+    # is everything the week has once Career's 30 are reserved, and the rule allows all of it. The
+    # 181st minute is Career's, so the candidate that takes the whole week is refused and the clause
+    # names Career rather than the shortfall Fitness arrived with.
+    state = a_week_arriving_twenty_minutes_short()
+
+    assert area_floor(a_candidate(Interval(at(0), at(3)), binding=GYM), state) is None
+    refused = area_floor(a_candidate(Interval(at(0), at(3.5)), binding=GYM), state)
+    assert refused is not None
+    assert refused.detail == "Career would be left 30m short of its floor, with 0m free"
+
+
+def test_a_floor_the_week_arrived_with_no_room_for_is_the_only_one_left_unprotected() -> None:
+    # Fitness declares 300 minutes of a 210-minute week, so no sequence of placements can meet that
+    # floor and there is nothing here to protect: 180 minutes of the time Fitness would have used
+    # is taken by Study and nothing refuses it. Career's 30 minutes fit, so they are still
+    # reserved, and the candidate that would leave Career short is refused by name.
+    state = a_week_arriving_twenty_minutes_short(fitness_floor=300)
+    unprotected = a_candidate(Interval(at(0), at(3)), area_id=STUDY, binding=READING)
+    over_career = a_candidate(Interval(at(0), at(3.5)), area_id=STUDY, binding=READING)
+
+    assert area_floor(unprotected, state) is None
+    refused = area_floor(over_career, state)
+    assert refused is not None
+    assert refused.detail == "Career would be left 30m short of its floor, with 0m free"
+
+
+def test_a_reservation_outlives_the_candidate_that_takes_the_arriving_deficit_up() -> None:
+    # Which floors are reserved is decided by the room the week ARRIVED with rather than by the room
+    # in front of the candidate, and this is the difference between the two. Career's 30 minutes are
+    # placed, which the rule allows because it leaves the shortfall at the 20 minutes it found.
+    # Fitness's 200 now exceed the 180 that remain, so a reservation read off the state in front of
+    # it would drop Fitness here and let the rest of the week go anywhere: the same 20-minute
+    # deficit, reappearing one candidate later. Read off the arrival it holds, and Fitness ends 20
+    # minutes short rather than 200.
+    state = a_week_arriving_twenty_minutes_short()
+    career_floor = a_candidate(Interval(at(0), at(0.5)), area_id=CAREER, binding=READING)
+
+    assert area_floor(career_floor, state) is None
+    refused = area_floor(
+        a_candidate(Interval(at(0.5), at(1)), area_id=STUDY, binding=STANDUP),
+        state.with_placed(career_floor),
+    )
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 200m short of its floor, with 150m free"
+
+
+def test_the_room_a_pin_left_the_week_with_is_what_decides_a_reservation() -> None:
+    # A pin is content the Area figures arrived netted of, so the time it takes is time no floor
+    # ever had. Everything below is held fixed and the only thing that varies is how much of the
+    # week the pin took: with 60 of the 180 minutes pinned to Career, Fitness's 120-minute floor
+    # exactly fits what is left and is reserved, and the identical Study candidate is refused. With
+    # 90 pinned it does not fit, and nothing is left to protect.
+    def pinned_for(minutes: float) -> PartialPlan:
+        week = inputs(
+            **NARROW_WEEK,
+            areas=(
+                an_area_budget(floor_minutes=2 * HOUR),
+                an_area_budget(area_id=CAREER, name="Career"),
+            ),
+            pins=(a_pin(binding=READING, interval=Interval(at(0), at(minutes / HOUR))),),
+        )
+        pin = a_candidate(
+            Interval(at(0), at(minutes / HOUR)), area_id=CAREER, binding=READING, title="Reading"
+        )
+        return PartialPlan.of(week).with_placed(pin)
+
+    study = a_candidate(Interval(at(2), at(2.5)), area_id=STUDY, binding=STANDUP)
+
+    refused = area_floor(study, pinned_for(60))
+    assert refused is not None
+    assert refused.detail == "Fitness would be left 120m short of its floor, with 90m free"
+    assert area_floor(study, pinned_for(90)) is None
 
 
 def test_the_clause_never_names_the_area_the_refused_block_would_have_served() -> None:
