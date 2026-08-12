@@ -5,6 +5,13 @@ document this application emits, and TypeScript reads ``lastSeenAt`` rather than
 ``last_seen_at``. Fixing the casing in one base rather than per field means a new
 schema cannot ship half-converted, which would be a contract that reads two ways.
 
+**The rule scopes to a request or response body.** A path parameter is snake_cased --
+``iso_week``, ``source_id``, ``anchor_type_id`` -- and a multi-word query parameter this api
+names itself is camelCased -- ``areaId``, ``atRisk``. So a new route spells its path parameter
+in snake_case, which is the surface this base does not reach. The other body surface it does not
+reach is the OAuth endpoints' form-encoded requests, whose member names RFC 6749 section 4.1.3
+fixes as ``grant_type`` and the rest.
+
 ``populate_by_name`` is on so a request body is accepted under either spelling. The
 document advertises the camelCase alias, which is what a generated client sends; the
 snake_case field name stays usable from a test and from the CLI without a second
