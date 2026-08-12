@@ -126,9 +126,12 @@ export const CHANNELS: readonly Channel[] = [
    * channel for any state and a state-specific channel is consulted first, so the reveal takes it under
    * focus while everywhere else it stays the stacking context the keyboard cursor's inset ring needs.
    *
-   * `:focus` is not the state, and the difference is mechanical rather than stylistic: `statesInSelector`
-   * finds only the pseudo-classes `PSEUDO_STATES` names, so a rule written under `:focus` is unseen rather
-   * than checked.
+   * `:focus-visible` IS THE STATE, AND THE OTHER SPELLINGS OF FOCUS ARE NOT INTERCHANGEABLE WITH IT.
+   * `statesInSelector` finds only the pseudo-classes `PSEUDO_STATES` lists, so a rule under any other
+   * member of the focus family, `:focus` and `:focus-within` included, is unseen rather than checked. It
+   * also matches by substring, so `:not(:focus-visible)` reads AS the focus state: a rule that applies
+   * only while the control is not focused is counted as a reveal, with every declaration in it. Write the
+   * resting half under no state at all, which is what makes it geometry to this model.
    *
    * THE UTILITY PREFIXES ARE THE TWO THAT CARRY THE WHOLE TREATMENT, not `w-`, `m-` or `overflow-`, which
    * carry geometry under a state and would report a width as a reveal. A bare `sr-only` records nothing,
