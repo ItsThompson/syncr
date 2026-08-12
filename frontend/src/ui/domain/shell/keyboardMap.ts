@@ -75,4 +75,5 @@ export const KEYBOARD_MAP: readonly KeyBindingEntry[] = [
   { keys: CAPTURE_KEY, action: "Capture a task", scope: "global" },
   { keys: HELP_KEY, action: "Show this keyboard map", scope: "global" },
   { keys: "Escape", action: "Close an overlay", scope: "global" },
+  { keys: "Escape", action: "Clear the selection and close the panel", scope: "/week" },
 ];

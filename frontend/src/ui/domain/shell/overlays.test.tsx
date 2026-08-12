@@ -153,6 +153,40 @@ describe("the help overlay", () => {
     );
   });
 
+  /* THE SCREEN A ROW ANSWERS ON, ASSERTED AT BOTH EDGES and against text this file spells out rather than reads
+   * back from the map: a row that answers everywhere and a row that answers on one screen. */
+  it("says which screen a row answers on", async () => {
+    const { baseElement } = render(<HelpOverlay />);
+    await userEvent.keyboard(HELP_KEY);
+
+    const rows = renderedRows(baseElement);
+    expect(rows).toContainEqual({ keys: "n", action: "Capture a task", scope: "everywhere" });
+    expect(rows).toContainEqual({
+      keys: "Escape",
+      action: "Clear the selection and close the panel",
+      scope: "week",
+    });
+  });
+
+  /* TWO ROWS MAY CARRY ONE KEY STRING, because one keystroke answers differently depending on the screen. React
+   * identifies a sibling by its key, so a key that is the keystroke alone makes the two rows one: the second is
+   * dropped or misplaced on the next render, and React says so on the console. Both halves are asserted, because
+   * the complaint is what bites first. */
+  it("renders both rows that share a key string, with no complaint from React", async () => {
+    const complaints: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      complaints.push(args.join(" "));
+    });
+    const { baseElement } = render(<HelpOverlay />);
+    await userEvent.keyboard(HELP_KEY);
+
+    expect(renderedRows(baseElement).filter((row) => row.keys === "Escape")).toEqual([
+      { keys: "Escape", action: "Close an overlay", scope: "everywhere" },
+      { keys: "Escape", action: "Clear the selection and close the panel", scope: "week" },
+    ]);
+    expect(complaints).toEqual([]);
+  });
+
   it("says what it lists, which is what each key does and where", async () => {
     render(<HelpOverlay />);
     await userEvent.keyboard(HELP_KEY);
