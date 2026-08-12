@@ -1,9 +1,8 @@
 """The claims a package's ``__init__`` docstring makes about its own modules.
 
-Two of them were stale when ticket 26 arrived, and neither was found by a reader: the plan
-package's index was missing twelve modules, and the anchor package's count of how many modules
-compute a span was one short of the truth as soon as a new one landed. Both are claims about the
-source, so both are asserted against the source here rather than trusted.
+An index goes stale silently: a module lands and the docstring is not counted again, and the count
+of how many modules do a particular thing is one short the moment a new one appears. Both are claims
+about the source, so both are asserted against the source here rather than trusted.
 
 **Only the packages that CLAIM a complete index are checked for one.** Several packages in this
 member list a subset on purpose, leaving their wiring and injection modules out of the table, so
@@ -78,8 +77,7 @@ def test_a_package_claiming_a_complete_index_says_so_where_a_reader_looks(packag
 
 @pytest.mark.parametrize("package", PACKAGES_CLAIMING_A_COMPLETE_INDEX)
 def test_every_module_of_the_package_appears_in_its_index(package: str) -> None:
-    # The drift that actually happened: a module lands and the index is not counted again. Twelve
-    # of them accumulated in the plan package across one ticket.
+    # The drift this catches: a module lands and the index is not counted again.
     assert modules_on_disk(package) - indexed_modules(package) == set()
 
 

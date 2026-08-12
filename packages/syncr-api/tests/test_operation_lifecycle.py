@@ -387,7 +387,7 @@ async def test_a_retried_failure_keeps_no_snapshot(
 
 
 def test_a_superseded_operation_is_reported_differently_from_a_failed_one() -> None:
-    """The status word and the sentence both differ, which is the criterion in full.
+    """The status word and the sentence both differ, which is the whole of the rule.
 
     Presenting supersession as a failure would make normal use look broken: it is what happens when
     the user edits quickly, and a follow-up is already running.
@@ -558,7 +558,7 @@ async def test_the_sweep_takes_only_the_statuses_the_windows_name(
 async def test_only_one_of_two_concurrent_claimers_gets_the_operation(
     sessions: async_sessionmaker[AsyncSession], lifecycle: Lifecycle, owner: UserRecord
 ) -> None:
-    """The ticket's central atomicity claim, driven rather than reasoned about.
+    """The central atomicity claim, driven rather than reasoned about.
 
     Legality is the ``WHERE`` clause of the step's own statement, so under READ COMMITTED Postgres
     re-evaluates the qualification after taking the row lock: the loser matches zero rows. Asserted
@@ -599,7 +599,7 @@ async def test_only_one_of_two_concurrent_finishers_closes_the_operation(
 
 
 def test_the_two_refusals_are_different_types() -> None:
-    """Ticket 40's claim scan branches on this: a lost race is a skip, not a failure.
+    """The solve dispatch branches on this: a lost race is a skip, not a failure.
 
     Both remain an ``IllegalTransition``, so a caller that does not care catches one type.
     """

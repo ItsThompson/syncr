@@ -1,7 +1,7 @@
 """How long a day is, which blocks belong to it, and what a settled day is.
 
 Everything here is stated against real zones and real transition dates with no repository anywhere,
-because these two rules are where the boundaries this epic has paid for land. A fixture zone with a
+because these two rules are where the hardest time-zone boundaries land. A fixture zone with a
 made-up rule would assert the arithmetic against itself.
 
 The zones are the ones that have found real defects in this codebase: ``Europe/London`` for an

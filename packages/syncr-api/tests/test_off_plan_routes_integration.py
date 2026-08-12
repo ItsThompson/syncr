@@ -581,8 +581,8 @@ def test_a_friday_to_monday_span_is_clipped_to_each_of_its_two_weeks(
 def test_a_week_declared_off_plan_end_to_end_reports_no_discretionary_time(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    # The criterion the entity exists for: a holiday must not read as every Area starving, and an
-    # empty deviation set must not be the only thing the response says.
+    # Why the entity exists: a holiday must not read as every Area starving, and an empty deviation
+    # set must not be the only thing the response says.
     whole_week = {
         "start": OFF_PLAN_WEEK.whole_week.start.isoformat().replace("+00:00", "Z"),
         "end": OFF_PLAN_WEEK.whole_week.end.isoformat().replace("+00:00", "Z"),

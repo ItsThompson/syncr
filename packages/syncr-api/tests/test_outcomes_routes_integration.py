@@ -642,7 +642,7 @@ def test_one_key_across_two_blocks_with_one_body_does_not_silently_skip_the_seco
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
-    # The CONDITIONAL half of the same exposure, on this ticket's primary route. The confirm route's
+    # The CONDITIONAL half of the same exposure, on the record route. The confirm route's
     # case does not stand proxy for it: a fix scoped to bodyless routes would close that one and
     # leave this open with nothing failing, and an evening pass marking two blocks of one day
     # `completed` sends two requests whose bodies are byte-identical.
