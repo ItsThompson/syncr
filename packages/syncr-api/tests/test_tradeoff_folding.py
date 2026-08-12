@@ -307,9 +307,9 @@ def _minutes(verdict: Verdict, key: tuple[ShortfallKind, AreaId | None]) -> int:
 
 async def test_breaching_a_floor_closes_the_floors_gap_the_probe_reports() -> None:
     # Blocker 1's field pair, end to end. The user clicks "Breach the Fitness floor", approves, and
-    # the verdict panel must stop reporting the same gap: the probe reads the reservation and H9
-    # reads the floor, so a breach that lowered one and not the other would change no reading the
-    # user can see.
+    # the verdict panel must stop reporting the same gap: the probe reads the reservation and the
+    # solver's floor check reads the floor, so a breach that lowered one and not the other would
+    # change no reading the user can see.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     career = an_area(name="Career", floor_hours=Decimal(3))
     tight = FakeOffPlan([an_off_plan_period(interval=between(15, 24 * 4 + 24, day=2))])

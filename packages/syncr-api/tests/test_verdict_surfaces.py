@@ -27,12 +27,12 @@ computes a verdict binds the CLI surface. Which routes the CLI reaches is
 the probe rather than over a list of services, so a mutation added later that computes a verdict and
 records nothing fails here.
 
-**``VE6``: no read path appends one.** The routes are bounded by the response shapes that carry a
-verdict rather than by three paths named here, so the weekly-session payload comes under the rule
-the moment it exists. Each is driven TWICE against a real week and the transitions are counted
-before and after. **The guard bites rather than being armed**: the week read computes a real verdict
-and the assertion that it did is beside the count, because zero rows written by a path that computed
-nothing is not evidence of anything.
+**No read path appends one.** The routes are bounded by the response shapes that carry a verdict
+rather than by three paths named here, so the weekly-session payload comes under the rule the moment
+it exists. Each is driven TWICE against a real week and the transitions are counted before and
+after. **The guard bites rather than being armed**: the week read computes a real verdict and the
+assertion that it did is beside the count, because zero rows written by a path that computed nothing
+is not evidence of anything.
 
 The census's own claim is stated over the PARAMETER each such read takes rather than over the prefix
 it sits under, because the weekly-session payload is a review rather than a week route: the earlier
@@ -318,8 +318,8 @@ def test_every_cli_reachable_mutation_that_records_a_verdict_binds_the_cli_surfa
     to bind ``VerdictSurface.CLI``, or a CLI mutation's row lands in the corpus attributed to the
     browser.
 
-    Mutations only, because ``VE6`` says a read appends nothing: a read that computes a verdict to
-    render it has no surface to record under, which is why no member names one.
+    Mutations only, because a read appends nothing: a read that computes a verdict to render it has
+    no surface to record under, which is why no member names one.
 
     A CLI mutation added later in a module that records fails here without this file naming it.
     """
@@ -397,10 +397,10 @@ def probing_packages(source_root: Path) -> set[str]:
 def verdict_reading_packages(settings: ServiceSettings) -> set[str]:
     """The packages that ANSWER a verdict-bearing read, read off the app's own routes.
 
-    ``VE6`` forbids a read from recording a transition, so a package whose only verdict computation
-    is on a read cannot appear in the recording set and would otherwise fail the guard below. Which
-    packages those are is derived from the routes whose response shape carries a verdict rather than
-    named here, so this exemption widens only when a package starts answering such a read.
+    A read may not record a transition, so a package whose only verdict computation is on a read
+    cannot appear in the recording set and would otherwise fail the guard below. Which packages
+    those are is derived from the routes whose response shape carries a verdict rather than named
+    here, so this exemption widens only when a package starts answering such a read.
     """
     app = create_app(settings)
     bearing = set(verdict_bearing_reads(app))
@@ -436,7 +436,7 @@ def test_every_package_that_computes_a_verdict_records_the_transition(
     composes its recorder in its wiring. A mutation added later that probes and records nothing
     fails here without this file naming it.
 
-    **The exemption is ``VE6`` rather than a list**, and it is the other half of the same rule: a
+    **The exemption is derived rather than listed**, and it is the other half of the same rule: a
     read computes a verdict for display and may not record one. Which packages that covers is read
     off the routes, so a package that begins probing on a MUTATION is not exempted by having a read.
     That residual is the price of a package-level unit and it is the one this file's own "limit of
@@ -902,7 +902,7 @@ def test_the_one_route_whose_solve_request_lives_below_it_is_named(
 def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_surfaces_do_not(
     composed: Compositions,
 ) -> None:
-    """``VE3`` read off the compositions, which is the split the attribution rests on.
+    """The caller's own answer read off the compositions, which is the split attribution rests on.
 
     The maintainer's recorder must keep the literal: time passing is not a request, so there is no
     caller to ask. The surfaces a request composes must not bind it, because the answer is the
@@ -1019,7 +1019,7 @@ def test_no_mutation_leaves_its_flip_to_whatever_next_reads_the_week(
 
 
 # --------------------------------------------------------------------------------
-# VE6: no read path appends one
+# no read path appends one
 # --------------------------------------------------------------------------------
 
 
@@ -1038,7 +1038,7 @@ def test_the_reads_that_carry_a_verdict_are_the_four_that_exist(
 ) -> None:
     """Named here so the arrival of a fifth is a diff, and so the census below is not empty.
 
-    ``VE6`` names three surfaces: the week view, the verdict refresh, and the weekly-session
+    The rule covers three surfaces: the week view, the verdict refresh, and the weekly-session
     payload. The proposal read is a fourth ROUTE under the same rule and not a fourth surface: it
     answers the verdict the solve that filled the slot produced, which is a stored value rather than
     a computation, and it must still write nothing.
@@ -1074,7 +1074,7 @@ def test_every_verdict_bearing_read_is_driven_by_a_week_the_guard_can_supply(
 
 
 # --------------------------------------------------------------------------------
-# VE6 and VE3 against a real week: the reads, and the header a mutation states
+# The reads and the header a mutation states, against a real week
 # --------------------------------------------------------------------------------
 
 
@@ -1201,7 +1201,7 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     http: TestClient,
     settings: ServiceSettings,
 ) -> None:
-    """``VE6``, driven twice, and it now bites rather than being armed.
+    """A read appending nothing, driven twice, and it now bites rather than being armed.
 
     Two of the three reads compute a real verdict and the week is impossible at this instant, so
     each finds a gap a transition recorder would write a row for. The proposal read answers 404
@@ -1252,7 +1252,7 @@ async def test_the_same_week_records_a_row_when_a_mutation_asks_the_same_questio
     context: WorkerContext,
     http: TestClient,
 ) -> None:
-    """The control on ``VE6``, and the ``tradeoff`` surface and ``VE3`` end to end in one request.
+    """The mutation control, and the ``tradeoff`` surface and the caller's answer in one request.
 
     What separates this from the reads above is that it is a mutation. Both compute a verdict over
     the same week and find the same gaps; this one records the transition and the reads may not. It
@@ -1285,8 +1285,8 @@ async def test_a_mutation_that_states_no_session_records_that_it_was_not_open(
 ) -> None:
     """An absent header is false, which is what every caller with no session concept is.
 
-    The pair with the test above is the whole of ``VE3`` on this surface: the row carries what the
-    caller stated, and neither answer is the one this application chose.
+    The pair with the test above is the whole of the caller's answer on this surface: the row
+    carries what the caller stated, and neither answer is the one this application chose.
     """
     await a_solved_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
@@ -1358,7 +1358,7 @@ async def test_a_tradeoff_refused_after_the_record_leaves_no_row(
     context: WorkerContext,
     http: TestClient,
 ) -> None:
-    """``VE5`` on the one path that records before it refuses.
+    """A transition written in the request's own transaction, on the path that records first.
 
     The request records the verdict beside the probe that found it and then refuses a concession the
     week does not offer, so the 422 has to take the row with it. The control is the same week

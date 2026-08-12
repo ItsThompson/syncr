@@ -8,8 +8,8 @@ Five groups.
 **What an approval writes.** An ``approved`` revision carrying the slot's own document, the
 concession the slot carried, the version bump, the cleared slot, and the enqueued projection.
 
-**``PP3``, from its false side.** A failure at any step leaves the pending slot intact, so the
-proposal is still approvable and nothing half-happened. Driven by making the last write raise.
+**One transaction, from its false side.** A failure at any step leaves the pending slot intact, so
+the proposal is still approvable and nothing half-happened. Driven by making the last write raise.
 
 **Two approvals racing one slot.** The ``DELETE`` is the claim, so exactly one of two concurrent
 approvals appends a revision and the other is refused with the same conflict an already-replaced
@@ -271,8 +271,8 @@ class TestWhatOneApprovalWrites:
         assert [block["title"] for block in row.document["blocks"]] == ["habit · something"]
         assert row.document["blocks"][0]["interval"]["start"] == between(17, 18).start.isoformat()
         assert row.objective_breakdown == BREAKDOWN
-        # The weights and the input version are the ones that PRODUCED the document, not the ones
-        # in force at approval: PP5's "the revision records the version it was solved against".
+        # The weights and the input version are the ones that PRODUCED the document, not the ones in
+        # force at approval: the revision records the version it was solved against.
         assert row.weight_set_version == WEIGHTS
         assert row.input_version == SLOT_VERSION
         assert row.supersedes_id == previous.id
@@ -292,7 +292,8 @@ class TestWhatOneApprovalWrites:
     async def test_approval_bumps_the_input_version(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """Decision 31, ``V3``, ``PP6`` and a trigger-table row, and no story's criteria stated it.
+        """Decision 31, the bump every mutation owes and the protection it gives a running solve,
+        and a trigger-table row, and no story's criteria stated it.
 
         The bump is what a solve running concurrently reads: without it that solve's conditional
         write matches on a version the approval did not change. The race itself is driven in
@@ -400,7 +401,7 @@ class TestApprovalIsOneTransaction:
     async def test_a_failure_at_the_last_step_leaves_the_pending_slot_intact(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``PP3``. The projection is enqueued last, so a raise there is the whole transaction's.
+        """One transaction: the projection is enqueued last, so a raise there is all of it.
 
         Nothing may be left behind: no revision, no concession, no bump, and above all a slot the
         user can still approve. A partial approval would leave a proposal whose document is already

@@ -562,10 +562,11 @@ async def test_a_partly_off_plan_week_reports_the_minutes_without_a_statement(
 async def test_a_frame_span_inside_an_off_plan_span_leaves_the_denominator_once(
     principal: Principal,
 ) -> None:
-    # OP8 through the report the product actually serves, over the off-plan fixture's own spans:
-    # a Saturday-night `Sleep` occurrence inside a Friday-to-Monday span. Summing the two
-    # subtrahends would remove those eight hours twice and report a smaller denominator, which is
-    # a plausible figure rather than a crash.
+    # An off-plan span reduces discretionary time through the union of what it covers, not by adding
+    # its own minutes, and this is that through the report the product actually serves, over the
+    # off-plan fixture's own spans: a Saturday-night `Sleep` occurrence inside a Friday-to-Monday
+    # span. Summing the two subtrahends would remove those eight hours twice and report a smaller
+    # denominator, which is a plausible figure rather than a crash.
     week = str(OFF_PLAN_WEEK.iso_week)
     off_plan = blocks(OFF_PLAN_WEEK.off_plan)
     frame = blocks(OFF_PLAN_WEEK.frame_inside)

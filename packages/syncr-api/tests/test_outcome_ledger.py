@@ -256,8 +256,8 @@ class TestTheLedgersRowsAndItsHeader:
     """What a row reads as with no outcome on it, and where the two sections part."""
 
     def test_a_block_with_no_row_reads_as_presumed_and_unconfirmed(self) -> None:
-        # O1, as the read model states it: the absence of a row is the ordinary case rather than a
-        # gap, because every block defaults to presumed with no user action.
+        # As the read model states it, the absence of a row is the ordinary case rather than a gap,
+        # because every block defaults to presumed with no user action.
         rows = ledger_rows([a_block(interval=Interval(at(9), at(10)))], outcomes={}, area_names={})
 
         assert rows[0].state is OutcomeState.PRESUMED
@@ -274,8 +274,8 @@ class TestTheLedgersRowsAndItsHeader:
         assert rows[0].origin is Origin.HABIT
 
     def test_a_row_whose_area_no_longer_exists_still_renders(self) -> None:
-        # O8's shape at this layer: the row is a fact about a week that happened, and the Area it
-        # named may since have been deleted. A missing name is a null, not a refusal.
+        # At this layer the row is a fact about a week that happened, and the Area it named may
+        # since have been deleted. A missing name is a null, not a refusal.
         rows = ledger_rows([a_block(interval=Interval(at(9), at(10)))], outcomes={}, area_names={})
 
         assert rows[0].area_id == AREA
@@ -325,8 +325,8 @@ class TestWhenADayIsSettled:
         assert is_unconfirmed([an_outcome(confirmed_at=at(22)), None])
 
     def test_a_row_recorded_without_a_confirmation_does_not_settle_the_day(self) -> None:
-        # O3: marking a block skipped says something about the block, not about the day. The day
-        # stays excluded from reviews and from learning until the user answers for it.
+        # Marking a block skipped says something about the block, not about the day. The day stays
+        # excluded from reviews and from learning until the user answers for it.
         assert settled_at([an_outcome(state=OutcomeState.SKIPPED)]) is None
         assert is_unconfirmed([an_outcome(state=OutcomeState.SKIPPED)])
 

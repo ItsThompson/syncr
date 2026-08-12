@@ -58,7 +58,7 @@ class Ticking:
     ``scheduled_for``, so the order the weeks were planned in is readable from the rows. Every
     revision one pass appends carries the SAME ``created_at``, because the pass reads the clock once
     and passes that instant down. And every verdict transition one tick records carries the same
-    ``occurred_at`` for the same reason, which is ``VE7``.
+    ``occurred_at`` for the same reason: one tick, one instant.
     """
 
     STEP = timedelta(milliseconds=1)

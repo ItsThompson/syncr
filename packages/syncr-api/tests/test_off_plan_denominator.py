@@ -135,8 +135,9 @@ async def test_stored_periods_that_overlap_subtract_what_one_of_them_would() -> 
 
 
 async def test_a_frame_span_inside_an_off_plan_span_is_subtracted_once() -> None:
-    # OP8 through the api's own reader: the frame occurrence is the eight hours the fixture puts
-    # inside the off-plan span, and it must leave the denominator once rather than twice.
+    # An off-plan span reduces the total through the union of what it covers, read here through the
+    # api's own reader: the frame occurrence is the eight hours the fixture puts inside the off-plan
+    # span, and it must leave the denominator once rather than twice.
     occupancy = await OffPlanOccupancy(StoredPeriods(OFF_PLAN_WEEK.off_plan)).read(WEEK, WEEK_SPAN)
     frame = IntervalSet([OFF_PLAN_WEEK.frame_inside])
 

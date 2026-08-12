@@ -10,17 +10,17 @@ Four groups.
 probe verdict, so it is always false, and a row copying it would report every healthy week as
 broken. What the row carries is whether a gap was found.
 
-**``VE2`` and ``VE8``.** The first verdict for a week, a change in ``feasible``, and a change in
-provenance while infeasible are transitions; the maintainer records only the second of the three,
-and for it a week with no row at all reads as feasible.
+**What counts as a transition, and the maintainer's narrower rule.** The first verdict for a week, a
+change in ``feasible``, and a change in provenance while infeasible are transitions; the maintainer
+records only the second of the three, and for it a week with no row at all reads as feasible.
 
 **A row refuses itself before it reaches the corpus** when its surface and provenance disagree or
 when a solver verdict names no operation. The corpus is never pruned, so the write is the only
 moment a wrong field can be caught.
 
-**``VE9``: the episode.** The span from a transition to infeasible until the next transition to
-feasible, whose FIRST row decides whether the infeasibility was caught early. The trace from ``18``
-is driven whole, because the row-counting formula it rejects tops out at 0.5 on it.
+**The episode.** The span from a transition to infeasible until the next transition to feasible,
+whose FIRST row decides whether the infeasibility was caught early. The trace from ``18`` is driven
+whole, because the row-counting formula it rejects tops out at 0.5 on it.
 """
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ def test_the_kinds_are_deduplicated_in_the_order_the_verdict_named_them() -> Non
 
 
 def test_the_row_takes_its_instant_from_the_verdict_rather_than_from_a_clock() -> None:
-    """``VE7`` made structural: the assembler stamps the instant and the row carries it from there.
+    """One instant made structural: the assembler stamps it and the row carries it from there.
 
     So the maintainer cannot evaluate a tick's transitions against two instants, and there is no
     clock in the recorder to read.
@@ -194,7 +194,7 @@ def test_the_row_carries_the_version_the_verdict_was_computed_against() -> None:
 
 
 # --------------------------------------------------------------------------------
-# VE2, and VE8's narrowing of it
+# what counts as a transition, and the maintainer's narrowing of it
 # --------------------------------------------------------------------------------
 
 
@@ -204,7 +204,7 @@ def test_the_first_verdict_a_mutation_computes_for_a_week_is_a_transition() -> N
 
 
 def test_a_verdict_recomputed_identically_is_not_a_transition() -> None:
-    """``VE2``, which is what makes a burst of twelve pins write at most one row."""
+    """What makes a burst of twelve pins write at most one row."""
     since = a_row(feasible=True, shortfall_minutes=0)
 
     assert is_a_transition(recorded(a_verdict()), since=since) is False
@@ -219,7 +219,7 @@ def test_a_change_in_feasible_is_always_a_transition(was_feasible: bool) -> None
 
 
 def test_a_provenance_change_while_infeasible_is_a_transition() -> None:
-    """``VE4``'s second row: the arithmetic's warning, confirmed by an attempted placement."""
+    """The second row of a pair: the arithmetic's warning, confirmed by an attempted placement."""
     confirmed = a_verdict(provenance=Provenance.SOLVER, shortfalls=(FLOOR_GAP,))
     since = a_row(provenance=Provenance.PROBE, feasible=False)
 
@@ -235,7 +235,7 @@ def test_a_provenance_change_while_feasible_is_not_a_transition() -> None:
 
 
 def test_the_maintainer_records_no_provenance_change_at_all() -> None:
-    """``VE8``. Its probe re-derives provenance, so this would flip-flop after every solve."""
+    """The maintainer's probe re-derives provenance, so this would flip-flop after every solve."""
     probed = a_verdict(shortfalls=(FLOOR_GAP,))
     since = a_row(provenance=Provenance.SOLVER, feasible=False)
 
@@ -255,9 +255,8 @@ def test_the_maintainer_records_a_flip_in_either_direction() -> None:
 def test_the_maintainer_says_nothing_about_a_week_it_finds_healthy_and_has_no_row_for() -> None:
     """A week with no row holds no open episode, which is the state a feasible row denotes.
 
-    So a periodic probe reporting that a week is fine is not a discovery, which is ``VE8``'s own
-    argument applied to the absent baseline. A mutation records it because a person touched the
-    week.
+    So a periodic probe reporting that a week is fine is not a discovery, which is the same argument
+    applied to the absent baseline. A mutation records it because a person touched the week.
     """
     healthy = a_verdict()
 
@@ -358,7 +357,7 @@ def test_the_six_members_are_the_only_ones_this_package_writes() -> None:
 
 
 # --------------------------------------------------------------------------------
-# VE9: the episode
+# the episode
 # --------------------------------------------------------------------------------
 
 
@@ -380,7 +379,7 @@ def test_an_episode_runs_from_a_transition_to_infeasible_until_the_next_to_feasi
 
 
 def test_the_first_row_of_an_episode_decides_whether_it_was_caught_early() -> None:
-    """``VE9``, and the trace from ``18``: a pin during a session, confirmed by a worker.
+    """The episode's first row decides it, and the trace from ``18``: a pin, then a worker.
 
     The confirming row carries ``session_mode_active = false`` because the worker cannot know, so
     reading any row but the first would report a catch as a miss. The row-counting figure is

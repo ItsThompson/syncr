@@ -1,4 +1,4 @@
-"""OP7, asserted rather than argued: conflict detection reaches no off-plan read.
+"""A conflict inside a declared off-plan span is still one: detection reaches no off-plan read.
 
 "An anchor overlapping a pinned block **inside an off-plan span is still a conflict. No special
 case.**" A commitment during a period the user declared off is still a commitment, and a pinned

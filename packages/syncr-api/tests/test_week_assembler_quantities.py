@@ -817,8 +817,9 @@ async def test_reducing_a_routine_shortens_the_named_date_only() -> None:
 
 
 async def test_a_reduction_below_the_routines_floor_is_clamped_to_it() -> None:
-    # R6, and the sleep floor is this clamp on the sleep routine: the solver may propose spending
-    # it and may never spend it silently, so a concession cannot cut below what the user set.
+    # The clamp to the routine's own minimum, and the sleep floor is this clamp on the sleep
+    # routine: the solver may propose spending it and may never spend it silently, so a concession
+    # cannot cut below what the user set.
     routine = a_routine(duration_minutes=480, min_duration_minutes=360)
 
     inputs = await an_assembler(

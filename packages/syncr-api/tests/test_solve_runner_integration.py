@@ -663,8 +663,8 @@ class TestTheAdoptionBranch:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # V3 and V5: the live plan IS a solve input, so appending a revision has to move the counter
-        # a later mutation and a later assembly both read.
+        # The live plan IS a solve input, so appending a revision has to move the counter a later
+        # mutation and a later assembly both read.
         await declare_the_minimum(sessions, owner.tenant_id)
         held = await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
@@ -972,7 +972,7 @@ def _sample(family: str, labels: dict[str, str] | None = None) -> float:
 
 
 class TestTheVerdictTransition:
-    """``VE4`` and ``VE5`` on the one path that can produce a ``solver`` verdict at all.
+    """The confirming row, in the solve's own transaction, on the one path that can produce one.
 
     A solve's verdict is a stronger finding than the arithmetic every other surface reaches: it
     attempted a placement. So a week already reported short by a pin's probe is CONFIRMED here, and
@@ -1016,7 +1016,7 @@ class TestTheVerdictTransition:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``VE5`` at the boundary the guard draws: no revision, no proposal, and no transition.
+        """The transaction boundary the guard draws: no revision, no proposal, and no transition.
 
         A row for a discarded solve would tell the product metric that a week was confirmed by a
         result nobody adopted, and the plan it was about is not the plan the week holds.
@@ -1046,7 +1046,7 @@ class TestTheVerdictTransition:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``VE4`` and ``VE9`` together, which is the pair ``18``'s trace is drawn from.
+        """The diagnostic pair and the episode together, which is the trace ``18`` is drawn from.
 
         The pin's row is written through the production recorder bound to the pin surface, because
         what is under test here is what the SOLVE path adds to it; the pin service's own path is

@@ -194,7 +194,7 @@ class TestTheApproveRoute:
         assert body["reason"] == "user_approved"
         assert body["adjustment"] is None
         assert body["projection"]["kind"] == "projection"
-        # PP5 on the wire: the version the week now holds, and the one the plan was solved against.
+        # Both versions on the wire: the version the week holds now, and the solved-against one.
         assert body["solvedAgainstVersion"] == 3
         assert body["inputVersion"] == 1
         assert body["approvedAt"]

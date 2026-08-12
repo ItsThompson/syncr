@@ -809,7 +809,7 @@ class TestLiveVerdict:
 
 
 # ---------------------------------------------------------------------------
-# VE2 and VE5: the transition the pin path records, and the burst that does not
+# The transition the pin path records, and the burst that does not
 # ---------------------------------------------------------------------------
 
 
@@ -817,8 +817,8 @@ class TestVerdictTransitionRecording:
     """Ticket 43's half of the pin transaction: the row the drag leaves in the corpus.
 
     The seeded week is not short of capacity, so the verdict the pin computes finds no gap. It is
-    still the FIRST verdict this week has, which ``VE2`` makes a transition: what the corpus needs
-    is the baseline, because a later flip is only a flip against something.
+    still the FIRST verdict this week has, and a week's first verdict is a transition: what the
+    corpus needs is the baseline, because a later flip is only a flip against something.
     """
 
     async def test_a_pin_records_the_verdict_it_computed(
@@ -850,7 +850,7 @@ class TestVerdictTransitionRecording:
     async def test_a_burst_of_twelve_pins_writes_at_most_one_row(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``VE2``, and the figure the invariant states. Twelve drags, one row.
+        """Twelve drags, one row.
 
         Each drag recomputes the same verdict, and a verdict recomputed identically is not news. The
         edit events are counted beside it as the control: twelve preferences were really expressed,
@@ -867,7 +867,7 @@ class TestVerdictTransitionRecording:
     async def test_a_failure_writing_the_transition_rolls_back_the_pin(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``VE5``: a mutation cannot commit without the transition it caused.
+        """A mutation cannot commit without the transition it caused.
 
         The same shape as ``E1``'s test one row along, and for the same reason: the corpus is never
         pruned, so a transition lost at the moment it happened is lost permanently.
@@ -910,7 +910,7 @@ class TestVerdictTransitionRecording:
     async def test_a_pin_made_during_a_weekly_session_says_so(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``VE3``: the value comes from the caller, and the caller is the client.
+        """The value comes from the caller, and the caller is the client.
 
         Bound where the service is composed, so the numerator of the early-catch metric is what the
         client stated rather than what this application guessed. The route's own reading of the
@@ -989,7 +989,7 @@ class TestUnpin:
         assert version_before is not None
         assert version_after > version_before
 
-        # Edit event row survives (PN2)
+        # The edit event row survives, because the record outlives the binding
         async with sessions() as session:
             events = (
                 await session.scalars(

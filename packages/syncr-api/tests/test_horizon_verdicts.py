@@ -13,13 +13,13 @@ declared once and never touched again: the only thing that changes between the t
 clock.
 
 **A tick that changes nothing writes nothing.** Which is what makes the fifteen-minute cadence free,
-and what ``VE2`` means by a verdict recomputed identically.
+and what a verdict recomputed identically comes to.
 
-**``VE8``: the maintainer writes on a ``feasible`` flip and never on a provenance change.** Its
-probe re-derives provenance, so the tick after a solve would otherwise flip ``solver`` back to
-``probe`` and the next solve would flip it back, forever.
+**The maintainer writes on a ``feasible`` flip and never on a provenance change.** Its probe
+re-derives provenance, so the tick after a solve would otherwise flip ``solver`` back to ``probe``
+and the next solve would flip it back, forever.
 
-**``VE7``: one instant.** Every transition a tick records carries the same ``occurred_at``, and it
+**One instant per tick.** Every transition a tick records carries the same ``occurred_at``, and it
 is the instant duty 1 stamped its revisions with.
 
 **One transaction per week.** A week whose probe raises is contained, counted, and does not take
@@ -295,7 +295,7 @@ async def test_the_transition_is_recorded_within_one_tick_of_the_week_becoming_i
 
 
 # --------------------------------------------------------------------------------
-# VE2: only on a transition
+# only on a transition
 # --------------------------------------------------------------------------------
 
 
@@ -320,8 +320,8 @@ async def test_a_week_the_maintainer_finds_healthy_is_never_recorded(
     """A week with no row holds no open episode, which is the state a feasible row denotes.
 
     So a periodic probe reporting that a week is fine writes nothing, on the first tick and on every
-    tick after it. Recording it would put one row per horizon week per tenant into a corpus ``VE1``
-    never prunes, and none of them would carry a discovery.
+    tick after it. Recording it would put one row per horizon week per tenant into a corpus nothing
+    ever prunes, and none of them would carry a discovery.
     """
     await declare_the_minimum(sessions, owner.tenant_id)
     clock = Ticking(NOW)
@@ -359,14 +359,14 @@ async def test_the_close_of_an_episode_is_recorded_too(
 
 
 # --------------------------------------------------------------------------------
-# VE8: a feasible flip, never a provenance change
+# a feasible flip, never a provenance change
 # --------------------------------------------------------------------------------
 
 
 async def test_the_tick_after_a_solve_adds_no_provenance_only_row(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
-    """``VE8``. Without it the probe flips ``solver`` back to ``probe`` on the tick after a solve.
+    """A provenance change alone is not a transition, or the probe would flip ``solver`` back.
 
     The solve's own row is seeded as the commit path writes one, because what is under test is what
     the maintainer does NEXT: it probes the same impossible week, reaches ``probe`` provenance, and
@@ -407,14 +407,14 @@ async def _seed_a_solver_row(
 
 
 # --------------------------------------------------------------------------------
-# VE7: one instant per tick
+# one instant per tick
 # --------------------------------------------------------------------------------
 
 
 async def test_every_transition_one_tick_records_carries_the_ticks_own_instant(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
-    """``VE7``, against a clock that advances on every read.
+    """One instant per tick, against a clock that advances on every read.
 
     Two weeks are impossible from the first tick, so one tick records two transitions. Both carry
     one ``occurred_at``, and it is the instant duty 1 stamped its own revisions with: a duty that
@@ -480,7 +480,7 @@ async def test_one_weeks_failure_does_not_lose_another_weeks_transition(
 async def test_a_failure_after_the_append_leaves_no_row(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
-    """``VE5``: the row is written in the job's transaction, so it cannot commit on its own.
+    """The row is written in the job's transaction, so it cannot commit on its own.
 
     The counter increment is the one statement that follows the append, so failing it is the
     reachable way to ask whether the row was already committed. It must not be.

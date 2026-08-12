@@ -421,14 +421,14 @@ def test_a_week_with_no_plan_carries_no_verdict(
 
 
 # --------------------------------------------------------------------------------
-# VE6: the payload writes nothing, including no VerdictEvent
+# the payload writes nothing, including no VerdictEvent
 # --------------------------------------------------------------------------------
 
 
 def test_reading_the_session_writes_nothing_however_often_it_is_driven(
     http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
 ) -> None:
-    """``VE6``, driven twice, over a week that really carries a verdict.
+    """A read writing nothing, driven twice, over a week that really carries a verdict.
 
     Twice, because the transition recorder writes only on a CHANGE: a read that recorded would write
     one row and then be quiet, which counting once after one call cannot tell from writing none. The

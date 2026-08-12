@@ -139,8 +139,8 @@ async def test_a_recorded_outcome_carries_the_blocks_own_binding_and_scheduled_i
 
 
 async def test_recording_an_outcome_does_not_confirm_the_day() -> None:
-    # O3, at the write. A block marked skipped on a day the user has not answered for is a
-    # statement about the block, and the day stays out of reviews and learning until they answer.
+    # At the write: a block marked skipped on a day the user has not answered for is a statement
+    # about the block, and the day stays out of reviews and learning until they answer.
     block = a_gym_block(day=1)
     scene = wired(block)
 
@@ -153,9 +153,9 @@ async def test_recording_an_outcome_does_not_confirm_the_day() -> None:
 
 
 async def test_correcting_a_recording_after_a_confirmation_keeps_when_the_day_was_settled() -> None:
-    # O5's other half. Correcting a past confirmation must re-derive what the log projects, and it
-    # must NOT restate when the user answered for the day: a February day corrected in March is
-    # still a day settled in February.
+    # Correcting a past confirmation must re-derive what the log projects, and it must NOT restate
+    # when the user answered for the day: a February day corrected in March is still a day settled
+    # in February.
     block = a_gym_block(day=1)
     scene = wired(block)
     confirmed = await scene.service.confirm_day(OWNER, TUESDAY)
@@ -168,8 +168,8 @@ async def test_correcting_a_recording_after_a_confirmation_keeps_when_the_day_wa
 
 
 async def test_a_partial_without_its_minutes_is_refused_and_writes_nothing() -> None:
-    # O2. The pair is the sole source of the duration-estimate signal, so a row that claims a
-    # `partial` without saying by how much records that an estimate was wrong and nothing else.
+    # The pair is the sole source of the duration-estimate signal, so a row that claims a `partial`
+    # without saying by how much records that an estimate was wrong and nothing else.
     block = a_gym_block(day=1)
     scene = wired(block)
 
@@ -191,8 +191,8 @@ async def test_a_partial_with_its_minutes_is_recorded() -> None:
 
 
 async def test_a_move_that_does_not_say_when_is_refused_and_writes_nothing() -> None:
-    # O7's first half. The recorded interval is the signal the time-of-day fitness curve is fitted
-    # from, so a move without one says only that the planned hour was wrong.
+    # The recorded interval is the signal the time-of-day fitness curve is fitted from, so a move
+    # without one says only that the planned hour was wrong.
     block = a_gym_block(day=1)
     scene = wired(block)
 
@@ -330,7 +330,7 @@ async def test_a_prep_and_a_transit_block_appear_in_the_ledger_and_can_be_confir
 
 async def test_a_day_the_tenants_zone_does_not_hold_is_refused_with_the_date_named() -> None:
     # Reachable rather than theoretical: Pacific/Apia skipped 30 December 2011 when it crossed the
-    # date line, and O4 lets any past day be named.
+    # date line, and any past day may be named.
     scene = a_service(plans=[], settings=FakeSettings("Pacific/Apia"), now=NOW)
 
     with pytest.raises(ValidationFailed, match="does not exist in Pacific/Apia"):
@@ -383,8 +383,8 @@ async def test_a_day_read_across_a_travel_boundary_is_as_long_as_it_really_was()
 
 
 async def test_confirming_a_day_records_every_block_including_the_untouched_ones() -> None:
-    # O1 and the confirmation together: a block nobody said anything about becomes a `presumed` row
-    # on a settled day, which is what turns the presumption into a fact the learner may read.
+    # A block nobody said anything about becomes a `presumed` row on a settled day, which is what
+    # turns the presumption into a fact the learner may read.
     marked = a_gym_block(day=1, index=0)
     untouched = a_gym_block(day=1, index=1, hours=(11, 12))
     scene = wired(marked, untouched)
@@ -442,7 +442,7 @@ async def test_confirming_today_answers_for_a_block_that_has_not_ended() -> None
     # routinely ends on the NEXT day: a `Sleep` routine from 23:00 belongs to the day it begins in,
     # so waiting for every block to end would make today unconfirmable until tomorrow morning for
     # every user who sleeps, and the evening pass would settle nothing. An evening that turns out
-    # otherwise is one recorded exception away, and O5 re-derives what the log projects.
+    # otherwise is one recorded exception away, and the log's projection re-derives from it.
     ended = a_gym_block(day=2, index=0, hours=(7, 8))
     ahead = a_gym_block(day=2, index=1, hours=(20, 21))
     scene = wired(ended, ahead)
@@ -479,7 +479,7 @@ async def test_confirming_a_day_invalidates_every_week_from_the_current_one_onwa
 
 
 async def test_a_backfill_settles_several_days_and_reports_how_many() -> None:
-    # O4: any past day can be confirmed at any later time, and the control that offers the backfill
+    # Any past day can be confirmed at any later time, and the control that offers the backfill
     # states how many it would settle.
     scene = wired(a_gym_block(day=0), a_gym_block(day=1, index=1))
 
@@ -505,8 +505,8 @@ async def test_a_backfill_counts_only_the_days_it_actually_settled() -> None:
 
 
 async def test_a_backfilled_day_is_indistinguishable_from_one_settled_the_same_evening() -> None:
-    # O4's second half: a backfilled day counts identically for maturity gates. Nothing on the row
-    # records how late the answer came, so no gate can read the difference.
+    # A backfilled day counts identically for maturity gates. Nothing on the row records how late
+    # the answer came, so no gate can read the difference.
     monday = a_gym_block(day=0)
     tuesday = a_gym_block(day=1, index=1)
     scene = wired(monday, tuesday)

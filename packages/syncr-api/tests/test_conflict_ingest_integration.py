@@ -213,8 +213,9 @@ async def test_a_transit_leg_over_a_pinned_block_is_raised_against_the_commitmen
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
     # The third overlap class, through the real generator: the user pinned something at 15:00, an
-    # interview arrives at 16:00, and the outbound leg the type casts lands on the pin. H11 makes
-    # both immovable and the solver created neither, so nothing else in the model catches it.
+    # interview arrives at 16:00, and the outbound leg the type casts lands on the pin. The solver
+    # may move neither a pinned block nor a derived one, and it created neither, so nothing else in
+    # the model catches it.
     await store_live_plan(sessions, owner.tenant_id, pinned(a_block_holding(GYM, between(15, 16))))
     anchor_id = await add_commitment(sessions, owner.tenant_id, specification=INTERVIEW)
 

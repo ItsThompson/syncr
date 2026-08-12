@@ -408,8 +408,8 @@ def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
 
 
 def test_an_outcome_naming_a_binding_no_placement_holds_changes_nothing() -> None:
-    # O8 at this layer: the row is retained because it is a fact about a week that happened, and a
-    # week whose plan no longer holds the block has nothing for it to change.
+    # The row is retained at this layer because it is a fact about a week that happened, and a week
+    # whose plan no longer holds the block has nothing for it to change.
     plan = a_past_task_hour()
     stale = RecordedOutcome(binding=BindingRef.for_task(OTHER_TASK), state=MISS_STATE)
 

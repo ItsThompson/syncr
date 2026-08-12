@@ -5,11 +5,11 @@ database can:
 
 - the wire shape is camelCase, and a span reaches it as two instants
 - one outcome row per block, whichever plan of record recorded it, enforced by the index
-- a `moved` outcome creates no `Pin` row, which is O7's second half and cannot be asserted anywhere
-  a pin table does not exist
+- a `moved` outcome creates no `Pin` row, which cannot be asserted anywhere a pin table does not
+  exist
 - a retried recording under one `Idempotency-Key` does not become a second row
-- a correction after a confirmation re-derives the rotation cursor with no further call, which is O5
-  through HTTP
+- a correction after a confirmation re-derives the rotation cursor with no further call, through
+  HTTP
 - another tenant's block is a 404 rather than an edit
 - confirming bumps the week input version rows the next solve reads
 
@@ -346,8 +346,8 @@ def test_a_row_carries_the_range_the_duration_the_area_and_the_title(
 def test_a_day_the_tenants_zone_does_not_hold_is_a_422_naming_the_date(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
-    # Pacific/Apia skipped 30 December 2011 when it crossed the date line, and O4 lets any past day
-    # be named. There is no day to render, so the refusal names the date and the zone.
+    # Pacific/Apia skipped 30 December 2011 when it crossed the date line, and any past day may be
+    # named. There is no day to render, so the refusal names the date and the zone.
     answered = http.patch(SETTINGS_PREFIX, json={"homeZone": "Pacific/Apia"}, headers=signed_in)
     assert answered.status_code == HTTPStatus.OK, answered.text
 
@@ -414,8 +414,8 @@ def test_a_moved_outcome_records_its_interval_and_creates_no_pin(
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
-    # O7: a `moved` outcome describes the past and a pin constrains the future, so no pin appears.
-    # This is the assertion that needs a real pin table to mean anything.
+    # A `moved` outcome describes the past and a pin constrains the future, so no pin appears. This
+    # is the assertion that needs a real pin table to mean anything.
     first, _ = planned
     elsewhere = Interval(an_instant(YESTERDAY, 14), an_instant(YESTERDAY, 15))
 
@@ -718,9 +718,10 @@ def test_correcting_a_past_confirmation_re_derives_the_rotation_cursor(
     owner: UserRecord,
     live_database_url: str,
 ) -> None:
-    # O5 through HTTP, and the whole reason the binding is denormalized onto an outcome. The cursor
-    # is derived from the log on every read, so correcting a confirmation moves it with no further
-    # call: there is no stored projection for the correction to disagree with.
+    # Correcting a past confirmation re-derives what the log projects, through HTTP, and it is the
+    # whole reason the binding is denormalized onto an outcome. The cursor is derived from the log
+    # on every read, so correcting a confirmation moves it with no further call: there is no stored
+    # projection for the correction to disagree with.
     area_id = declare_area(http, signed_in)
     declared = http.post(
         HABITS_PREFIX,

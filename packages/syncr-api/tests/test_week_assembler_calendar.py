@@ -722,9 +722,9 @@ async def test_the_longest_routine_a_tenant_can_declare_is_carried_whole() -> No
 
 
 async def test_the_inherited_night_and_this_weeks_own_are_read_as_one_occupancy() -> None:
-    # H3 and the probe's `occupied` both ask what the frame occupies, and the answer is both
-    # fields: a consumer reading this week's occurrences alone would place work inside the night
-    # the week before already spent.
+    # The rule that keeps the solver off a routine occurrence and the probe's `occupied` both ask
+    # what the frame occupies, and the answer is both fields: a consumer reading this week's
+    # occurrences alone would place work inside the night the week before already spent.
     sleep = a_routine(target_time=time(23, 0), duration_minutes=8 * MINUTES_PER_HOUR)
 
     inputs = await an_assembler(
