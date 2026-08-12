@@ -187,7 +187,7 @@ def test_the_cases_here_are_exactly_the_commands_the_parser_builds() -> None:
 
 
 def test_the_catalog_is_the_thirteen_commands_section_17_names() -> None:
-    # The count is asserted, so a fourteenth command has to be a deliberate edit here.
+    # So a fourteenth command has to be a deliberate edit here.
     assert len(catalog()) == 16
     assert len(COMMANDS) == 13
 

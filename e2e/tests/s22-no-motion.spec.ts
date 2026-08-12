@@ -9,13 +9,12 @@
  * The states are exercised rather than assumed: every one of the shell's routes, both weekly-session
  * modes, a week whose plan is beyond the horizon and therefore empty, and a route that does not exist.
  *
- * WHICH OF THE TWO AMBER NOTICE SURFACES THIS FILE REACHES, because the answer is one of each. A
- * browser pass over the weekly session names both, and singles out the PROMOTION panel as the likeliest
- * place it finds something, since it puts a `Table` inside a notice surface and nothing else in the
- * product does. That panel is NOT reached: it returns null on an empty candidate list and no fixture
- * here raises a promotion. The RAISED panel is, and the case at the foot of this file asserts both
- * facts, so the day a fixture raises a promotion it reddens. The composition itself waits on a fixture
- * that raises one.
+ * WHICH OF THE TWO AMBER NOTICE SURFACES THIS FILE REACHES, because the answer is one of each. The
+ * prediction worth stating is that the PROMOTION panel is the likeliest place a browser pass finds
+ * something, since it puts a `Table` inside a notice surface and nothing else in the product does. That
+ * panel is NOT reached: it returns null on an empty candidate list and no fixture here raises a
+ * promotion. The RAISED panel is, and the case at the foot of this file asserts both facts, so the day
+ * a fixture raises a promotion it reddens. The composition itself waits on a fixture that raises one.
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
@@ -105,11 +104,11 @@ for (const route of routes()) {
 
 /* WHICH OF THE TWO AMBER NOTICE SURFACES THESE CASES ACTUALLY REACH, asserted rather than assumed.
  *
- * The promotion panel is the likeliest place a browser pass finds something, because it puts a `Table`
- * INSIDE a notice surface and nothing else in the product does. Adding the session route to the list
- * above does not reach that composition: `PromotionPanel` returns null on an empty candidate list, and
- * no fixture here raises a promotion, which needs repeated pins across three weeks. Measured on this
- * fixture's session payload: `promotions: 0`, `raised: 1`.
+ * The promotion panel is PREDICTED to be the likeliest place a browser pass finds something, because it
+ * puts a `Table` INSIDE a notice surface and nothing else in the product does. Adding the session route
+ * to the list above does not reach that composition: `PromotionPanel` returns null on an empty
+ * candidate list, and no fixture here raises a promotion, which needs repeated pins across three weeks.
+ * Measured on this fixture's session payload: `promotions: 0`, `raised: 1`.
  *
  * So this case states which is which, and it is written to fail if either fact changes: the day a fixture
  * raises a promotion, its second half goes red and the gap table has to be corrected. */

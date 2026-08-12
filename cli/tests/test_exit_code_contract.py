@@ -148,8 +148,9 @@ def test_every_case_runs_the_console_script_rather_than_this_interpreter() -> No
     """The empty exemption set, asserted over this module's own source.
 
     An in-interpreter case would have to reach the wait loop or build a result directly, so the
-    guard is that no name in this file does either. That is what stops an exemption coming back now
-    that ``plan solve --wait`` makes every code reachable through the script.
+    guard is that this file names neither the loop nor the shapes such a case would build. That is
+    what stops an exemption coming back now that ``plan solve --wait`` makes every code reachable
+    through the script.
 
     Read from the AST rather than by searching the text, because the text includes this sentence: a
     substring guard matches the names it is written to forbid and fails on its own prose. Names

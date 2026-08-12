@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /* The status table in `docs/smoke-scenarios.md` and the suite must agree, and this is what checks it.
  *
- * A LIST IS A SECOND COPY OF A FACT. The table's job is to be the map from a status list to something
- * that can fail, and a check that reads only the scenario and the status columns leaves the column a
- * reader follows to find the assertion unchecked: the set it can see is then not the set it claims to
- * bound. Two kinds of staleness got through that way, a row claiming an assertion no file in the
- * suite made and rows naming a spec file that no longer existed.
+ * A LIST IS A SECOND COPY OF A FACT. The table's job is to be the map from a scenario number to the
+ * assertion that covers it, and a check that reads only the scenario and the status columns leaves the
+ * column a reader follows to find that assertion unchecked: the set it can see is then not the set it
+ * claims to bound. Two kinds of staleness got through that way, a row claiming an assertion no file in
+ * the suite made and rows naming a spec file that no longer existed.
  *
  * So it now reads every column it is meant to bound, in both directions:
  *
