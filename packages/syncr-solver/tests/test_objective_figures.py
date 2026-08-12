@@ -237,11 +237,14 @@ def test_churn_never_passes_the_terms_own_unit_at_any_tolerance_a_weight_set_adm
     what would overflow below the guard is the arithmetic rather than the cost being large.
 
     Each case states its own figure, so a curve that changed shape while staying inside the unit is
-    red here rather than absorbed by a range check.
+    red here rather than absorbed by a range check. **The comparison is relative with no absolute
+    floor**, because two of these figures are a subnormal and a zero: under the default absolute
+    tolerance of 1e-12 either would satisfy the other, and the two adjacent tolerances the flat
+    guard sits between would read alike.
     """
     cost = churn_of(moves, flat_weights(churn_tolerance=tolerance))
 
-    assert cost == pytest.approx(expected)
+    assert cost == pytest.approx(expected, rel=1e-12, abs=0.0)
     assert 0.0 <= cost <= 1.0
     assert math.isfinite(cost)
     # The threshold is a figure this file states as an input and the module states as a constant.
