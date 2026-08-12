@@ -7,9 +7,9 @@ differently.
 absorbed the way a substring reading absorbs one.
 
 **A ban runs beside it**, over the module's own text, refusing the four shapes a deferral takes: a
-rule owed, a rule nobody states, a ticket that carries the question, and a question called open. The
-equality cannot see any of them, because a paragraph that takes the answer back is added BESIDE the
-paragraph that gives it and leaves it untouched.
+rule owed, a rule nobody states, a ticket that carries the question, and a question called open.
+What the equality cannot see is one of them added BESIDE the paragraph it pins, because an answer
+taken back in a new paragraph leaves the pinned one untouched.
 
 The ban reads the module's whole source rather than its prose alone: a deferral is a deferral
 wherever it sits, and the stricter reading needs no walker of its own. What neither reading can see
