@@ -23,6 +23,10 @@ casing broke.
 are literal patterns, and where a spelling is allowed to appear is read from the clause in the
 source rather than from the parameter the clause describes.
 
+Every claim is taken over two documents: the committed artifact a client was generated from, and
+the one the application declares today. A committed file can be older than the routes it
+describes, and the regenerate-and-diff CI job is the only gate that sees them disagree.
+
 The two body surfaces are told apart by the media type that reaches them rather than by name: the
 OAuth endpoints take ``application/x-www-form-urlencoded`` requests whose member names RFC 6749
 fixes, and no JSON body reaches those schemas. The exception is therefore structural, and it is
@@ -45,9 +49,11 @@ from tests.test_alert_rules import repo_root
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
-# The document the committed client was generated from, which is the artifact a caller reads. The
-# runtime's own document is `just contract` and the CI job that regenerates and diffs; this file
-# asks what shipped.
+    from fastapi import FastAPI
+
+# The document the committed client was generated from, which is what a caller reads. The
+# application's own document is the other reading, because a committed file can describe an older
+# set of routes than the one HEAD mounts and no local gate can see that.
 CONTRACT: Final = repo_root() / "frontend" / "openapi.json"
 
 JSON_BODY: Final = "application/json"
@@ -276,12 +282,26 @@ READINGS: Final[Mapping[str, Callable[[Mapping[str, Any]], tuple[Parameter, ...]
 }
 
 
-def test_each_reading_of_the_contract_finds_something() -> None:
+@pytest.fixture(params=["committed", "served"])
+def document(request: pytest.FixtureRequest, app: FastAPI) -> Mapping[str, Any]:
+    """Both documents, because a committed file can be older than the routes it describes.
+
+    The committed one is what the client was generated from, so it is what a caller reads. The
+    served one is what the application declares today, so a route added without a regeneration is
+    held to the casing claim before the artifact catches up. Only the regenerate-and-diff CI job
+    makes the two agree, and a stale committed file is invisible to every local contract gate.
+    """
+    if request.param == "committed":
+        return contract()
+    served: Mapping[str, Any] = app.openapi()
+    return served
+
+
+def test_each_reading_of_the_contract_finds_something(document: Mapping[str, Any]) -> None:
     # Every claim below is a universal over one of these readings, so all of them hold vacuously
     # on a document that declares nothing. The floors are measured against the committed
     # contract, and the two schema sets are asserted to partition the named schemas so that a
     # shape reached by neither cannot sit uncensused.
-    document = contract()
     declared = parameters_the_operations_declare(document)
     from_json = schemas_reached_through(document, JSON_BODY)
     from_form = schemas_reached_through(document, FORM_BODY)
@@ -325,10 +345,11 @@ def test_each_reading_of_the_contract_finds_something() -> None:
 
 @pytest.mark.parametrize("read", READINGS.values(), ids=READINGS.keys())
 def test_no_path_declares_a_camel_humped_parameter(
+    document: Mapping[str, Any],
     read: Callable[[Mapping[str, Any]], tuple[Parameter, ...]],
 ) -> None:
     humped = [
-        str(one) for one in read(contract()) if one.location == PATH and is_camel_humped(one.name)
+        str(one) for one in read(document) if one.location == PATH and is_camel_humped(one.name)
     ]
 
     assert humped == [], f"a path parameter is camelCased: {humped}"
@@ -336,14 +357,13 @@ def test_no_path_declares_a_camel_humped_parameter(
 
 @pytest.mark.parametrize("read", READINGS.values(), ids=READINGS.keys())
 def test_every_path_parameter_is_snake_cased(
+    document: Mapping[str, Any],
     read: Callable[[Mapping[str, Any]], tuple[Parameter, ...]],
 ) -> None:
     # The stronger half of the same claim: a name with no hump is not necessarily snake_case, and
     # `ISOWeek` would satisfy the hump reading while spelling the surface two ways.
     otherwise = [
-        str(one)
-        for one in read(contract())
-        if one.location == PATH and not is_snake_cased(one.name)
+        str(one) for one in read(document) if one.location == PATH and not is_snake_cased(one.name)
     ]
 
     assert otherwise == [], (
@@ -351,15 +371,13 @@ def test_every_path_parameter_is_snake_cased(
     )
 
 
-def test_the_two_readings_of_the_path_parameters_agree() -> None:
+def test_the_two_readings_of_the_path_parameters_agree(document: Mapping[str, Any]) -> None:
     """The case that spans both units: a placeholder and a declaration that disagree.
 
     A URL carries the placeholder and a generated client spells the declared name, so a document
     where the two differ has a parameter that cannot be called by the name it publishes. Neither
     reading alone can see it.
     """
-    document = contract()
-
     in_templates = {one.name for one in parameters_in_the_templates(document)}
     in_declarations = {
         one.name for one in parameters_the_operations_declare(document) if one.location == PATH
@@ -371,7 +389,7 @@ def test_the_two_readings_of_the_path_parameters_agree() -> None:
     )
 
 
-def test_every_camel_humped_parameter_is_a_query_parameter() -> None:
+def test_every_camel_humped_parameter_is_a_query_parameter(document: Mapping[str, Any]) -> None:
     """Where camelCase does live on the parameter surface, which is the clause's other half.
 
     Stated as the whole set rather than as the two names, so snake_casing one of them reddens
@@ -379,7 +397,7 @@ def test_every_camel_humped_parameter_is_a_query_parameter() -> None:
     is, and an empty set would satisfy the path claim while making the clause false.
     """
     humped = [
-        one for one in parameters_the_operations_declare(contract()) if is_camel_humped(one.name)
+        one for one in parameters_the_operations_declare(document) if is_camel_humped(one.name)
     ]
 
     assert humped, "no parameter is camelCased anywhere, so the clause names a surface that is not"
@@ -387,8 +405,9 @@ def test_every_camel_humped_parameter_is_a_query_parameter() -> None:
     assert elsewhere == [], f"a camelCased parameter is not a query parameter: {elsewhere}"
 
 
-def test_every_body_member_a_json_route_carries_is_camel_cased() -> None:
-    document = contract()
+def test_every_body_member_a_json_route_carries_is_camel_cased(
+    document: Mapping[str, Any],
+) -> None:
     reached = schemas_reached_through(document, JSON_BODY)
 
     otherwise = [
@@ -400,13 +419,13 @@ def test_every_body_member_a_json_route_carries_is_camel_cased() -> None:
     assert otherwise == [], f"a JSON body member is not camelCased: {otherwise}"
 
 
-def test_the_form_bodies_are_where_a_snake_cased_member_lives() -> None:
+def test_the_form_bodies_are_where_a_snake_cased_member_lives(
+    document: Mapping[str, Any],
+) -> None:
     """The exclusion's other edge, which is what stops the body claim from being a rule with a
     hole nobody stated: the members RFC 6749 fixes are snake_cased, and they are reached only
     through a form-encoded request.
     """
-    document = contract()
-
     fixed = properties_of(document, schemas_reached_through(document, FORM_BODY))
 
     assert fixed, "the form-encoded bodies declare no member at all"
@@ -415,18 +434,20 @@ def test_the_form_bodies_are_where_a_snake_cased_member_lives() -> None:
     )
 
 
-def test_no_body_shape_is_declared_inline_under_a_path() -> None:
+def test_no_body_shape_is_declared_inline_under_a_path(document: Mapping[str, Any]) -> None:
     """The member census's own blind spot, held shut rather than described.
 
     It reads a named schema. A shape written inline under an operation carries members that no
     named schema holds, so it would be covered by no casing claim at all.
     """
-    inline = body_shapes_declared_inline(contract())
+    inline = body_shapes_declared_inline(document)
 
     assert inline == (), f"a member-bearing schema is declared inline rather than named: {inline}"
 
 
-def test_the_casing_clause_names_spellings_the_contract_declares() -> None:
+def test_the_casing_clause_names_spellings_the_contract_declares(
+    document: Mapping[str, Any],
+) -> None:
     """The clause crossed against the artifact it describes.
 
     The docstring's examples are read out of it and looked up in the contract: a snake_cased one
@@ -434,7 +455,7 @@ def test_the_casing_clause_names_spellings_the_contract_declares() -> None:
     clause's own claim stated where a machine can refuse it. Deleting the clause empties both
     sides and reddens here.
     """
-    declared = {one.name: one.location for one in parameters_the_operations_declare(contract())}
+    declared = {one.name: one.location for one in parameters_the_operations_declare(document)}
     quoted = [one for one in spellings_the_clause_quotes() if one in declared]
 
     misplaced = {
