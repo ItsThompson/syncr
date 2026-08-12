@@ -1,0 +1,11 @@
+/* The same six properties under a state that is not focus. A hovered row growing its own box is geometry
+   nothing models rather than a reveal, so the reveal channel is the focus state's and no other state's.
+   `position` is the one the model already names as carrying none, for any state. */
+.backlog__row:hover {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  margin: var(--state-margin);
+}

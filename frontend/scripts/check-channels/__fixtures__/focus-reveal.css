@@ -1,0 +1,20 @@
+/* A control a reader sees only while it holds focus: clipped out of sight at rest, restored to its own
+   box under the focus state. The resting rule selects on no state, so it is geometry and the check reads
+   the reveal alone. */
+.skip-link {
+  position: absolute;
+  width: var(--state-hidden-size);
+  height: var(--state-hidden-size);
+  overflow: hidden;
+  clip-path: var(--state-hidden-clip);
+  margin: calc(-1 * var(--state-hidden-size));
+}
+
+.skip-link:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  margin: var(--state-margin);
+}

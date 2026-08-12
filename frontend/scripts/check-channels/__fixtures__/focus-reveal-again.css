@@ -1,0 +1,8 @@
+/* A second file revealing a control under the same state, which is the drift the pair rule refuses: two
+   definitions of one state's channel, and nothing on a rendered screen shows the disagreement until a
+   reader tabs to it. */
+.shell__skip:focus-visible {
+  position: static;
+  width: auto;
+  clip-path: none;
+}

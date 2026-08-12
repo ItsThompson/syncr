@@ -96,6 +96,77 @@ describe("the glyph slot and the quarter-line weight", () => {
   });
 });
 
+/* THE ONE CHANNEL WHOSE RESTING VALUE IS INVISIBILITY.
+ *
+ * A control seen only while focused has no resting mark to compare against, so it spends the clip geometry
+ * rather than a colour. The properties it spends are geometry under every other state, which is why the
+ * entry is scoped and why the scoping needs an arm of its own: widened, it would read a hovered row's own
+ * box as a reveal, and removed, the reveal itself becomes five properties the model is silent about. */
+describe("hidden until focused", () => {
+  it("reads the reveal as one channel, on the focus state", async () => {
+    const outcome = await check(["focus-reveal.css"]);
+
+    expect(outcome.findings).toEqual([]);
+    expect(outcome.notes).toContain("  :focus-visible -> hidden until focused");
+  });
+
+  it("names all six properties the treatment spends, so a missing one is a finding", async () => {
+    const outcome = await check(["focus-reveal.css"]);
+
+    expect(outcome.notes[1]).toContain("6 declaration(s) carry one");
+  });
+
+  it("fails when a second file reveals a control under the same state", async () => {
+    const outcome = await check(["focus-reveal.css", "focus-reveal-again.css"]);
+
+    expect(outcome.findings.map((finding) => finding.check)).toEqual(["one-file-per-channel"]);
+    expect(outcome.findings[0].message).toContain(":focus-visible -> hidden until focused");
+    expect(outcome.findings[0].message).toContain("focus-reveal-again.css");
+  });
+
+  it("leaves the same properties to geometry under any other state", async () => {
+    const outcome = await check(["reveal-outside-focus.css"]);
+
+    expect(outcome.findings.map((finding) => finding.message.split(", which")[0])).toEqual([
+      ":hover spends width",
+      ":hover spends height",
+      ":hover spends overflow",
+      ":hover spends clip-path",
+      ":hover spends margin",
+    ]);
+  });
+
+  /* The exclusion's other edge. `position` is named as carrying no channel for any state, and a
+   * state-specific channel is consulted first, so the reveal takes it under focus while every other state
+   * still routes through the exemption rather than through this channel. */
+  it("leaves position to the exemption outside the focus state", async () => {
+    const outcome = await check(["reveal-outside-focus.css"]);
+
+    expect(outcome.notes[1]).toContain("1 named as carrying none");
+    expect(outcome.notes[0]).toContain("0 state channel(s) assigned");
+  });
+
+  /* THE MARKUP SPELLING OF THE SAME TREATMENT. `sr-only` and its inverse are the two utilities that carry
+   * the whole of it, so a variant-prefixed one is an assignment like any other. Without them in the model
+   * the markup form would be skipped in silence: only a CSS declaration reaches the unmodelled report, so
+   * an unnamed utility is neither counted nor refused. The bare `sr-only` in the same class string records
+   * nothing, which is what keeps the permanently-hidden sites out of this channel. */
+  it("counts the reveal written as a variant utility, so markup cannot dodge the pair rule", async () => {
+    const outcome = await check(["FocusReveal.tsx"]);
+
+    expect(outcome.notes).toContain("  :focus-visible -> hidden until focused");
+    expect(outcome.notes[1]).toContain("1 declaration(s) carry one");
+  });
+
+  it("fails when a stylesheet and a class string both reveal a control", async () => {
+    const outcome = await check(["focus-reveal.css", "FocusReveal.tsx"]);
+
+    expect(outcome.findings.map((finding) => finding.check)).toEqual(["one-file-per-channel"]);
+    expect(outcome.findings[0].message).toContain(":focus-visible -> hidden until focused");
+    expect(outcome.findings[0].message).toContain("FocusReveal.tsx");
+  });
+});
+
 /* A PROPERTY THE MODEL DOES NOT NAME WAS UNSEEN RATHER THAN UNASSIGNED.
  *
  * `channelFor` returns null for a property in no channel, and the caller skipped it, so a state could spend

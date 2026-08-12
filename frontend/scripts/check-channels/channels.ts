@@ -116,6 +116,30 @@ export const CHANNELS: readonly Channel[] = [
     utilityPrefixes: ["border-t-", "border-b-"],
     states: ["data-dragging"],
   },
+  /* HIDDEN UNTIL FOCUSED is the one channel whose resting value is invisibility, so it is the only one a
+   * reader compares against nothing: the control is not there, and then it is. A control that must be
+   * reachable before it is seen is clipped to a 1px box rather than removed, and the reveal restores its
+   * own box, so the treatment spends geometry rather than a mark.
+   *
+   * SCOPED TO THE FOCUS STATE, because all six properties are ordinary geometry under every other state and
+   * an unscoped entry would read a hovered row's own box as a reveal. `position` is named as carrying no
+   * channel for any state and a state-specific channel is consulted first, so the reveal takes it under
+   * focus while everywhere else it stays the stacking context the keyboard cursor's inset ring needs.
+   *
+   * `:focus` is not the state, and the difference is mechanical rather than stylistic: `statesInSelector`
+   * finds only the pseudo-classes `PSEUDO_STATES` names, so a rule written under `:focus` is unseen rather
+   * than checked.
+   *
+   * THE UTILITY PREFIXES ARE THE TWO THAT CARRY THE WHOLE TREATMENT, not `w-`, `m-` or `overflow-`, which
+   * carry geometry under a state and would report a width as a reveal. A bare `sr-only` records nothing,
+   * because a utility is read only through a variant, which is what keeps the permanently-hidden sites out
+   * of this channel: they never reveal, and permanently hidden is a different state. */
+  {
+    name: "hidden until focused",
+    properties: ["position", "width", "height", "overflow", "clip-path", "margin"],
+    utilityPrefixes: ["sr-only", "not-sr-only"],
+    states: [":focus-visible"],
+  },
 ];
 
 /* A state-specific channel is consulted first, so the drag's quarter-line weight is not read as the
