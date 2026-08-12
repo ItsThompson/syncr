@@ -24,10 +24,10 @@ def rank_examples(
 ) -> Iterable[RankExample]:
     """Every edit that can rank a pair: on-plan, and carrying the difference it is ranked on.
 
-    Excluded on three grounds. E4's flag, which the row itself carries. An accepted placement inside
-    a span declared SINCE the edit, which an older row's flag cannot know about, so both are checked
-    and either excludes. And an absent or malformed measurement difference, which is every row
-    written before the difference was measured at all: :func:`unmeasured` counts those.
+    Excluded on three grounds. The off-plan flag, which the row itself carries. An accepted
+    placement inside a span declared SINCE the edit, which an older row's flag cannot know about, so
+    both are checked and either excludes. And an absent or malformed measurement difference, which
+    is every row written before the difference was measured at all: :func:`unmeasured` counts those.
 
     A degenerate pair -- two identical placements, so every difference is zero -- is kept here and
     refused by the fit. The sample count that decides the gate is taken there, so a pair that
@@ -43,7 +43,7 @@ def unmeasured(edits: Sequence[RecordedEdit], off_plan: Sequence[OffPlanSpan]) -
     """How many otherwise-countable edits carry no usable measurement difference.
 
     Exported as a metric rather than logged and forgotten. These are the rows written before the
-    difference was recorded, E5 forbids pruning them, and the figure is what says whether a weight
+    difference was recorded, nothing prunes them, and the figure is what says whether a weight
     gate is being held back by history rather than by a quiet user.
     """
     return sum(

@@ -86,7 +86,7 @@ class RecordedEdit:
     """One pairwise preference, as its edit-event row states it.
 
     ``measurement_delta`` is ``None`` for every event written before the difference was measured.
-    Those rows are the corpus and E5 forbids pruning them, so the weight fit excludes them and
+    Those rows are the corpus and nothing prunes an edit event, so the weight fit excludes them and
     counts what it excluded, rather than reading an absent vector as a zero one.
     """
 

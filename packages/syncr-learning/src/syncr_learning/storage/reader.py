@@ -18,7 +18,7 @@ bound.
 edits filter on ``iso_week``; the outcomes filter on ``occurred_at`` and the off-plan spans on their
 end, because neither table names a week. An earlier version bounded three of the five and said it
 bounded all of them, which matters because the bound IS the justification for the budget, and
-``edit_events`` is the one table ``E5`` forbids pruning: it is the one that grows without limit.
+``edit_events`` is the one table nothing prunes: it is the one that grows without limit.
 """
 
 from __future__ import annotations

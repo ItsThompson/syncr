@@ -92,7 +92,7 @@ def measurement_delta(context: object) -> Mapping[str, float] | None:
     """The seven measurement differences a stored context carries, or nothing because it has none.
 
     ``None`` for every event written before the difference was measured. Those rows are the corpus
-    and E5 forbids pruning them, so the absence has to read as a value the weight fit can exclude.
+    and nothing prunes them, so the absence has to read as a value the weight fit can exclude.
     """
     if not isinstance(context, dict):
         return None
@@ -107,7 +107,8 @@ def measurement_delta(context: object) -> Mapping[str, float] | None:
 
 
 def inside_off_plan(context: object) -> bool:
-    """E4's flag, as the stored context carries it. Absent reads as false, the older row's shape."""
+    """The off-plan flag, as the stored context carries it. Absent reads as false, the older row's
+    shape."""
     return bool(isinstance(context, dict) and context.get(spelling.CONTEXT_INSIDE_OFF_PLAN))
 
 
