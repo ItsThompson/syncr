@@ -83,9 +83,9 @@ verdict's, and refusing content over it would leave an infeasible week with noth
 inside a window that forbids the Area owing the floor is counted as usable here, so this rule
 refuses fewer candidates than the capacity check the verdict is taken from. And a placement carrying
 NO Area occupies claimable time that ``free`` still counts as available, because ``_spans`` reads
-only the placements an Area claims. The oracle in the suite shares that
-second blind spot by design, since it nets the same way, so no property can see it: it is recorded
-here because a blind spot an instrument shares is the one thing this file's reasoning cannot catch.
+only the placements an Area claims. The oracle in the suite shares that last blind spot by design,
+since it nets the same way, so no property can see it: it is recorded here because a blind spot an
+instrument shares is the one thing this file's reasoning cannot catch.
 
 A hard constraint that may not prove feasibility can only safely err in that direction.
 """
