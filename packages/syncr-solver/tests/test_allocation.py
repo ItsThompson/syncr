@@ -495,6 +495,31 @@ def test_a_reservation_outlives_the_candidate_that_takes_the_arriving_deficit_up
     assert refused.detail == "Fitness would be left 200m short of its floor, with 150m free"
 
 
+def test_one_areas_placement_never_nets_against_another_areas_floor() -> None:
+    # Each Area's floor nets that Area's own placements and nobody else's. Two floors of 120
+    # minutes against 180 claimable, an hour of Career already placed and movable, and a Study
+    # candidate that takes 30 more: the reserved floors owe 180 minutes between them either way, so
+    # the total cannot tell the two Areas apart and the clause is what does. Fitness owes its whole
+    # 120 and Career owes 60, so Fitness is the larger and the rejection names it. Pooled into one
+    # figure the sum is identical and the clause names Career.
+    week = inputs(
+        **NARROW_WEEK,
+        areas=(
+            an_area_budget(floor_minutes=2 * HOUR),
+            an_area_budget(area_id=CAREER, name="Career", floor_minutes=2 * HOUR),
+        ),
+    )
+    career_hour = a_candidate(Interval(at(0), at(1)), area_id=CAREER, binding=READING)
+
+    rejection = area_floor(
+        a_candidate(Interval(at(1), at(1.5)), area_id=STUDY, binding=STANDUP),
+        PartialPlan.of(week).with_placed(career_hour),
+    )
+
+    assert rejection is not None
+    assert rejection.detail == "Fitness would be left 120m short of its floor, with 90m free"
+
+
 def test_the_room_a_pin_left_the_week_with_is_what_decides_a_reservation() -> None:
     # A pin is content the Area figures arrived netted of, so the time it takes is time no floor
     # ever had. Everything below is held fixed and the only thing that varies is how much of the
