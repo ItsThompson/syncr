@@ -96,7 +96,12 @@ def handlers_by_name(source: str) -> Mapping[str, str]:
 
 
 def _is_a_route(decorator: ast.expr) -> bool:
-    """Whether a decorator is a router's own verb, whichever router the module hangs it on."""
+    """Whether a decorator is a router's own verb, whichever router the module hangs it on.
+
+    Three limbs, and each rejects a shape the others admit: a verb named without being called
+    registers no route, a call to a plain function named after a verb is not a router's, and a
+    router route that is not an HTTP verb carries no response statuses to cross.
+    """
     return (
         isinstance(decorator, ast.Call)
         and isinstance(decorator.func, ast.Attribute)
@@ -249,10 +254,12 @@ def test_the_refusal_reading_answers_from_a_raise_or_one_delegation() -> None:
 
 
 def test_the_handler_reading_answers_from_a_route_decorator_and_one_service_call() -> None:
-    # The other reader's control. A handler bound to a second router is still a handler, which is
-    # what the split into two routers made possible, and none of the last three is one: a function
-    # with no decorator, one whose decorator is not a router's at all, and one bound to a router
-    # verb that carries no response statuses for the crossing to read.
+    # The other reader's control, with one input per limb of the predicate on the rejecting side. A
+    # handler bound to a second router is still a handler, which is what the split into two routers
+    # made possible. None of the last five is one: a function with no decorator; a verb named
+    # without being called, which registers no route; a call to a plain function that happens to be
+    # named after a verb; a decorator that is not a router's at all; and a router route that carries
+    # no response statuses for the crossing to read.
     on_one_router = (
         "@router.post(PATH)\nasync def request_tradeoff(service: Dep):\n"
         "    return await service.request(1)\n"
@@ -262,6 +269,12 @@ def test_the_handler_reading_answers_from_a_route_decorator_and_one_service_call
         "    return await service.approved(1)\n"
     )
     undecorated = "async def helper(service: Dep):\n    return await service.request(1)\n"
+    a_verb_named_but_not_called = (
+        "@router.get\nasync def watch(service: Dep):\n    return await service.approved(1)\n"
+    )
+    a_plain_function_named_after_a_verb = (
+        "@get(PATH)\nasync def watch(service: Dep):\n    return await service.approved(1)\n"
+    )
     decorated_by_something_else = (
         '@measured("concessions")\nasync def request(service: Dep):\n'
         "    return await service.request(1)\n"
@@ -274,5 +287,7 @@ def test_the_handler_reading_answers_from_a_route_decorator_and_one_service_call
     assert handlers_by_name(on_one_router) == {"request_tradeoff": "request"}
     assert handlers_by_name(on_another_router) == {"list_adjustments": "approved"}
     assert handlers_by_name(undecorated) == {}
+    assert handlers_by_name(a_verb_named_but_not_called) == {}
+    assert handlers_by_name(a_plain_function_named_after_a_verb) == {}
     assert handlers_by_name(decorated_by_something_else) == {}
     assert handlers_by_name(not_an_http_verb) == {}
