@@ -32,8 +32,8 @@
  *
  * SO THE DRAG HAS ONE DEGREE OF FREEDOM, THE MINUTE, AND THAT IS A DECISION RATHER THAN A MISSING FEATURE. A pointer
  * over another column does not retarget, and no drag reaches another week, because none leaves the column it began
- * in. `docs/DESIGN-LANGUAGE.md` § Keyboard settles it: `Shift+Up` and `Shift+Down` are glossed "move by 15 minutes
- * and pin. the keyboard equivalent of the drag", and the table lists no horizontal pair, so the gesture the document
+ * in. `docs/DESIGN-LANGUAGE.md` § Keyboard settles it: `Shift+↑` and `Shift+↓` are glossed "move by 15 minutes and
+ * pin. the keyboard equivalent of the drag", and the table lists no horizontal pair, so the gesture the document
  * calls this drag's equivalent cannot change days either. `h` and `l` move the SELECTION between columns and move no
  * block. § The week grid carries the refusal and the two questions that follow from it, so a reader of that document
  * does not have to infer the rule from this file.
