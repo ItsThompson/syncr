@@ -82,7 +82,7 @@ AUCKLAND = "Pacific/Auckland"
 # the pending slot was read rather than a fresh probe.
 UNPLACEABLE = "F&F Past Papers"
 
-# Roughly the block count section 19's latency budget is stated over.
+# Roughly the block count a full week holds, which the read-latency budget is stated over.
 BLOCKS_IN_A_FULL_WEEK = 210
 
 # One slot per evening is what `append_a_week_with_empty_slots` lays out, and a week has seven.

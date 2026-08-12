@@ -15,8 +15,7 @@ that one buys is that the statements do what this claims.
 
 The week-scoped builders come from ``assembly_fakes`` rather than being spelled again: an Area, a
 plan document, a settings row and a travel override are the same values here as there, and a
-second home for any of them would be a second thing to keep in step. Ticket 1132 owns collapsing
-the remaining duplication across suites.
+second home for any of them would be a second thing to keep in step.
 """
 
 from __future__ import annotations

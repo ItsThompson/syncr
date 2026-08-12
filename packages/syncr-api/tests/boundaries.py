@@ -185,7 +185,7 @@ def read_paths(app: FastAPI, *, parameterized: bool) -> list[str]:
     """Every GET path under the api prefix, split by whether it carries a path parameter.
 
     Bounded by the app's own route table rather than by a list, so a read route added by a
-    later feature module is driven by whichever caller wants its half without that ticket
+    later feature module is driven by whichever caller wants its half without anyone
     remembering to extend one.
 
     The split exists because driving a parameterized read needs a value invented for the
@@ -469,7 +469,7 @@ def service_classes(source_root: Path) -> list[type]:
     """Every service class the package defines, discovered rather than listed.
 
     Found by walking ``*/service.py``, the same way the route rule walks ``*/api.py``, so
-    a service class added by a later feature module is covered without that ticket
+    a service class added by a later feature module is covered without anyone
     remembering to extend an import here.
 
     Two kinds of class in the same module are excluded, and neither has authorization to do. A
@@ -538,7 +538,7 @@ def packages_with_scoped_tables(models: Iterable[type]) -> set[str]:
     """The feature packages owning at least one table the tenancy rules apply to.
 
     Derived from the mapped classes rather than from a list, so a package added by a
-    later feature module comes under the rule without that ticket registering it. A
+    later feature module comes under the rule without anyone registering it. A
     package whose tables are all identity tables is exempt, and that exemption is
     ``IDENTITY_TABLES``, which is itself asserted.
     """

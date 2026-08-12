@@ -20,12 +20,9 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # THE THIRTEEN, and the severity each carries.
 #
-# `18-observability.md` names twelve. THE THIRTEENTH IS `ClockDrifting`, and it is here because
-# `19-nonfunctional.md`'s failure matrix names it as a row of its own, "clock skew on the host:
-# alert on NTP drift", while section 18's table did not enumerate it. Ticket 58 resolved the two in
-# favour of the rule existing: the frame and the now rule are computed against the host clock, so a
-# drifting one leaves every plan correct and placed in the wrong day, and nothing else in the
-# deployment would notice.
+# `ClockDrifting` is the one of the thirteen that watches the host clock: the frame and the now
+# rule are computed against it, so a drifting one leaves every plan correct and placed in the wrong
+# day, and nothing else in the deployment would notice.
 #
 # `BackupStale` is critical while `SolveFailing` is a warning, and that pair is the whole severity
 # scheme: A FAILED SOLVE LOSES NOTHING, because the previous plan is intact and still projected, and
@@ -99,11 +96,11 @@ JOBS_BY_MEMBER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 # ---------------------------------------------------------------------------
-# EVERY FAMILY `18-observability.md` NAMES, and whether the deployment must WATCH it.
+# EVERY FAMILY THE PRODUCT IS REQUIRED TO EXPORT, and whether the deployment must WATCH it.
 #
 # One table rather than two overlapping lists. An empty reason means the family is on the floor: it
-# must be read by a rule or drawn on a panel, whatever any exemption says, which is what closes
-# ticket 28's five orphans properly. A reason means the spec names the family for the product's own
+# must be read by a rule or drawn on a panel, whatever any exemption says, so a family nothing
+# watches cannot be let off quietly. A reason means the family exists for the product's own
 # sake rather than for an operator's, and the same family must ALSO appear in `UNWATCHED` with its
 # own reason, so escaping the floor takes two deliberate statements rather than one.
 # ---------------------------------------------------------------------------

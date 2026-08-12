@@ -1,6 +1,6 @@
 """The anchor-type specifications the settled records render, as one shared fixture.
 
-`20-testing-strategy.md` names this the ``shadow_geometry`` fixture: the ``Interview``, ``Exam``,
+`docs/smoke-scenarios.md` names this the ``shadow_geometry`` fixture: the ``Interview``, ``Exam``,
 and ``Lecture`` types with their real leads, durations, and buffers. It lives here rather than in
 one test module because three suites want it -- the boundary rules, the reconciliation pass, and
 the routes -- and the shadow generator will want it too.
@@ -64,8 +64,8 @@ NOTHING: Final = AnchorTypeSpecification(
     forbidden_area_ids=(),
 )
 
-# `screens.html`'s Interview row, and the worked example in `06-calendar-integration.md`:
-# prep 10:00-10:30 and transit out 15:00-15:30 for a 16:00-16:45 anchor, no return leg, and
+# `docs/design/screens.html`'s Interview row: prep 10:00-10:30 and transit out
+# 15:00-15:30 for a 16:00-16:45 anchor, no return leg, and
 # recovery 16:45-18:00 forbidding Career and Study.
 INTERVIEW: Final = replace(
     NOTHING,
