@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from syncr_domain.identity import TASK_OCCURRENCE_KEY, BindingKind, BindingRef
@@ -237,8 +237,16 @@ def test_every_number_a_division_stores_is_one_the_count_beside_it_admits(
     pieces and the highest number in use are read from different sets, so the two can disagree, and
     this is the assertion that holds however far apart they are.
 
+    An unnumbered piece is drawn as this solve's own only when no piece carries number zero: the
+    numbering gives an unnumbered piece number zero, so a chosen one beside a real chunk zero would
+    leave two blocks deriving one identity, and that is a set no solve can hand this function.
+
     A raise counts as a failure: the numbering builds its blocks through the domain, so a count that
     does not admit its own number never returns.
+
+    The share of draws that reach the rewrite rather than returning their blocks untouched is
+    reported as a hypothesis event, so the reach is readable rather than assumed:
+    ``pytest tests/test_chunking.py --hypothesis-show-statistics``.
     """
     placements = [
         Placed.of(
@@ -259,7 +267,13 @@ def test_every_number_a_division_stores_is_one_the_count_beside_it_admits(
             )
         )
 
-    for block in numbered(placements):
+    settled = numbered(placements)
+    event(
+        "the numbering rewrote a piece"
+        if any(block is not held.block for block, held in zip(settled, placements, strict=True))
+        else "every piece came back untouched"
+    )
+    for block in settled:
         if block.split_index is None:
             assert block.split_count is None
             continue
