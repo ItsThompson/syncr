@@ -37,6 +37,7 @@ from syncr_api.plans.emptiness import (
     EMPTY_REASONS,
     OUTSIDE_HORIZON,
     SETUP_INCOMPLETE,
+    EmptyReason,
     Horizon,
     empty_week,
 )
@@ -90,7 +91,6 @@ from tests.plan_documents import (
 
 if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
-    from syncr_api.plans.emptiness import EmptyReason
     from syncr_api.solving.config import OperationKind, OperationStatus
     from syncr_domain.identifiers import AreaId
 
@@ -446,9 +446,17 @@ def test_every_state_a_planless_week_is_in_answers_with_its_own_word(
         assert phrase in empty.statement
 
 
-def test_the_three_reasons_are_the_whole_vocabulary() -> None:
-    assert set(EMPTY_REASONS) == {OUTSIDE_HORIZON, SETUP_INCOMPLETE, AWAITING_MAINTAINER}
-    assert len(EMPTY_REASONS) == 3
+def test_the_reasons_the_tuple_holds_are_the_reasons_the_type_names() -> None:
+    """Crossed against the type rather than against a third copy of the same list.
+
+    ``EMPTY_REASONS`` has no production reader, so a member added to ``EmptyReason`` and not to the
+    tuple reaches the generated contract with mypy green and nothing else able to notice. Asserting
+    the tuple against three named constants cannot see that direction: it is satisfied by editing
+    the list it checks.
+    """
+    assert set(get_args(EmptyReason.__value__)) == set(EMPTY_REASONS)
+    assert len(EMPTY_REASONS) == len(set(EMPTY_REASONS))
+    assert {OUTSIDE_HORIZON, SETUP_INCOMPLETE, AWAITING_MAINTAINER} <= set(EMPTY_REASONS)
 
 
 # --------------------------------------------------------------------------------
