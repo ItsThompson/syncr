@@ -10,16 +10,18 @@
  * this module.
  *
  * THE ALLOWANCE IS DERIVED FROM `--grid-h`, NOT SUMMED FROM PARTS, and the difference matters. Five bands were
- * measured in Chrome at 1440x900 and they sum to 264px, which would leave a 636px grid. `--grid-h` says the grid
- * that window really gets is 626px, and `week-grid/metrics.ts` mirrors that token and asserts the mirror. So the
- * part-sum is 10px short of the real chrome: it names five bands and the shell has more. The token is the
- * authority, because it is the figure the grid's own arithmetic uses, and taking the difference at the reference
- * window is what makes the two incapable of drifting.
+ * measured in Chrome at 1440x900 and they sum to 264px, which would leave a 636px grid. `--grid-h` states 626px as
+ * the grid for that display, and `week-grid/metrics.ts` mirrors that token and asserts the mirror. So the part-sum
+ * is 10px short of the chrome the token implies: it names five bands and the shell has more. The token is the
+ * authority, because it is the figure the grid's own arithmetic falls back on, and taking the difference at the
+ * reference window is what makes the two incapable of drifting there.
  *
  * THE FIGURE IS AN ESTIMATE AND THE HINT SAYS SO. The Week grid measures its own element; this screen subtracts a
- * constant from a window. The two agree at the reference window because the constant IS the difference there, and
- * they part as soon as the real chrome does. A reader cannot see that grid from here, so the hint names which of
- * the two figures they have been handed rather than leaving them to meet the disagreement on the other screen.
+ * constant from a window and has no element to measure. The two meet at the reference figures because the constant
+ * is the difference between them there, and nothing holds them together anywhere else: what the grid answers from
+ * is a rendered element, which this arithmetic does not model and cannot see. A reader cannot see that grid from
+ * here either, so the hint names which of the two figures they have been handed rather than leaving them to meet
+ * the disagreement on the other screen.
  *
  * `__tests__/geometry.test.ts` asserts `gridHeightFor(REFERENCE_WINDOW_HEIGHT_PX) === GRID_H_PX`, which refuses
  * any way of arriving at the height other than that subtraction. It is an identity rather than a measurement, so it
@@ -44,8 +46,9 @@ export const REFERENCE_WINDOW_HEIGHT_PX = 900;
  * Derived rather than chosen, and it is the LARGER reading than the five bands measured directly, which is the
  * safe direction: overstating the chrome understates the grid, which offers one zoom level fewer than the display
  * could carry. Understating it would offer a level at which the modal block loses its title, which is what the
- * cap exists to prevent. That comparison is against bands measured at the reference window, and the direction is
- * not guaranteed at another one: the chrome is not a constant, which is why the hint calls the figure an estimate.
+ * cap exists to prevent. That comparison is against bands measured at the reference window, and it says nothing
+ * about another one: the chrome is not a constant and the grid's own height is not this subtraction, which is why
+ * the hint calls the figure an estimate.
  */
 export const WEEK_CHROME_ALLOWANCE_PX = REFERENCE_WINDOW_HEIGHT_PX - GRID_H_PX;
 
