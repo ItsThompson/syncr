@@ -198,12 +198,17 @@ describe("the element's own arrow keys", () => {
     expect(onValueChange).toHaveBeenLastCalledWith(1);
   });
 
-  /* A ceiling is not a step base, so it stays on the element and the element refuses to pass it. */
-  it("keeps the ceiling on the element, which refuses to step above it", () => {
+  /* A ceiling is not a step base, so it stays on the element and the element refuses to pass it. Two tests,
+     because a plant on the attribute has to reach the figure as well as the attribute. */
+  it("keeps the ceiling on the element, which a floor's step base does not affect", () => {
+    renderStepper({ measure: "duration", value: 60, max: 60 });
+
+    expect(screen.getByRole("spinbutton")).toHaveAttribute("max", "60");
+  });
+
+  it("refuses to step above the ceiling the element carries", () => {
     renderStepper({ measure: "duration", value: 60, max: 60 });
     const field = screen.getByRole("spinbutton") as HTMLInputElement;
-
-    expect(field).toHaveAttribute("max", "60");
 
     field.stepUp();
 
