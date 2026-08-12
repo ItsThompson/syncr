@@ -19,14 +19,17 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import update
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
@@ -44,11 +47,11 @@ from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.settings import ServiceSettings
-    from syncr_domain.identifiers import TenantId
+    from syncr_domain.identifiers import AreaId, TenantId
 
 pytestmark = pytest.mark.integration
 
@@ -62,7 +65,11 @@ NOW = datetime(2026, 2, 16, 9, 0, tzinfo=UTC)
 # anyway.
 TRACKED_WEEK = IsoWeek.containing(datetime.now(UTC).date())
 
-ACTIVATE_PATH = f"{WEIGHT_SETS_PREFIX}/2/activate"
+# The version the seed appends and the activation puts in force. Version 1 is the hand-tuned set
+# provisioning seeds.
+FITTED_VERSION = 2
+
+ACTIVATE_PATH = f"{WEIGHT_SETS_PREFIX}/{FITTED_VERSION}/activate"
 
 # The committed contract, resolved from this file rather than from the working directory, so the
 # check finds it whichever directory pytest was started from.
@@ -77,6 +84,13 @@ A_READY_ROW = {
     "shrinkage_weight": 0.42,
     "plain_language": "You estimate 60m for Fitness; your actual median is 82m.",
 }
+
+# The same row with its KEY as the only difference, so a subject that differs between the two of
+# them in one read differs for that reason and for no other.
+A_KEYLESS_ROW = {**A_READY_ROW, "parameter": "objective_weights"}
+
+MY_AREA = "Fitness"
+ANOTHER_ACCOUNT_S_AREA = "Ferroequinology"
 
 
 @pytest.fixture
@@ -133,7 +147,7 @@ def _seed_versions(database_url: str, tenant_id: TenantId) -> None:
                 session.add(
                     WeightSet(
                         tenant_id=tenant_id,
-                        version=2,
+                        version=FITTED_VERSION,
                         active=False,
                         origin=FITTED,
                         deadline_risk=9.0,
@@ -158,6 +172,53 @@ def _seed_versions(database_url: str, tenant_id: TenantId) -> None:
             await database.engine.dispose()
 
     run(seed())
+
+
+def _duration_multiplier_of(area_id: AreaId) -> dict[str, object]:
+    """A ready row about one Area, named the way the nightly job names one."""
+    return {**A_READY_ROW, "parameter": f"duration_multiplier[{area_id}]"}
+
+
+def _seed_area(database_url: str, tenant_id: TenantId, *, name: str) -> AreaId:
+    """One Area of this tenant's, through the repository the routes create Areas with."""
+
+    async def seed() -> AreaId:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                area = await AreaRepository(session, tenant_id).create(
+                    parent_id=None,
+                    name=name,
+                    pigment_index=1,
+                    budget_percent=Decimal(50),
+                    floor_hours=Decimal(1),
+                    created_at=NOW,
+                )
+            return area.id
+        finally:
+            await database.engine.dispose()
+
+    return run(seed())
+
+
+def _write_maturity(
+    database_url: str, tenant_id: TenantId, rows: Sequence[dict[str, object]]
+) -> None:
+    """Replace the fitted version's stored maturity array, as a later fit would."""
+
+    async def write() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await session.execute(
+                    update(WeightSet)
+                    .where(WeightSet.tenant_id == tenant_id, WeightSet.version == FITTED_VERSION)
+                    .values(maturity=list(rows))
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(write())
 
 
 class TestTheThreePathsAreTheOnesTheCriterionNames:
@@ -253,6 +314,89 @@ class TestTheLearnedRead:
 
         assert http.get(LEARNED_PREFIX, headers=elsewhere).status_code == HTTPStatus.OK
         assert http.post(ACTIVATE_PATH, headers=elsewhere).status_code == HTTPStatus.FORBIDDEN
+
+
+class TestASubjectNamesWhatEachRowIsAbout:
+    """The identity a parameter token carries in its key, resolved into a word a reader knows.
+
+    Every row here is the SAME row but for its key, so a subject that differs between two of them
+    differs because of the key and for no other reason a reader could confuse it with.
+    """
+
+    def test_an_area_keyed_row_answers_the_area_s_name_and_a_keyless_row_answers_null(
+        self,
+        http: TestClient,
+        signed_in: dict[str, str],
+        live_database_url: str,
+        owner: UserRecord,
+    ) -> None:
+        area_id = _seed_area(live_database_url, owner.tenant_id, name=MY_AREA)
+        _write_maturity(
+            live_database_url,
+            owner.tenant_id,
+            [_duration_multiplier_of(area_id), A_KEYLESS_ROW],
+        )
+        assert http.post(ACTIVATE_PATH, headers=signed_in).status_code == HTTPStatus.OK
+
+        keyed, keyless = http.get(LEARNED_PREFIX, headers=signed_in).json()["parameters"]
+
+        assert keyed["parameter"] == f"duration_multiplier[{area_id}]"
+        assert keyed["subject"] == MY_AREA
+        assert keyless["parameter"] == "objective_weights"
+        assert keyless["subject"] is None
+
+    def test_two_areas_answer_their_own_names_rather_than_one_shared_word(
+        self,
+        http: TestClient,
+        signed_in: dict[str, str],
+        live_database_url: str,
+        owner: UserRecord,
+    ) -> None:
+        # The defect this closes is twelve Areas answering as twelve identical rows, so one Area
+        # resolving is not the claim: two Areas resolving to two different words is.
+        first = _seed_area(live_database_url, owner.tenant_id, name=MY_AREA)
+        second = _seed_area(live_database_url, owner.tenant_id, name="Career")
+        _write_maturity(
+            live_database_url,
+            owner.tenant_id,
+            [
+                _duration_multiplier_of(first),
+                {**A_READY_ROW, "parameter": f"skip_probability[{second},morning]"},
+            ],
+        )
+        assert http.post(ACTIVATE_PATH, headers=signed_in).status_code == HTTPStatus.OK
+
+        rows = http.get(LEARNED_PREFIX, headers=signed_in).json()["parameters"]
+
+        # The second row's key is a PAIR: a skip probability is fitted per Area and per part of the
+        # day, and what the row is about is still the Area.
+        assert [one["subject"] for one in rows] == [MY_AREA, "Career"]
+
+    def test_a_key_naming_another_account_s_area_answers_null_rather_than_its_name(
+        self,
+        http: TestClient,
+        signed_in: dict[str, str],
+        live_database_url: str,
+        owner: UserRecord,
+        other_owner: UserRecord,
+    ) -> None:
+        # The names are read through a tenant-scoped repository, so another account's Area is a key
+        # this read cannot resolve. Asserted against the whole answer as well: a subject of null
+        # would also be produced by a resolution that never ran, and the name being absent from the
+        # payload entirely is the claim worth making.
+        mine = _seed_area(live_database_url, owner.tenant_id, name=MY_AREA)
+        theirs = _seed_area(live_database_url, other_owner.tenant_id, name=ANOTHER_ACCOUNT_S_AREA)
+        _write_maturity(
+            live_database_url,
+            owner.tenant_id,
+            [_duration_multiplier_of(mine), _duration_multiplier_of(theirs)],
+        )
+        assert http.post(ACTIVATE_PATH, headers=signed_in).status_code == HTTPStatus.OK
+
+        answered = http.get(LEARNED_PREFIX, headers=signed_in)
+
+        assert [one["subject"] for one in answered.json()["parameters"]] == [MY_AREA, None]
+        assert ANOTHER_ACCOUNT_S_AREA not in answered.text
 
 
 class TestTheVersionList:
