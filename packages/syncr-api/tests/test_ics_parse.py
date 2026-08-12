@@ -462,7 +462,7 @@ def test_a_whole_day_range_longer_than_syncr_will_place_is_rejected_by_name() ->
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [MALFORMED_VALUE]
     assert str(MAX_EVENT_DAYS) in outcome.rejected[0].detail
-    # The component and the line, which is what AC 8's reporting depends on and what a generic
+    # The component and the line, which is what the rejection report depends on and what a generic
     # catch at the boundary would have lost.
     assert outcome.rejected[0].component == VEVENT
     assert outcome.rejected[0].line == 1

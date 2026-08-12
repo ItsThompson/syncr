@@ -255,7 +255,7 @@ class TestAutoApplicationIsAllOrNothing:
 
 class TestThePastIsNotClassified:
     def test_a_block_the_week_has_reached_is_in_no_class_when_both_documents_agree(self) -> None:
-        # AC1's own statement: the block is in both documents at one placement, so nothing is
+        # The block is in both documents at one placement, so nothing is
         # proposed about it, while the fill beside it is classified normally.
         started = a_block_holding(GYM, between(9, 10))
         live = a_week(started)
@@ -386,7 +386,7 @@ class TestThePastMayNotBeRestated:
         # Deliberately outside the rule, and asserted so nobody widens it by accident. A task
         # renamed or re-filed into another Area on Wednesday would otherwise stop every solve of
         # that week for the rest of it, which is worse than the drift. What the drift costs is that
-        # an elapsed hour can be re-attributed, which ticket 1395 carries.
+        # an elapsed hour can be re-attributed.
         started = a_block_holding(GYM, between(8, 9))
         live = a_week(started)
         candidate = a_week(replace(started, **restated), a_block_holding(LEETCODE, between(14, 15)))

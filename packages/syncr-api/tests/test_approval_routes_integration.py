@@ -260,7 +260,7 @@ class TestTheApproveRoute:
     def test_the_app_answers_exactly_one_approve_route(self, settings: ServiceSettings) -> None:
         """The Week screen, the weekly session and the keyboard all approve through one endpoint.
 
-        Ticket 49 wires the three surfaces, and what this asserts is the half they depend on: there
+        Three callers, one endpoint, and what this asserts is the half they depend on: there
         is one route, so three callers cannot come to mean three slightly different acts. Read off
         the app's own route table rather than from a list.
         """
@@ -276,7 +276,7 @@ class TestTheApproveRoute:
     def test_the_history_names_the_concession_the_approved_plan_was_solved_under(
         self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
     ) -> None:
-        """``US-PLAN-07``'s third criterion, end to end over both routes.
+        """The history names the concession, end to end over both routes.
 
         The document the worker produced records the concessions it was solved under by identifier,
         the approval persists the row under that identifier, and the history pairs the two. A week

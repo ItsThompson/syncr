@@ -194,7 +194,8 @@ class TestRoundTrip:
         assert rebuilt.inside_off_plan is True
 
     def test_a_context_written_before_the_measurement_delta_reads_back_as_none(self) -> None:
-        # The shape a row written by ticket 41 holds: every other key, and no `measurement_delta`.
+        # The shape a row written before the field existed holds: every other key, and no
+        # `measurement_delta`.
         # Read as a refusal rather than as None, the corpus would be unreadable from this commit on.
         stored = stored_context(a_context())
         del stored["measurement_delta"]

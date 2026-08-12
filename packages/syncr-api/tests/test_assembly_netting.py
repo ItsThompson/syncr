@@ -155,7 +155,7 @@ def test_a_pin_for_a_binding_the_plan_does_not_hold_is_a_placement_of_its_own() 
     assert placed.immovable_minutes_of_task(TASK) == 60
     # A GAP, pinned here so it is not read as a rule: the pin carries no Area, so this hour is
     # committed time no Area figure sees. Closing it needs an Area on the pin or a read of the
-    # binding's entity, neither of which exists while nothing writes a pin. Ticket 1251 owns it.
+    # binding's entity, neither of which exists while nothing writes a pin.
     assert placed.minutes_of_area(FITNESS) == 0
 
 
@@ -328,7 +328,7 @@ def an_outcome(
 
 
 def test_a_skipped_past_block_stops_counting_toward_its_task() -> None:
-    # Ticket 1290's answer. The user said the work was not done, so the hour is no longer
+    # The user said the work was not done, so the hour is no longer
     # attributed and the demand this figure is subtracted from rises by it. Without this the
     # product counts work the user explicitly denied doing.
     plan = a_past_task_hour()
@@ -383,7 +383,7 @@ def test_a_moved_block_is_attributed_where_it_really_happened() -> None:
 def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
     outcome: OutcomeState | None,
 ) -> None:
-    # The uniform column of section 09's table, asserted over the whole vocabulary rather than
+    # The uniform column of the outcome-state table, asserted over the whole vocabulary rather than
     # over the one state that tempted it. If `skipped` returned its hour to capacity, skipping
     # work would make the week read as MORE feasible, which is the inversion the split between
     # attribution and capacity exists to prevent.

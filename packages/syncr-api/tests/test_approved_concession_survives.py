@@ -1,12 +1,12 @@
 """An approved concession survives: the gap it quoted closes, the next week is clean, once only.
 
-``US-FEAS-07`` and blocker 2 of review 5, driven through the APPROVAL rather than through a
+An approved concession, driven through the APPROVAL rather than through a
 candidate.
 The fold's own suite asserts the direction of each kind against a candidate the assembler is handed;
 what nothing asserted is the same observation once the concession is a stored ROW that an approval
 wrote, which is the path a user's week actually takes.
 
-Blocker 2's own words: neither ``S9`` nor ``S26`` checked the verdict afterwards, which is why
+Neither ``S9`` nor ``S26`` checked the verdict afterwards, which is why
 ``breach_floor`` could have shipped not doing what the panel said it did.
 
 Three claims, and each is about rows rather than functions.
@@ -187,7 +187,7 @@ class TestTheGapAnApprovedTradeoffQuoted:
         sessions: async_sessionmaker[AsyncSession],
         owner: UserRecord,
     ) -> None:
-        """Blocker 2's end-to-end observation, per kind, over the row an approval wrote.
+        """The end-to-end observation, per kind, over the row an approval wrote.
 
         The user clicks a tradeoff, approves the proposal it produced, and the figure the panel
         quoted must move by at least what it promised. The gap is asserted to be the only one of
@@ -216,7 +216,7 @@ class TestTheGapAnApprovedTradeoffQuoted:
         sessions: async_sessionmaker[AsyncSession],
         owner: UserRecord,
     ) -> None:
-        # `US-FEAS-07`'s second criterion, and the half of it storage answers: the assembly reads
+        # The half of the rule storage answers: the assembly reads
         # the row, so every later solve of the week is scored under the concession with no second
         # approval anywhere. Which resolved fields each kind moves is the fold's own suite.
         _, before, offer = await an_offered(kind)
@@ -231,7 +231,7 @@ class TestTheGapAnApprovedTradeoffQuoted:
     async def test_the_concession_does_not_carry_into_the_following_week(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
     ) -> None:
-        """``US-FEAS-07``'s third criterion. A decision taken for one hard week is not a policy.
+        """A decision taken for one hard week is not a policy.
 
         The row names its week, so the following week's assembly resolves the floor it was never
         conceded. Asserted over the figure rather than over the absence of a row, because what the

@@ -6,7 +6,7 @@ what only a real request and a real database can:
 - the wire shape is camelCase, and the vacancy reaches it as a row with a null ``areaId``
 - **the denominator is the plan of record's own stored figure**, not a recomputation. Asserted
   against ``/api/v1/budget``'s figure for the same week, which is the week's whole span: the two
-  disagree by the frame, the difference is ticket 1310's, and this route is on the side of it that
+  disagree by the circadian frame, and this route is on the side of it that
   reads the figure the week was solved against
 - only a confirmed day contributes, driven through the confirm route rather than by seeding a
   confirmation, so the path a user takes is the path measured
@@ -312,7 +312,7 @@ def test_the_denominator_is_the_plan_of_records_own_figure_and_not_the_weeks_spa
 
     ``/api/v1/budget`` recomputes the denominator through an occupancy reader that fills one of four
     subtrahends, so it reports the week's whole span. This route reads the figure the week was
-    actually solved against. The two disagree by the circadian frame, which is ticket 1310, and the
+    actually solved against. The two disagree by the circadian frame, and the
     assertion below is what stops this screen quietly inheriting it.
     """
     review = read_review(http, signed_in)
@@ -373,7 +373,7 @@ def test_the_vacancy_is_a_row_carrying_no_area_and_holds_what_no_block_covered(
 def test_shares_summing_to_a_hundred_leave_the_vacancy_non_zero(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
-    """US-AREA-03: a budget summing to exactly 100 does not make the residual zero."""
+    """A budget summing to exactly 100 does not make the residual zero."""
     first = declare_area(http, signed_in, "Career", budget_percent=60)
     declare_area(http, signed_in, "Study", budget_percent=40)
     seed_plan(
@@ -569,7 +569,7 @@ def test_a_fractional_share_is_applied_as_the_caller_sent_it(
     """A share is stored as ``NUMERIC(5, 2)`` and bounded by range alone, so it owes no grid.
 
     Every other case on this route uses a whole percentage, which left the rule stated in the
-    field's own description and asserted nowhere on the apply path. Ticket 47's adjust control
+    field's own description and asserted nowhere on the apply path. The adjust control
     rests on it: it is a plain figure field rather than a stepper, precisely because a hundredth
     of a point is a legal declaration and a stepper would have written 35 for a typed 33.5.
     """

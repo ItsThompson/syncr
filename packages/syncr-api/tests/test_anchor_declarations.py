@@ -791,10 +791,10 @@ def test_every_malformed_cursor_is_one_stated_rejection(cursor: str) -> None:
 # --------------------------------------------------------------------------------
 # The wire boundary: what a caller can send that must not become a fault.
 #
-# All three of these are a class a reviewer reproduced elsewhere in the tree. Each one is checked
-# here because it reaches THIS ticket's own parameters and shapes: an instant on the span, and free
+# All three of these are a class that recurs elsewhere in the tree. Each one is checked
+# here because it reaches THIS module's own parameters and shapes: an instant on the span, and free
 # text on an anchor type. The shared fix for an instant inside a request BODY, and for echoing an
-# offset back on a response, belongs to the ticket that adds a shared instant type; what is
+# offset back on a response, belongs wherever a shared instant type lands; what is
 # asserted here is that this module's own boundary states a rejection rather than raising.
 # --------------------------------------------------------------------------------
 
@@ -811,7 +811,8 @@ def test_every_malformed_cursor_is_one_stated_rejection(cursor: str) -> None:
 def test_a_span_bound_with_no_utc_offset_is_a_stated_rejection(
     start: datetime, end: datetime, field: str
 ) -> None:
-    # `13-http-api.md` requires an instant to carry an offset always. The interval algebra refuses
+    # The api admits only an aware instant, `WireInstant` in `core/schemas.py`, so a bound carries
+    # an offset always. The interval algebra refuses
     # a naive datetime by raising a domain error nothing maps, so without this the route answers
     # 500 to a wall time. The first offending bound is named, so a caller fixes one thing.
     with pytest.raises(ValidationFailed) as raised:

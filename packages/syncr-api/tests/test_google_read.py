@@ -3,12 +3,12 @@
 The transport is faked and everything else is real: the backoff schedule, the payload validation,
 the pagination loop, and the cursor bounds all run.
 
-Four claims carry the weight here, and each is a failure this ticket was told to prove rather than
-assert:
+Four claims carry the weight here, and each is a failure proved rather than
+asserted:
 
 - **the deadline covers the whole read**, so a host that answers every page slowly is bounded by the
-  same number as one that hangs on the first request. That was ticket 11's second most expensive
-  defect, one provider over;
+  same number as one that hangs on the first request. The ICS reader paid for that defect, one
+  provider over;
 - **the cursor is bounded before it is stored**, because an oversize write does not fail one source:
   it rolls back the transaction the whole tenant's sync pass is in, and every sibling source loses
   the state it had already earned;
@@ -287,7 +287,7 @@ def test_a_sync_token_the_column_can_hold_is_stored_with_its_prefix() -> None:
 
 
 def test_a_sync_token_too_long_for_the_column_is_dropped_rather_than_truncated() -> None:
-    # THE bite check for ticket 11's most expensive defect, one provider over: an oversize write
+    # THE bite check for the defect the ICS reader paid for, one provider over: an oversize write
     # raises at the flush and rolls back the whole tenant's sync pass. Truncating is not an option
     # either, because a truncated token is not an older token: Google answers 410 to it forever.
     oversize = "x" * (CURSOR_MAX_LENGTH * 2)

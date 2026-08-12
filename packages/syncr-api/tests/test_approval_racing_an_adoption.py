@@ -5,8 +5,8 @@ it decides. Without that hold there is a window -- read the slot, read the live 
 two documents, re-classify, append -- in which the solve dispatch's conditional write can commit an
 ``applied`` revision that the comparison cannot see. The approved document then drops the block that
 revision added, **and nothing puts it back**: approval requests no solve, and the solve that
-appended the fill has already reported ``succeeded``. It is ticket 1391's own diagrammed scenario,
-reached through a read race rather than through version lag.
+appended the fill has already reported ``succeeded``. This race reaches that end through a read
+rather than through version lag.
 
 What closes it is the week's version row, taken ``FOR UPDATE`` before anything is read, which is the
 row the conditional write already locks.

@@ -88,7 +88,7 @@ def test_a_ciphertext_that_will_not_decrypt_reports_rather_than_raises(corrupted
 
 
 def test_a_token_wider_than_the_column_is_refused_before_the_write() -> None:
-    # The lesson ticket 11 paid for: an oversize write raises at the flush, which rolls back the
+    # The lesson an oversize write taught: it raises at the flush, which rolls back the
     # whole transaction and takes every sibling write with it.
     oversize = "1//" + "x" * REFRESH_TOKEN_MAX_LENGTH
 

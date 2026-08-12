@@ -1,6 +1,7 @@
 """The grammar seam: where syncr's reading of a timestamp and Python's disagree.
 
-Ticket 11's most expensive lesson was that when syncr and a library both parse the same string, the
+The ICS reader's most expensive lesson was that when syncr and a library both parse the same
+string, the
 divergence is one defect per rule they disagree on, not one defect. Google hands syncr its own
 datetime representation and Python's ``fromisoformat`` does the arithmetic, so the axes below are
 enumerated from what the two accept rather than sampled from values that looked plausible.
@@ -71,7 +72,8 @@ def test_an_rfc_3339_date_time_reads_as_the_instant_it_names(value: str, expecte
 
 def test_a_lower_case_separator_and_suffix_are_accepted() -> None:
     # RFC 3339 permits both in lower case and `fromisoformat` refuses them. Refusing an event over a
-    # letter is what ticket 11's `UNTIL` defect cost, and this is the same seam one provider over.
+    # letter is what the ICS reader's `UNTIL` defect cost, and this is the same seam one provider
+    # over.
     read = read_instant("2026-02-09t09:00:00z")
 
     assert isinstance(read, datetime)

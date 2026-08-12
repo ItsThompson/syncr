@@ -449,7 +449,7 @@ def test_an_excluded_google_calendar_reports_zero_anchors_and_an_excluded_state(
 def test_including_a_calendar_again_restores_its_count_on_the_next_sync(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, google: FakeGoogle
 ) -> None:
-    # Exclusions persist and are reversible, which is what US-CAL-02 asks of per-calendar choice.
+    # Exclusions persist and are reversible, which is what per-calendar choice means.
     connect(http, signed_in, owner)
     source = add_google_source(http, signed_in)
     http.patch(f"{SOURCES}/{source['id']}", json={"included": False}, headers=signed_in)
@@ -673,7 +673,7 @@ def test_a_deployment_with_no_google_client_says_so_rather_than_failing_obscurel
 def test_provider_text_carrying_a_nul_byte_does_not_disable_the_sync(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, google: FakeGoogle
 ) -> None:
-    """The class ticket 19 was rejected on, measured over the Google path's own text.
+    """The NUL-byte class the ICS path was fixed for, measured over the Google path's own text.
 
     A NUL in publisher-authored text reaches a Postgres text column as
     ``CharacterNotInRepertoireError``, which rolls back the transaction BEFORE `last_error` is

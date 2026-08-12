@@ -559,7 +559,7 @@ async def test_a_control_character_from_a_publisher_reconciles_rather_than_raisi
     tenant_id: TenantId,
     source: CalendarSourceRecord,
 ) -> None:
-    # THE must-fix, end to end against real Postgres. `str.split()` does not remove a NUL, so before
+    # The scrub, end to end against real Postgres. `str.split()` does not remove a NUL, so before
     # the scrub this reached the VARCHAR column and asyncpg raised CharacterNotInRepertoireError out
     # of the flush. In a sync pass that raise happened BEFORE the sync state was written, so a third
     # party who can put an event on a subscribed calendar could stop the user's sync with one byte
@@ -1036,7 +1036,7 @@ async def test_a_forbidden_area_list_round_trips_through_jsonb(
 async def test_an_areas_removal_leaves_the_type_and_its_own_areas_alone(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
 ) -> None:
-    # Areas are permanent in P0, so this is not a route anyone can take. What it proves is that the
+    # No route removes an Area, so this is not a path anyone can take. What it proves is that the
     # `SET NULL` on the Area foreign keys is what a future removal would do: it does not take a
     # hand-authored shadow declaration with it.
     career = await add_area(sessions, tenant_id, name="Career")

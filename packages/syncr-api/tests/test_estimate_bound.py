@@ -325,8 +325,8 @@ def _stated() -> str:
 def test_the_recorded_reason_names_the_reading_it_claims() -> None:
     """The citations beside the bound have to resolve, or the reason rots into a story.
 
-    A reason naming a reader or a shortfall kind that no longer exists is worse than no reason: the
-    next ticket widening the bound reads a mechanism it cannot check. Each citation is asserted
+    A reason naming a reader or a shortfall kind that no longer exists is worse than no reason:
+    whoever widens the bound reads a mechanism it cannot check. Each citation is asserted
     against the symbol it names, so a rename anywhere in it reddens rather than passing.
     """
     stated = _stated()

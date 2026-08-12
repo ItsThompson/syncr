@@ -1,6 +1,6 @@
 """Which tasks a verdict puts at risk, over values rather than over a database.
 
-``US-TASK-03``'s rule has one statement and this is where every case it has to get right is driven:
+The at-risk rule has one statement and this is where every case it has to get right is driven:
 the three conditions a gap is matched on, the three shortfall kinds that are not read at all, and
 the two absences that answer with nothing.
 
@@ -179,7 +179,7 @@ def test_two_tasks_with_one_title_in_two_areas_separate_on_the_area() -> None:
 
 
 def test_a_packing_failure_naming_the_task_does_not_put_it_at_risk() -> None:
-    """The fourth kind carries a title, an Area and a deadline, and the story names the third kind.
+    """The fourth kind carries a title, an Area and a deadline, and the rule names the third kind.
 
     A packing failure says the capacity exists and could not be USED, which is a different statement
     from the work not fitting before the instant it is due.

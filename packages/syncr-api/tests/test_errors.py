@@ -146,8 +146,8 @@ def test_a_404_carries_no_retry_after(settings: ServiceSettings) -> None:
 
 
 def test_an_error_can_carry_its_own_response_header(settings: ServiceSettings) -> None:
-    # Section 13 requires no header beyond Retry-After, but an OAuth 401 needs
-    # WWW-Authenticate, so the seam exists here rather than in the slice that needs it.
+    # The problem-details contract requires no header beyond Retry-After, but an OAuth 401 needs
+    # WWW-Authenticate, so the seam exists here rather than in the module that needs it.
     raised = Unauthorized(
         "No credential presented. Reading the plan needs a session.",
         headers={"WWW-Authenticate": 'Bearer realm="syncr"'},

@@ -63,8 +63,8 @@ THE_FACT_WRITER = "update_fact"
 # reader, so a module that only explains the absence in a docstring is not in this set: the reading
 # below is over identifiers, not over text.
 #
-#   models      declares the column. The fact is stored rather than discarded, so a later epic that
-#               adds routing needs no backfill.
+#   models      declares the column. The fact is stored rather than discarded, so work that adds
+#               routing later needs no backfill.
 #   records     holds it on the frozen view, and states why nothing reads it.
 #   identity    bounds it, because a publisher chooses its length and the column has a width.
 #   repository  writes it, on create and on the one fact writer.
@@ -247,7 +247,8 @@ def test_the_repository_rule_would_report_a_third_writer() -> None:
 
 def test_no_repository_method_reads_a_location_back_by_itself() -> None:
     # The record carries it because the row does. What must not exist is a read whose whole purpose
-    # is to fetch it, which is what a routing epic would add and what P0 deliberately does not have.
+    # is to fetch it, which is what routing would add and what this deployment deliberately does
+    # not have.
     assert "find_location" not in public_methods(AnchorRepository)
 
 
@@ -351,7 +352,7 @@ def test_the_module_rule_finds_the_modules_that_do_store_it() -> None:
 
 
 def test_the_schemas_module_states_why_no_response_carries_a_location() -> None:
-    # The absence has to read as a decision. Without a stated reason, a later ticket adds the field
+    # The absence has to read as a decision. Without a stated reason, someone adds the field
     # because nothing said not to, and the rule above then fails for a reason nobody can act on.
     stated = schemas.__doc__ or ""
 

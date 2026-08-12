@@ -1,6 +1,6 @@
 """What may appear in a log line, derived from every log call the tree actually makes.
 
-Ticket 1 built the redaction rule and asserted it over the field names that existed then. A rule
+The redaction rule was first asserted over the field names that existed then. A rule
 asserted over a fixed list degrades silently as new code arrives: the next feature adds a field, the
 list is not extended, and the guard passes while the leak ships. That is the defect class this file
 closes, so the inventory is READ FROM THE SOURCE rather than written down.
@@ -147,7 +147,7 @@ class TestTheInventoryItself:
 
 class TestEveryFieldTheTreeLogs:
     def test_no_content_shaped_field_escapes_the_redactor(self) -> None:
-        """The rule ticket 1 stated, applied to every field name introduced since.
+        """The redaction rule, applied to every field name introduced since.
 
         A field the redactor does not eat is a field whose value reaches disk. For a name carrying
         `title`, `location`, `label`, `summary`, `description` or `notes`, that value is the user's

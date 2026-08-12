@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
     from fastapi.testclient import TestClient
 
-# The committed contract, resolved through the same anchor every figure about this ticket was
+# The committed contract, resolved through the same anchor every figure about it was
 # printed against: the installed package, not this file's own depth in the tree.
 CONTRACT = repo_root() / "frontend" / "openapi.json"
 

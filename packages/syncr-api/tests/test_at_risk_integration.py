@@ -1,4 +1,4 @@
-"""``US-TASK-03``: the backlog's at-risk column and the week's verdict are one arithmetic.
+"""The backlog's at-risk column and the week's verdict are one arithmetic.
 
 The claim is about two SCREENS agreeing, so it cannot be asserted inside either of them. What this
 suite drives is the equality between the set the backlog marks and the set derived from the week
@@ -14,10 +14,9 @@ together.
 **The right-hand side is derived here rather than read off the backlog.** A comparison of the
 backlog's marking against the backlog's own count would agree whatever either computed.
 
-**The column does not inflate on a healthy solved week**, which is ``reviews/spec-review-5.md`` B1
-from the column's side: under the superseded floor rule every ``deadline_capacity`` shortfall was
-inflated by the whole of every already-scheduled floor, so a week with room for everything reported
-a gap and this column inflated with it.
+**The column does not inflate on a healthy solved week**: under the superseded floor rule every
+``deadline_capacity`` shortfall was inflated by the whole of every already-scheduled floor, so a
+week with room for everything reported a gap and this column inflated with it.
 
 **Which week is asked about is resolved in the HOME zone.** A tenant thirteen hours east is living
 in a week the UTC date does not name for thirteen hours of every day.
@@ -82,13 +81,11 @@ pytestmark = pytest.mark.integration
 
 # The measurement's shape, and the ceiling this suite fails at.
 #
-# The budget is p95 under `BUDGET_MILLISECONDS`, stated in `19-nonfunctional.md`. The ceiling is
+# The budget is p95 under `BUDGET_MILLISECONDS`. The ceiling is
 # looser, because a developer's machine and a CI runner are not the deployment, and the figure is
 # reported rather than asserted. 400 ms rather than the week suite's 1000: at 1000 against a
 # measured 42 ms a twenty-fold regression stayed green, which is a ceiling no plausible regression
 # reaches. 400 is still nearly ten times the measurement and under three times the budget.
-#
-# Twenty deadlined tasks is review 44's own shape, which is what makes this figure comparable to it.
 LATENCY_SAMPLES = 30
 CATASTROPHIC_MILLISECONDS = 400
 DEADLINED_TASKS = 20
@@ -133,7 +130,7 @@ def configured(
 
 
 # --------------------------------------------------------------------------------
-# US-TASK-03: one arithmetic, two screens
+# One arithmetic, two screens
 # --------------------------------------------------------------------------------
 
 
@@ -185,7 +182,7 @@ def at_risk_by_the_weeks_verdict(view: dict[str, Any], tasks: list[dict[str, Any
 def test_the_at_risk_set_from_the_backlog_is_the_set_the_weeks_verdict_names(
     http: TestClient, a_week_a_task_cannot_fit_in: tuple[dict[str, str], IsoWeek, dict[str, Any]]
 ) -> None:
-    """``US-TASK-03``: a task cannot be at risk on one screen and fine on another.
+    """A task cannot be at risk on one screen and fine on another.
 
     The comparison is between two SCREENS' answers, and the right-hand side is derived from the week
     read's own shortfalls rather than from the backlog: the backlog's marking compared against the
@@ -211,7 +208,7 @@ def test_the_equality_holds_on_the_solver_branch_the_serve_rule_exists_for(
 
     Every other test in this suite runs on a week whose slot is empty, so both screens take the
     probe branch and the equality would hold even if one of them re-probed independently of the
-    other. The case the ticket exists for is a week holding a CURRENT slot whose stored SOLVER
+    other. The case this test exists for is a week holding a CURRENT slot whose stored SOLVER
     verdict names a real task, and until this test it was guarded by unit tests over fakes alone.
 
     ``provenance`` is asserted first as the anti-vacuity guard: if the slot were stale or empty the
@@ -295,7 +292,7 @@ def test_a_task_the_week_has_room_for_is_not_marked(
 def test_the_at_risk_filter_narrows_to_the_set_the_weeks_verdict_names(
     http: TestClient, a_week_a_task_cannot_fit_in: tuple[dict[str, str], IsoWeek, dict[str, Any]]
 ) -> None:
-    """Ticket 1521: the filter the route catalog claims, over a week that really marks a task.
+    """The filter the route catalog claims, over a week that really marks a task.
 
     The right-hand side is derived from the WEEK READ's own shortfalls, not from the backlog's
     marks, for the reason every equality in this suite is: a filter compared against the marks it
@@ -413,7 +410,7 @@ def test_the_at_risk_column_does_not_inflate_on_a_healthy_solved_week(
     configured: tuple[dict[str, str], str],
     live_database_url: str,
 ) -> None:
-    """``reviews/spec-review-5.md`` B1, from the column's side.
+    """The column's side of the inflation.
 
     Under the superseded rule every ``deadline_capacity`` shortfall was inflated by the whole of
     every already-scheduled floor, so a week with room for everything reported a gap and this
@@ -477,7 +474,7 @@ def test_a_backlog_read_on_a_tenant_far_east_answers_about_its_own_week(
 
 
 def test_the_event_union_carries_no_verdict_member() -> None:
-    """``US-TASK-03``'s last criterion: there is no push, so the union has no member for one.
+    """There is no push, so the union has no member for one.
 
     Stated over the type the stream is defined against as well as the constants beside it, so a
     fifth member added to one and not the other is still seen.
@@ -502,7 +499,7 @@ def test_no_event_builder_puts_a_verdict_on_the_stream(source_root: Path) -> Non
 
 
 # --------------------------------------------------------------------------------
-# The budget, measured. Ticket 1443
+# The budget, measured.
 # --------------------------------------------------------------------------------
 
 
@@ -531,10 +528,10 @@ def test_the_backlog_read_is_well_under_its_budget_on_a_full_week(
     configured: tuple[dict[str, str], str],
     live_database_url: str,
 ) -> None:
-    """Ticket **1443**: p95 under 150 ms on a full week, measured rather than asserted.
+    """p95 under 150 ms on a full week, measured rather than asserted.
 
-    The at-risk column made this route pay for a whole solve-input assembly, and section 19 had no
-    row for it. The shape measured is the one the week's own budget is stated over, a week holding
+    The at-risk column made this route pay for a whole solve-input assembly. The shape measured is
+    the one the week's own budget is stated over, a week holding
     ``BLOCKS_IN_A_FULL_WEEK`` blocks, with twenty deadlined tasks so the marking is doing real work
     rather than answering over an empty backlog.
 

@@ -1,10 +1,5 @@
 """Smoke scenario S30: approving while a solve is running, against a real Postgres.
 
-**S30 is verified by ``US-SOLVE-03`` plus ``US-PLAN-04``, not by ``US-PLAN-07``.** Section 22's
-done-criteria table maps this row to the revision-history story, which is a read; what it exercises
-is the version guard of ``US-SOLVE-03`` and the approval of ``US-PLAN-04``, plus ``V3`` and ``PP6``
-in section 07. Recorded here because this is the module a reader of S30 arrives at.
-
 The interleaving, driven at the only instant it can be:
 
 ```
@@ -16,8 +11,8 @@ The interleaving, driven at the only instant it can be:
 
 Without the bump at t1 the guard matches on a version the approval did not change, and the solve
 adopts a classification computed against a plan of record that no longer exists together with a
-document solved without the concession. That is why the bump is an acceptance criterion of the
-approval rather than only an invariant of the version row.
+document solved without the concession. That is why the bump is part of what approval must do
+rather than only an invariant of the version row.
 
 Four observations, one per clause of S30: the running operation reports ``superseded`` rather than
 ``succeeded``; the approved revision is the plan of record; the follow-up reads both the new live
@@ -145,7 +140,7 @@ async def declare_the_minimum(
     A third helper of this shape exists (the solve runner's and the maintainer's), and the task is
     why this one is not either of them: without content the solver answers with an empty week, so
     the follow-up solve would classify as nothing and the last of S30's four observations would be
-    asserting about a solve that adopted no plan. Consolidating the three is ticket 1420.
+    asserting about a solve that adopted no plan.
 
     Answers with the Area's identifier, because the concession this suite approves breaches its
     floor and the assertion is a figure against it rather than the presence of a row.

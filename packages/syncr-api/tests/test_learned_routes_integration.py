@@ -1,7 +1,7 @@
 """The three learning routes end to end, against a real Postgres and a real request.
 
 The service suite proves the rules. This proves what only a real request and the production wiring
-can: that the three paths are the ones the acceptance criterion names, that the wire shape is
+can: that the three paths are the ones the routes declare, that the wire shape is
 camelCase, that the two reads write nothing, that a retried activation reads the first attempt's
 answer rather than queueing a second pass over every future week, that another account's version is
 a 404, and that the origin check and the path validation are attached.

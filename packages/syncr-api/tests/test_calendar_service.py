@@ -715,7 +715,7 @@ async def test_a_forced_sync_delegates_and_answers_with_a_terminal_operation(
     assert wiring.syncer.synced == [held.id]
     assert operation.kind == CALENDAR_SYNC
     # Terminal, because a client follows this and a pending row nothing completes would never
-    # resolve. The worker-loop ticket owns the general transition logic.
+    # resolve.
     assert operation.status == SUCCEEDED
     assert operation.status != PENDING
 

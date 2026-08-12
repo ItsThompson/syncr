@@ -179,7 +179,7 @@ class TestWhatAConfirmedDayGives:
         assert actual_minutes(week, share.area_id) == MINUTES_PER_HOUR
 
     def test_an_unconfirmed_day_gives_nothing(self) -> None:
-        """The rule US-AREA-04 states: only confirmed days contribute to the actual figure."""
+        """Only confirmed days contribute to the actual figure."""
         share = a_share()
         block = a_block(on=MONDAY, hour=9, area_id=share.area_id)
         week = a_week(days=[a_day(on=MONDAY, blocks=[block], confirmed=False)])
@@ -285,7 +285,7 @@ class TestHowADayIsClassified:
             assert day_counts([day]).unconfirmed == 0
 
     def test_an_off_plan_day_is_reported_separately_and_never_as_unconfirmed(self) -> None:
-        """US-REV-04: a day the user declared away is not a day they failed to answer for."""
+        """A day the user declared away is not a day they failed to answer for."""
         day = a_day(
             on=MONDAY,
             blocks=[a_block(on=MONDAY, hour=9, area_id=uuid4())],
@@ -371,7 +371,7 @@ class TestTheVacancyAndOversubscription:
     """Two quantities that are routinely confused, reported separately and never as each other."""
 
     def test_shares_summing_to_a_hundred_do_not_make_the_vacancy_zero(self) -> None:
-        """US-AREA-03's own case, and the defect the residual formula had."""
+        """Shares summing to a hundred, and the defect the residual formula had."""
         shares = [a_share(percent="60"), a_share(percent="40")]
         block = a_block(on=MONDAY, hour=9, area_id=shares[0].area_id)
         week = a_week(discretionary_minutes=6720, days=[a_day(on=MONDAY, blocks=[block])])

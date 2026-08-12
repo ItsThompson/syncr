@@ -100,7 +100,7 @@ def test_a_registered_feature_router_is_mounted(settings: ServiceSettings) -> No
 
 
 def test_registry_entries_all_build_a_router(settings: ServiceSettings) -> None:
-    # The registry is append-only, so this holds for every entry a later slice adds
+    # The registry is append-only, so this holds for every entry added later
     # and fails on an entry that is not a zero-argument router factory.
     for build_router in FEATURE_ROUTERS:
         assert isinstance(build_router(), APIRouter)

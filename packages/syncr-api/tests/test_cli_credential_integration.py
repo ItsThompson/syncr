@@ -1,15 +1,15 @@
 """A CLI credential against real product routes, over HTTP and a real Postgres.
 
-Ticket 6 built the bearer seam and proved it through a probe router. This proves the thing only the
-real routes can: that a request presenting an access token reaches the twelve routes section 17's
+The bearer seam was first proved through a probe router. This proves the thing only the
+real routes can: that a request presenting an access token reaches the routes the CLI's
 command catalog needs, that it reaches none of the others, and that the two rules a bearer request
 changes behave in both directions.
 
 Every token here is issued through the real flow rather than constructed, because a constructed
 principal proves that a service authorizes a value and says nothing about whether a request carrying
-a token ever reaches that service. That was exactly the gap: ``BearerPrincipalDep`` existed for four
-tickets and was declared on no route, so ``syncr week show`` exited 3 against a running API while
-every unit test about scopes passed.
+a token ever reaches that service. That was exactly the gap: the bearer seam existed and no product
+route declared a dependency that resolved it, so ``syncr week show`` exited 3 against a running API
+while every unit test about scopes passed.
 
 Four rules, each driven both ways:
 

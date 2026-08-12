@@ -5,10 +5,10 @@ database can: that a rejected declaration is not stored, that both derived figur
 read-only, that no request shape has a field for either of them, and that another tenant's
 identifier is a 404 rather than an edit.
 
-Two groups are worth reading. **The cursor group** is the shape this ticket exists to preserve:
+Two groups are worth reading. **The cursor group** is the shape that has to be preserved:
 every response renders it read-only with its provenance, a fixed habit renders ``null``, and a
 body carrying one is refused rather than ignored. **The absence group** asserts the two fields
-that do not exist, because an absence nothing tests is an absence a later ticket adds back.
+that do not exist, because an absence nothing tests is an absence someone adds back.
 
 Every occurrence-derived figure reads from an empty log here, because this suite seeds no plan of
 record and records no outcome. The figures themselves are asserted against an occupied log in the
