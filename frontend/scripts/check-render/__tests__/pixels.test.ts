@@ -9,9 +9,9 @@
  * The browser itself is not exercised here. A gate that needs a browser is run by `npm run lint:render`, and what a
  * unit test can hold is everything either side of it.
  *
- * THE PROBE'S FIDELITY TO THE COMPONENT is asserted beside the component, in
- * `src/ui/domain/week-grid/__tests__/probe.test.tsx`, because it is a claim about what `Block` renders and it needs
- * JSX, which the script suite's own file pattern does not take. */
+ * THE PROBE'S FIDELITY TO THE COMPONENTS IT STANDS IN FOR is asserted beside them, in
+ * `src/ui/domain/week-grid/__tests__/probe.test.tsx`, because it is a claim about what `Block` and the grid render and
+ * it needs JSX, which the script suite's own file pattern does not take. */
 
 import { describe, expect, it } from "vitest";
 

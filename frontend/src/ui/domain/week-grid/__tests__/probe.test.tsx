@@ -12,9 +12,17 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CASES, geometryOf, probePage } from "../../../../../scripts/check-render/page.ts";
+import {
+  CASES,
+  geometryOf,
+  probePage,
+  WEEK_SECTION,
+} from "../../../../../scripts/check-render/page.ts";
+import { WEEK_DATES, WEEK_LABELS } from "../../../../../scripts/check-render/weekColumns.ts";
+import { columnLabel } from "../../../../routes/week/labels";
 import { Block } from "../Block";
-import type { GridBlock } from "../types";
+import { WeekGrid } from "../WeekGrid";
+import type { Extent, GridBlock, WeekDay } from "../types";
 
 const cases = geometryOf(CASES);
 const modal = cases[0];
@@ -101,5 +109,89 @@ describe("the probe's block against this component's", () => {
   it("renders the same block height, so the line count under test is the product's", () => {
     expect(realBlock().style.height).toBe(`${modal.heightPx.toFixed(3)}px`);
     expect(page).toContain(`height:${modal.heightPx.toFixed(3)}px`);
+  });
+});
+
+/* THE SEVEN DAY COLUMNS THE HORIZONTAL READ IS TAKEN ACROSS.
+ *
+ * The page's columns exist so a pointer can be over one column and outside another, which needs seven boxes a browser
+ * laid out rather than one box a test invented. What holds them to the product is the same thing that holds the block:
+ * the real component is rendered and the probe's markup has to be its shape.
+ *
+ * THE COMPARISON IS THE WHOLE SUBTREE, BY EQUALITY, so it fails on a class or an attribute REMOVED from the probe as
+ * well as one added to it, and on a nesting either side changes. Attribute VALUES are excluded and their names are not:
+ * both sides write `style` on a canvas, and the height in it is the page's own figure rather than the component's.
+ *
+ * AN EXTENT NARROWER THAN ONE QUARTER HOUR DRAWS NO GRID LINE, and a day holding nothing draws no block and no band, so
+ * what the real grid renders here is exactly the frame the probe stands in for. The canvas's contents are all
+ * absolutely positioned and none of them can move the box a pointer is read against, which is the only figure this
+ * section of the page reports. */
+const FRAME_ONLY: Extent = { startMin: 1, endMin: 14 };
+
+function emptyDay(date: string): WeekDay {
+  return {
+    date,
+    zone: "Europe/London",
+    startMs: Date.parse(`${date}T00:00:00Z`),
+    minutes: 1440,
+    blocks: [],
+    bands: [],
+  };
+}
+
+/** One line per element: its tag, its class list, its attribute names and the text it writes itself. */
+function shapeOf(root: Element, depth = 0): string[] {
+  const text = [...root.childNodes]
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent)
+    .join("");
+  const attributes = root.getAttributeNames().toSorted().join(" ");
+  return [
+    `${"  ".repeat(depth)}${root.tagName.toLowerCase()} [${root.className}] [${attributes}] ${JSON.stringify(text)}`,
+    ...[...root.children].flatMap((child) => shapeOf(child, depth + 1)),
+  ];
+}
+
+function gridIn(html: string): Element {
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  const grid = holder.querySelector(".week-grid");
+  if (grid === null) throw new Error("the markup holds no week grid");
+  return grid;
+}
+
+function realGrid(): Element {
+  const { container } = render(
+    <WeekGrid
+      days={WEEK_DATES.map(emptyDay)}
+      extent={FRAME_ONLY}
+      labels={WEEK_DATES.map(columnLabel)}
+      nowMs={null}
+      visibleHours={12}
+    />,
+  );
+  const grid = container.querySelector(".week-grid");
+  if (grid === null) throw new Error("the grid rendered nothing");
+  return grid;
+}
+
+describe("the probe's seven day columns against this component's", () => {
+  it("writes the same tags, classes, attributes and nesting the grid writes for seven empty days", () => {
+    expect(shapeOf(gridIn(WEEK_SECTION.html))).toEqual(shapeOf(realGrid()));
+  });
+
+  it("draws one column per day of the week, which is what the boundary reads are counted across", () => {
+    expect(gridIn(WEEK_SECTION.html).querySelectorAll(".week-day")).toHaveLength(WEEK_DATES.length);
+    expect(realGrid().querySelectorAll(".week-day")).toHaveLength(WEEK_DATES.length);
+  });
+
+  /* The header is the shipped formatter's output for the date beside it. A script cannot call that formatter, because it
+   * reaches the kit's barrel, so the strings are written out and held here instead. */
+  it("heads each column with the label the week screen draws for that date", () => {
+    expect(WEEK_LABELS).toEqual(WEEK_DATES.map(columnLabel));
+  });
+
+  it("puts the columns on the page, so the gate reads a section the page actually holds", () => {
+    expect(page).toContain(WEEK_SECTION.html);
   });
 });
