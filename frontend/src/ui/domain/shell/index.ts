@@ -10,6 +10,8 @@ export {
   KEYBOARD_MAP,
   PALETTE_KEY,
   CAPTURE_KEY,
+  scopeReading,
   type KeyBindingEntry,
+  type KeyBindingScope,
 } from "./keyboardMap";
 export { DEFAULT_RETURN_PATH, SCREENS, SETUP_PATH, SIGN_IN_PATH, type Screen } from "./navigation";

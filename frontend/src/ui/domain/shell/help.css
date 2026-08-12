@@ -1,8 +1,9 @@
 /* Layer 2: the keyboard map's rows.
  *
- * A key hint column and an action column, at the row pitch the rest of the product reads at. The hint column is
- * wide enough for the longest chord the map holds, `Cmd/Ctrl+K`, so no row's action starts at a different offset
- * from its neighbour's. */
+ * A key hint column, an action column and the screen the row answers on, at the row pitch the rest of the product
+ * reads at. The hint column is wide enough for the longest chord the map holds, `Cmd/Ctrl+K`, so no row's action
+ * starts at a different offset from its neighbour's. The scope column takes what it needs at the trailing edge,
+ * because the action is what a reader scans for and a fixed third column would push it off centre. */
 
 .help {
   display: grid;
@@ -12,7 +13,7 @@
 
 .help__row {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr) auto;
   gap: 11px;
   align-items: baseline;
   min-height: var(--h-row-dense);
@@ -31,4 +32,12 @@
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-chrome);
+}
+
+.help__scope {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
 }

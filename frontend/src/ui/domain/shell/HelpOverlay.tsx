@@ -9,15 +9,15 @@
  * where the reader was on close, and closes on Escape. None of that is reimplemented here and there is no fade in
  * either direction.
  *
- * Each row is a key hint beside its action, which is the one form a key takes in this product: bracketed bare mono
- * text, `[ j ]`, and no bordered cap. */
+ * Each row is a key hint beside its action and the screen it answers on. The hint is the one form a key takes in
+ * this product: bracketed bare mono text, `[ j ]`, and no bordered cap. */
 
 import { useState } from "react";
 
 import { useKeyBinding } from "../../../lib/keyboard";
 import { Dialog } from "../../primitives";
 import { KeyHint } from "../marks";
-import { HELP_KEY, KEYBOARD_MAP } from "./keyboardMap";
+import { HELP_KEY, KEYBOARD_MAP, scopeReading } from "./keyboardMap";
 import "./help.css";
 
 export function HelpOverlay() {
@@ -29,15 +29,18 @@ export function HelpOverlay() {
       isOpen={isOpen}
       onOpenChange={setIsOpen}
       title="Keyboard"
-      description="Every key this product answers to, and what it does."
+      description="What each key does, and the screen it answers on."
     >
       <dl className="help">
         {KEYBOARD_MAP.map((entry) => (
-          <div key={entry.keys} className="help__row">
+          /* The scope is part of the key because the same keystroke answers on more than one screen, so two rows
+           * carry one key string and React would drop one of them. */
+          <div key={`${entry.scope} ${entry.keys}`} className="help__row">
             <dt className="help__keys">
               <KeyHint keys={entry.keys} />
             </dt>
             <dd className="help__action">{entry.action}</dd>
+            <dd className="help__scope">{scopeReading(entry.scope)}</dd>
           </div>
         ))}
       </dl>

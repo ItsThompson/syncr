@@ -10,17 +10,37 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CommandPalette } from "./CommandPalette";
 import { HelpOverlay } from "./HelpOverlay";
-import { HELP_KEY, KEYBOARD_MAP } from "./keyboardMap";
+import { HELP_KEY, KEYBOARD_MAP, scopeReading } from "./keyboardMap";
 import { SCREENS } from "./navigation";
 
 const ACTIONS = [
   { id: "/week", label: "Go to week", group: "Navigate", hint: "g w" },
   { id: "/today", label: "Go to today", group: "Navigate", hint: "g t" },
 ];
+
+interface RenderedRow {
+  readonly keys: string | null;
+  readonly action: string | null;
+  readonly scope: string | null;
+}
+
+/* Whole rows, cell by cell, so a row asserted for its key alone cannot hide a wrong action or a wrong screen, and
+ * so a row the map never held is a difference rather than a silent extra. */
+function renderedRows(baseElement: Element): RenderedRow[] {
+  return [...baseElement.querySelectorAll(".help__row")].map((row) => ({
+    keys: cellText(row, ".help__keys"),
+    action: cellText(row, ".help__action"),
+    scope: cellText(row, ".help__scope"),
+  }));
+}
+
+function cellText(row: Element, selector: string): string | null {
+  return row.querySelector(selector)?.textContent ?? null;
+}
 
 async function pressPaletteChord(): Promise<void> {
   await userEvent.keyboard("{Meta>}k{/Meta}");
@@ -91,6 +111,10 @@ describe("the command palette", () => {
 });
 
 describe("the help overlay", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("opens on ?", async () => {
     render(<HelpOverlay />);
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -116,14 +140,40 @@ describe("the help overlay", () => {
 
   /* IT RENDERS THE SHELL'S MAP RATHER THAN A SECOND COPY. A list of keys the overlay owned itself is the most
    * reliable documentation drift there is, so this asserts the rendered rows ARE the map's. */
-  it("renders every row of the shell's own keyboard map", async () => {
+  it("renders every row of the shell's own keyboard map, whole, and nothing besides", async () => {
+    const { baseElement } = render(<HelpOverlay />);
+    await userEvent.keyboard(HELP_KEY);
+
+    expect(renderedRows(baseElement)).toEqual(
+      KEYBOARD_MAP.map((entry) => ({
+        keys: entry.keys,
+        action: entry.action,
+        scope: scopeReading(entry.scope),
+      })),
+    );
+  });
+
+  it("says what it lists, which is what each key does and where", async () => {
     render(<HelpOverlay />);
     await userEvent.keyboard(HELP_KEY);
 
-    for (const entry of KEYBOARD_MAP) {
-      expect(screen.getByText(entry.keys)).toBeInTheDocument();
-      expect(screen.getByText(entry.action)).toBeInTheDocument();
-    }
+    expect(
+      screen.getByRole("dialog", {
+        description: "What each key does, and the screen it answers on.",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  /* The global `Escape` row claims an overlay closes on it, and no `useKeyBinding` registers that key outside the
+   * week screen: Radix's own dismiss is what answers it. So the row's claim is asserted here rather than assumed. */
+  it("closes on Escape, which is what its own global row promises", async () => {
+    render(<HelpOverlay />);
+    await userEvent.keyboard(HELP_KEY);
+    expect(screen.getByRole("dialog", { name: /Keyboard/ })).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("renders each key in the one form a key takes: bracketed bare mono text", async () => {

@@ -4,10 +4,15 @@
  * chords are DERIVED from the screen table rather than restated, so a screen cannot appear in the map with a key
  * it does not answer to.
  *
- * AN ENTRY ARRIVES WITH ITS BINDING, NOT BEFORE IT. The design language advertises grid traversal and the day's
- * confirmation, and neither of those keys is bound yet: listing them here would make the help overlay promise a
- * keystroke that does nothing, which is worse than an overlay that grows. The screen that wires a key adds its
- * row, and the overlay renders whatever the map holds. */
+ * AN ENTRY ARRIVES WITH ITS BINDING, NOT BEFORE IT. A row for a key nothing binds makes the help overlay promise
+ * a keystroke that does nothing, which is worse than an overlay that grows. The screen that wires a key adds its
+ * row, and the overlay renders whatever the map holds. `keyboardMap.test.ts` holds the rule against the tree
+ * rather than against a reading: it reads every binding the shipped source registers and fails a row that none of
+ * them answers.
+ *
+ * A ROW NAMES WHERE IT ANSWERS. A bare key a route registers is only listening while that route is on screen, so
+ * `j` on the week and `j` anywhere else are different answers to one keystroke, and a row that named neither
+ * would be wrong on six screens out of seven. */
 
 import { SCREENS, type Screen } from "./navigation";
 
@@ -26,12 +31,29 @@ export const PALETTE_KEY = "k";
  */
 export const CAPTURE_KEY = "n";
 
+/**
+ * Where a binding answers: everywhere, or on the one route that answers it.
+ *
+ * A route path rather than a screen's name, because the path is what decides whether the binding is listening at
+ * all: the component that registers it is mounted by that path and by nothing else.
+ */
+export type KeyBindingScope = "global" | `/${string}`;
+
 export interface KeyBindingEntry {
   /** As a reader would say it, which is also what the key hint renders. */
   readonly keys: string;
   readonly action: string;
-  /** Where the binding answers. Every one of them is global today. */
-  readonly scope: "global";
+  readonly scope: KeyBindingScope;
+}
+
+/**
+ * Where a row answers, as the overlay says it: the screen's own name, or everywhere.
+ *
+ * Lower case, like the screen names the sidebar reads from, because the case is the stylesheet's to choose.
+ */
+export function scopeReading(scope: KeyBindingScope): string {
+  if (scope === "global") return "everywhere";
+  return SCREENS.find((screen) => screen.path === scope)?.label ?? scope;
 }
 
 /** `g` then a letter, one per screen, read from the table the sidebar and the chord hook already share. */
