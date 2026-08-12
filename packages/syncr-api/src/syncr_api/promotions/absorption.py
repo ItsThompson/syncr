@@ -1,17 +1,16 @@
 """What a promotion can absorb, and the sentence for a pattern it cannot.
 
-**A promotion moves the template entry the pattern is about.** ``US-TPL-05``'s own example is a
-move: "You have pinned Gym to 13:00 for three consecutive weeks. Move it in your Weekday
-template?" A
-block that materialized from a day shape carries that entry as its binding, so the entry is named by
-the candidate itself and moving it needs nothing the pattern does not already state.
+**A promotion moves the template entry the pattern is about.** The offer is a move: "You have pinned
+Gym to 13:00 for three consecutive weeks. Move it in your Weekday template?" A block that
+materialized from a day shape carries that entry as its binding, so the entry is named by the
+candidate itself and moving it needs nothing the pattern does not already state.
 
-**Every other kind of content names nothing a day shape holds**, so there is no entry to move, and
-inventing one is not the same act: an entry declares a duration and a band that a pin says nothing
-about, and choosing them would be syncr deciding the shape of a reader's day rather than absorbing
-what the reader did. So those patterns are still RAISED -- the pattern is real and worth stating --
-and the raise carries the reason the template cannot take it and the one act that can.
-``tickets/1550`` holds the product question of whether declaring the entry should be offered here.
+**Accept moves an entry and never creates one**, and the refusal below is that answer rather than a
+placeholder for a later one. An entry declares a duration and a flex band that a pin states nothing
+about, so creating one would have syncr choose the shape of a reader's day out of the single thing a
+pattern does state, which is a time. So every other kind of content is still RAISED -- the pattern
+is real and worth stating -- and the raise carries the reason the template cannot take it and the
+one act that can, which is the reader declaring the entry themselves.
 
 **The set is closed by the type checker, not by a list.** The reason is chosen in a ``match`` ending
 in :func:`assert_never`, so an eighth ``BindingKind`` is a mypy failure here rather than a candidate
