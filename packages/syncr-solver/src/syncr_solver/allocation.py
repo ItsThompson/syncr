@@ -94,6 +94,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from syncr_domain.identifiers import AreaId
+    from syncr_domain.intervals import Interval
     from syncr_solver.inputs import AreaBudget
     from syncr_solver.state import PartialPlan, Placement
 
@@ -181,6 +182,10 @@ class _Reading:
     The netting is applied here and nowhere else in this rule, so the set the assembler subtracted
     before ``floor_minutes`` arrived has one statement, read through the checker's own answer to
     which placements those are.
+
+    **The per-Area split is a bucketing rather than a re-read.** Each placement is examined once and
+    dropped into the bucket of the Area that claims it, so the cost of the reading does not grow
+    with the number of Areas the week declares.
     """
 
     claimable: IntervalSet
@@ -190,13 +195,16 @@ class _Reading:
 
     @classmethod
     def of(cls, state: PartialPlan) -> _Reading:
-        movable = [held for held in state.placed if not state.already_netted(held.binding)]
+        owed: dict[AreaId, list[Interval]] = {area.area_id: [] for area in state.areas}
+        for held in state.placed:
+            if held.area_id is None or state.already_netted(held.binding):
+                continue
+            if (spans := owed.get(held.area_id)) is not None:
+                spans.append(held.interval)
         return cls(
             claimable=state.discretionary(),
             claimed=_spans(state.placed),
-            owed_spans={
-                area.area_id: _spans(movable, area_id=area.area_id) for area in state.areas
-            },
+            owed_spans={area_id: IntervalSet(spans) for area_id, spans in owed.items()},
             areas=state.areas,
         )
 
