@@ -1,8 +1,8 @@
-"""The ledger ``week show`` prints, against the shape the specification documents.
+"""The ledger ``week show`` prints, against a shape stated in one place.
 
-The week under test is the one in section 17's example: the same dates, the same six rows on the
-same Tuesday, the same words in the marker column. So the assertions are against a documented
-shape rather than against whatever this renderer happened to produce.
+The week under test is one fixed example week, built from ``tests/payloads.py``'s own pieces: the
+same dates, the same six rows on the same Tuesday, the same words in the marker column. So the
+assertions are against a fixed shape rather than against whatever this renderer happened to produce.
 
 Three properties matter beyond the layout. Conflicts, pins, and origins are named in words, because
 a pipe strips color and does not strip a word. A forbidden window is printed so the gap is
@@ -33,7 +33,7 @@ AREA_NAMES = {
 
 
 def documented_week(*, week_verdict: dict[str, Any] | None = None) -> WeekView:
-    """Section 17's example week: six rows on one Tuesday, one of them a forbidden window."""
+    """The example week: six rows on one Tuesday, one of them a forbidden window."""
     blocks = [
         payloads.block(
             identifier="gym",

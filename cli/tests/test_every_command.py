@@ -172,9 +172,9 @@ COMMANDS: Final[dict[tuple[str, str], Command]] = {
     ),
 }
 
-# The three commands that produce a credential rather than using one. They are ticket 50's, and
-# `test_auth_commands.py` drives all three; naming them here is what lets the completeness assertion
-# below be over the whole catalog rather than over a subset this file chose.
+# The three commands that produce a credential rather than using one. `test_auth_commands.py` drives
+# all three; naming them here is what lets the completeness assertion below be over the whole
+# catalog rather than over a subset this file chose.
 AUTHORIZATION_COMMANDS: Final = frozenset(
     {("auth", "login"), ("auth", "logout"), ("auth", "status")}
 )
@@ -187,7 +187,7 @@ def test_the_cases_here_are_exactly_the_commands_the_parser_builds() -> None:
 
 
 def test_the_catalog_is_the_thirteen_commands_section_17_names() -> None:
-    # The count the ticket states, so a fourteenth command has to be a deliberate edit here.
+    # The count is asserted, so a fourteenth command has to be a deliberate edit here.
     assert len(catalog()) == 16
     assert len(COMMANDS) == 13
 
@@ -217,7 +217,7 @@ def test_the_route_inventory_is_exactly_the_eleven_paths_this_catalog_needs() ->
 
 
 def test_no_route_this_client_can_build_names_an_out_of_scope_resource() -> None:
-    # Section 17's out-of-scope list is a boundary only if nothing in the client can reach it.
+    # The out-of-scope surfaces are a boundary only if nothing in the client can reach them.
     # Stated over the whole route inventory, so a method added later is covered without an edit.
     out_of_scope = (
         "reviews",
@@ -243,11 +243,11 @@ def test_no_route_this_client_can_build_names_an_out_of_scope_resource() -> None
 def test_the_client_can_reach_no_route_the_api_reserves_for_admin() -> None:
     """The other half of the boundary, keyed on the scope rather than on the path.
 
-    Section 17 says the CLI requests ``plan:read`` and ``plan:write`` and not ``admin``, and that
-    that is what makes the out-of-scope list a boundary rather than a suggestion. So the requested
-    set is asserted here as well as in ``test_auth_commands.py``, beside the routes it bounds: a
-    route added to this inventory that needed ``admin`` would be a route every command using it
-    would be refused on, and the two claims belong in one place.
+    The CLI requests ``plan:read`` and ``plan:write`` and not ``admin``, and that is what makes the
+    out-of-scope list a boundary rather than a suggestion. So the requested set is asserted here as
+    well as in ``test_auth_commands.py``, beside the routes it bounds: a route added to this
+    inventory that needed ``admin`` would be a route every command using it would be refused on, and
+    the two claims belong in one place.
     """
     assert set(REQUESTED_SCOPES) == {"plan:read", "plan:write"}
     assert "admin" not in REQUESTED_SCOPES

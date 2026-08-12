@@ -4,8 +4,8 @@ Factories rather than literals in each test, so a shape change is one edit and e
 only what it is about. Each default is a value the api could really send: camelCase members,
 RFC 3339 instants with an explicit offset, and every duration an integer minute count.
 
-The week payload is the one from section 17's ledger, dates and all, so a rendering assertion is
-against the documented shape rather than against whatever this module happened to invent.
+The week payload is one fixed example week, dates and all, so a rendering assertion is against a
+shape stated in one place rather than against whatever a test happened to invent.
 """
 
 from __future__ import annotations

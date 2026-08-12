@@ -5,9 +5,9 @@ in a test with a single return shape and no conditional inside a stub. The beare
 attached by the session, which obtains it lazily: a command that never calls a method here never
 refreshes a token.
 
-**Every route is a named template and the set of them is closed.** Section 17's out-of-scope list --
+**Every route is a named template and the set of them is closed.** The out-of-scope surfaces --
 notifications and SSE, the weekly session ritual, the pie review, template editing, calendar source
-setup -- is a boundary only if nothing here can reach it, so the templates are constants a test
+setup -- are a boundary only if nothing here can reach it, so the templates are constants a test
 reads rather than strings spelled inside twelve methods. The CLI also requests neither the ``admin``
 scope nor any route that needs it, so the boundary holds twice over.
 
