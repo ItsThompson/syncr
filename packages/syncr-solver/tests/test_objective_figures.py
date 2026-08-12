@@ -131,16 +131,30 @@ def the_components_a_ceiling_adds(source: str) -> tuple[str, ...]:
     value as a sum of the right three and no assertion over the figure can tell them apart. This
     reads the names instead. A ceiling spelled some other way than as a sum of names reads as no
     names at all and fails here, which is the price of pinning a composition rather than a value.
+
+    Annotated or not, because the claim is about the addends: a ceiling declared without ``Final``
+    is still a ceiling, and a reader that could not see one would report it missing.
     """
     for node in ast.walk(ast.parse(source)):
-        target = getattr(node, "target", None)
-        if isinstance(node, ast.AnnAssign) and getattr(target, "id", "") == "MISFIT_MAX":
+        value = _the_ceilings_value(node)
+        if value is not None:
             return tuple(
-                sorted(named.id for named in ast.walk(node.value) if isinstance(named, ast.Name))
-                if node.value is not None
-                else ()
+                sorted(named.id for named in ast.walk(value) if isinstance(named, ast.Name))
             )
     raise AssertionError("the source states no MISFIT_MAX for its components to be read from")
+
+
+def _the_ceilings_value(node: ast.AST) -> ast.expr | None:
+    """The expression this node assigns to ``MISFIT_MAX``, or nothing because it assigns none."""
+    if isinstance(node, ast.AnnAssign) and _is_the_ceiling(node.target):
+        return node.value
+    if isinstance(node, ast.Assign) and any(_is_the_ceiling(target) for target in node.targets):
+        return node.value
+    return None
+
+
+def _is_the_ceiling(target: ast.expr) -> bool:
+    return isinstance(target, ast.Name) and target.id == "MISFIT_MAX"
 
 
 def test_the_gap_absorbs_the_price_in_minutes_and_the_weight_scales_what_is_left() -> None:
