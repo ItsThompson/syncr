@@ -11,14 +11,15 @@
  * same reason: a probe file in the tree would be scanned by every other check as if a screen had written it.
  *
  * IT CARRIES NO STYLE, AND THAT IS STRUCTURAL RATHER THAN TRUSTED. The barrel the snap arrives through imports the
- * kit's stylesheets, so left alone this build compiles the application's CSS into a script whose whole job is to
- * publish one function: the chunk grows by an order of magnitude and carries a `document.createElement("style")`
- * injection. THAT IS NOT A PIXEL RISK ON THIS PAGE, which already links the built bundle those same sheets come from,
- * so re-injecting them appends a duplicate at the end of the cascade and moves nothing. It is a reason to keep the
- * script to what it is for, and the refusal below is a build-shape refusal rather than a guard on the pixels. Two
- * things keep the style out. Imports of it resolve to nothing, and `cssCodeSplit` is off, so a sheet that does reach
- * the graph is EXTRACTED as an asset rather than injected into the script the page runs. The build then has to produce
- * exactly one artifact, and anything else is a failure rather than a file this ignores. */
+ * kit's stylesheets, so left alone this build compiles those sheets into a script whose whole job is to publish one
+ * function: the chunk grows by an order of magnitude and carries a `document.createElement` injection. THAT IS NOT A
+ * PIXEL RISK ON THIS PAGE, which already links the built bundle those same sheets come from, and every rule the
+ * injection carries sits in that bundle unlayered, so the copy is a duplicate at the end of the cascade rather than a
+ * promotion out of `@layer`, and it moves nothing. It is a reason to keep the script to what it is for, and the
+ * refusal below is a build-shape refusal rather than a guard on the pixels. Two things keep the style out. Imports of
+ * it resolve to nothing, and `cssCodeSplit` is off, so a sheet that does reach the graph is EXTRACTED as an asset
+ * rather than injected into the script the page runs. The build then has to produce exactly one artifact, and anything
+ * else is a failure rather than a file this ignores. */
 
 import path from "node:path";
 import { build, type InlineConfig, type Plugin } from "vite";
