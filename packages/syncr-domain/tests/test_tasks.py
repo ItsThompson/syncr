@@ -118,8 +118,8 @@ def test_remaining_work_is_the_estimate_less_what_was_recorded_and_never_negativ
 
 
 def test_a_partially_recorded_task_reduces_its_remaining_estimate_rather_than_its_record() -> None:
-    # The recorded figure is an input to this and
-    # is never rewritten by it, so the time already spent survives for reports.
+    # The recorded figure is an input to the remaining-minutes arithmetic and is never rewritten
+    # by it, so the time already spent survives for reports.
     estimate, recorded = 90, 30
 
     assert remaining_minutes(estimate_minutes=estimate, recorded_minutes=recorded) == 60
@@ -225,8 +225,8 @@ def test_the_defaults_satisfy_t1_between_themselves() -> None:
 
 
 def test_a_captured_task_is_immediately_eligible_under_the_defaults() -> None:
-    # A task captured with
-    # nothing but a title and an Area has work left and is open, so the next assembly sees it.
+    # A task captured with nothing but a title and an Area has work left and is open, so the next
+    # assembly sees it.
     assert is_eligible_for_solving(
         status=TaskStatus.OPEN,
         remaining_minutes=remaining_minutes(
