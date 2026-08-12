@@ -3,9 +3,9 @@
 ``test_post_pin_end_to_end`` drives the whole request path through a real app and a real database:
 the 201 status, the camelCase wire shape, the three-field response, and probe provenance.
 
-``test_a_retried_pin_with_the_same_key_does_not_create_a_second_event`` is AC13: the guard replays
-the stored response rather than re-executing, so the learning corpus holds exactly one preference
-per intent.
+``test_a_retried_pin_with_the_same_key_does_not_create_a_second_event`` covers the retry: the guard
+replays the stored response rather than re-executing, so the learning corpus holds exactly one
+preference per intent.
 """
 
 from __future__ import annotations

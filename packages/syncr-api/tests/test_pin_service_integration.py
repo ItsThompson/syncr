@@ -2,8 +2,8 @@
 
 Six groups.
 
-**The E1 invariant.** A pin and its edit event are one transaction: a failure writing the event
-rolls back the pin, so a pin can never exist without its features.
+**The transaction invariant.** A pin and its edit event are one transaction: a failure writing the
+event rolls back the pin, so a pin can never exist without its features.
 
 **The Idempotency-Key replay is tested in ``test_pin_routes_integration.py``.** The tests here
 drive the service directly and exercise the upsert behaviour without a key: two drags of one block
@@ -14,9 +14,8 @@ task's shortfall unchanged. Pinning a Fitness block leaves the floor reservation
 the floor the solver must still place, which is the whole of the two-quantity split read from one
 week. Pinning an already-placed block leaves the verdict unchanged.
 
-**The two settlements.** Ticket 1333: a pin on a block that has begun is refused with a stated
-reason. Ticket 1402: a pin whose interval elapses while its block lives only in a pending proposal
-does not wedge the week.
+**The two settlements.** A pin on a block that has begun is refused with a stated reason. A pin
+whose interval elapses while its block lives only in a pending proposal does not wedge the week.
 
 **Reject-block.** A rejection is a pin at the block's existing placement, records the pairwise
 preference used for training.
@@ -306,7 +305,7 @@ async def _seed_conflict_against(
 
 
 # ---------------------------------------------------------------------------
-# E1: the edit event is written in the same transaction as the pin
+# The edit event is written in the same transaction as the pin
 # ---------------------------------------------------------------------------
 
 
@@ -339,12 +338,12 @@ class TestE1TransactionInvariant:
 
 
 # ---------------------------------------------------------------------------
-# Ticket 1333: a pin on a block that has begun is refused
+# A pin on a block that has begun is refused
 # ---------------------------------------------------------------------------
 
 
 class TestPinOnStartedBlock:
-    """US-PLAN-06: a block the week has reached cannot be pinned."""
+    """A block the week has reached cannot be pinned."""
 
     async def test_a_pin_on_a_block_that_has_begun_is_refused_with_a_stated_reason(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
@@ -397,7 +396,7 @@ class TestPinOnStartedBlock:
 
 
 # ---------------------------------------------------------------------------
-# Ticket 1402: the pin-elapsed wedge is closed
+# The pin-elapsed wedge is closed
 # ---------------------------------------------------------------------------
 
 
@@ -458,12 +457,12 @@ class TestPinElapsedWedge:
 
 
 # ---------------------------------------------------------------------------
-# The three Blocker-1 verdict properties (US-FEAS-01)
+# The three verdict properties of a pin
 # ---------------------------------------------------------------------------
 
 
 class TestVerdictProperties:
-    """The three properties the ticket names, each through the real assembler and probe."""
+    """The three properties, each through the real assembler and probe."""
 
     async def test_pinning_time_toward_a_due_task_leaves_shortfall_unchanged(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
@@ -814,7 +813,7 @@ class TestLiveVerdict:
 
 
 class TestVerdictTransitionRecording:
-    """Ticket 43's half of the pin transaction: the row the drag leaves in the corpus.
+    """What the pin transaction leaves in the verdict corpus: the row the drag writes.
 
     The seeded week is not short of capacity, so the verdict the pin computes finds no gap. It is
     still the FIRST verdict this week has, and a week's first verdict is a transition: what the
@@ -869,8 +868,8 @@ class TestVerdictTransitionRecording:
     ) -> None:
         """A mutation cannot commit without the transition it caused.
 
-        The same shape as ``E1``'s test one row along, and for the same reason: the corpus is never
-        pruned, so a transition lost at the moment it happened is lost permanently.
+        The same shape as the edit-event test one row along, and for the same reason: the corpus is
+        never pruned, so a transition lost at the moment it happened is lost permanently.
         """
         await _seed_a_pinnable_week(sessions, owner)
         pins_before = await _row_count(sessions, PINS_TABLE)
@@ -950,7 +949,7 @@ async def _transitions(
 
 
 class TestUnpin:
-    """AC10: the pin is removed, the version bumps, and the event stays."""
+    """The pin is removed, the version bumps, and the event stays."""
 
     async def test_unpin_removes_the_row_and_bumps_the_version(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
@@ -1146,7 +1145,7 @@ class TestDeadlineFeature:
 
 
 class TestPreEditFields:
-    """Fields section 11 labels 'at proposal time' must not read the post-pin assembly."""
+    """Fields recorded 'at proposal time' must not read the post-pin assembly."""
 
     async def test_area_floor_minutes_records_the_declared_floor_not_the_netted_one(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord

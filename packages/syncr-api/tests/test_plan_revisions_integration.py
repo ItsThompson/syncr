@@ -545,7 +545,7 @@ async def test_a_concession_kind_the_vocabulary_does_not_name_is_rejected(
 
 
 # --------------------------------------------------------------------------------
-# WA7, and revoking a concession
+# A reduction no week could honour, and revoking a concession
 # --------------------------------------------------------------------------------
 
 
@@ -564,9 +564,9 @@ async def test_a_reduction_no_week_could_honour_is_refused_rather_than_stored(
     reductions: dict[str, Any],
     refused: str,
 ) -> None:
-    # WA7, on the write. A date outside the concession's own week pairs with no occurrence, and a
-    # figure of zero or less either does nothing or LENGTHENS the routine a concession exists to
-    # shorten. Either one stored would claim to have been honoured while changing nothing.
+    # The refusal on the write. A date outside the concession's own week pairs with no occurrence,
+    # and a figure of zero or less either does nothing or LENGTHENS the routine a concession exists
+    # to shorten. Either one stored would claim to have been honoured while changing nothing.
     async with sessions() as session, session.begin():
         with pytest.raises(AdjustmentRejected, match=refused):
             await WeekAdjustmentRepository(session, owner.tenant_id).upsert(
@@ -585,9 +585,9 @@ async def test_a_reduction_no_week_could_honour_is_refused_rather_than_stored(
 async def test_revoking_a_concession_leaves_the_week_resolving_without_it(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # WA8's storage half: removing a concession changes the inputs, so the row goes and the next
-    # assembly reads the week as it was declared. Deleted rather than marked revoked, because the
-    # revision history already records which concessions each document was solved under.
+    # The storage half of revocation: removing a concession changes the inputs, so the row goes and
+    # the next assembly reads the week as it was declared. Deleted rather than marked revoked,
+    # because the revision history already records which concessions each document was solved under.
     async with sessions() as session, session.begin():
         adjustments = WeekAdjustmentRepository(session, owner.tenant_id)
         stored = await adjustments.upsert(

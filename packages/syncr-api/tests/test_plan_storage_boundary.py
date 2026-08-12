@@ -268,7 +268,7 @@ def modules_that_would_change_a_revision(source_root: Path) -> list[str]:
 def test_no_module_of_the_api_composes_a_write_against_the_plan_of_record(
     source_root: Path,
 ) -> None:
-    """``US-PLAN-07``: the history is read-only, and no action on it can mutate a revision.
+    """The history is read-only: no action on it can mutate a revision.
 
     The repository's own surface is asserted above, which covers the one class that owns the table.
     This is the other half: a module that imported the mapped class could compose an ``UPDATE`` or a
@@ -498,7 +498,7 @@ def plan_side_tables(source_root: Path) -> set[str]:
 
 def test_every_plan_side_table_states_what_reads_it(source_root: Path) -> None:
     # An equality, not a containment: the subject is what the packages declare, so a table
-    # added by a later ticket has to state what reads it, and an entry for a table that went
+    # added later has to state what reads it, and an entry for a table that went
     # away has to go with it.
     declared = set(DOMINANT_READS)
     owned = plan_side_tables(source_root)
