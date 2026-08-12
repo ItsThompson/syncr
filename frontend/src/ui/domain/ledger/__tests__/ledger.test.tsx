@@ -9,7 +9,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { Button } from "../../../primitives";
-import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
+import { domainDir, kitStylesheet, primitivesDir } from "../../../../testing/kitStylesheets";
+import { effectiveDeclarations } from "../../../../testing/visualState";
 import { GlyphSlot } from "../../marks";
 import { LedgerRow } from "../LedgerRow";
 
@@ -110,6 +111,32 @@ describe("the current row", () => {
     );
 
     expect(container.firstElementChild).not.toHaveAttribute("data-current");
+  });
+
+  /* Both edges of "assigned in exactly one file". `lint:channels` sees a SECOND file taking the channel and is
+   * blind to the first one leaving, so the pair is asserted here by name: the row's own sheet is silent and the
+   * kit's states sheet carries it. */
+  it("leaves the channel to the kit's one assignment, and the row's own sheet declares none", async () => {
+    expect(await stylesheet()).not.toMatch(/\[data-current\]/);
+    expect(await kitStylesheet("states.css", primitivesDir)).toMatch(
+      /\.state-row\[data-current\]\s*\{/,
+    );
+  });
+
+  /* The attribute being present is not the same claim as the kit's rule reaching this row: the ledger's own
+   * sheet writes the row's borders, so the two declarations are resolved against a rendered ledger row. */
+  it("takes the kit's fill and left rule on a ledger row, resolved from the two sheets", async () => {
+    const { container } = render(
+      <LedgerRow timeRange="09:00-09:30" duration="30m" title="Standup" isCurrent />,
+    );
+    const element = container.firstElementChild;
+    if (element === null) throw new Error("no row rendered");
+    const css = [await kitStylesheet("states.css", primitivesDir), await stylesheet()].join("\n");
+
+    const effective = effectiveDeclarations({ element, css });
+
+    expect(effective.get("background-color")).toBe("var(--state-hover)");
+    expect(effective.get("border-left-color")).toBe("var(--state-selected-color)");
   });
 });
 
