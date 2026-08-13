@@ -9,10 +9,12 @@
  * it observes and there is no instance to reach before the effect runs. jsdom lays nothing out, so without the stub
  * every case here would measure the reference display and the two rows below would be the same row.
  *
- * A CHANGE OF MEASUREMENT IS NOT DRIVEN HERE. jsdom's `ResizeObserver` never calls back, so a resize is a browser's
- * business; what is driven is the other half of the same keying, a level changed at one height. */
+ * A CHANGE OF MEASUREMENT IS DRIVEN THROUGH AN OBSERVER OF THIS FILE'S OWN. The suite's shared stub answers the call
+ * and never calls back, which is right for a DOM with no layout and leaves the one path that matters in a browser
+ * unexercised: a grid whose height changes under a reader. What is driven below is the same callback a real
+ * `ResizeObserver` invokes, against the same stubbed height the rest of the file reads. */
 
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { WeekGrid } from "../WeekGrid";
@@ -50,6 +52,8 @@ function deepestOffered(report: ZoomReport): number | undefined {
 describe("the level and the range the grid reports", () => {
   let measuredGridPx = REFERENCE_GRID_PX;
   let original: PropertyDescriptor | undefined;
+  let observers: (() => void)[] = [];
+  let installedObserver: typeof globalThis.ResizeObserver;
   const reports: ZoomReport[] = [];
   const onZoom = (report: ZoomReport): void => {
     reports.push(report);
@@ -62,9 +66,32 @@ describe("the level and the range the grid reports", () => {
     return report;
   };
 
+  /** The measurement the grid observes, changed the way a browser changes it: a new height, then the callback. */
+  const resizeTo = (gridPx: number): void => {
+    measuredGridPx = gridPx;
+    act(() => {
+      for (const notify of observers) notify();
+    });
+  };
+
   beforeEach(() => {
     measuredGridPx = REFERENCE_GRID_PX;
     reports.length = 0;
+    observers = [];
+    installedObserver = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class DrivenObserver implements ResizeObserver {
+      #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+      observe(): void {
+        observers.push(() => {
+          this.#callback([], this);
+        });
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    };
     original = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
     Object.defineProperty(Element.prototype, "clientHeight", {
       configurable: true,
@@ -75,6 +102,7 @@ describe("the level and the range the grid reports", () => {
   });
 
   afterEach(() => {
+    globalThis.ResizeObserver = installedObserver;
     if (original === undefined)
       delete (Element.prototype as { clientHeight?: unknown }).clientHeight;
     else Object.defineProperty(Element.prototype, "clientHeight", original);
@@ -159,5 +187,24 @@ describe("the level and the range the grid reports", () => {
 
     expect(reports.map((report) => report.hours)).toEqual([12, 6]);
     expect(canvasPx()).toBeCloseTo(canvasPxAt(REFERENCE_GRID_PX, 6), 1);
+  });
+
+  /* THE PATH A BROWSER TAKES AND A HEADLESS DOM OTHERWISE CANNOT. A reader who opens the detail panel, or drags a
+   * window taller, changes the grid's height without changing anything it renders from, and the level it can draw
+   * changes with it. The second resize is the other half of the claim: the same height reported twice is one
+   * measurement, so the surfaces above are not re-rendered for a change that did not happen. */
+  it("reports again where the measurement changes, and not where it repeats", () => {
+    const { canvasPx } = renderGrid(24);
+    expect(lastReport().hours).toBe(16);
+
+    resizeTo(TALL_GRID_PX);
+
+    expect(reports.map((report) => report.hours)).toEqual([16, 24]);
+    expect(deepestOffered(lastReport())).toBe(24);
+    expect(canvasPx()).toBeCloseTo(canvasPxAt(TALL_GRID_PX, 24), 1);
+
+    resizeTo(TALL_GRID_PX);
+
+    expect(reports).toHaveLength(2);
   });
 });
