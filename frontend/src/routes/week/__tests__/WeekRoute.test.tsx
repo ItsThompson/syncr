@@ -25,6 +25,7 @@ import {
   ISO_WEEK,
   LEETCODE,
   SETTINGS,
+  SLOT_LABEL,
   WEEK_PATH,
   buildPlan,
   buildReadings,
@@ -67,17 +68,19 @@ describe("the week the reader asked for", () => {
     expect(await screen.findByText("recovery · Kontron Interview")).toBeInTheDocument();
   });
 
-  /* An empty slot's one gutter label is Python and the payload does not carry the rendered string, so the band draws
-   * with an empty gutter rather than with a second wording of it. What is asserted is that it draws AT ALL: a gap
-   * left as nothing is pixel-identical to an ordinary gap, which is the defect the band exists to prevent. */
-  it("draws the empty slot's band even though the payload carries no label for it", async () => {
+  /* BOTH GUTTER SENTENCES ARE THE PAYLOAD'S. The window's is the stored one and the slot's is rendered by the
+   * server from the one wording its reason has, so neither is composed on this screen. What is also asserted is
+   * that the band draws AT ALL: a gap left as nothing is pixel-identical to an ordinary gap, which is the defect
+   * the band exists to prevent. */
+  it("draws the empty slot's band and the wording the payload carried for it", async () => {
     installWeekReads(buildWeekView());
     const { container } = renderAt(WEEK_PATH);
 
     await waitFor(() => {
       expect(container.querySelectorAll(".week-band")).toHaveLength(2);
     });
-    expect(container.querySelectorAll(".week-band__label")).toHaveLength(1);
+    expect(container.querySelectorAll(".week-band__label")).toHaveLength(2);
+    expect(screen.getByText(SLOT_LABEL)).toBeInTheDocument();
   });
 
   it("reads the strip's three figures and the currency from the payload", async () => {

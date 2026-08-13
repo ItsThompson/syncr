@@ -394,11 +394,15 @@ describe("the band that explains a gap", () => {
   });
 
   it("draws the same element whatever the gap is, which is what makes one drawing rule true", () => {
+    /* Two wordings that could not be composed here, one stored and one the server rendered: what one wording per
+     * empty-slot reason says is the server's own statement, so this tree names none of them. */
     const window = render(<ForbiddenBand heightPx={40} label="recovery · Interview" topPx={0} />);
-    const offPlan = render(<ForbiddenBand heightPx={40} label="off plan · Italy" topPx={0} />);
+    const slot = render(
+      <ForbiddenBand heightPx={40} label="a wording the payload carried" topPx={0} />,
+    );
 
     expect(window.container.querySelector(".week-band")?.className).toBe(
-      offPlan.container.querySelector(".week-band")?.className,
+      slot.container.querySelector(".week-band")?.className,
     );
   });
 });

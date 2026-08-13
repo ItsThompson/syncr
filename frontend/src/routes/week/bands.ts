@@ -9,13 +9,14 @@
  * A GAP IS DRAWN RATHER THAN OMITTED. Left as nothing, a forbidden gap and an ordinary empty gap are
  * pixel-identical and the solver appears to decline a gap for no reason.
  *
- * WHY AN EMPTY SLOT CARRIES NO LABEL YET. Each empty-slot reason maps to exactly one gutter label and
- * `syncr_domain.gaps.gutter_label` is that one statement. It is Python, a label may take a substitution, and
- * the week payload does not carry the rendered string, so composing the wording here would be
- * the second statement the one-label rule exists to forbid. The reason CODE travels instead and the band draws
- * with an empty gutter. Tracked in ticket 1350. The two kinds whose label the wire already carries render
- * theirs, and a window's is the STORED one, so an anchor retitled in March cannot change what a week approved
- * in February says. */
+ * EVERY GUTTER SENTENCE IS THE PAYLOAD'S, AND NONE IS COMPOSED HERE. Each empty-slot reason maps to exactly one
+ * wording and `syncr_domain.gaps.gutter_label` is that one statement; it is Python, a wording may substitute the
+ * Area's name, and the wire carries the rendered string, so this module reads it. Composing it here from the
+ * reason code would be the second statement the one-wording rule exists to forbid, and would have to be kept in
+ * step with a vocabulary that grows. The reason code travels beside the label, so a client keying on the code
+ * keeps working. A window's label is the STORED one, so an anchor retitled in March cannot change what a week
+ * approved in February says, and an off-plan span's is the user's own word for it, which they need not have
+ * given. */
 
 import type { GridBand } from "../../ui/domain";
 import type { components } from "../../api/schema";
@@ -54,13 +55,13 @@ export function bandOfOffPlanPeriod(period: OffPlanPeriod): WeekBand {
   };
 }
 
-/** A template slot the solver could not fill. The reason travels; the wording does not exist here to travel. */
+/** A template slot the solver could not fill. The wire carries its one wording, and the reason beside it. */
 export function bandOfEmptySlot(slot: EmptySlot): WeekBand {
   return {
     id: `empty-slot:${slot.areaId}:${slot.interval.start}`,
     startMs: Date.parse(slot.interval.start),
     endMs: Date.parse(slot.interval.end),
-    label: null,
+    label: slot.label,
     reason: slot.reason,
   };
 }

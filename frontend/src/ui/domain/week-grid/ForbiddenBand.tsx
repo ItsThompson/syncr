@@ -8,21 +8,22 @@
  * pinned block inside a recovery window still reads as a block.
  *
  * THE LABEL IS THE PAYLOAD'S, NEVER COMPOSED HERE. A window stores its own, so an anchor retitled in March
- * cannot change what a week approved in February says; an off-plan span carries the user's word for it. Where
- * there is none the gutter is empty and the band still draws, because it is the absence of a block that the band
- * exists to explain and an unlabelled band explains more than nothing does.
+ * cannot change what a week approved in February says; an off-plan span carries the user's word for it; an empty
+ * slot's is rendered by the server from the one wording its reason has. Where there is none the gutter is empty and
+ * the band still draws, because it is the absence of a block that the band exists to explain and an unlabelled band
+ * explains more than nothing does.
  *
  * THE LABEL IS REAL TEXT, not an adornment in the layout layer's 20px `Gutter`: the measured labels run to about
- * thirty characters, `recovery · Kontron Interview` and `no eligible Career content`, and that column holds a
- * 10px chip. It is knocked out over its own background for the reason the hour label is, that uppercase
- * micro-type over a hatch reads as a smudge rather than as a word. */
+ * thirty characters, `recovery · Kontron Interview` being one of them, and that column holds a 10px chip. It is
+ * knocked out over its own background for the reason the hour label is, that uppercase micro-type over a hatch
+ * reads as a smudge rather than as a word. */
 
 import { BandLabel } from "./BandLabel";
 import type { Box } from "./geometry";
 import "./band.css";
 
 export interface ForbiddenBandProps extends Box {
-  /** What the gutter says. Null where the payload carries no label for this kind of gap yet. */
+  /** What the gutter says. Null for a declared off-plan span the user gave no word for. */
   readonly label: string | null;
   /**
    * Activating the gutter label, where the caller has something for it to do.

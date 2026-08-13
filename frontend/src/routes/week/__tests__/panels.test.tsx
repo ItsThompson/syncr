@@ -20,6 +20,7 @@ import {
   ISO_WEEK,
   LEETCODE,
   ROUTINE_ID,
+  SLOT_LABEL,
   TASK_ID,
   WEEK_PATH,
   buildAdjustment,
@@ -483,13 +484,14 @@ describe("the two controls in the band", () => {
 });
 
 describe("an empty slot's gutter label", () => {
-  it("is drawn as a band even though the payload carries no label for it yet", async () => {
+  it("draws the wording the payload rendered for it, beside the window's stored one", async () => {
     await renderWeek(buildWeekView());
 
-    /* The wire carries no rendered label for an empty slot yet (ticket 1350), so the band draws with an empty gutter
-     * and there is nothing to activate: what the slot's Area and duration become is ticket 1490's. What is asserted
-     * here is that the band is drawn AT ALL, because a gap left as nothing is pixel-identical to an ordinary gap. */
+    /* The wire carries the rendered wording per slot, so this screen reads it and composes nothing: one wording per
+     * reason is stated once, on the server, where the vocabulary lives. Both bands are asserted to be drawn AT ALL,
+     * because a gap left as nothing is pixel-identical to an ordinary gap. */
     expect(document.querySelectorAll(".week-band")).toHaveLength(2);
-    expect(document.querySelectorAll(".week-band__label")).toHaveLength(1);
+    expect(document.querySelectorAll(".week-band__label")).toHaveLength(2);
+    expect(screen.getByText(SLOT_LABEL)).toBeInTheDocument();
   });
 });

@@ -109,7 +109,7 @@ const VERDICT: domain.PanelVerdict = {
 
 const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   AreaChip: () => <domain.AreaChip name="Career" pigment="01" />,
-  BandLabel: () => <domain.BandLabel label="no eligible Career content" />,
+  BandLabel: () => <domain.BandLabel label="a wording the payload carried" />,
   AreaLegend: () => (
     <domain.AreaLegend
       label="Share of discretionary time"

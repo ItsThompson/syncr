@@ -67,7 +67,7 @@ export interface GridBlock {
 export interface GridBand {
   readonly id: string;
   readonly span: OffsetSpan;
-  /** What the gutter says, or null where the payload carries no label for this kind yet. */
+  /** What the gutter says, or null for a declared off-plan span the user gave no word for. */
   readonly label: string | null;
   readonly reason: BandReason;
 }
