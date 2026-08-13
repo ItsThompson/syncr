@@ -11,13 +11,13 @@ Each row states two things: whether it bumps the week's input version, and wheth
 solve. A row is either WIRED, meaning the code performs what the row says, or it is EXCLUDED with a
 named owner. There is no third state: a row that is neither fails.
 
-**What the enumeration found, and it is the reason it was asked for.** Fourteen of the twenty rows
+**What the enumeration found, and it is the reason it was asked for.** Thirteen of the twenty rows
 that ask for a solve reach none. `kind = "solve"` is created only through
-``SolveCoordinator.request_solve``, whose seven call sites are in `pins`, `learned`, `plans`,
-`conflicts` and `concessions`, and the horizon maintainer enqueues ``materialize`` rather than
-``solve``. So the debounce, the coalescing and the supersession machinery are driven by those call
-sites, two of which bypass the debounce window by design: the re-solve control asks for an immediate
-pass, and so does a tradeoff request.
+``SolveCoordinator.request_solve``, whose eight call sites are in `pins`, `learned`, `plans`,
+`conflicts`, `concessions` and `calendars`, and the horizon maintainer enqueues ``materialize``
+rather than ``solve``. So the debounce, the coalescing and the supersession machinery are driven by
+those call sites, two of which bypass the debounce window by design: the re-solve control asks for
+an immediate pass, and so does a tradeoff request.
 
 That is not a defect in any one of the fourteen: each bumps correctly, and a bump is what makes a
 running solve's conditional write fail. What is missing is the request that follows it. The
@@ -67,6 +67,11 @@ BUMPS_A_VERSION: Final = ("versions.bump(", "from_the_week_holding(", "bump(Week
 class Trigger(NamedTuple):
     """One row of the trigger table, and what the code does about it.
 
+    ``module`` is where this row's own write lives. ``solves_in`` names where its solve request
+    lives for the one row whose two halves are in different packages, and is ``None`` everywhere
+    else: a trigger whose bump sits beside the rows it invalidates and whose request sits at the
+    seam that performs the pass cannot be answered for by one path.
+
     ``owner`` is ``None`` for a row the code performs. For a row it does not, it names the work
     that owes the wiring, so an unwired trigger is a diff a reviewer reads rather than a silence.
     """
@@ -75,6 +80,7 @@ class Trigger(NamedTuple):
     bumps: bool
     solves: bool
     module: str | None
+    solves_in: str | None = None
     owner: str | None = None
 
 
@@ -163,7 +169,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="anchors/reconcile.py",
-        owner="1403",
+        solves_in="calendars/solve_requests.py",
     ),
     Trigger(
         "anchor type added, edited, reordered",
@@ -285,6 +291,20 @@ ANCHOR_RECONCILER_COMPOSITIONS: Final = ("calendars/injection.py", "calendars/ru
 # poll has the settings it read for the same profile. A third name arriving here is a third place
 # the value could come from, and it has to be justified rather than inherited.
 TENANT_ZONE_SOURCES: Final = frozenset({"profile", "settings"})
+
+
+# The one row whose bump and whose solve request are in different packages, and the module each
+# half is in. The bump belongs beside the anchor rows it invalidates; the request belongs at the
+# seam that performs a pass, because both entry points into a sync arrive there. Bounded as a set
+# rather than left open, so a later row cannot inherit an exemption written about this one.
+SOLVES_ELSEWHERE: Final = {
+    "anchor delta from a calendar sync": "calendars/solve_requests.py",
+}
+
+
+def solve_module(trigger: Trigger) -> str | None:
+    """Where this row's solve request lives: its own module unless the row names another."""
+    return trigger.solves_in or trigger.module
 
 
 def reconciler_call(module: str) -> ast.Call:
@@ -437,8 +457,9 @@ class TestTheTriggerTable:
         ids=lambda one: one.row,
     )
     def test_a_wired_row_that_solves_reaches_the_coordinator(self, trigger: Trigger) -> None:
-        assert trigger.module is not None
-        body = module_source(trigger.module)
+        asking = solve_module(trigger)
+        assert asking is not None
+        body = module_source(asking)
 
         assert REQUESTS_A_SOLVE in body, trigger.row
 
@@ -510,7 +531,7 @@ class TestTheTriggerTable:
 
 
 class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
-    """Fourteen rows ask for a solve and reach none. Named here so the gap is countable.
+    """Thirteen rows ask for a solve and reach none. Named here so the gap is countable.
 
     Building this enumeration is what made them visible, and BOTH directions are guarded, which is
     what makes the table's own claim true: a row that loses its bump fails the walk above, and a row
@@ -521,17 +542,17 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
-        """Fourteen rows ask for a solve and reach none.
+        """Thirteen rows ask for a solve and reach none.
 
-        Thirteen of them are mutations a person makes. The fourteenth is the horizon maintainer,
+        Twelve of them are mutations a person makes. The thirteenth is the horizon maintainer,
         which is not a mutation at all, because time passing is what triggers it, and which
         materializes instead of solving.
         """
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 14
-        assert len(by_a_person) == 13
+        assert len(unwired) == 13
+        assert len(by_a_person) == 12
 
     @pytest.mark.parametrize(
         "trigger",
@@ -546,10 +567,12 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         a gap that has been closed. It is the same pattern ``OUTSIDE_THE_RULE`` already has one
         screen down, applied to the half that was missing it.
         """
-        body = module_source(trigger.module)
+        asking = solve_module(trigger)
+        assert asking is not None
+        body = module_source(asking)
 
         assert REQUESTS_A_SOLVE not in body, (
-            f"{trigger.module} now requests a solve, so the {trigger.row!r} row is wired: drop its "
+            f"{asking} now requests a solve, so the {trigger.row!r} row is wired: drop its "
             f"owner ({trigger.owner}) from TRIGGER_TABLE, and correct the counts beside it."
         )
 
@@ -559,12 +582,14 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
                 continue
             assert one.owner in {"1400", "1403"}, one.row
 
-    def test_only_six_rows_reach_the_coordinator_today(self) -> None:
-        # The six live triggers, one of which bypasses the debounce by design. The burst of pins
-        # the window was measured against is the first, which is now wired.
+    def test_only_seven_rows_reach_the_coordinator_today(self) -> None:
+        # The seven live triggers, one of which bypasses the debounce by design. The burst of pins
+        # the window was measured against is the first, which is now wired. The calendar sync is the
+        # one trigger here that no person performs: a poll asks for the weeks its own read moved.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
         assert sorted(wired) == [
+            "anchor delta from a calendar sync",
             "conflict resolved as moved or retyped",
             "pin, unpin, drag, keyboard move",
             "re-solve control",
@@ -572,6 +597,34 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
             "week adjustment revoked",
             "weight set activated or reverted",
         ]
+
+    def test_the_only_row_whose_solve_lives_outside_its_own_module_is_the_anchor_delta(
+        self,
+    ) -> None:
+        """The hole ``solves_in`` opens, bounded to the one row it was written for.
+
+        Without this, a row could point ``solves_in`` at any module that happens to request a solve
+        and the wired walk would pass while nothing about that row was wired. So the set of rows
+        naming a second module is asserted whole, and each one names the module the table expects.
+        """
+        elsewhere = {one.row: one.solves_in for one in TRIGGER_TABLE if one.solves_in is not None}
+
+        assert elsewhere == SOLVES_ELSEWHERE
+
+    def test_the_anchor_delta_asks_for_its_solve_through_the_pass_that_reconciled_it(self) -> None:
+        """The delegation ``solves_in`` rests on, followed from the pass to the request.
+
+        This row's two halves are in two packages, so the reading that answers for it has to cross
+        the seam between them: the pass that reconciles the anchors hands the weeks the
+        reconciliation invalidated to the collaborator that asks, and that collaborator is what
+        reaches the coordinator. Reading one end alone would let either half go missing with the
+        other still green.
+        """
+        pass_source = module_source("calendars/sync.py")
+        asking = module_source(SOLVES_ELSEWHERE["anchor delta from a calendar sync"])
+
+        assert "self._solves.request(delta.occupied_weeks)" in pass_source
+        assert REQUESTS_A_SOLVE in asking
 
     def test_the_solve_kind_has_exactly_one_creation_path(self) -> None:
         """Which is what makes the count above the whole truth rather than a sample.

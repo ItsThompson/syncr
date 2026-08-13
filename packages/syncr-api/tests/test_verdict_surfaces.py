@@ -127,7 +127,12 @@ from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_th
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.plan_documents import a_block, a_document, between
 from tests.test_authorization_boundary import accepts_a_cli_credential
-from tests.test_solve_triggers import REQUESTS_A_SOLVE, TRIGGER_TABLE, mutating_routes
+from tests.test_solve_triggers import (
+    REQUESTS_A_SOLVE,
+    TRIGGER_TABLE,
+    mutating_routes,
+    solve_module,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -189,7 +194,7 @@ STATES_NO_SESSION = frozenset({"NO_SESSION_IS_OPEN", repr(NO_SESSION_IS_OPEN)})
 # left to notice. Exact numbers rather than a non-empty set, so an enumeration that stopped seeing
 # routes fails rather than covering nothing quietly.
 MUTATIONS_THAT_CAN_MOVE_A_READING = 57
-FLIPS_THE_PERIODIC_PROBE_RECORDS = 49
+FLIPS_THE_PERIODIC_PROBE_RECORDS = 43
 
 # The routes whose own act records the flip it causes, so the row carries what the request stated.
 # Named rather than counted, because this is the set the two failing guards below exist to grow: a
@@ -212,15 +217,32 @@ FLIPS_THE_SCHEDULED_SOLVE_RECORDS = frozenset(
         f"POST {API_PREFIX}/conflicts/{{conflict_id}}/resolve",
         f"POST {API_PREFIX}/weight-sets/{{version}}/activate",
         f"POST {WEEKS_PREFIX}/{{iso_week}}/solve",
+        f"DELETE {API_PREFIX}/calendar-sources/{{source_id}}",
+        f"PATCH {API_PREFIX}/calendar-sources/{{source_id}}",
+        f"PATCH {API_PREFIX}/calendar-sources/{{source_id}}/horizon",
+        f"POST {API_PREFIX}/calendar-sources",
+        f"POST {API_PREFIX}/calendar-sources/{{source_id}}/sync",
+        f"PUT {API_PREFIX}/calendar-sources/{{source_id}}/role",
     }
 )
 
-# The one route in a package wired to request a solve whose own method never reaches the
-# coordinator, because the request lives below it. Named so a second such route is a diff: the
-# attribution answers "does this schedule a solve" per package, and a route that neither records
-# nor schedules would otherwise inherit its siblings' answer.
-DELEGATES_ITS_SOLVE_REQUEST = f"POST {API_PREFIX}/weight-sets/{{version}}/activate"
-DELEGATED_TO = "learned/activation.py"
+# The routes in a package wired to request a solve whose own method never reaches the coordinator,
+# because the request lives below it, each with the module that does reach it. Named so a route that
+# joins this set is a diff: the attribution answers "does this schedule a solve" per package, and a
+# route that neither records nor schedules would otherwise inherit its siblings' answer.
+#
+# The six calendar-source routes are one package's worth of one truth. A forced sync is the route
+# that asks -- its pass reconciles the anchors and then asks for the weeks the reconciliation
+# invalidated -- and the other five are what a per-package reading cannot separate from it.
+DELEGATE_THEIR_SOLVE_REQUEST = {
+    f"POST {API_PREFIX}/weight-sets/{{version}}/activate": "learned/activation.py",
+    f"DELETE {API_PREFIX}/calendar-sources/{{source_id}}": "calendars/solve_requests.py",
+    f"PATCH {API_PREFIX}/calendar-sources/{{source_id}}": "calendars/solve_requests.py",
+    f"PATCH {API_PREFIX}/calendar-sources/{{source_id}}/horizon": "calendars/solve_requests.py",
+    f"POST {API_PREFIX}/calendar-sources": "calendars/solve_requests.py",
+    f"POST {API_PREFIX}/calendar-sources/{{source_id}}/sync": "calendars/solve_requests.py",
+    f"PUT {API_PREFIX}/calendar-sources/{{source_id}}/role": "calendars/solve_requests.py",
+}
 
 # The mutating routes no row of the trigger table can see, because each reaches its write through
 # another package's service: the promotion accept moves a day shape's entry, and the pie review's
@@ -777,12 +799,18 @@ def _asks_for_a_solve(package: str, table: tuple[Trigger, ...]) -> bool:
     Read off the table's own owner rather than out of the service, because a package may ask for its
     solve below the method a route calls: ``learned/activation.py`` holds the weight-set row's
     request, and no reading of ``LearnedService.activate`` can see it.
+
+    The package is the one the REQUEST lives in rather than the one the bump lives in, and for one
+    row those differ. The anchor delta's bump is written beside the anchor rows it invalidates and
+    its request is made at the sync seam, so reading the bump's package would attribute the solve to
+    the anchor-type routes, none of which performs a sync, and would leave the route that does
+    perform one attributed to the periodic probe.
     """
     return any(
         row.solves
         and row.owner is None
-        and row.module is not None
-        and row.module.split("/")[0] == package
+        and (asking := solve_module(row)) is not None
+        and asking.split("/")[0] == package
         for row in table
     )
 
@@ -866,7 +894,7 @@ def test_the_mutating_routes_no_row_of_the_table_can_see_are_named(
     assert every - derived == OUTSIDE_THE_TABLES_REACH
 
 
-def test_the_one_route_whose_solve_request_lives_below_it_is_named(
+def test_the_routes_whose_solve_request_lives_below_them_are_named(
     settings: ServiceSettings,
     source_root: Path,
     composed: Compositions,
@@ -875,16 +903,17 @@ def test_the_one_route_whose_solve_request_lives_below_it_is_named(
     """The blind spot in the OTHER reading, closed by crossing it against the route's own method.
 
     "Does this mutation schedule a solve" is answered off the trigger table, which answers per
-    package, and two packages serve more than one of these routes: ``pins`` serves three and
-    ``concessions`` two. So a route added to either that neither records nor schedules would inherit
-    its siblings' answer and be reported as the solve's, and once the solve carries the request's
-    statement it would be reported as carrying it while the flip was in fact the periodic probe's.
+    package, and three packages serve more than one of these routes: ``calendars`` serves six,
+    ``pins`` three and ``concessions`` two. So a route added to any of them that neither records nor
+    schedules would inherit its siblings' answer and be reported as the solve's, and once the solve
+    carries the request's statement it would be reported as carrying it while the flip was in fact
+    the periodic probe's.
 
     Crossing the table's answer against the route's own method closes that: every route the table
-    puts in the by-the-solve group calls the coordinator itself, except one, whose request lives
-    below the method the handler calls. That one is named, and the delegation is followed to the
-    module that does call it, the way the sibling follows the promotion accept's bump into the day
-    shapes.
+    puts in the by-the-solve group calls the coordinator itself, except the ones named here, whose
+    request lives below the method the handler calls. Each is named with the module that does call
+    it, and that module is read, the way the sibling follows the promotion accept's bump into the
+    day shapes.
     """
     views = _views_by_identity(settings)
 
@@ -895,8 +924,9 @@ def test_the_one_route_whose_solve_request_lives_below_it_is_named(
         and not _asks_the_coordinator_itself(views[route.method, route.path])
     )
 
-    assert delegating == [DELEGATES_ITS_SOLVE_REQUEST]
-    assert REQUESTS_A_SOLVE in (source_root / DELEGATED_TO).read_text(encoding="utf-8")
+    assert delegating == sorted(DELEGATE_THEIR_SOLVE_REQUEST)
+    for module in sorted(set(DELEGATE_THEIR_SOLVE_REQUEST.values())):
+        assert REQUESTS_A_SOLVE in (source_root / module).read_text(encoding="utf-8"), module
 
 
 def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_surfaces_do_not(
