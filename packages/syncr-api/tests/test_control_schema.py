@@ -40,6 +40,16 @@ SCHEMA_NAMES = "SELECT nspname FROM pg_namespace"
 # autogenerate diffs and the one a concurrent run must never find the control table in.
 DEFAULT_SCHEMA = "SELECT current_schema()"
 
+# No run of this suite creates a control table in the shared schema, and the sweep only reads
+# the schemas it made, so it cannot clear one that is there. What puts one there is a run of an
+# older revision of this suite, killed between its create and its drop, on a database that
+# outlives a run. Said here because this is where that residue surfaces.
+SHARED_SCHEMA_RESIDUE = (
+    "a control table is in the shared schema. This suite never puts one there: an older "
+    "revision of it did, and a run killed before its teardown left it behind. Drop it with "
+    "`DROP TABLE IF EXISTS public.scoped_things, public.unscoped_things;` and run again."
+)
+
 
 @pytest.fixture
 def a_run(live_database_url: str) -> Iterator[str]:
@@ -101,6 +111,10 @@ def test_two_runs_starting_in_the_same_second_are_given_different_names() -> Non
         SCHEMA_PREFIX,
         f"{SCHEMA_PREFIX}1786000000",
         f"{SCHEMA_PREFIX}notaninstant_ab",
+        # Digits that name no instant. The sweep must answer rather than raise: it reads every
+        # schema whose name starts with the prefix, and one it cannot read must not wedge a run.
+        f"{SCHEMA_PREFIX}99999999999999999999_ab",
+        f"{SCHEMA_PREFIX}253402300800_ab",
     ],
 )
 def test_a_name_this_module_did_not_make_records_no_instant(name: str) -> None:
@@ -128,6 +142,16 @@ def test_a_sweep_never_reports_a_name_this_module_did_not_make() -> None:
     assert stale_schemas(["public", f"{long_ago}_ab", "syncr_other_1_ab"], NOW) == []
 
 
+def test_a_sweep_reads_past_a_name_that_names_no_instant() -> None:
+    # The sweep is documented as never fatal, so a name it cannot read is answered rather than
+    # raised on: one such schema would otherwise wedge every run against that database.
+    left_behind = new_schema_name(NOW - STALE_AFTER - timedelta(minutes=1))
+
+    assert stale_schemas([f"{SCHEMA_PREFIX}99999999999999999999_ab", left_behind], NOW) == [
+        left_behind
+    ]
+
+
 @pytest.mark.integration
 async def test_two_runs_create_the_control_table_at_the_same_time(
     live_database_url: str, a_run: str, a_second_run: str
@@ -145,7 +169,7 @@ async def test_two_runs_create_the_control_table_at_the_same_time(
     # third run and Alembic read. Other runs of this suite hold the table in schemas of their
     # own at the same time, so what is asserted is these two and the shared one, not the set.
     assert {a_run, a_second_run} <= set(holders)
-    assert set(shared).isdisjoint(holders)
+    assert set(shared).isdisjoint(holders), SHARED_SCHEMA_RESIDUE
 
 
 @pytest.mark.integration
@@ -162,7 +186,7 @@ async def test_a_run_killed_before_its_teardown_leaves_the_shared_schema_untouch
     shared = await read(live_database_url, DEFAULT_SCHEMA)
 
     assert a_run in holders
-    assert set(shared).isdisjoint(holders)
+    assert set(shared).isdisjoint(holders), SHARED_SCHEMA_RESIDUE
 
 
 @pytest.mark.integration
