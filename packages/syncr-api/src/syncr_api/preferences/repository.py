@@ -13,6 +13,11 @@ The write path replaces every editable value rather than taking a field at a tim
 reason the habit write does, and here it is also the contract: an override replaces its Area's
 preference wholly, so a partial write would be a merge rule this product does not have.
 
+There is ONE write, and it neither knows nor asks whether the owner already declared something. A
+caller that read first and then chose between an insert and an update would be choosing from a read
+that holds no lock, and either choice can be wrong by the time the write runs: two writers that
+both saw nothing insert twice, and a writer that saw a row updates nothing once the row is gone.
+
 No method commits. One request is one transaction, opened and committed by
 :func:`syncr_api.core.db.get_transaction`.
 """
@@ -21,6 +26,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
+
+from sqlalchemy.dialects.postgresql import insert
 
 from syncr_api.core.repository import TenantScopedRepository
 from syncr_api.preferences.models import PreferenceRow
@@ -75,47 +82,46 @@ class PreferenceRepository(TenantScopedRepository):
         )
         return tuple(_as_record(row) for row in found)
 
-    async def create(self, preference: Preference, *, created_at: datetime) -> PreferenceRecord:
-        """Persist one preference from the entity the caller already validated.
+    async def upsert(self, preference: Preference, *, created_at: datetime) -> None:
+        """Store this owner's preference, replacing whatever the owner declared before.
 
         Taking the entity rather than its five fields is what makes an unvalidated preference
         unstorable: constructing a ``Preference`` applies the cap's owner rule and every bound, so
         there is no argument list here that could bypass them.
+
+        The conflict target is the unique index over the owner's OWN reference column, so which of
+        the three indexes decides that this owner already has a row is the same mapping every
+        other statement here reads. The tenant leads that index and is among the values, so the
+        row a conflict names is this tenant's own.
+
+        The editable values are one dict on both halves, because a replacement stores the
+        declaration whole either way. Absent from the replacement half: the identifier, the owner
+        columns, and ``created_at``. A preference does not move between owners, because it is
+        addressed by the owner and a move would be a removal and a declaration elsewhere; and a
+        row keeps the instant it was first declared.
         """
         area_id, habit_id, task_id = owner_columns(preference.owner)
-        row = PreferenceRow(
-            id=uuid4(),
-            tenant_id=self.tenant_id,
-            owner_kind=preference.owner.kind.value,
-            area_id=area_id,
-            habit_id=habit_id,
-            task_id=task_id,
-            windows=windows_as_json(preference.windows),
-            strength=preference.strength.value,
-            preferred_duration_minutes=preference.preferred_duration_minutes,
-            max_per_day_minutes=preference.max_per_day_minutes,
-            created_at=created_at,
-        )
-        self._session.add(row)
-        # Flushed here so a constraint violation surfaces as this call's failure rather than at
-        # commit, after the caller has reported success.
-        await self._session.flush()
-        return _as_record(row)
-
-    async def write(self, preference: Preference) -> None:
-        """Replace every declared value on this owner's preference.
-
-        The owner columns are absent: a preference does not move between owners, because it is
-        addressed by the owner and a move would be a removal and a declaration elsewhere.
-        """
+        declared = {
+            "windows": windows_as_json(preference.windows),
+            "strength": preference.strength.value,
+            "preferred_duration_minutes": preference.preferred_duration_minutes,
+            "max_per_day_minutes": preference.max_per_day_minutes,
+        }
         await self._session.execute(
-            self.scoped_update(PreferenceRow)
-            .where(OWNER_COLUMN[preference.owner.kind] == preference.owner.id)
+            insert(PreferenceRow)
             .values(
-                windows=windows_as_json(preference.windows),
-                strength=preference.strength.value,
-                preferred_duration_minutes=preference.preferred_duration_minutes,
-                max_per_day_minutes=preference.max_per_day_minutes,
+                id=uuid4(),
+                tenant_id=self.tenant_id,
+                owner_kind=preference.owner.kind.value,
+                area_id=area_id,
+                habit_id=habit_id,
+                task_id=task_id,
+                created_at=created_at,
+                **declared,
+            )
+            .on_conflict_do_update(
+                index_elements=[PreferenceRow.tenant_id, OWNER_COLUMN[preference.owner.kind]],
+                set_=declared,
             )
         )
 

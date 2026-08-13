@@ -85,7 +85,8 @@ class FakePreferenceRepository(PreferenceRepository):
     """The real repository's interface over a list of records, and no database.
 
     Addressed by owner throughout, as the real one is, so a test cannot reach a preference by an
-    identifier no caller holds.
+    identifier no caller holds. :meth:`upsert` stores one row per owner for the same reason the
+    real one does: the three unique indexes.
     """
 
     def __init__(self, tenant_id: TenantId, stored: list[PreferenceRecord] | None = None) -> None:
@@ -95,12 +96,10 @@ class FakePreferenceRepository(PreferenceRepository):
     async def find(self, owner: PreferenceOwner) -> PreferenceRecord | None:
         return next((row for row in self.rows if row.owner == owner), None)
 
-    async def create(self, preference: Preference, *, created_at: datetime) -> PreferenceRecord:
-        created = record(self._tenant_id, preference, created_at=created_at)
-        self.rows.append(created)
-        return created
-
-    async def write(self, preference: Preference) -> None:
+    async def upsert(self, preference: Preference, *, created_at: datetime) -> None:
+        if not any(row.owner == preference.owner for row in self.rows):
+            self.rows.append(record(self._tenant_id, preference, created_at=created_at))
+            return
         self.rows = [
             replace(
                 row,

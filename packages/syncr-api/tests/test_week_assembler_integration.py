@@ -253,7 +253,7 @@ async def declare_a_week(
             WeekPattern(dict.fromkeys(Weekday, day_type.id))
         )
 
-        await PreferenceRepository(session, tenant_id).create(
+        await PreferenceRepository(session, tenant_id).upsert(
             Preference(
                 owner=PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=fitness.id),
                 windows=(LocalTimeWindow(start=time(5, 30), end=time(7, 0)),),

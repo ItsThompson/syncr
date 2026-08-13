@@ -124,6 +124,10 @@ class PreferenceService:
         Whole rather than field by field: the stored row is overwritten by the declaration, so a
         field the request left out is null afterwards even when the previous row held a value.
         That is the contract the ``PUT`` states.
+
+        The stored row is read to decide whether anything changed, not to decide what statement to
+        write: the write stores the declaration whether or not a row is there, so a replacement
+        racing another one and a removal landing in between are both answered as declared.
         """
         require_scope(principal, Scope.ADMIN)
         now = self._clock()
@@ -136,10 +140,7 @@ class PreferenceService:
             # Building the entity IS the validation: the cap's owner rule and every bound are
             # applied here rather than restated.
             declared = declaration.as_preference(resolved.owner)
-        if stored is None:
-            await self._preferences.create(declared, created_at=now)
-        else:
-            await self._preferences.write(declared)
+        await self._preferences.upsert(declared, created_at=now)
         _log.info(
             "preferences.preference.replaced",
             tenant_id=str(principal.tenant_id),
@@ -151,7 +152,10 @@ class PreferenceService:
             strength=declared.strength.value,
             has_preferred_duration=declared.preferred_duration_minutes is not None,
             has_max_per_day=declared.max_per_day_minutes is not None,
-            created=stored is None,
+            # Both of these describe the row this request READ. Another replacement of the same
+            # owner can land between that read and the write, so neither is a statement about
+            # which of the two the write did.
+            nothing_was_stored=stored is None,
             # So an operator can see that a row nothing could read was overwritten, which is the
             # one case where a replacement discards a value rather than superseding it.
             repaired_unreadable=stored is not None and was is None,
