@@ -52,7 +52,7 @@ _VISIBLE_HOURS_DESCRIPTION = (
 )
 
 
-def _refuse_a_bound_that_is_not_wall_time(value: time) -> time:
+def _refuse_a_day_bound_that_is_not_wall_time(value: time) -> time:
     """Refuse a day bound that names a zone or a second, at the boundary.
 
     Which values those are is the domain's statement of the rule rather than a reading of
@@ -81,7 +81,7 @@ def _refuse_a_bound_that_is_not_wall_time(value: time) -> time:
     return value
 
 
-type DayBound = Annotated[time, AfterValidator(_refuse_a_bound_that_is_not_wall_time)]
+type DayBound = Annotated[time, AfterValidator(_refuse_a_day_bound_that_is_not_wall_time)]
 
 
 class SettingsResponse(WireModel):
