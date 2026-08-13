@@ -31,6 +31,7 @@ import { useNavigate } from "react-router";
 import { useSWRConfig } from "swr";
 
 import { useKeyBinding } from "../../../lib/keyboard";
+import { capturePath, type CaptureInvitation } from "../../../app/capture";
 import { weekKey } from "../../../api/keys";
 import { useOperation } from "../../../api/hooks/useOperation";
 import { usePinning } from "../../../api/hooks/usePins";
@@ -247,11 +248,10 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
       /* CAPTURE PREFILLED FROM THE SLOT, stated in the URL rather than in a call. The capture surface belongs to the
        * Backlog screen, which is where a task is authored; what this screen knows is the slot's Area, the duration a
        * task would need to fit it exactly, and the window the work should prefer. Naming those in the URL is the same
-       * seam a mode uses on this product's other screens: it survives a reload and it can be linked. */
-      void navigate(
-        `/backlog?capture=1&area=${slot.areaId}&estimate=${String(slot.minutes)}` +
-          `&from=${encodeURIComponent(slot.start)}&to=${encodeURIComponent(slot.end)}`,
-      );
+       * seam a mode uses on this product's other screens: it survives a reload and it can be linked.
+       *
+       * THE PATH IS COMPOSED WHERE IT IS READ, so a parameter cannot be renamed at one end alone. */
+      void navigate(capturePath(slot));
     },
     writes,
     pinning,
@@ -304,15 +304,7 @@ function nextZoom(hours: number): number {
  * The identifier is the one `bands.ts` composes, which is the Area and the slot's own start: a slot has no id on the
  * wire, and the pair is what a week's slots are unique by.
  */
-function emptySlotOf(
-  view: WeekView | null,
-  bandId: string,
-): {
-  readonly areaId: string;
-  readonly minutes: number;
-  readonly start: string;
-  readonly end: string;
-} | null {
+function emptySlotOf(view: WeekView | null, bandId: string): CaptureInvitation | null {
   if (view === null || view.live === null) return null;
   const found = view.live.emptySlots.find(
     (slot) => `empty-slot:${slot.areaId}:${slot.interval.start}` === bandId,
@@ -320,10 +312,9 @@ function emptySlotOf(
   if (found === undefined) return null;
   return {
     areaId: found.areaId,
-    minutes: Math.round(
+    estimateMinutes: Math.round(
       (Date.parse(found.interval.end) - Date.parse(found.interval.start)) / MILLISECONDS_IN_MINUTE,
     ),
-    start: found.interval.start,
-    end: found.interval.end,
+    preferredWindow: { from: found.interval.start, to: found.interval.end },
   };
 }
