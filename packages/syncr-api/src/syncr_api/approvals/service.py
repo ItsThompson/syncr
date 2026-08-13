@@ -4,7 +4,7 @@
 approve(week)
   └── ONE TRANSACTION
         ├── weekVersion.hold(week)     THE LOCK. Taken before anything is read
-        ├── read the slot. Empty ──▶ 409. There is nothing left to approve
+        ├── read the slot. Empty ──▶ 409, saying which emptiness it is
         ├── refuse a document that changes anything the proposal did not show (assent.py)
         ├── pending.clear(week)
         ├── revisions.append(approved, document=the slot's, reason=user|tradeoff_approved)
@@ -132,11 +132,20 @@ if TYPE_CHECKING:
 
 _log = get_logger("syncr.approvals")
 
-# What both refusals over a slot that is no longer approvable say. One statement, because the
-# empty slot and the slot another approval took a moment ago are the same fact to a client: what
-# it was looking at is gone, and re-reading the week shows what replaced it.
+# What a refusal says when an approval has already taken the slot. Two paths reach it and they are
+# one fact to a client: the proposal it was looking at is gone because it was approved, and
+# re-reading the week shows the plan that approval made.
 REPLACED_DETAIL = (
     "That proposal has been replaced, so there is nothing left to approve. Nothing was changed: "
+    "the week keeps the plan it holds, and reading the week again shows whatever is waiting for "
+    "you now."
+)
+
+# What a refusal says when the slot was never filled, which is a different fact and needs different
+# words: a week that has proposed nothing has had nothing replaced, and a client told otherwise
+# would go looking for the proposal that took its place.
+EMPTY_SLOT_DETAIL = (
+    "This week is not proposing anything, so there is nothing to approve. Nothing was changed: "
     "the week keeps the plan it holds, and reading the week again shows whatever is waiting for "
     "you now."
 )
@@ -199,7 +208,7 @@ class ApprovalService:
         await self._versions.hold(week)
         pending = await self._proposals.find(week)
         if pending is None:
-            raise Conflict(REPLACED_DETAIL)
+            raise Conflict(await self._what_an_empty_slot_refuses_with(week))
         document = plan_document(pending.document)
         live = await self._revisions.latest(week)
         self._require_only_the_changes_the_user_was_shown(
@@ -208,6 +217,21 @@ class ApprovalService:
         return await self._written(
             week, pending, document, superseding=None if live is None else live.id, now=now
         )
+
+    async def _what_an_empty_slot_refuses_with(self, week: IsoWeek) -> str:
+        """Which emptiness this is: a slot an approval took, or one nothing ever filled.
+
+        Decided from the ASSENT rather than from the plan of record, because a week's first solve
+        appends its plan rather than proposing it. Such a week holds a revision and has never held
+        a proposal, so reading the plan would answer supersession where nothing was superseded.
+
+        An ``approved`` revision is written on this path and nowhere else, and clearing the slot is
+        part of the same transaction, so one existing for this week means an approval took a
+        proposal out of the slot.
+        """
+        if await self._revisions.latest_approved(week) is None:
+            return EMPTY_SLOT_DETAIL
+        return REPLACED_DETAIL
 
     def _require_only_the_changes_the_user_was_shown(
         self,
