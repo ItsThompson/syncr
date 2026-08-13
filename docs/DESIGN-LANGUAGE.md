@@ -153,7 +153,7 @@ An earlier draft special-cased the circadian frame as a full-width backdrop that
 
 `--bp-wide` is therefore **1536px**, not the 1440px a first draft assumed by analogy. At exactly 1440 with the panel open a day column yields 15 characters. The ledger caught it.
 
-Below `--bp-wide` the detail panel closes to a 26px rail rather than narrowing, because a narrower panel cannot hold a reason and a narrower grid cannot hold a title. Below `--bp-compact` the grid scrolls horizontally at `--col-min` per day with the time axis sticky, so the squeeze is explicit and navigable instead of degrading all seven columns at once.
+Below `--bp-wide` the detail panel closes to a 26px rail rather than narrowing, because a narrower panel cannot hold a reason and a narrower grid cannot hold a title. The rail's own control opens the panel into a row under the grid rather than a column beside it, so the grid keeps the width it had closed and a day column keeps clearing the 17-character floor. Below `--bp-compact` the grid scrolls horizontally at `--col-min` per day with the time axis sticky, so the squeeze is explicit and navigable instead of degrading all seven columns at once.
 
 ## Interaction states
 
