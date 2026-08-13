@@ -795,6 +795,28 @@ def test_a_repeated_replacement_answers_the_same_body(
     assert first == second
 
 
+@pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
+def test_a_second_replacement_leaves_one_row_on_every_kind_of_owner(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+    kind: str,
+) -> None:
+    # Over all three kinds, because a replacement recognises the owner's stored row through the
+    # unique index over that kind's OWN reference column. A kind matched against another kind's
+    # index would find no row to replace and write a second one, and the index that guarantees one
+    # row per owner would then refuse it.
+    put(http, signed_in, owned.path(kind), windows=[EARLY], strength="strong")
+
+    body = put(http, signed_in, owned.path(kind), windows=[EVENING], strength="soft")
+
+    rows = preference_rows(live_database_url, owner.tenant_id)
+    assert [row.windows for row in rows] == [[{"start": "19:00:00", "end": "21:00:00"}]]
+    assert body["declared"]["windows"] == [{"start": "19:00:00", "end": "21:00:00"}]
+
+
 @pytest.mark.parametrize("kind", ["habit", "task"], ids=["habit", "task"])
 def test_removing_an_override_restores_its_areas_preference(
     http: TestClient, signed_in: dict[str, str], owned: Owned, kind: str
