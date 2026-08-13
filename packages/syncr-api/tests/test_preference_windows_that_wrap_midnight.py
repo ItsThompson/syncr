@@ -21,6 +21,13 @@ declared    spring-forward night into 2026-03-29    fall-back night into 2026-10
 23:00-02:00 120m, NARROWED by the hour the day       240m, WIDENED by the repeated hour
             lost
 ```
+
+A half is dropped where its OWN two bounds do not run forward, which needs a gap at one end of the
+night or the other, and the two shapes are measured on the two zones that supply them: a gap opening
+at midnight drops the post-midnight half (``America/Havana``), and one closing at midnight drops the
+pre-midnight half (``America/Nuuk``). Both leave the week's interval count untouched at eight, so
+only the dates and the minutes show the drop. That is also true of a wrap over a travel boundary,
+where the night the traveller crosses keeps only its first hour.
 """
 
 from __future__ import annotations
