@@ -14,10 +14,13 @@ would charge it to the wrong date.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from syncr_domain.feasibility import ShortfallKind, probe
+from syncr_domain.gaps import ForbiddenScope, ForbiddenWindow
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import LOCAL_MIDNIGHT, IsoWeek
@@ -35,6 +38,7 @@ from tests.materialized_weeks import (
     a_candidate,
     a_live_plan,
     a_pin,
+    a_recovery_window,
     a_transit_block,
     an_area_budget,
     an_off_plan_period,
@@ -43,6 +47,11 @@ from tests.materialized_weeks import (
     inputs,
     on,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
+    from syncr_domain.identifiers import AreaId
 
 TOKYO = "Asia/Tokyo"
 
@@ -736,6 +745,141 @@ def test_the_clause_never_names_the_area_the_refused_block_would_have_served() -
         assert rejection.detail is not None
         served = next(area.name for area in state.areas if area.area_id == candidate.area_id)
         assert not rejection.detail.startswith(served)
+
+
+# --------------------------------------------------------------------------------
+# H9's clause: the minutes the Area it names may actually claim
+# --------------------------------------------------------------------------------
+
+# The last two hours of the narrow week, as the span a scoped window covers. A window naming Areas
+# is capacity for every other one, so it stays inside the claimable set and the whole week's free
+# figure counts it whoever it names.
+SCOPED = Interval(at(1), at(3))
+
+
+def a_narrow_week_a_window_forbids(*forbidden: AreaId) -> PartialPlan:
+    """The narrow week with a recovery window over :data:`SCOPED`, or with no window at all.
+
+    180 claimable minutes against a 120-minute Fitness floor either way, so the floor is reserved
+    in every arm and the only thing the argument varies is which Areas may use the window.
+    """
+    windows: tuple[ForbiddenWindow, ...] = ()
+    if forbidden:
+        windows = (
+            a_recovery_window(
+                interval=SCOPED,
+                scope=ForbiddenScope.AREAS,
+                forbidden_area_ids=forbidden,
+                anchor_id=UUID(int=71),
+            ),
+        )
+    return PartialPlan.of(
+        inputs(
+            **NARROW_WEEK,
+            areas=(
+                an_area_budget(floor_minutes=2 * HOUR),
+                an_area_budget(area_id=CAREER, name="Career"),
+            ),
+            forbidden_windows=windows,
+        )
+    )
+
+
+class _CountedWindows(tuple[ForbiddenWindow, ...]):
+    """The week's forbidden windows, counting how many times something walked them.
+
+    A read count rather than a duration, because what is being asserted is how often the rule takes
+    a reading and a wall figure would measure the host instead.
+    """
+
+    walks: int
+
+    def __new__(cls, windows: Iterable[ForbiddenWindow]) -> _CountedWindows:
+        counted = super().__new__(cls, windows)
+        counted.walks = 0
+        return counted
+
+    def __iter__(self) -> Iterator[ForbiddenWindow]:
+        self.walks += 1
+        return super().__iter__()
+
+
+def test_the_clause_quotes_the_minutes_the_owing_area_may_claim_rather_than_the_weeks() -> None:
+    # A Study candidate takes 75 of the week's 180 claimable minutes, which leaves Fitness 15
+    # minutes short of the 120 it owes and 105 minutes free. Every one of those 105 is inside a
+    # window Fitness may not use, so the week's figure and the Area's are 105 and none.
+    #
+    # Three weeks differing only in which Area the window names: nobody, a bystander, and the Area
+    # that owes the floor. The window stays in the claimable set in all three, which is what makes
+    # the whole week's free figure identical across them and the clause's figure the only thing
+    # the scope moves.
+    study = a_candidate(Interval(at(0), at(1.25)), area_id=STUDY, binding=READING)
+    unscoped = a_narrow_week_a_window_forbids()
+    against_career = a_narrow_week_a_window_forbids(CAREER)
+    against_fitness = a_narrow_week_a_window_forbids(FITNESS)
+
+    assert against_fitness.discretionary().total_minutes() == 3 * HOUR
+    without = area_floor(study, unscoped)
+    bystander = area_floor(study, against_career)
+    owing = area_floor(study, against_fitness)
+
+    assert without is not None
+    assert bystander is not None
+    assert owing is not None
+    assert without.detail == "Fitness would be left 120m short of its floor, with 105m free"
+    assert bystander.detail == "Fitness would be left 120m short of its floor, with 105m free"
+    assert owing.detail == "Fitness would be left 120m short of its floor, with 0m free"
+
+
+def test_the_scoped_clause_refuses_exactly_the_candidates_the_week_refused_without_it() -> None:
+    # The clause's figure is scoped and the comparison that decides is not, so which candidates are
+    # refused is read over the space rather than at the one candidate above: every quarter-hour
+    # start, four lengths, three Areas, on the same week with the window and without it.
+    #
+    # Both answers appear among the 111, so the equality is over a set that has some of each rather
+    # than over two sets of one.
+    offered = [
+        a_candidate(Interval(at(start), at(start + length)), area_id=area_id, binding=binding)
+        for start in (quarter / 4 for quarter in range(12))
+        for length in (0.25, 0.5, 1.0, 2.0)
+        for area_id, binding in ((FITNESS, GYM), (CAREER, READING), (STUDY, STANDUP))
+        if start + length <= 3
+    ]
+    unscoped = a_narrow_week_a_window_forbids()
+    against_fitness = a_narrow_week_a_window_forbids(FITNESS)
+
+    def refused(week: PartialPlan) -> dict[tuple[AreaId | None, Interval], bool]:
+        return {
+            (candidate.area_id, candidate.interval): area_floor(candidate, week) is not None
+            for candidate in offered
+        }
+
+    scoped_answers = refused(against_fitness)
+
+    assert len(offered) == 111
+    assert scoped_answers == refused(unscoped)
+    assert any(scoped_answers.values())
+    assert not all(scoped_answers.values())
+
+
+def test_the_scoped_reading_is_taken_once_per_refusal_rather_than_once_per_candidate() -> None:
+    # Scoping the clause costs a walk of the week's windows, and it is taken after the comparison
+    # has decided to refuse. So a candidate nothing refuses pays nothing for it, which is what
+    # holds the per-candidate cost at the figures this rule's own docstring states.
+    scoped = a_narrow_week_a_window_forbids(FITNESS)
+    counted = _CountedWindows(scoped.forbidden_windows)
+    measured = replace(scoped, forbidden_windows=counted)
+    accepted = (
+        a_candidate(Interval(at(0), at(2)), binding=GYM),
+        a_candidate(Interval(at(0), at(1)), area_id=CAREER, binding=READING),
+        a_candidate(Interval(at(0), at(0.5)), area_id=STUDY, binding=STANDUP),
+    )
+    refused = a_candidate(Interval(at(0), at(1.25)), area_id=STUDY, binding=READING)
+
+    assert [area_floor(candidate, measured) for candidate in accepted] == [None, None, None]
+    assert counted.walks == 0
+    assert area_floor(refused, measured) is not None
+    assert counted.walks == 1
 
 
 def test_a_placement_the_floor_figure_already_netted_is_not_netted_a_second_time() -> None:
