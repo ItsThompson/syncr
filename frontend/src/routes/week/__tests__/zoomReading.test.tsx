@@ -15,15 +15,18 @@
  * and the cap is that display's own 16. That fallback is what makes these cases readable without a browser; the
  * measured-height cases live beside the grid, in `ui/domain/week-grid/__tests__/zoomReport.test.tsx`. */
 
-import { screen } from "@testing-library/react";
+import { renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../testing/apiServer";
 import { jsonHandler } from "../../../testing/apiStub";
-import { renderAt } from "../../../testing/renderRoute";
+import { renderAt, withFreshCache } from "../../../testing/renderRoute";
 import { GRID_H_PX, ZOOM_MIN_HOURS } from "../../../ui/domain";
-import { SETTINGS, WEEK_PATH, buildWeekView, installWeekReads } from "./fixtures";
+import { useWeekScreenInteraction } from "../hooks/useWeekScreenInteraction";
+import { ISO_WEEK, SETTINGS, WEEK_PATH, buildWeekView, installWeekReads } from "./fixtures";
+import type { ReactNode } from "react";
 
 /** The level the reader stores or cycles to, which this display cannot draw. */
 const PROPOSED_HOURS = 20;
@@ -102,5 +105,38 @@ describe("the band states the level the grid draws", () => {
     await press();
     expect(await bandLine()).toContain(`${ZOOM_MIN_HOURS}h visible`);
     expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(ZOOM_MIN_HOURS), 1);
+  });
+});
+
+/* WHERE THE ANSWER BECOMES A RENDERING DECISION, held one layer below the screen because the screen cannot reach this
+ * state: on the screen the grid reports before the first paint, so a reader never meets a band with no answer yet.
+ *
+ * The hook is rendered with no grid at all, which is the same condition the first render is in. What is asserted is
+ * that the level the reader asked for does NOT stand in for the level a grid has not yet drawn. That substitution is
+ * the defect this ticket closed, and it is the edit the missing cell most invites: the figure nearest to hand is the
+ * proposal, and one call site filling it in is all it takes to bring the falsehood back. */
+/* The hook navigates, reads through SWR, and subscribes to the stream, so it needs a router and a cache of its own.
+ * Declared outside the case, because a wrapper rebuilt per render remounts the tree under it. */
+function HookHost({ children }: { readonly children: ReactNode }) {
+  return <MemoryRouter>{withFreshCache(<>{children}</>)}</MemoryRouter>;
+}
+
+describe("the level the screen states before a grid has drawn one", () => {
+  it("is no level, rather than the level the reader asked for", () => {
+    installWeekReads(buildWeekView());
+    const { result } = renderHook(
+      () =>
+        useWeekScreenInteraction({
+          isoWeek: ISO_WEEK,
+          days: [],
+          view: null,
+          today: "2026-02-09",
+          visibleHours: PROPOSED_HOURS,
+        }),
+      { wrapper: HookHost },
+    );
+
+    expect(result.current.drawnHours).toBeNull();
+    expect(result.current.proposedHours).toBe(PROPOSED_HOURS);
   });
 });

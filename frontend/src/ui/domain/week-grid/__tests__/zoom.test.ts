@@ -221,4 +221,26 @@ describe("one statement of the clamp", () => {
 
     expect(callSites).toEqual([path.join("ui", "domain", "week-grid", "WeekGrid.tsx")]);
   });
+
+  /* AND THE FIGURE THE CLAMP SETTLES REACHES A SURFACE FROM ONE EXPRESSION. The clamp having one call site is not
+   * enough on its own: what a surface STATES is a second value derived from that call, and it travelled to two call
+   * sites as `zoom?.hours ?? null` before this was written. Two coalescing expressions are two chances to fill the
+   * absent case with the figure nearest to hand, which is the level the reader asked for, which is the falsehood. So
+   * the decision is made once, where the answer is held, and every surface passes it through unchanged.
+   *
+   * Matched on the whole attribute value, because the substitution this refuses is an ADDITION to the expression
+   * rather than a replacement of it: `interaction.drawnHours ?? something` still contains the honest reading. */
+  it("settles what a surface states in one expression, which every surface passes through", async () => {
+    const stated = (await sources())
+      .flatMap((file) => {
+        const found = blankJsComments(file.text).match(/drawnHours=\{[^}]*\}/g) ?? [];
+        return found.map((expression) => `${file.name}: ${expression}`);
+      })
+      .toSorted();
+
+    expect(stated).toEqual([
+      `${path.join("routes", "WeekRoute.tsx")}: drawnHours={interaction.drawnHours}`,
+      `${path.join("routes", "week", "session", "SessionMode.tsx")}: drawnHours={interaction.drawnHours}`,
+    ]);
+  });
 });

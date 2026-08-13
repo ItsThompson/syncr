@@ -21,9 +21,11 @@
  * reader's stored value is what the screen opens at, and what they cycle to is theirs until they leave.
  *
  * A LEVEL TRAVELS DOWN AS A PROPOSAL AND COMES BACK AS A READING. Only the grid has a measurement, so only the grid can
- * say which level a display can draw: what this hook holds is the level the reader asked for, and `zoom` is what the
- * grid answered. A surface that states the level reads the answer, because stating the question is how a band comes to
- * claim a level the grid is not drawing.
+ * say which level a display can draw: what this hook holds is the level the reader asked for, and `drawnHours` is what
+ * the grid answered. A surface that states the level reads the answer, because stating the question is how a band comes
+ * to claim a level the grid is not drawing. The answer is null until the grid has measured, and it is turned into null
+ * HERE rather than at each surface, so there is one place that decides what an unmeasured grid states and no call site
+ * can fill it with the question.
  *
  * THE DETAIL PANEL IS OPEN WHERE THERE IS ROOM FOR ITS COLUMN AND CLOSED WHERE THERE IS NOT, and the panel is drawn
  * from that state AND the selection rather than from the selection alone. Above --bp-wide the column is reserved and
@@ -84,8 +86,8 @@ export interface WeekInteraction {
   readonly isDetailOpen: boolean;
   /** The level the screen asks the grid for, which the grid brings inside the range its own measurement offers. */
   readonly proposedHours: number;
-  /** What the grid answered with, or null before it has measured. What a surface stating the level reads. */
-  readonly zoom: ZoomReport | null;
+  /** The level the grid answered with, or null before it has measured. What a surface stating the level reads. */
+  readonly drawnHours: number | null;
   /** The grid's own answer, handed back once per measurement. */
   readonly onZoom: (report: ZoomReport) => void;
   readonly statesOf: (blockId: string) => BlockStates;
@@ -233,7 +235,7 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
     selected,
     isDetailOpen,
     proposedHours: zoomHours ?? visibleHours,
-    zoom,
+    drawnHours: zoom?.hours ?? null,
     onZoom: setZoom,
     statesOf,
     onSelect: (blockId) => {

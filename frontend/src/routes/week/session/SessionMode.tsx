@@ -72,7 +72,7 @@ export function SessionMode({
       <div className="flex flex-col gap-3.25 px-3.75 py-3.25">
         <WeekActions
           blockCount={screen.readings.blockCount}
-          drawnHours={interaction.zoom?.hours ?? null}
+          drawnHours={interaction.drawnHours}
           hasProposal={screen.view.proposal !== null}
           onApprove={interaction.onApprove}
           onResolveNow={interaction.onResolveNow}
