@@ -436,6 +436,23 @@ async def test_the_client_the_app_wires_reads_the_address_before_it_connects() -
     assert answer == FeedUnreachable(str(refusal_of(ip_address("127.0.0.1"))))
 
 
+async def test_closing_the_client_closes_the_transport_the_guard_wraps() -> None:
+    # The guard sits between the client and the connection pool, so a guard that swallowed the
+    # close would hold every pooled connection a worker tick opened for the life of the process.
+    class Closing(httpx.AsyncBaseTransport):
+        closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    pool = Closing()
+
+    async with httpx.AsyncClient(transport=RefusingTransport(pool)):
+        assert not pool.closed
+
+    assert pool.closed
+
+
 # --------------------------------------------------------------------------------
 # This deployment's own hosts earn no exemption
 # --------------------------------------------------------------------------------
