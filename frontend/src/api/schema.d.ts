@@ -3133,6 +3133,8 @@ export interface components {
              */
             variant: string;
         };
+        /** Format: time */
+        DayBound: string;
         /**
          * DayResponse
          * @description One day's ledger: the header figures, and the rows in two sections.
@@ -5083,16 +5085,10 @@ export interface components {
          *     routine, set through ``PATCH /api/v1/routines/{id}``, where the solver reads it.
          */
         SettingsPatchRequest: {
-            /**
-             * Dayend
-             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
-             */
-            dayEnd?: string | null;
-            /**
-             * Daystart
-             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
-             */
-            dayStart?: string | null;
+            /** @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. */
+            dayEnd?: components["schemas"]["DayBound"] | null;
+            /** @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. */
+            dayStart?: components["schemas"]["DayBound"] | null;
             /**
              * Homezone
              * @description An IANA zone identifier, such as 'Europe/London'.
@@ -5128,13 +5124,13 @@ export interface components {
             /**
              * Dayend
              * Format: time
-             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             * @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
              */
             dayEnd: string;
             /**
              * Daystart
              * Format: time
-             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             * @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
              */
             dayStart: string;
             /**

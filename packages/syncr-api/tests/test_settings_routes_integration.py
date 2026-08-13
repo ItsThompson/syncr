@@ -17,7 +17,7 @@ is `Secure`, and an HTTP client that honors that attribute will not send it back
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -59,6 +59,11 @@ TRAVEL_OVERRIDES = f"{SETTINGS_PREFIX}/travel-overrides"
 LONDON = "Europe/London"
 TOKYO = "Asia/Tokyo"
 
+# A legal pair to store before a refusal is offered, so "the row is unchanged" is a pair rather
+# than an absent row, and wide enough that either bound may move to 07:00 or 07:07 inside it.
+SETTLED_BOUNDS = {"dayStart": "06:00", "dayEnd": "22:00"}
+SETTLED_PAIR = (time(6, 0), time(22, 0))
+
 
 @pytest.fixture
 def owner(live_database_url: str) -> Iterator[UserRecord]:
@@ -98,6 +103,11 @@ def settings_rows(database_url: str, tenant_id: TenantId) -> list[Settings]:
             await database.engine.dispose()
 
     return run(read())
+
+
+def stored_bounds(database_url: str, tenant_id: TenantId) -> list[tuple[time, time]]:
+    """The day bounds as the rows hold them, which is where an offset is dropped if one is."""
+    return [(row.day_start, row.day_end) for row in settings_rows(database_url, tenant_id)]
 
 
 def override_rows(database_url: str, tenant_id: TenantId) -> list[TravelOverrideRow]:
@@ -252,6 +262,71 @@ def test_day_bounds_that_describe_no_day_are_rejected(
 
     assert response.status_code == ValidationFailed.status
     assert "earlier than day end" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("bound", ["dayStart", "dayEnd"])
+@pytest.mark.parametrize(
+    ("offered", "said"),
+    [
+        ("07:00:00+05:00", "an offset is refused"),
+        ("07:00:30", "seconds are refused"),
+    ],
+    ids=["an offset", "a second"],
+)
+def test_a_day_bound_that_is_not_wall_time_is_refused_rather_than_stored(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    bound: str,
+    offered: str,
+    said: str,
+) -> None:
+    # A row first, so "unchanged" is a stored pair this asserts against rather than the absence
+    # of a row, which a refusal before any write would satisfy without storing anything right.
+    settled = http.patch(SETTINGS, json=SETTLED_BOUNDS, headers=signed_in)
+    assert settled.status_code == HTTPStatus.OK, settled.text
+
+    response = http.patch(SETTINGS, json={bound: offered}, headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status
+    assert response.headers["content-type"].startswith(PROBLEM_JSON_MEDIA_TYPE)
+    # The field, and the sentence the reader is shown beside it. The column stores no offset, so
+    # the defect this replaces was a 200 whose response carried a value the row did not.
+    assert [(error["field"], said in error["message"]) for error in response.json()["errors"]] == [
+        (f"body.{bound}", True)
+    ], response.text
+    assert stored_bounds(live_database_url, owner.tenant_id) == [SETTLED_PAIR]
+    assert http.get(SETTINGS, headers=signed_in).json() == settled.json()
+
+
+@pytest.mark.parametrize("bound", ["dayStart", "dayEnd"])
+@pytest.mark.parametrize(
+    "offered", ["07:00", "07:07"], ids=["a quarter hour", "off the quarter hour"]
+)
+def test_a_day_bound_on_any_whole_minute_is_accepted_and_stored(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    bound: str,
+    offered: str,
+) -> None:
+    # The refusal distinguishes rather than refusing a time, and the day bounds owe the wall-time
+    # rule without the snap: they draw the grid's own axis and materialize no block, so a bound
+    # off the quarter hour is stored as sent. Both offered values sit inside the settled pair, so
+    # neither is refused by the day-length rule instead.
+    assert http.patch(SETTINGS, json=SETTLED_BOUNDS, headers=signed_in).status_code == HTTPStatus.OK
+
+    response = http.patch(SETTINGS, json={bound: offered}, headers=signed_in)
+
+    assert response.status_code == HTTPStatus.OK, response.text
+    assert response.json()[bound] == f"{offered}:00"
+    expected = dict(zip(("dayStart", "dayEnd"), SETTLED_PAIR, strict=True))
+    expected[bound] = time.fromisoformat(offered)
+    assert stored_bounds(live_database_url, owner.tenant_id) == [
+        (expected["dayStart"], expected["dayEnd"])
+    ]
 
 
 # --------------------------------------------------------------------------------
