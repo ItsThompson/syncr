@@ -623,6 +623,25 @@ def test_a_repeated_removal_without_a_key_still_answers_404(
     assert second.status_code == NotFound.status, second.text
 
 
+def test_one_key_sent_to_the_patch_and_then_the_delete_applies_both(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The two handlers address one path, and the request hash carries the path and the body but not
+    # the method, so a body both methods accept leaves the route key as the whole of what separates
+    # their claims. `{}` is such a body: the patch reads it as no change, and a delete is permitted
+    # to carry one. Two handlers sharing a key would make the delete replay the patch's stored
+    # answer, which is a 204 with the routine still in the frame.
+    created = declare_routine(http, signed_in)
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+
+    patched = http.patch(f"{ROUTINES}/{created['id']}", json={}, headers=keyed)
+    removed = http.request("DELETE", f"{ROUTINES}/{created['id']}", json={}, headers=keyed)
+
+    assert patched.status_code == HTTPStatus.OK, patched.text
+    assert removed.status_code == HTTPStatus.NO_CONTENT, removed.text
+    assert routine_rows(live_database_url, owner.tenant_id) == []
+
+
 # --------------------------------------------------------------------------------
 # Tenancy and the origin check
 # --------------------------------------------------------------------------------
