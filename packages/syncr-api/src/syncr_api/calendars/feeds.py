@@ -146,6 +146,11 @@ def create_feed_client() -> httpx.AsyncClient:
     every request is read against the refused ranges, hop included: the address a redirect
     names was pasted by nobody, so a check on the URL alone would guard the one address a user
     can be asked about and none of the addresses a publisher can send syncr to.
+
+    Passing a transport also turns off httpx's environment proxy mounts, which it applies only
+    when it builds the transport itself. Nothing in this repository sets one, and a proxied fetch
+    would connect to the proxy rather than to the feed's own address, which is a different
+    question from the one the guard asks.
     """
     return httpx.AsyncClient(
         timeout=FETCH_TIMEOUT_SECONDS,
