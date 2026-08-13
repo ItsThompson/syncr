@@ -33,14 +33,16 @@ since the solver asks whether ONE window holds a whole placement rather than whe
 it between them. The merge is general: two windows declared to abut, ``06:00-07:00`` and
 ``07:00-08:00``, likewise reach the solver as one.
 
-**A date is dropped only when its own resolved bounds do not run forward.** Resolving both bounds
-through :func:`syncr_domain.zones.to_instant` is NOT order-preserving across a spring-forward gap:
-every wall time inside the gap shifts onto a real time later in the day, so on ``Europe/London``,
-2026-03-29, both 01:30 and 02:30 resolve to ``2026-03-29T01:30Z``. A window whose start falls inside
-the gap and whose end is at or after the gap's end therefore collapses to one instant or inverts,
-and that date carries no window while every other date of the week keeps its own. Shifting the end
-forward instead would invent an hour the day does not have, and a preference is a wall-clock window
-rather than a duration.
+**A window is dropped for a date only when its own resolved bounds do not run forward.** Resolving
+both bounds through :func:`syncr_domain.zones.to_instant` is NOT order-preserving across a
+spring-forward gap: every wall time inside the gap shifts onto a real time later in the day, so on
+``Europe/London``, 2026-03-29, both 01:30 and 02:30 resolve to ``2026-03-29T01:30Z``. A window whose
+start falls inside the gap and whose end is at or after the gap's end therefore collapses to one
+instant or inverts, and that window is absent for that date, while every other date of the week
+keeps its own. The unit dropped is one window on one date rather than the date itself, so a date
+losing one half of an authored wrap still carries the other. Shifting the end forward instead would
+invent an hour the day does not have, and a preference is a wall-clock window rather than a
+duration.
 
 **Every other date keeps a window at whatever its own arithmetic makes it, which is not always the
 declared length.** One mechanism, two directions, both measured on the ``dst_weeks`` fixture:
