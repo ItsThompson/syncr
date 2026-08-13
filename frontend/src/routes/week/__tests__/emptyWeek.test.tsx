@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { renderAt } from "../../../testing/renderRoute";
@@ -147,10 +147,14 @@ describe("the words the contract carries for a week with no plan", () => {
     }
   });
 
-  it("gives each state a heading of its own, so none can borrow its neighbour's", () => {
-    const titles = EMPTY_REASONS.map((reason) => caseFor(reason).title);
+  it("draws a heading of its own for each state, so none can borrow its neighbour's", async () => {
+    const drawn: string[] = [];
+    for (const reason of EMPTY_REASONS) {
+      drawn.push(titleIn(await openAPlanlessWeek(reason)));
+      cleanup();
+    }
 
-    expect(new Set(titles).size).toBe(EMPTY_REASONS.length);
+    expect(new Set(drawn).size).toBe(EMPTY_REASONS.length);
   });
 });
 
