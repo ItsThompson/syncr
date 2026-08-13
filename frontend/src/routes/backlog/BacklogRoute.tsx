@@ -18,11 +18,16 @@
  *
  * CAPTURE IS NOT MOUNTED HERE. `n` opens it from any screen, so the one instance lives above the route in
  * `app/capture`; this screen asks that instance to open. A second dialog mounted here would mean two forms could
- * hold two drafts of the same task. */
+ * hold two drafts of the same task.
+ *
+ * AND IT IS ASKED TO OPEN BY THE URL AS WELL AS BY THE BAND. Activating an empty slot's gutter label on the week
+ * screen navigates here with what that slot knows, so this screen reads the invitation and clears it. That read is
+ * above every early return below, because capture is the shell's and not this screen's: a reader whose backlog
+ * could not be read must still be able to capture the task they came here to write. */
 
 import { useRef } from "react";
 
-import { useCapture } from "../../app/capture";
+import { useCapture, useCapturePrefill } from "../../app/capture";
 import { EmptyState, ErrorState, PendingState, type Notice } from "../../ui/domain";
 import { Button } from "../../ui/primitives";
 import { RouteBand } from "../RouteBand";
@@ -40,6 +45,8 @@ export function BacklogRoute() {
   const capture = useCapture();
   const bandCapture = useRef<HTMLButtonElement>(null);
   const { reading } = screen;
+
+  useCapturePrefill();
 
   if (reading.status === "loading") {
     return (
