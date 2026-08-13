@@ -38,6 +38,7 @@ from tests.hostile_ics import EMPTY_FEED
 
 if TYPE_CHECKING:
     from syncr_api.calendars.records import CalendarSourceId
+    from syncr_domain.weeks import IsoWeek
 
 START = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 HOME = ZoneProfile(home_zone="Europe/London")
@@ -138,6 +139,7 @@ def syncer(sources: FakeSources, fetcher: RecordedFetcher, clock: MovableClock) 
         adapters={ICS: adapter},
         anchors=SilentAnchors(),
         collisions=SilentCollisions(),
+        solves=SilentSolves(),  # type: ignore[arg-type]  # a double over the one method a pass calls
         clock=clock,
     )
 
@@ -173,6 +175,18 @@ class SilentAnchors:
     async def mark_possibly_stale(self, source: object) -> AnchorDelta:
         del source
         return AnchorDelta()
+
+
+class SilentSolves:
+    """A solve requester that does nothing, for the tests about the SCHEDULE.
+
+    Which weeks a pass asks for is asserted in ``test_anchor_sync_routing.py`` against a recorder,
+    and against real operation rows in ``test_anchor_sync_requests_a_solve.py``.
+    """
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        del weeks
+        return ()
 
 
 @pytest.fixture

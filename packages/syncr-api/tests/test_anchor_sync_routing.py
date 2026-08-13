@@ -15,6 +15,10 @@ is the CHOICE, and asserting it through a real reconciler would make the test ab
 The sync-state write is asserted too, because the reconciler's own count replaces the parser's
 event count: two events reaching one reconciliation key make those two numbers differ, and the
 panel reports the number of anchors rather than the number of components.
+
+The last two sections are the two things a pass asks for once the anchors are written: a collision
+detection, and a solve of the weeks the reconciliation invalidated. Both are conditional on what the
+pass actually did, and each is conditional on a different part of the tally.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from syncr_api.calendars.events import FetchOutcome, RawEvent
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.sync import SourceSyncer
 from syncr_domain.intervals import Interval
+from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
     from syncr_api.calendars.records import CalendarSourceId
@@ -42,8 +47,13 @@ EARLIER = NOW - timedelta(hours=3)
 RECONCILED = "reconcile"
 CONFIRMED = "confirm"
 MARKED_STALE = "mark_possibly_stale"
-# The one step of a pass that is not an anchor path: what it asks for once the anchors are written.
+# The two steps of a pass that are not anchor paths: what it asks for once the anchors are written.
 DETECTED = "detect"
+REQUESTED = "request"
+
+# 2026-02-09 opens 2026-W07, so these are the weeks a reconciliation of NOW's occupancy reports.
+WEEK = IsoWeek(2026, 7)
+NEXT_WEEK = IsoWeek(2026, 8)
 
 # What each recorded call answers with, so a test can tell the count came from the writer rather
 # than from the parser's event list.
@@ -142,11 +152,33 @@ class RecordingCollisions:
         return ()
 
 
+@dataclass
+class RecordingSolves:
+    """Records the weeks the pass asked for a solve of, which only a change may name.
+
+    ``log`` is shared with the anchor writer by the test that asserts the ORDER of the two, for the
+    same reason the collision recorder shares one: a request made before the reconciliation would
+    ask the counter for weeks nothing had bumped yet.
+
+    A double over the one method a pass calls rather than the real collaborator, whose own answer is
+    read against real operation rows in ``test_anchor_sync_requests_a_solve.py``.
+    """
+
+    asked: list[frozenset[IsoWeek]] = field(default_factory=list)
+    log: list[str] = field(default_factory=list)
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        self.asked.append(weeks)
+        self.log.append(REQUESTED)
+        return tuple(sorted(weeks))
+
+
 def syncer(
     adapter: StubAdapter,
     anchors: RecordingAnchors,
     sources: RecordingSources,
     collisions: RecordingCollisions | None = None,
+    solves: RecordingSolves | None = None,
 ) -> SourceSyncer:
     return SourceSyncer(
         sources=sources,  # type: ignore[arg-type]  # a fake over the one method a pass calls
@@ -156,6 +188,7 @@ def syncer(
         adapters={ICS: adapter},
         anchors=anchors,
         collisions=collisions or RecordingCollisions(),
+        solves=solves or RecordingSolves(),  # type: ignore[arg-type]  # the one method a pass calls
         clock=lambda: NOW,
     )
 
@@ -440,3 +473,100 @@ async def test_a_detection_runs_after_the_anchors_are_reconciled() -> None:
     ).sync(a_source())
 
     assert log == [RECONCILED, DETECTED]
+
+
+# --------------------------------------------------------------------------------
+# Which weeks a pass asks for a solve of.
+#
+# The reconciliation bumps the weeks whose occupancy moved, and a bump is a guard rather than an
+# act: it makes a running solve's conditional write fail and replaces it with nothing. So the pass
+# asks, and it asks for the weeks the reconciliation named and no others. The condition is not the
+# detection's: a removal frees space, which can raise no conflict and still leaves a week whose plan
+# describes occupancy that has gone.
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("delta", "invalidated"),
+    [
+        (AnchorDelta(created=1, current=1, occupied_weeks=frozenset({WEEK})), {WEEK}),
+        (
+            AnchorDelta(updated=1, current=1, occupied_weeks=frozenset({WEEK, NEXT_WEEK})),
+            {WEEK, NEXT_WEEK},
+        ),
+        (AnchorDelta(removed=1, current=0, occupied_weeks=frozenset({WEEK})), {WEEK}),
+        (AnchorDelta(current=7), set()),
+        (AnchorDelta(marked_stale=7, current=7), set()),
+    ],
+    ids=["created", "moved-across-a-boundary", "removed", "nothing-changed", "marked-stale"],
+)
+async def test_the_weeks_a_pass_invalidated_are_the_weeks_it_asks_to_solve(
+    delta: AnchorDelta, invalidated: set[IsoWeek]
+) -> None:
+    # The pass hands on the tally's own set rather than deriving a second answer from the counts:
+    # which weeks a change reached is the reconciler's question, and answering it twice is how two
+    # readings of one change come to disagree.
+    solves = RecordingSolves()
+    outcome, state = a_read(events=1)
+
+    await syncer(
+        StubAdapter(outcome, state),
+        DeltaAnchors(delta),  # type: ignore[arg-type]  # a writer over the three a pass calls
+        RecordingSources(),
+        solves=solves,
+    ).sync(a_source())
+
+    assert solves.asked == [frozenset(invalidated)]
+
+
+async def test_a_pass_that_only_removed_asks_for_a_solve_and_for_no_detection() -> None:
+    """The discriminating pair, and why the two conditions are not one flag.
+
+    A removal frees time. Nothing new can have landed on a planned block, so there is no conflict to
+    raise; and the week's plan still describes an hour of occupancy the source says is gone, so it
+    needs the solve. A pass that reused the detection's condition would skip exactly this case, and
+    a cancelled lecture is the case a stale plan is most visible in.
+    """
+    collisions = RecordingCollisions()
+    solves = RecordingSolves()
+    outcome, state = a_read(events=0)
+
+    await syncer(
+        StubAdapter(outcome, state),
+        DeltaAnchors(AnchorDelta(removed=1, current=0, occupied_weeks=frozenset({WEEK}))),  # type: ignore[arg-type]
+        RecordingSources(),
+        collisions,
+        solves,
+    ).sync(a_source())
+
+    assert solves.asked == [frozenset({WEEK})]
+    assert collisions.asked == []
+
+
+async def test_an_excluded_source_asks_for_no_solve() -> None:
+    # It is not fetched at all, so no commitment of it moved and no week of it was invalidated.
+    solves = RecordingSolves()
+    outcome, state = a_read(events=3)
+
+    await syncer(
+        StubAdapter(outcome, state), RecordingAnchors(), RecordingSources(), solves=solves
+    ).sync(a_source(included=False))
+
+    assert solves.asked == []
+
+
+async def test_a_solve_is_asked_for_after_the_anchors_are_reconciled() -> None:
+    # The other order that is load-bearing. The request reads the version rows the reconciliation
+    # bumped, so asking first would enumerate the weeks as they were before the feed moved anything
+    # and would ask for nothing. One shared log, because two "it happened" lists cannot say which.
+    log: list[str] = []
+    outcome, state = a_read(events=1)
+
+    await syncer(
+        StubAdapter(outcome, state),
+        DeltaAnchors(AnchorDelta(created=1, current=1, occupied_weeks=frozenset({WEEK})), log),  # type: ignore[arg-type]
+        RecordingSources(),
+        solves=RecordingSolves(log=log),
+    ).sync(a_source())
+
+    assert log == [RECONCILED, REQUESTED]
