@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { renderSignedInAt } from "../../../testing/renderRoute";
+import { bannersInTheTopBar } from "../../../testing/topBar";
 import {
   AREA_CAREER,
   AREA_FITNESS,
@@ -29,11 +30,20 @@ import { renderBacklog, stubBacklog } from "./render";
 
 const CAPTURE = "Capture a task";
 const SEND_OPEN = "A capture is still being sent";
+const NOT_SAVED = "A task you captured was not saved";
 
 /** Opening capture with the global keystroke, from wherever the reader is. */
 async function pressN(): Promise<void> {
   await userEvent.keyboard("n");
   await screen.findByRole("dialog", { name: CAPTURE });
+}
+
+/** Dismissing the form, waited on, so what follows is driven against a dialog that has actually gone. */
+async function dismissTheForm(): Promise<void> {
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: CAPTURE })).not.toBeInTheDocument();
+  });
 }
 
 async function fillTitle(title: string): Promise<void> {
@@ -489,6 +499,123 @@ describe("a second submit while the first is in flight", () => {
     await waitFor(() => {
       expect(stub.captured).toHaveLength(2);
     });
+  });
+});
+
+describe("a refusal that arrives after the reader dismissed the form", () => {
+  /* THE DEFECT THIS CLOSES IS A SILENCE. The dialog the refusal belongs to has gone, so the sentence has nowhere
+     inside the form to land: the reader believes they captured a task the api never accepted, and nothing on any
+     screen says otherwise. The top bar is the one surface that outlives the dialog, so the report goes there. */
+  it("is reported in the top bar, in oxide, naming what still works and that the title is gone", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    stub.refuseCaptureWith(
+      422,
+      buildProblem({ detail: "The estimate has to be at least as long as the minimum chunk." }),
+    );
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    await dismissTheForm();
+
+    stub.releaseCapture();
+
+    const banner = await screen.findByRole("alert", { name: NOT_SAVED });
+    expect(bannersInTheTopBar()).toEqual([banner]);
+    expect(banner).toHaveClass("notice--banner", "notice--oxide");
+    expect(banner.textContent).toContain(
+      "The estimate has to be at least as long as the minimum chunk.",
+    );
+    expect(banner.textContent).toContain("The title you typed was not saved either");
+    expect(banner.textContent).toContain(
+      "still works · your backlog, which is unchanged, capturing the task again",
+    );
+    /* Acknowledging it is the only resolution there is: nothing in the product can capture the task the api
+       refused, so the reader is offered the one control that answers it. */
+    expect(within(banner).getByRole("button", { name: "Dismiss this notice" })).toBeInTheDocument();
+  });
+
+  /* THE OTHER HALF OF THE SAME RULE. A refusal the form can still state belongs in the form, at inline volume,
+     beside the row the reader has to fix. Raising a banner for it as well would report a repair the reader is
+     already looking at as a durable write that did not happen. */
+  it("lands inline in the form and raises no banner while the dialog it belongs to is open", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.refuseCaptureWith(
+      422,
+      buildProblem({
+        errors: [{ field: "areaId", message: "names no Area of this tenant" }],
+      }),
+    );
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+
+    expect(await screen.findByText("names no Area of this tenant")).toBeInTheDocument();
+    expect(bannersInTheTopBar()).toEqual([]);
+  });
+
+  /* A CAPTURE THAT LANDED IS NOT A CONDITION. The task is in the backlog and the list has been read again, so
+     the reader has the task rather than a sentence about one, and a banner would report a failure that did not
+     happen. What the read proves is that the send resolved: the silence is measured rather than assumed. */
+  it("says nothing when the capture the reader dismissed was applied", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    await dismissTheForm();
+    const readsBefore = stub.queries.length;
+
+    stub.releaseCapture();
+    await waitFor(() => {
+      expect(stub.queries.length).toBeGreaterThan(readsBefore);
+    });
+
+    expect(bannersInTheTopBar()).toEqual([]);
+  });
+  /* THE SAME REPORT WHEN THE READER HAS SINCE REOPENED THE FORM, which is the case the two rules meet in: the
+     refusal is about a draft that no longer exists, so it may not land on the one the reader is typing into, and
+     it is still a task the api never accepted, so it is still reported. */
+  it("is reported and not stated on the draft that replaced the one it is about", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    stub.refuseCaptureWith(
+      422,
+      buildProblem({
+        errors: [{ field: "title", message: "is too long" }],
+      }),
+    );
+    await pressN();
+    await fillTitle("x".repeat(40));
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    await dismissTheForm();
+    await pressN();
+    await fillTitle("a short title");
+
+    stub.releaseCapture();
+
+    await screen.findByRole("alert", { name: NOT_SAVED });
+    expect(screen.queryByText("is too long")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Validation failed" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: /Task/ })).toHaveValue("a short title");
   });
 });
 
