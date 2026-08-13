@@ -9,6 +9,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { srcDir } from "../../../../testing/compileTheme";
+import { blankJsComments } from "../../../../../scripts/lib/comments.ts";
 
 import { ZOOM_MAX_HOURS, ZOOM_MIN_HOURS } from "../metrics";
 import { MODAL_DURATION_MINUTES, clampVisibleHours, zoomCap, zoomLevels } from "../zoom";
@@ -200,5 +201,24 @@ describe("one statement of the clamp", () => {
     expect(reading).toContain(path.join("routes", "settings", "geometry.ts"));
     expect(reading).toContain(path.join("routes", "settings", "components", "GeometryPanel.tsx"));
     expect(reading).toContain(path.join("ui", "domain", "week-grid", "WeekGrid.tsx"));
+  });
+
+  /* AND THE CLAMP IS CALLED ONCE, which is a stronger claim than the four above and a different one. Importing this
+   * module rather than restating its formula satisfies every one of them and still yields TWO figures: a surface that
+   * clamps the level it holds agrees with the grid on the reference display and disagrees on every other, because the
+   * grid answers from a measurement and a second caller has none to answer from. One call site is what makes the
+   * reading and the drawing the same figure rather than two that usually match.
+   *
+   * Counted per occurrence rather than per file, so a second call beside the first is caught too, and comments are
+   * blanked first because prose naming the function is not a caller. */
+  it("is called from exactly one place, so a reading and a drawing cannot be two figures", async () => {
+    const here = path.join("ui", "domain", "week-grid", "zoom.ts");
+    const callSites = (await sources()).flatMap((file) => {
+      if (file.name === here) return [];
+      const calls = blankJsComments(file.text).match(/\bclampVisibleHours\(/g) ?? [];
+      return calls.map(() => file.name);
+    });
+
+    expect(callSites).toEqual([path.join("ui", "domain", "week-grid", "WeekGrid.tsx")]);
   });
 });
