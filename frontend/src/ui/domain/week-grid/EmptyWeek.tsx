@@ -78,7 +78,7 @@ const ACTIONS: Readonly<Record<EmptyWeekReason, (props: EmptyWeekProps) => React
       {solveNow(props)}
     </>
   ),
-  awaiting_maintainer: (props) => solveNow(props),
+  awaiting_maintainer: solveNow,
 };
 
 export function EmptyWeek(props: EmptyWeekProps) {
