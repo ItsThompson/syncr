@@ -11,8 +11,8 @@ the answer.
 
 An Area's preference applies to its own habits and tasks. It does NOT resolve up the Area
 ancestry, so a preference on ``Fitness`` is not seen by ``Fitness / Running`` or by anything
-inside it. That is what the domain rule states and ticket 1212 carries the question of whether it
-should walk.
+inside it. That is what the domain rule states, and whether it should walk is an open question
+rather than a settled one.
 
 **The windows.** A declared window is wall time, so ``05:30-07:00`` becomes one interval per date
 of the week, each resolved against the zone active on that date.
