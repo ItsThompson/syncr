@@ -15,11 +15,12 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { apiServer } from "../../../testing/apiServer";
-import { jsonHandler, recordingHandler } from "../../../testing/apiStub";
+import { eventStream, jsonHandler, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
 import { GRID_H_PX } from "../../../ui/domain";
 import {
   APPLICATION,
+  AWAITING_WEEK_FACTS,
   DATES,
   EMPTY_WEEK_FACTS,
   ISO_WEEK,
@@ -27,6 +28,7 @@ import {
   SETTINGS,
   SLOT_LABEL,
   WEEK_PATH,
+  buildOperation,
   buildPlan,
   buildReadings,
   buildWeekView,
@@ -241,31 +243,52 @@ describe("a week with no plan", () => {
     expect(screen.queryByRole("link", { name: "Extend the horizon" })).toBeNull();
   });
 
-  it("says why a week inside the horizon holds no plan yet, and offers the solve", async () => {
+  it("says a week inside the horizon is being planned, and offers only the solve", async () => {
     installWeekReads(
       buildWeekView({
         live: null,
         readings: null,
         emptyReason: "awaiting_maintainer",
-        emptyWeek: {
-          ...EMPTY_WEEK_FACTS,
-          coversThisWeek: true,
-          statement:
-            "2026-W07 is inside your 14-day planning horizon and its plan has not been produced yet.",
-        },
+        emptyWeek: AWAITING_WEEK_FACTS,
       }),
     );
     const { container } = renderAt(WEEK_PATH);
 
-    expect(
-      await screen.findByText(
-        "2026-W07 is inside your 14-day planning horizon and its plan has not been produced yet.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(AWAITING_WEEK_FACTS.statement)).toBeInTheDocument();
+    /* THE HEADING IS READ BESIDE THE SENTENCE, because a heading that contradicts its own body is green against an
+     * assertion on either half alone: the sentence says the week is inside the horizon, and a heading borrowed from
+     * the state beyond it offers to extend a horizon that already reaches the week. */
+    expect(container.querySelector(".status__title")?.textContent).toBe(
+      "syncr is planning this week",
+    );
     expect(screen.getByRole("button", { name: "Solve this week now" })).toBeInTheDocument();
-    // An empty state names itself, whichever of the three words arrived: a reason the screen has no
-    // title for renders a blank heading over the server's sentence.
-    expect(container.querySelector(".status__title")?.textContent).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Extend the horizon" })).toBeNull();
+  });
+
+  /* THE WAIT ENDS WITHOUT THE READER DOING ANYTHING, which is what makes the state a wait rather than a dead end.
+   * The screen holds the operation the payload named, the push channel says it succeeded, and the week's own key is
+   * invalidated: one refetch, one redraw, no press. The plan arriving is asserted through a block the grid draws,
+   * because the empty state disappearing is also what an error state would produce. */
+  it("renders the plan once the revision is appended, with nothing asked of the reader", async () => {
+    const stream = eventStream();
+    const week = installWeekReads(
+      buildWeekView({
+        live: null,
+        readings: null,
+        emptyReason: "awaiting_maintainer",
+        emptyWeek: AWAITING_WEEK_FACTS,
+        operation: buildOperation({ status: "pending" }),
+      }),
+    );
+    apiServer.use(stream.handler);
+    renderAt(WEEK_PATH);
+    await screen.findByText(AWAITING_WEEK_FACTS.statement);
+
+    week.serve(buildWeekView());
+    stream.push("operation", buildOperation({ status: "succeeded" }));
+
+    expect(await screen.findByLabelText(`${LEETCODE} · Career`)).toBeInTheDocument();
+    expect(screen.queryByText(AWAITING_WEEK_FACTS.statement)).toBeNull();
   });
 
   it("asks for a solve at the week's own path, bypassing the debounce", async () => {

@@ -362,6 +362,24 @@ describe("the week with no plan", () => {
     expect(screen.queryByRole("button", { name: "Solve this week now" })).toBeNull();
   });
 
+  /* THE WAITING STATE OFFERS THE SOLVE AND NOT THE HORIZON. The week is already inside the horizon, so widening it
+   * repairs nothing, and the sentence the server composes for this state names the solve as the one thing a reader
+   * can do to bring the plan forward. */
+  it("states the wait for a week the horizon already holds, and offers only the solve", () => {
+    renderEmpty(
+      <EmptyWeek
+        {...actions}
+        reason="awaiting_maintainer"
+        setupHref="/setup"
+        statement="2026-W07 is inside your 14-day planning horizon and its plan has not been produced yet."
+      />,
+    );
+
+    expect(screen.getByText("syncr is planning this week")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Solve this week now" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Extend the horizon" })).toBeNull();
+  });
+
   it("names the missing input by rendering the server's statement rather than a wording of its own", () => {
     renderEmpty(
       <EmptyWeek

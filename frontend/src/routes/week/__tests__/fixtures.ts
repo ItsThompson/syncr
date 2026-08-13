@@ -321,6 +321,22 @@ export const EMPTY_WEEK_FACTS: NonNullable<WeekView["emptyWeek"]> = {
   statement: "This week is beyond your 14-day planning horizon, which reaches 1 February.",
 };
 
+/**
+ * The facts behind `awaiting_maintainer`: a week the horizon holds that has no plan yet.
+ *
+ * The sentence is verbatim what `plans/emptiness.py` composes, cadence figure included, because the screen draws its
+ * own heading over it and a heading is only checkable against the sentence it sits on.
+ */
+export const AWAITING_WEEK_FACTS: NonNullable<WeekView["emptyWeek"]> = {
+  coversThisWeek: true,
+  horizonDays: 14,
+  horizonThrough: "2026-02-22",
+  missingInputs: [],
+  statement:
+    `${ISO_WEEK} is inside your 14-day planning horizon and its plan has not been produced yet. ` +
+    "syncr plans it without you asking, within 15 minutes, or solve this week now.",
+};
+
 export function buildWeekView(overrides: Partial<WeekView> = {}): WeekView {
   return {
     isoWeek: ISO_WEEK,
