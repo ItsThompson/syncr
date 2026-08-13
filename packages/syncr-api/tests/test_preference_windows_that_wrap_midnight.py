@@ -88,11 +88,13 @@ WEIGHTS = as_weight_set(a_weight_set())
 MIDNIGHT_GAP_ZONE: ZoneId = "America/Havana"
 MIDNIGHT_GAP_WEEK = IsoWeek(2025, 10)
 
-# The mirror shape, and the only one under which a wrap's PRE-midnight half can fail: a gap that
-# CLOSES at local midnight. Greenland is UTC-2 in winter and follows the EU transition instant of
+# The mirror shape: a gap that CLOSES at local midnight, which is the only shape a GAP produces for
+# the pre-midnight half. Greenland is UTC-2 in winter and follows the EU transition instant of
 # 01:00 UTC, which falls at 23:00 local, so its clock moves 23:00 to 00:00 and the half's own two
-# bounds, 23:00 and the following midnight, both resolve to the instant the clock reaches. The date
-# is the Saturday of the same fixture week the London cases run on.
+# bounds, 23:00 and the following midnight, both resolve to the instant the clock reaches. A skipped
+# local DATE does it too, by inverting rather than collapsing: a zone crossing the date line has no
+# such date at all. The guard reads `start >= end` and covers both. The date below is the Saturday
+# of the same fixture week the London cases run on.
 LATE_GAP_ZONE: ZoneId = "America/Nuuk"
 LATE_GAP_DATE = date(2026, 3, 28)
 
