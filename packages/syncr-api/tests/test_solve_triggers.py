@@ -19,7 +19,7 @@ rather than ``solve``. So the debounce, the coalescing and the supersession mach
 those call sites, two of which bypass the debounce window by design: the re-solve control asks for
 an immediate pass, and so does a tradeoff request.
 
-That is not a defect in any one of the fourteen: each bumps correctly, and a bump is what makes a
+That is not a defect in any one of the thirteen: each bumps correctly, and a bump is what makes a
 running solve's conditional write fail. What is missing is the request that follows it. The
 exclusions below name the owner that owes each one.
 

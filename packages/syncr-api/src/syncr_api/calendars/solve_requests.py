@@ -49,8 +49,9 @@ class TrackedWeekSolves:
     async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
         """Ask for a solve of every tracked week in ``weeks``, earliest first.
 
-        Answers with the weeks asked for, so a caller reports what it did without reading the
-        operations back.
+        Answers with the weeks it asked for, and **the sync pass does not read that answer**, the
+        same as the collision detection's: the counts a pass reports come from the fetch outcome and
+        the sync state.
 
         An empty set takes no statement at all, which is what a poll of a steady feed is: fifteen
         minutes later the same feed republishes the same components, nothing moved, and no operation
@@ -58,7 +59,8 @@ class TrackedWeekSolves:
 
         The enumeration is one read over the whole span rather than one per week, so a year-long
         component costs the same as an hour-long one. It reaches weeks between two commitments a
-        term apart, which the intersection then drops: those weeks hold plans this pass left alone.
+        fortnight apart, which the intersection then drops: those weeks hold plans this pass left
+        alone.
         """
         if not weeks:
             return ()
