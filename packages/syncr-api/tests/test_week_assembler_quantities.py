@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
+from dataclasses import replace
 from datetime import time
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -28,11 +29,13 @@ import pytest
 
 from syncr_api.plans.config import ADJUSTMENT_KINDS
 from syncr_common.logging import configure_logging
-from syncr_domain.habits import Duration
+from syncr_domain.habits import BindingSource, Duration
 from syncr_domain.identity import BindingRef, date_occurrence_key
 from syncr_domain.outcomes import MISS_STATE, RecordedOutcome
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.preferences import PreferenceStrength
+from syncr_domain.reasons import Bound, Floor, ReasonRecord
+from syncr_solver import reasons
 from syncr_solver.inputs import AreaBudget, ResolvedPreference, WeekAdjustment
 from tests.assembly_fakes import (
     MONDAY,
@@ -67,7 +70,9 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
+
+    from syncr_domain.plan import PlanDocument
 
 MINUTES_PER_HOUR = 60
 FOUR_HOURS = 4 * MINUTES_PER_HOUR
@@ -417,6 +422,69 @@ async def test_a_past_block_lowers_both_floor_quantities_because_it_is_in_both_s
 
     assert inputs.areas[0].floor_minutes == 4 * MINUTES_PER_HOUR
     assert inputs.areas[0].floor_reservation_minutes == 4 * MINUTES_PER_HOUR
+
+
+async def test_a_confirmed_skip_raises_the_floor_minutes_the_solver_must_still_place() -> None:
+    # A confirmed skip, end to end through the assembly. Tuesday's Fitness hour was placed and then
+    # marked skipped, so a five-hour floor still needs five hours placed rather than four: read over
+    # the placement's own span, the floor reads as honoured by an hour the user said did not happen
+    # and the solver never offers those minutes again.
+    #
+    # The probe's reservation and the Area's placed minutes do not move, which is what keeps a pin
+    # from improving the verdict: both count committed time, and a skipped hour is still committed.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    block = a_habit_block(habit_id=uuid4(), area_id=fitness.id, interval=between(9, 10, day=1))
+    plan = a_plan(blocks=[block])
+    skipped = RecordedOutcome(binding=block.binding, state=MISS_STATE)
+
+    presumed = await an_assembler(
+        areas=FakeAreas([fitness]), placements=FakePlacements(live_plan=plan)
+    ).assemble(WEEK, NOW)
+    confirmed = await an_assembler(
+        areas=FakeAreas([fitness]),
+        placements=FakePlacements(live_plan=plan, outcomes=[skipped]),
+    ).assemble(WEEK, NOW)
+
+    assert presumed.areas[0].floor_minutes == 4 * MINUTES_PER_HOUR
+    assert confirmed.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
+    assert presumed.areas[0].floor_reservation_minutes == 4 * MINUTES_PER_HOUR
+    assert confirmed.areas[0].floor_reservation_minutes == 4 * MINUTES_PER_HOUR
+    assert presumed.areas[0].placed_minutes == confirmed.areas[0].placed_minutes == MINUTES_PER_HOUR
+
+
+async def test_the_floor_clause_a_reader_sees_states_the_figure_the_skip_moved() -> None:
+    # The clause the user reads, composed from the same budgets: `floor` renders `floor_minutes` as
+    # the floor the rule worked to, and `placed of of` over the reservation's set. So the skip moves
+    # the clause's own figure and leaves the pair around it alone, and a reader is not told a
+    # five-hour floor is a four-hour one because they skipped an hour.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    chosen = replace(
+        a_habit_block(habit_id=uuid4(), area_id=fitness.id, interval=between(9, 10, day=1)),
+        reason=ReasonRecord((Bound(BindingSource.FIXED, "Gym · 4 / wk"),)),
+    )
+    plan = a_plan(blocks=[chosen])
+    skipped = RecordedOutcome(binding=chosen.binding, state=MISS_STATE)
+
+    presumed = await an_assembler(
+        areas=FakeAreas([fitness]), placements=FakePlacements(live_plan=plan)
+    ).assemble(WEEK, NOW)
+    confirmed = await an_assembler(
+        areas=FakeAreas([fitness]),
+        placements=FakePlacements(live_plan=plan, outcomes=[skipped]),
+    ).assemble(WEEK, NOW)
+
+    assert _floor_clauses(plan, presumed.areas) == [
+        Floor(area_id=fitness.id, floor_minutes=4 * MINUTES_PER_HOUR, placed=60, of=300)
+    ]
+    assert _floor_clauses(plan, confirmed.areas) == [
+        Floor(area_id=fitness.id, floor_minutes=5 * MINUTES_PER_HOUR, placed=60, of=300)
+    ]
+
+
+def _floor_clauses(plan: PlanDocument, areas: Sequence[AreaBudget]) -> list[Floor]:
+    """Every ``floor`` clause the plan's blocks carry once their records are assembled."""
+    records = reasons.assemble(plan, blocked_log=(), breakdown=None, pins=(), areas=areas)
+    return [clause for record in records for clause in record.clauses if isinstance(clause, Floor)]
 
 
 async def test_an_over_satisfied_floor_reserves_nothing_rather_than_a_negative() -> None:

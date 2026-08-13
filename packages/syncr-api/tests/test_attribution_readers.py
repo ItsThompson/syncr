@@ -63,9 +63,11 @@ MODULES_READING_THE_TABLE = frozenset({"syncr_api.plans.netting", "syncr_api.rev
 MODULES_BY_LINK = {
     "attributed_span": {"syncr_api.plans.netting", "syncr_api.reviews.coverage"},
     "_attributed_span": {"syncr_api.plans.netting"},
+    "_worked_span": {"syncr_api.plans.netting"},
     # The declaring module is absent because a definition is not a reference, so this row holds the
     # consumers and nothing else.
     "attributed_to_task_before": {"syncr_api.plans.demand"},
+    "immovable_minutes_of_area": {"syncr_api.plans.reservations"},
     "AttributedMinutes": {"syncr_api.plans.netting"},
     # Only one of these three reads the field: the other two hold a local of the same name. The row
     # is over identifiers, so a fourth module reddens it whichever way it means the word, and
@@ -79,19 +81,25 @@ MODULES_BY_LINK = {
 
 THE_INDEX = "PlacedTime"
 
-# A reading built from a helper that takes no span argument, which is how the two Area readings are
-# built. Named rather than left as `None` so the register states the asymmetry it records.
+# A reading built from a helper that takes no span argument. No reading of the real index is built
+# that way; the synthetic control at the bottom of this file has one, so the derivation still has to
+# report it. Named rather than left as `None` so a register row saying it says it in words.
 NOT_INJECTED = "not injected"
 
+# The strategies that read what an OUTCOME attributed, as against the time a placement occupies.
+# Two of them, because the two consumers of the table clip it differently: the demand clips at a
+# deadline and splits at ``now``, and an Area's floor reading clips to the span the placement holds.
+ATTRIBUTING_SPANS = frozenset({"_attributed_span", "_worked_span"})
+
 # Each public reading of the placement index and the strategy behind the index it reads, compared
-# against that index's constructor on every run. One reading takes what an outcome attributes and
-# the rest take the placement's own span. The two Area readings take no strategy at all: that is
-# the asymmetry the index's own register describes, and this file records it rather than moving it.
+# against that index's constructor on every run. Two readings take an outcome's answer and two take
+# the placement's own span, and each pair holds one task reading and one Area reading: the split is
+# by what the figure is FOR, not by what it is indexed by.
 SPAN_BY_READING = {
     "attributed_to_task_before": "_attributed_span",
-    "immovable_minutes_of_area": NOT_INJECTED,
+    "immovable_minutes_of_area": "_worked_span",
     "immovable_minutes_of_task": "_own_span",
-    "minutes_of_area": NOT_INJECTED,
+    "minutes_of_area": "_own_span",
 }
 
 A_TASK = uuid4()
@@ -402,15 +410,17 @@ def test_each_reading_of_the_placement_index_takes_the_span_the_register_names()
     )
 
 
-def test_exactly_one_reading_of_the_index_takes_what_an_outcome_attributes() -> None:
+def test_the_readings_that_take_an_outcomes_answer_are_the_two_that_net_work_done() -> None:
     # The claim the injected strategy exists to make checkable. Collapsing the two strategies onto
     # one reading is the shape three review iterations of this arithmetic found, and it is invisible
     # from either side alone: each reading is right for its own consumer.
     derived = span_by_reading(the_index_source(), of=THE_INDEX)
 
-    attributing = {name for name, span in derived.items() if span == "_attributed_span"}
+    from_the_outcome = {name for name, span in derived.items() if span in ATTRIBUTING_SPANS}
+    from_the_placement = {name for name, span in derived.items() if span == "_own_span"}
 
-    assert attributing == {"attributed_to_task_before"}
+    assert from_the_outcome == {"attributed_to_task_before", "immovable_minutes_of_area"}
+    assert from_the_placement == {"immovable_minutes_of_task", "minutes_of_area"}
     assert set(derived) == set(SPAN_BY_READING)
 
 

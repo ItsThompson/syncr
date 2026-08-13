@@ -7,6 +7,10 @@ numbers. What the assembler suite adds on top is that each quantity reads the se
 The boundary these tests are most about is ``now``. A placement is immovable when it HAS STARTED,
 which is the reading the hard constraint takes, so the boundary is the start rather than the end
 and a block straddling the instant is immovable for the whole of its span.
+
+Which placements a figure nets and what span it counts of each are two separate questions, and the
+second one parts the two Area figures: an Area's placed minutes count the time a placement occupies
+and its floor reading counts the time the user gave the Area inside that span.
 """
 
 from __future__ import annotations
@@ -110,6 +114,11 @@ def test_a_pin_makes_a_future_block_immovable_without_changing_what_is_placed() 
     assert before.minutes_of_area(FITNESS) == after.minutes_of_area(FITNESS) == 60
     assert before.immovable_minutes_of_task(TASK) == 0
     assert after.immovable_minutes_of_task(TASK) == 60
+    # The pinned hour is Thursday's, which has not happened. It still lowers the floor the solver
+    # must place, because the solver may no longer move it: an hour it is holding is an hour of the
+    # floor it does not have to find room for.
+    assert before.immovable_minutes_of_area(FITNESS) == 0
+    assert after.immovable_minutes_of_area(FITNESS) == 60
 
 
 def test_a_pin_and_the_block_it_pins_are_one_placement_at_the_pins_interval() -> None:
@@ -266,6 +275,10 @@ def test_a_placement_straddling_now_is_past_for_the_minutes_that_have_elapsed() 
 
     assert (attributed.past, attributed.future) == (60, 60)
     assert placed.immovable_minutes_of_task(TASK) == 120
+    # An hour of it is still to come and the solver may not move any of it, so the whole two hours
+    # count toward the Area's floor: nothing about a block in progress says the user is not doing
+    # the second half of it.
+    assert placed.immovable_minutes_of_area(CAREER) == 120
 
 
 def test_a_deadline_at_or_before_the_earliest_placement_attributes_nothing() -> None:
@@ -387,6 +400,9 @@ def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
     # over the one state that tempted it. If `skipped` returned its hour to capacity, skipping
     # work would make the week read as MORE feasible, which is the inversion the split between
     # attribution and capacity exists to prevent.
+    #
+    # What each state gives the Area's floor reading is the column that VARIES, and it is asserted
+    # over the same vocabulary in the test below.
     plan = a_past_task_hour()
     recorded = (
         []
@@ -403,8 +419,59 @@ def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
     placed = placed_time(live_plan=plan, outcomes=recorded)
 
     assert placed.minutes_of_area(CAREER) == 60
-    assert placed.immovable_minutes_of_area(CAREER) == 60
     assert placed.immovable_minutes_of_task(TASK) == 60
+
+
+@pytest.mark.parametrize(
+    ("recorded", "honoured_minutes"),
+    [
+        (None, 60),
+        (an_outcome(OutcomeState.PRESUMED), 60),
+        (an_outcome(OutcomeState.COMPLETED), 60),
+        (an_outcome(OutcomeState.PARTIAL, actual_minutes=20), 20),
+        (an_outcome(MISS_STATE), 0),
+        (an_outcome(OutcomeState.MOVED, actual_interval=between(9, 10, day=5)), 0),
+    ],
+    ids=["no row", "presumed", "completed", "partial", "skipped", "moved off the span"],
+)
+def test_the_areas_floor_reading_counts_what_the_user_gave_it_inside_the_span(
+    recorded: RecordedOutcome | None, honoured_minutes: int
+) -> None:
+    # The figure the solver's floor arrives netted of. A skipped hour honours no floor, so the
+    # minutes the solver must still place RISE by it: read over the placement's own span instead,
+    # the floor reads as met by work the user said did not happen.
+    plan = a_past_task_hour()
+
+    placed = placed_time(live_plan=plan, outcomes=[] if recorded is None else [recorded])
+
+    assert placed.immovable_minutes_of_area(CAREER) == honoured_minutes
+    # The pair, on one row: the hour is committed time whatever the user said happened in it.
+    assert placed.minutes_of_area(CAREER) == 60
+
+
+@pytest.mark.parametrize(
+    ("actual", "honoured_minutes"),
+    [
+        (Interval(at(9.25, day=1), at(9.75, day=1)), 30),
+        (between(9.5, 10.5, day=1), 30),
+    ],
+    ids=["inside the hour", "half of it outside"],
+)
+def test_a_move_is_honoured_for_the_part_of_it_the_placement_still_holds(
+    actual: Interval, honoured_minutes: int
+) -> None:
+    # The rule is the part of the attributed span the placement holds rather than "a move counts
+    # for nothing": half an hour reported inside the planned hour is half an hour of Career time
+    # the solver may not re-place, and half an hour reported after the block ends is time the plan
+    # does not hold, so the floor still needs it placed.
+    plan = a_past_task_hour()
+
+    placed = placed_time(
+        live_plan=plan, outcomes=[an_outcome(OutcomeState.MOVED, actual_interval=actual)]
+    )
+
+    assert placed.immovable_minutes_of_area(CAREER) == honoured_minutes
+    assert placed.minutes_of_area(CAREER) == 60
 
 
 def test_an_outcome_naming_a_binding_no_placement_holds_changes_nothing() -> None:
