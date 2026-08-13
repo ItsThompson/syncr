@@ -244,4 +244,33 @@ describe("the level and the range the grid reports", () => {
     expect(seen).toEqual([16]);
     expect(screen.getByText("16h visible")).toBeInTheDocument();
   });
+
+  /* IGNORING THE RECEIVER'S IDENTITY IS NOT IGNORING THE RECEIVER, and which one an update reaches is what the order the
+   * grid's two effects are declared in decides. A commit can change both the receiver and the level, and a caller that
+   * writes its receiver inline changes it on every commit: the report belongs to the receiver the grid rendered with,
+   * never to the one before it.
+   *
+   * The mount cannot answer this. It is correct whichever way round the two effects go, because the held receiver starts
+   * out holding the one the first render passed. So the case re-renders, and it changes both figures at once, which is
+   * the only commit where the two orders disagree. */
+  it("reports to the receiver of the render that changed, not the one before it", () => {
+    const seen: string[] = [];
+    const host = (tag: string, hours: number) => (
+      <WeekGrid
+        days={[DAY]}
+        extent={EXTENT}
+        labels={[DATE]}
+        nowMs={null}
+        onZoom={(report) => {
+          seen.push(`${tag}:${report.hours}`);
+        }}
+        visibleHours={hours}
+      />
+    );
+
+    const view = render(host("first", 12));
+    view.rerender(host("second", 6));
+
+    expect(seen).toEqual(["first:12", "second:6"]);
+  });
 });

@@ -99,7 +99,10 @@ export function WeekGrid({
    * stored in the commit rather than in the render, which is where React allows a ref to be written.
    *
    * Before the paint rather than after it, because a surface drawn from the report would otherwise paint once with no
-   * figure at all. Stored first so the mount's own report reaches the caller it was rendered with. */
+   * figure at all. STORED FIRST because the order of the two decides which receiver an update reaches: a commit that
+   * changes the receiver and the measurement together has to report to the receiver it rendered with rather than to the
+   * one before it. The mount does not rest on the order, because the held receiver starts out holding the one the first
+   * render passed. */
   const receiver = useRef(onZoom);
   useLayoutEffect(() => {
     receiver.current = onZoom;
