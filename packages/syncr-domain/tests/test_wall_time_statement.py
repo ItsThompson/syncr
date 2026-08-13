@@ -68,7 +68,12 @@ DECIDING_ATTRIBUTES: Final = ("tzinfo", "utcoffset", "second", "microsecond")
 # The shapes that read the statement, each of which owes the rule on its own field. A reader
 # added later belongs here or not; nothing below requires the list to be the whole of them, so a
 # new shape reading the statement reddens nothing.
-READERS: Final = ("syncr_domain.routines", "syncr_domain.templates", "syncr_api.routines.schemas")
+READERS: Final = (
+    "syncr_domain.routines",
+    "syncr_domain.templates",
+    "syncr_api.routines.schemas",
+    "syncr_api.user_settings.schemas",
+)
 
 # Every shipped module that decides from a time value's own attributes rather than reading the
 # statement, with what each one holds. Two different rules live in this list and the rows say
