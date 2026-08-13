@@ -25,6 +25,12 @@ injected as a protocol declared in :mod:`syncr_api.calendars.anchor_writing`, so
 not depend on the anchor package. WHICH of the three attempts happened is decided here, from the
 two bits the adapter already returns, so the reconciler is told rather than left to guess.
 
+**A pass that moved occupancy asks for a solve of the weeks it invalidated, and it asks here.** The
+reconciliation bumps those weeks, and a bump is a guard rather than an act: without a request the
+superseded solve's week keeps a plan built around occupancy the feed has moved. Both entry points
+arrive here, so stating the request once is what stops a forced sync and a scheduled poll asking for
+different things.
+
 **Which adapter reads a source is decided by its provider, from a map the caller composed.** The
 syncer holds one adapter per provider rather than one adapter: a feed and a Google calendar fail
 differently and are read differently, and every rule above them (the sync-state write, the anchor
@@ -65,6 +71,7 @@ if TYPE_CHECKING:
     from syncr_api.calendars.config import CalendarProvider
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.calendars.repository import CalendarSourceRepository
+    from syncr_api.calendars.solve_requests import TrackedWeekSolves
     from syncr_api.core.clock import Clock
     from syncr_api.solving.lifecycle import OperationLifecycle
     from syncr_api.solving.records import OperationRecord
@@ -125,6 +132,7 @@ class SourceSyncer:
         adapters: Mapping[CalendarProvider, CalendarAdapter],
         anchors: AnchorWriter,
         collisions: CollisionDetection,
+        solves: TrackedWeekSolves,
         clock: Clock,
     ) -> None:
         self._sources = sources
@@ -132,6 +140,7 @@ class SourceSyncer:
         self._adapters = adapters
         self._anchors = anchors
         self._collisions = collisions
+        self._solves = solves
         self._clock = clock
 
     @property
@@ -167,6 +176,9 @@ class SourceSyncer:
         )
         delta = await self._reconciled(source, outcome, state)
         await self._sources.save_sync_state(source.id, delta.recorded_on(state))
+        # The weeks this pass invalidated, and no others: an attempt that changed nothing carries
+        # none, so a poll of a steady feed leaves no operation for the next poll to supersede.
+        await self._solves.request(delta.occupied_weeks)
         # Asked for after the anchors are written, because a detection reads the commitments this
         # pass just reconciled: run first, it would read the week as it was before the feed moved
         # anything. A commitment that arrived or moved is what can land on a planned block; a pass

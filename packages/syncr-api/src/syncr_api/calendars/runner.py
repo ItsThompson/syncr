@@ -25,7 +25,8 @@ calendar that is fine.
 **One transaction per tenant.** A publisher that hangs must not hold every other tenant's sync
 state uncommitted behind it, and a tenant whose feed failed still has its attempt recorded. The
 anchor reconciliation a pass performs is inside that same transaction, so a tenant's anchors, its
-sync state, and the input versions its moved commitments invalidated either all land or none do.
+sync state, the input versions its moved commitments invalidated, and the solves those versions ask
+for either all land or none do.
 """
 
 from __future__ import annotations
@@ -43,9 +44,11 @@ from syncr_api.calendars.google_transport import create_google_read_client
 from syncr_api.calendars.horizons import read_ingest_horizon
 from syncr_api.calendars.injection import build_adapters
 from syncr_api.calendars.repository import CalendarSourceRepository
+from syncr_api.calendars.solve_requests import TrackedWeekSolves
 from syncr_api.calendars.sync import SourceSyncer, SyncPass
 from syncr_api.conflicts.ingest import IngestConflicts
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.injection import build_solve_coordinator, debounce_window
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -172,6 +175,7 @@ class CalendarSyncRunner:
         sources = CalendarSourceRepository(session, tenant_id)
         settings = await SettingsRepository(session, tenant_id).read()
         overrides = await TravelOverrideRepository(session, tenant_id).list_all()
+        version_rows = WeekInputVersionRepository(session, tenant_id)
         adapters, _remote_calendars = build_adapters(
             context.settings,
             session,
@@ -188,12 +192,19 @@ class CalendarSyncRunner:
             anchors=AnchorReconciler(
                 AnchorRepository(session, tenant_id),
                 AnchorTypeRepository(session, tenant_id),
-                versions=TrackedWeekInputVersions(
-                    WeekInputVersionRepository(session, tenant_id), clock=self._clock
-                ),
+                versions=TrackedWeekInputVersions(version_rows, clock=self._clock),
                 home_zone=settings.home_zone,
             ),
             collisions=IngestConflicts(session, tenant_id),
+            solves=TrackedWeekSolves(
+                version_rows,
+                build_solve_coordinator(
+                    session,
+                    tenant_id,
+                    clock=self._clock,
+                    debounce=debounce_window(context.settings.solve_debounce_ms),
+                ),
+            ),
             clock=self._clock,
         )
         return await syncer.sync_due(now=now)

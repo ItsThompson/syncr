@@ -24,6 +24,10 @@ as an import of the anchor package. This is the request-side composition of that
 is in ``calendars/runner.py``. The reconciler is handed the week input counter and the home zone,
 because a pass that moved a commitment invalidates the weeks it moved it in.
 
+**The solve those invalidated weeks need is composed here too**, from the same version rows and this
+deployment's debounce window, because a bump nothing acts on leaves the week's plan describing
+occupancy the feed has moved.
+
 The HTTP client is per request rather than shared through application state. A request forces one
 source at a time, so pooling would buy one connection's worth of setup while making the client's
 lifecycle something the app has to own; the worker, which polls several feeds per tick, keeps one
@@ -61,11 +65,13 @@ from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.remote_calendars import UnconfiguredCalendarReader
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.service import CalendarSourceService
+from syncr_api.calendars.solve_requests import TrackedWeekSolves
 from syncr_api.calendars.sync import SourceSyncer
 from syncr_api.conflicts.ingest import IngestConflicts
 from syncr_api.core.clock import utc_now
 from syncr_api.google_account.injection import build_access_tokens
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -272,9 +278,8 @@ async def get_calendar_source_service(
     # One counter for the request, shared by the horizon change and the anchor reconciliation.
     # Both invalidate weeks in this transaction and neither holds state, so a second instance
     # would only be a second name for one row.
-    versions = TrackedWeekInputVersions(
-        WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
-    )
+    version_rows = WeekInputVersionRepository(transaction, principal.tenant_id)
+    versions = TrackedWeekInputVersions(version_rows, clock=utc_now)
     return CalendarSourceService(
         sources=sources,
         syncer=SourceSyncer(
@@ -290,6 +295,15 @@ async def get_calendar_source_service(
                 home_zone=profile.home_zone,
             ),
             collisions=IngestConflicts(transaction, principal.tenant_id),
+            solves=TrackedWeekSolves(
+                version_rows,
+                build_solve_coordinator(
+                    transaction,
+                    principal.tenant_id,
+                    clock=utc_now,
+                    debounce=configured_debounce(request),
+                ),
+            ),
             clock=utc_now,
         ),
         versions=versions,
