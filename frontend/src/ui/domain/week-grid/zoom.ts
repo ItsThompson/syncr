@@ -63,6 +63,18 @@ export function zoomLevels(gridHeightPx: number): ZoomLevel[] {
   return levels;
 }
 
+/**
+ * What one measurement settles: the level the grid draws, and the range the display it measured can offer.
+ *
+ * Both, because a surface that states the level needs the figure and a control that offers the range needs the
+ * levels, and the two answers have to come from the same height. Answering them from two heights is how a screen
+ * comes to draw a level it also refuses.
+ */
+export interface ZoomReport {
+  readonly hours: number;
+  readonly levels: readonly ZoomLevel[];
+}
+
 /** The visible-hours setting brought inside the range this display offers. */
 export function clampVisibleHours(visibleHours: number, gridHeightPx: number): number {
   return Math.min(zoomCap(gridHeightPx), Math.max(ZOOM_MIN_HOURS, Math.round(visibleHours)));

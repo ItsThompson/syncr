@@ -8,6 +8,11 @@
  * inch display that renders a stored 24 as 16, and on a window shorter than the reference it offers a level at which
  * the modal thirty-minute block loses its title, which is the one thing the clamp exists to prevent.
  *
+ * SO THE CLAMPED LEVEL AND THE DISPLAY'S RANGE ARE REPORTED UPWARD, once per measurement. A surface that states the
+ * level, or a control that offers the range, has nowhere else to read either from: what a caller holds is the level it
+ * asked for, and the only thing that knows what was drawn is whatever measured the display. A second copy of the
+ * arithmetic above this component is the same thing as clamping above it, one figure later.
+ *
  * NO VIRTUALIZATION. Roughly 210 absolutely positioned blocks across seven columns sits well inside a frame
  * budget, and virtualizing a surface with no scroll-driven mount would add complexity for nothing.
  *
@@ -24,13 +29,13 @@
  * one exception is the DRAG, and it is not an exception to that rule: what the drag holds is a marker position, and
  * only this component can turn a pointer position into a quarter hour, because only it knows pixels per minute. */
 
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import { canvasHeightPx, gridHeightPx, pxPerMinute } from "./geometry";
 import { DAY_HEADER_H_PX } from "./metrics";
 import { useObservedHeight } from "./useObservedHeight";
 import { useDiscreteDrag, type BlockDrop } from "./useDiscreteDrag";
-import { clampVisibleHours } from "./zoom";
+import { clampVisibleHours, zoomLevels, type ZoomReport } from "./zoom";
 import { DayColumn, type ColumnInteraction } from "./DayColumn";
 import { TimeAxis } from "./TimeAxis";
 import type { Extent, WeekDay } from "./types";
@@ -56,6 +61,12 @@ export interface WeekGridProps {
   readonly labels: readonly string[];
   /** Now, as an instant, so each column decides for itself whether the rule falls inside it. */
   readonly nowMs: number | null;
+  /**
+   * What this grid drew and what the display it measured can offer, once per measurement.
+   *
+   * Called from a layout effect, so a caller hands over a stable function rather than a fresh one per render.
+   */
+  readonly onZoom?: ((report: ZoomReport) => void) | undefined;
   readonly interaction?: GridInteraction | undefined;
 }
 
@@ -68,6 +79,7 @@ export function WeekGrid({
   visibleHours,
   labels,
   nowMs,
+  onZoom,
   interaction = NO_INTERACTION,
 }: WeekGridProps) {
   const viewport = useRef<HTMLDivElement>(null);
@@ -79,6 +91,13 @@ export function WeekGrid({
   const pxPerMin = pxPerMinute(gridPx, hours);
   const canvasPx = canvasHeightPx(extent, pxPerMin);
   const drag = useDiscreteDrag({ extent, pxPerMin, onDrop: interaction.onDrop });
+
+  /* KEYED ON THE MEASUREMENT AND THE LEVEL IT SETTLED, not on the render: a report per render would re-render whatever
+   * holds it, which renders this grid, which reports again. Before the paint rather than after it, because a surface
+   * drawn from the report would otherwise paint once with no figure at all. */
+  useLayoutEffect(() => {
+    onZoom?.({ hours, levels: zoomLevels(gridPx) });
+  }, [gridPx, hours, onZoom]);
 
   return (
     <div

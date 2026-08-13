@@ -92,4 +92,5 @@ export {
   zoomCap,
   zoomLevels,
   type ZoomLevel,
+  type ZoomReport,
 } from "./zoom";
