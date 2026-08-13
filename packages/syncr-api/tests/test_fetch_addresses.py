@@ -8,10 +8,11 @@ resolver does with a spelling.
 
 Three properties beyond the refusal itself, each asserted rather than argued.
 
-**Nothing behind a refusal is probed.** The recorded publisher is asked what reached it, so a
-refused address produces no request at all: no status, no timing and no transport error from
-inside this deployment's own network reaches the sentence a user reads. A guard that connected
-first and refused afterwards would leak exactly what it exists to protect.
+**Nothing behind a refusal is probed.** The recorded publisher is armed with the answer a probe
+would have leaked and is then asked what reached it, so a refused address produces no request at
+all: no status, no timing and no transport error from inside this deployment's own network
+reaches the sentence a user reads. A guard that connected first and refused afterwards is caught
+twice over, by the leak in its sentence and by what the publisher saw.
 
 **The sentence is the one the door states.** Every refused case asserts the fetch-time answer
 against ``refusal_of`` for the same address *and* against what ``normalize_feed_url`` states for
@@ -110,6 +111,15 @@ FETCHED_RESOLUTIONS: Final = (
 )
 
 
+def probe_answer() -> httpx.Response:
+    """What a probe of an address inside this deployment's own network would have leaked.
+
+    Armed rather than omitted: a guard that connected first and refused afterwards then reddens on
+    the status in its own sentence, which is the disclosure, as well as on having been seen.
+    """
+    return httpx.Response(500)
+
+
 def recorded(
     *answers: httpx.Response,
 ) -> tuple[httpx.MockTransport, list[httpx.Request]]:
@@ -184,7 +194,7 @@ def urls_of(requests: list[httpx.Request]) -> list[str]:
 async def test_a_name_resolving_into_a_refused_range_is_unreachable(
     spelling: str, range_name: str
 ) -> None:
-    publisher, seen = recorded()
+    publisher, seen = recorded(probe_answer())
     reader, client = fetcher_over(publisher, resolve=answering(spelling))
 
     async with client:
@@ -240,7 +250,7 @@ async def test_one_refused_record_refuses_the_name_wherever_it_sits(
 ) -> None:
     # A name with several records is answered in an order the client does not choose, so a check
     # that read the first record would refuse or fetch the same name depending on the resolver.
-    publisher, seen = recorded()
+    publisher, seen = recorded(probe_answer())
     reader, client = fetcher_over(publisher, resolve=answering(*spellings))
 
     async with client:
@@ -273,7 +283,7 @@ async def test_a_name_whose_every_record_is_public_is_fetched() -> None:
 
 async def test_a_redirect_into_a_refused_range_is_refused_at_the_hop() -> None:
     publisher, seen = recorded(
-        httpx.Response(302, headers={"Location": f"http://{METADATA_ADDRESS}/"})
+        httpx.Response(302, headers={"Location": f"http://{METADATA_ADDRESS}/"}), probe_answer()
     )
     reader, client = fetcher_over(
         publisher,
@@ -297,6 +307,7 @@ async def test_a_second_hop_is_read_as_well_as_the_first() -> None:
     publisher, seen = recorded(
         httpx.Response(302, headers={"Location": MIRROR_URL}),
         httpx.Response(302, headers={"Location": "http://10.0.0.1/timetable.ics"}),
+        probe_answer(),
     )
     reader, client = fetcher_over(
         publisher,
@@ -343,7 +354,7 @@ async def test_an_international_name_is_read_in_the_form_the_connection_resolves
     # httpx encodes an international name to ASCII once and hands the encoded form down, so a
     # check reading the name in its unicode spelling would ask the resolver a question the
     # connection never asks.
-    publisher, seen = recorded()
+    publisher, seen = recorded(probe_answer())
     reader, client = fetcher_over(
         publisher, resolve=answering_by_name({ENCODED_NAME: ("10.0.0.1",)})
     )
@@ -373,7 +384,7 @@ async def failing_resolution(_host: str) -> Sequence[str]:
 async def test_an_address_that_could_not_be_read_is_not_connected_to(
     resolve: AddressResolution,
 ) -> None:
-    publisher, seen = recorded()
+    publisher, seen = recorded(probe_answer())
     reader, client = fetcher_over(publisher, resolve=resolve)
 
     async with client:
