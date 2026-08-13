@@ -6,9 +6,10 @@ only that command has.
 
 Three codes are the point of this file. **8** is an infeasible verdict, which is information rather
 than an error: ``block move`` is the mutation that computes one, so it is where the code reaches a
-caller. **6** is a conflict, and the one a caller meets is approving a proposal whose slot has been
-cleared. **2** is a value that names nothing, refused in this package's words rather than the
-framework's so ``--json`` still answers with a document.
+caller. **6** is a conflict, and the one a caller meets is approving a proposal that is no longer
+there, in both the shapes the api answers that with: a slot an approval took, and a week that has
+proposed nothing. **2** is a value that names nothing, refused in this package's words rather than
+the framework's so ``--json`` still answers with a document.
 
 **Words, not color, and never a symbol.** A pipe strips color and a pipe does not strip a word, so
 every marker a row carries is asserted as a word and the whole output is asserted to hold no escape
@@ -18,6 +19,8 @@ sequence.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
+
+import pytest
 
 from syncr_cli.api_client import API_PREFIX
 from syncr_cli.auth.discovery import DISCOVERY_PATH
@@ -41,6 +44,20 @@ DAY_PATH: Final = f"{API_PREFIX}/days/{TODAY.isoformat()}"
 CONFIRM_TODAY: Final = f"{API_PREFIX}/days/{TODAY.isoformat()}/confirm"
 
 MOVED_TO: Final = "2026-02-10T07:00:00+00:00"
+
+# The two sentences the api answers one conflict with, as fixtures rather than imports: this package
+# ships nothing server-side and cannot import the api's vocabulary. What varies between them is the
+# words alone, which is what makes the exit code readable off the type.
+A_SLOT_AN_APPROVAL_TOOK: Final = (
+    "That proposal has been replaced, so there is nothing left to approve. Nothing was changed: "
+    "the week keeps the plan it holds, and reading the week again shows whatever is waiting for "
+    "you now."
+)
+A_SLOT_NOTHING_EVER_FILLED: Final = (
+    "This week is not proposing anything, so there is nothing to approve. Nothing was changed: "
+    "the week keeps the plan it holds, and reading the week again shows whatever is waiting for "
+    "you now."
+)
 
 
 def test_a_move_that_breaks_the_week_exits_eight_and_says_what_is_short(tmp_path: Path) -> None:
@@ -115,21 +132,29 @@ def test_a_move_states_the_placement_it_displaced(tmp_path: Path) -> None:
     assert payloads.BLOCK_ID in ran.stdout
 
 
-def test_approving_a_cleared_slot_exits_six(tmp_path: Path) -> None:
-    # The condition code 6 exists for, and the api's own conflict is what names it: approving a
-    # proposal that has been cleared is not a usage error and not a generic failure.
+@pytest.mark.parametrize(
+    "detail",
+    [A_SLOT_AN_APPROVAL_TOOK, A_SLOT_NOTHING_EVER_FILLED],
+    ids=["an approval took the slot", "nothing ever filled it"],
+)
+def test_approving_a_proposal_that_is_gone_exits_six_whichever_way_it_went(
+    detail: str, tmp_path: Path
+) -> None:
+    """The condition code 6 exists for, in both of the shapes the api answers it with.
+
+    Approving a proposal that is no longer there is not a usage error and not a generic failure.
+    The api answers one type for two reasons and the code is read off the type, so both are 6 and
+    which of them happened is in the words alone. A caller that never saw the words could not tell
+    a slot somebody else approved from a week that has proposed nothing, so the sentence is
+    asserted where the caller reads it rather than only the number.
+    """
     with FakeApi() as api:
         _serving(api, tmp_path)
         api.answer(
             "POST",
             APPROVE_PATH,
             Answer.problem(
-                payloads.problem(
-                    problem_type="syncr:conflict",
-                    status=409,
-                    detail="The proposal this approval names has been replaced. Nothing was "
-                    "changed. Read the week again.",
-                ),
+                payloads.problem(problem_type="syncr:conflict", status=409, detail=detail),
                 status=409,
             ),
         )
@@ -139,6 +164,7 @@ def test_approving_a_cleared_slot_exits_six(tmp_path: Path) -> None:
     assert ran.code is ExitCode.CONFLICT, ran.stdout
     assert ran.document["ok"] is False
     assert ran.document["problem"]["type"] == "syncr:conflict"
+    assert ran.document["problem"]["detail"] == detail
 
 
 def test_an_approval_prints_both_versions_and_the_projection_it_queued(tmp_path: Path) -> None:
