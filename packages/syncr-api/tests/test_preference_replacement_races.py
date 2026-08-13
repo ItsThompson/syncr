@@ -20,6 +20,10 @@ The three unique indexes are still the guarantee, and are asserted twice over: t
 carries one per owner reference, and a second row hand-written for one owner is refused by the
 index that owner's kind is constrained by. That is the index the replacement now names as its
 conflict target, so a target pointed at the wrong one would leave a kind of owner writing two rows.
+
+The window, the wired client and the index lookup are ``tests/live_races.py``'s, because none of
+them is specific to which rule is raced. What is specific and stays here is the seam: which read is
+made to wait, and what the two callers are then answered.
 """
 
 from __future__ import annotations
@@ -30,17 +34,13 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-import httpx
 import pytest
 from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 
-from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX
-from syncr_api.core.app_factory import create_app
-from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
+from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.races import refused_index
-from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.preferences.models import PreferenceRow
@@ -53,12 +53,13 @@ from syncr_domain.preferences import (
     PreferenceOwnerKind,
     PreferenceStrength,
 )
-from tests.control_models import table_of
-from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
+from tests.live_races import Window, signed_in, the_unique_index_over, wired_app
+from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    import httpx
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
@@ -68,7 +69,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
 # Long enough that the racing request's commit lands inside the window, short enough that a window
@@ -119,35 +119,8 @@ async def owner(sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[Use
 async def wired(
     live_database_url: str, settings: ServiceSettings
 ) -> AsyncIterator[httpx.AsyncClient]:
-    """A client over the real app: real dependencies, real transaction, real handler map.
-
-    ``raise_app_exceptions=False`` so a fault renders as the response a caller receives rather
-    than as an exception in the test, which is the difference this file is about.
-    """
-    database = create_database(live_database_url)
-    app = create_app(settings)
-    app.state.db = database
-    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with wired_app(live_database_url, settings) as client:
         yield client
-    await database.engine.dispose()
-
-
-async def signed_in(client: httpx.AsyncClient, owner: UserRecord) -> dict[str, str]:
-    """The headers a signed-in browser sends. The cookie is read off the header, not a jar.
-
-    The session cookie is ``Secure`` and a client that honors that will not send it back over
-    ``http://testserver``.
-    """
-    answered = await client.post(
-        f"{AUTH_PREFIX}/login",
-        json={"email": owner.email, "password": PASSWORD},
-        headers={"Origin": BROWSER_ORIGIN},
-    )
-    assert answered.status_code == HTTPStatus.OK, answered.text
-    cookie = answered.headers["set-cookie"]
-    token = cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
-    return {"Cookie": f"{SESSION_COOKIE_NAME}={token}", "Origin": BROWSER_ORIGIN}
 
 
 class Owned:
@@ -194,40 +167,24 @@ async def an_owner_of_each_kind(client: httpx.AsyncClient, headers: dict[str, st
     return Owned(area_id=area_id, habit_id=habit.json()["id"], task_id=task.json()["id"])
 
 
-class Window:
-    """The gap between the read a replacement takes and the write it decides on.
-
-    Held open for the FIRST reader only, so the racing request runs through the seam untouched
-    rather than waiting on an event that is already set.
-    """
-
-    def __init__(self) -> None:
-        self.open = asyncio.Event()
-        self.closed = asyncio.Event()
-        self.reads = 0
-
-    async def hold(self) -> None:
-        self.reads += 1
-        self.open.set()
-        await asyncio.wait_for(self.closed.wait(), timeout=WINDOW_SECONDS)
-
-
 def hold_the_window_open_on_the_next_read(monkeypatch: pytest.MonkeyPatch, window: Window) -> None:
     """Make the next read of an owner's preference wait inside the window before answering.
 
     A wrapper around the real read rather than a substituted repository: the app builds its own
-    dependencies, so there is nothing here to inject into.
+    dependencies, so there is nothing here to inject into. It fires once, so the racing request
+    runs through the seam untouched rather than waiting on an event that is already set.
     """
     reading = PreferenceRepository.find
+    held = False
 
     async def find_inside_the_window(
         repository: PreferenceRepository, owner: PreferenceOwner
     ) -> PreferenceRecord | None:
+        nonlocal held
         found = await reading(repository, owner)
-        if window.reads == 0:
+        if not held:
+            held = True
             await window.hold()
-        else:
-            window.reads += 1
         return found
 
     monkeypatch.setattr(PreferenceRepository, "find", find_inside_the_window)
@@ -253,6 +210,15 @@ def a_preference(owner: PreferenceOwner, window: LocalTimeWindow) -> Preference:
     )
 
 
+def owner_identity(kind: PreferenceOwnerKind) -> tuple[str, ...]:
+    """The columns one preference per owner is stated over, for this kind of owner.
+
+    Read from the repository's own kind-to-column mapping, which is what the replacement's conflict
+    target is built from, so this cannot name a different pair than the write does.
+    """
+    return (TENANT_ID_COLUMN, OWNER_COLUMN[kind].key)
+
+
 # --------------------------------------------------------------------------------
 # The two races: what each caller is answered, and what ends up stored
 # --------------------------------------------------------------------------------
@@ -270,7 +236,7 @@ async def test_two_replacements_racing_one_owner_both_answer_200(
     headers = await signed_in(wired, owner)
     owned = await an_owner_of_each_kind(wired, headers)
     path = owned.path(PreferenceOwnerKind.AREA)
-    window = Window()
+    window = Window(hold_for=WINDOW_SECONDS)
     hold_the_window_open_on_the_next_read(monkeypatch, window)
 
     async def replace_inside_the_window() -> httpx.Response:
@@ -312,7 +278,7 @@ async def test_a_removal_inside_the_window_does_not_leave_a_replacement_unstored
 
     # Armed after the seeding, so the window opens on the replacement's read rather than on one of
     # the reads the seeding took.
-    window = Window()
+    window = Window(hold_for=WINDOW_SECONDS)
     hold_the_window_open_on_the_next_read(monkeypatch, window)
 
     async def remove_inside_the_window() -> httpx.Response:
@@ -415,7 +381,9 @@ async def test_a_second_row_for_one_owner_is_refused_by_that_owners_own_index(
                     )
                 )
 
-    assert refused_index(refused.value) == the_unique_index_over(kind)
+    assert refused_index(refused.value) == the_unique_index_over(
+        PreferenceRow, owner_identity(kind)
+    )
 
 
 async def test_each_owner_reference_carries_a_unique_index_in_the_migrated_schema(
@@ -425,7 +393,7 @@ async def test_each_owner_reference_carries_a_unique_index_in_the_migrated_schem
     # three an owner is addressed through have to be among them, so a reference that lost its
     # index is red here rather than discovered as two rows for one owner.
     declared = {
-        the_unique_index_over(kind): (TENANT_ID_COLUMN, OWNER_COLUMN[kind].key)
+        the_unique_index_over(PreferenceRow, owner_identity(kind)): owner_identity(kind)
         for kind in PreferenceOwnerKind
     }
     assert len(declared) == len(PreferenceOwnerKind)
@@ -450,19 +418,3 @@ async def test_each_owner_reference_carries_a_unique_index_in_the_migrated_schem
         }
 
     assert migrated == {name: (True, columns) for name, columns in declared.items()}
-
-
-def the_unique_index_over(kind: PreferenceOwnerKind) -> str:
-    """The name of the one unique index constraining this kind of owner to a single row.
-
-    Read from the table's own declaration over the columns the rule is about, so it describes the
-    guarantee rather than a name, and a constant repointed at another index cannot make it agree.
-    """
-    columns = (TENANT_ID_COLUMN, OWNER_COLUMN[kind].key)
-    named = [
-        str(index.name)
-        for index in table_of(PreferenceRow).indexes
-        if index.unique and tuple(column.name for column in index.columns) == columns
-    ]
-    assert len(named) == 1, f"{PreferenceRow.__name__} declares {named} over {columns}"
-    return named[0]

@@ -27,20 +27,16 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-import httpx
 import pytest
 from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 
-from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.repository import AreaRepository
-from syncr_api.core.app_factory import create_app
-from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
+from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict
 from syncr_api.core.principal import Principal
 from syncr_api.core.races import answered_once, refused_index
 from syncr_api.core.scopes import Scope
-from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.templates.config import (
@@ -61,13 +57,14 @@ from syncr_api.templates.service import DayTypeService, TemplateService
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 from tests.control_models import recording, table_of
-from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
+from tests.live_races import Window, signed_in, the_unique_index_over, wired_app
+from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
+    import httpx
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-    from sqlalchemy.orm import DeclarativeBase
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.settings import ServiceSettings
@@ -79,7 +76,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 A_NAME = "Weekday"
 A_SHAPE_NAME = "Weekday shape"
@@ -122,24 +118,6 @@ def statements(engine: AsyncEngine) -> Iterator[StatementRecorder]:
 
 def a_principal(owner: UserRecord) -> Principal:
     return Principal(tenant_id=owner.tenant_id, user_id=owner.id, scopes=frozenset(Scope))
-
-
-class Window:
-    """The gap between a courtesy read and the write it guards, held open on demand.
-
-    ``reads`` is how the two candidate answers are told apart. A refusal restated by running
-    the read again reads twice; a refusal that merely repeats the read's words reads once.
-    """
-
-    def __init__(self) -> None:
-        self.open = asyncio.Event()
-        self.closed = asyncio.Event()
-        self.reads = 0
-
-    async def hold(self) -> None:
-        self.reads += 1
-        self.open.set()
-        await asyncio.wait_for(self.closed.wait(), timeout=WINDOW_SECONDS)
 
 
 class DayTypesReadInsideAWindow(DayTypeRepository):
@@ -234,7 +212,7 @@ async def a_shape(
 async def test_a_name_taken_inside_the_window_answers_the_reads_own_refusal(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    window = Window()
+    window = Window(hold_for=WINDOW_SECONDS)
 
     async def declare_inside_the_window() -> DayTypeRecord:
         async with sessions() as session, session.begin():
@@ -270,7 +248,7 @@ async def test_a_shape_declared_inside_the_window_answers_the_reads_own_refusal(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
     day_type = await a_day_type(sessions, owner)
-    window = Window()
+    window = Window(hold_for=WINDOW_SECONDS)
 
     async def declare_inside_the_window() -> TemplateRecord:
         async with sessions() as session, session.begin():
@@ -511,17 +489,6 @@ async def test_the_shape_read_is_served_by_the_index_that_guarantees_the_same_ru
     assert serves_the_rule in drawn, drawn
 
 
-def the_unique_index_over(table: type[DeclarativeBase], columns: tuple[str, ...]) -> str:
-    """The name of the one unique index this table declares over exactly ``columns``, in order."""
-    named = [
-        str(index.name)
-        for index in table_of(table).indexes
-        if index.unique and tuple(column.name for column in index.columns) == columns
-    ]
-    assert len(named) == 1, f"{table.__name__} declares {named} over {columns}"
-    return named[0]
-
-
 async def a_tenant_holding_many_shapes(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> list[UUID]:
@@ -567,35 +534,8 @@ async def a_tenant_holding_many_shapes(
 async def wired(
     live_database_url: str, settings: ServiceSettings
 ) -> AsyncIterator[httpx.AsyncClient]:
-    """A client over the real app: real dependencies, real transaction, real handler map.
-
-    ``raise_app_exceptions=False`` so a fault renders as the response a caller receives rather
-    than as an exception in the test, which is the difference this file is about.
-    """
-    database = create_database(live_database_url)
-    app = create_app(settings)
-    app.state.db = database
-    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with wired_app(live_database_url, settings) as client:
         yield client
-    await database.engine.dispose()
-
-
-async def signed_in(client: httpx.AsyncClient, owner: UserRecord) -> dict[str, str]:
-    """The headers a signed-in browser sends. The cookie is read off the header, not a jar.
-
-    The session cookie is ``Secure`` and a client that honors that will not send it back over
-    ``http://testserver``.
-    """
-    answered = await client.post(
-        f"{AUTH_PREFIX}/login",
-        json={"email": owner.email, "password": PASSWORD},
-        headers={"Origin": BROWSER_ORIGIN},
-    )
-    assert answered.status_code == HTTPStatus.OK, answered.text
-    cookie = answered.headers["set-cookie"]
-    token = cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
-    return {"Cookie": f"{SESSION_COOKIE_NAME}={token}", "Origin": BROWSER_ORIGIN}
 
 
 async def test_a_raced_declaration_answers_the_unraced_body_at_the_wire(
@@ -609,7 +549,7 @@ async def test_a_raced_declaration_answers_the_unraced_body_at_the_wire(
     # what the client reads. Nothing is overridden. The seam is a wrapper around the real read
     # that holds the window open for the FIRST reader only, so the second request runs through it
     # untouched and the restated read is not made to wait for an event already set.
-    window = Window()
+    window = Window(hold_for=WINDOW_SECONDS)
     listing = DayTypeRepository.list_all
 
     async def list_all_inside_the_window(repository: DayTypeRepository) -> object:
