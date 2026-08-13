@@ -17,6 +17,22 @@ should walk.
 **The windows.** A declared window is wall time, so ``05:30-07:00`` becomes one interval per date
 of the week, each resolved against the zone active on that date.
 
+**An end of ``00:00`` is the end of the day, so it resolves onto the FOLLOWING date's midnight.** A
+stretch the user authored across midnight is stored as two windows split at the boundary, so the
+pre-midnight half covers the night out of the date it was declared for and into the next: a wrap
+declared from 23:00 to 01:00 covers Monday 23:00 to Tuesday 01:00. Both bounds resolve against the
+zone active on the date the window is read FOR, including the bound that lands on the following
+date, because that bound closes this date's own day and the following date can be outside the week.
+
+**Resolved intervals that abut or overlap are merged.** That is what makes the two halves of one
+authored stretch reach the solver as the one interval the user declared, and it is a merge rather
+than a pairing because storage records nothing about having been authored as one stretch: what a
+reader holds is a set of windows, and one member per covered run is the only reading of a set with
+no choices left in it. It is also what lets a 90-minute session fit a wrap from 23:00 to 01:00,
+since the solver asks whether ONE window holds a whole placement rather than whether several cover
+it between them. The merge is general: two windows declared to abut, ``06:00-07:00`` and
+``07:00-08:00``, likewise reach the solver as one.
+
 **A date is dropped only when its own resolved bounds do not run forward.** Resolving both bounds
 through :func:`syncr_domain.zones.to_instant` is NOT order-preserving across a spring-forward gap:
 every wall time inside the gap shifts onto a real time later in the day, so on ``Europe/London``,
@@ -56,11 +72,13 @@ read out, beside the resolution that must not carry it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from datetime import timedelta
+from typing import TYPE_CHECKING, Final
 
 from syncr_common.logging import get_logger
-from syncr_domain.intervals import Interval
+from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.preferences import (
+    END_OF_DAY,
     PreferenceOwner,
     PreferenceOwnerKind,
     preference_in_effect,
@@ -80,6 +98,8 @@ if TYPE_CHECKING:
     from syncr_solver.inputs import EligibleTask
 
 _log = get_logger("syncr.plans")
+
+_ONE_DAY: Final = timedelta(days=1)
 
 
 def area_caps(stored: Sequence[PreferenceRecord]) -> Mapping[AreaId, int | None]:
@@ -148,6 +168,13 @@ def _of(
     )
 
 
+def _closes_on(window: LocalTimeWindow, on: Date) -> Date:
+    """The date this window's end bound names: the following one where it is the day's end."""
+    if window.end == END_OF_DAY:
+        return on + _ONE_DAY
+    return on
+
+
 class _WeekWindows:
     """Declared windows as instants for one week, resolved once per distinct declaration.
 
@@ -164,20 +191,21 @@ class _WeekWindows:
         self._resolved: dict[tuple[LocalTimeWindow, ...], tuple[Interval, ...]] = {}
 
     def of(self, windows: Sequence[LocalTimeWindow]) -> tuple[Interval, ...]:
-        """Each declared window on each date of the week, in date then declaration order.
+        """Each declared window on each date of the week, merged where they meet, earliest first.
 
-        A date whose own daylight-saving gap leaves a window naming no stretch of time contributes
-        nothing, so a week can carry fewer intervals than it has dates times declarations.
+        A week can carry fewer intervals than it has dates times declarations, for either of two
+        reasons: a date whose own daylight-saving gap leaves a window naming no stretch of time
+        contributes nothing, and two resolved intervals that abut or overlap are one.
         """
         declared = tuple(windows)
         found = self._resolved.get(declared)
         if found is None:
-            found = tuple(
+            found = IntervalSet(
                 interval
                 for on in self._dates
                 for window in declared
                 if (interval := self._on(window, on)) is not None
-            )
+            ).members
             self._resolved[declared] = found
         return found
 
@@ -189,13 +217,17 @@ class _WeekWindows:
         the alternative is an assembly that raises, and this is the widest integration point in the
         product and the one with no degraded mode.
 
+        A window ending at the day's end closes on the following date, so the two halves of an
+        authored wrap are dropped or kept independently: a date whose own half collapses is absent
+        for that half while every other date keeps its window.
+
         A date whose bounds still run forward keeps its window at whatever the day's own arithmetic
         makes it, which can be narrower or wider than the declared length. The module docstring
         tabulates both directions.
         """
         zone = self._zone_by_date[on]
         start = to_instant(window.start, on, zone)
-        end = to_instant(window.end, on, zone)
+        end = to_instant(window.end, _closes_on(window, on), zone)
         if start >= end:
             _log.info(
                 "plans.preference.window_absent_on_this_date",
