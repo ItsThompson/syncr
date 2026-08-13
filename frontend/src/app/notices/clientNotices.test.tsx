@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { apiServer } from "../../testing/apiServer";
 import { googleConnection } from "../../testing/apiStub";
 import { withFreshCache } from "../../testing/renderRoute";
+import { bannersInTheTopBar, titlesInTheTopBar } from "../../testing/topBar";
 import { buildExpiryNotices } from "../../routes/settings/__tests__/fixtures";
 import { GatedShell } from "../GatedShell";
 import { useClientNotices, type ClientNotices } from "./clientNotices";
@@ -106,15 +107,6 @@ async function withTheApisOwnBanner(): Promise<void> {
   );
   await renderShell();
   await screen.findByText(SERVER_TITLE);
-}
-
-/** The top bar's slot, which is where a banner-volume notice renders whatever composed it. */
-function bannersInTheTopBar(): HTMLElement[] {
-  return [...screen.getByLabelText("Notices").querySelectorAll<HTMLElement>(".notice--banner")];
-}
-
-function titlesInTheTopBar(): (string | undefined)[] {
-  return bannersInTheTopBar().map((banner) => banner.querySelector("b")?.textContent ?? undefined);
 }
 
 describe("a notice reported from a screen", () => {
