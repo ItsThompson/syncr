@@ -297,8 +297,9 @@ TENANT_ZONE_SOURCES: Final = frozenset({"profile", "settings"})
 # half is in. The bump belongs beside the anchor rows it invalidates; the request belongs at the
 # seam that performs a pass, because both entry points into a sync arrive there. Bounded as a set
 # rather than left open, so a later row cannot inherit an exemption written about this one.
+ANCHOR_DELTA_ROW: Final = "anchor delta from a calendar sync"
 SOLVES_ELSEWHERE: Final = {
-    "anchor delta from a calendar sync": "calendars/solve_requests.py",
+    ANCHOR_DELTA_ROW: "calendars/solve_requests.py",
 }
 
 
@@ -601,30 +602,32 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     def test_the_only_row_whose_solve_lives_outside_its_own_module_is_the_anchor_delta(
         self,
     ) -> None:
-        """The hole ``solves_in`` opens, bounded to the one row it was written for.
+        """The hole ``solves_in`` opens, bounded to the rows it was written for.
 
         Without this, a row could point ``solves_in`` at any module that happens to request a solve
-        and the wired walk would pass while nothing about that row was wired. So the set of rows
-        naming a second module is asserted whole, and each one names the module the table expects.
+        and the wired walk would pass while nothing about that row was wired. Which rows may name a
+        second module is settled here; which module each names is settled below, so a row that loses
+        the field and a row that points it somewhere else are two different failures.
         """
-        elsewhere = {one.row: one.solves_in for one in TRIGGER_TABLE if one.solves_in is not None}
+        naming = {one.row for one in TRIGGER_TABLE if one.solves_in is not None}
 
-        assert elsewhere == SOLVES_ELSEWHERE
+        assert naming == set(SOLVES_ELSEWHERE)
 
     def test_the_anchor_delta_asks_for_its_solve_through_the_pass_that_reconciled_it(self) -> None:
-        """The delegation ``solves_in`` rests on, followed from the pass to the request.
+        """The delegation ``solves_in`` rests on, followed from the row to the pass to the request.
 
         This row's two halves are in two packages, so the reading that answers for it has to cross
         the seam between them: the pass that reconciles the anchors hands the weeks the
         reconciliation invalidated to the collaborator that asks, and that collaborator is what
         reaches the coordinator. Reading one end alone would let either half go missing with the
-        other still green.
+        other still green, and reading neither would let the row name a module that asks about some
+        other trigger entirely.
         """
-        pass_source = module_source("calendars/sync.py")
-        asking = module_source(SOLVES_ELSEWHERE["anchor delta from a calendar sync"])
+        row = next(one for one in TRIGGER_TABLE if one.row == ANCHOR_DELTA_ROW)
 
-        assert "self._solves.request(delta.occupied_weeks)" in pass_source
-        assert REQUESTS_A_SOLVE in asking
+        assert row.solves_in == SOLVES_ELSEWHERE[ANCHOR_DELTA_ROW]
+        assert "self._solves.request(delta.occupied_weeks)" in module_source("calendars/sync.py")
+        assert REQUESTS_A_SOLVE in module_source(row.solves_in)
 
     def test_the_solve_kind_has_exactly_one_creation_path(self) -> None:
         """Which is what makes the count above the whole truth rather than a sample.
