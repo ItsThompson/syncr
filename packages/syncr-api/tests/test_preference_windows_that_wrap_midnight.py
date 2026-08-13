@@ -25,7 +25,7 @@ declared    spring-forward night into 2026-03-29    fall-back night into 2026-10
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -35,29 +35,35 @@ import pytest
 from syncr_api.learned.weight_reading import as_weight_set
 from syncr_domain.fixtures.dst_weeks import FALL_BACK, LONDON, SPRING_FORWARD
 from syncr_domain.identity import BindingRef
+from syncr_domain.intervals import Interval
 from syncr_domain.preferences import authored_windows
 from syncr_domain.weeks import IsoWeek
 from syncr_solver.preferred import MISFIT_SOFT, ResolvedPreferences, misfit_of
 from tests.assembly_fakes import (
+    MONDAY,
     NOW,
     WEEK,
     FakeAreas,
     FakeHabits,
+    FakeOverrides,
     FakePreferences,
     FakeSettings,
     FakeTasks,
     a_habit,
     a_preference,
     a_task,
+    a_travel_override,
     a_weight_set,
     a_window,
     an_area,
     an_area_owner,
     an_assembler,
+    at,
     between,
 )
 
 if TYPE_CHECKING:
+    from syncr_api.user_settings.records import TravelOverrideRecord
     from syncr_domain.zones import Date, ZoneId
     from syncr_solver.inputs import ResolvedPreference
 
@@ -75,19 +81,39 @@ WEIGHTS = as_weight_set(a_weight_set())
 MIDNIGHT_GAP_ZONE: ZoneId = "America/Havana"
 MIDNIGHT_GAP_WEEK = IsoWeek(2025, 10)
 
+# The mirror shape, and the only one under which a wrap's PRE-midnight half can fail: a gap that
+# CLOSES at local midnight. Greenland is UTC-2 in winter and follows the EU transition instant of
+# 01:00 UTC, which falls at 23:00 local, so its clock moves 23:00 to 00:00 and the half's own two
+# bounds, 23:00 and the following midnight, both resolve to the instant the clock reaches. The date
+# is the Saturday of the same fixture week the London cases run on.
+LATE_GAP_ZONE: ZoneId = "America/Nuuk"
+LATE_GAP_DATE = date(2026, 3, 28)
+
+# Where the traveller goes on the Wednesday of ``WEEK``, and how many intervals the week then holds.
+BERLIN: ZoneId = "Europe/Berlin"
+TOKYO: ZoneId = "Asia/Tokyo"
+NEW_YORK: ZoneId = "America/New_York"
+
 
 async def resolved(
-    *, iso_week: IsoWeek, zone: ZoneId, start: time, end: time
+    *,
+    iso_week: IsoWeek,
+    zone: ZoneId,
+    start: time,
+    end: time,
+    travel: TravelOverrideRecord | None = None,
 ) -> ResolvedPreference:
     """One Area preference of one authored stretch, resolved through the real assembler.
 
     The stretch is split by the domain's own authoring rule rather than by a hand-built pair, so
-    what this resolves is the shape storage actually holds.
+    what this resolves is the shape storage actually holds. ``travel`` displaces ``zone`` over the
+    dates it covers, which is the one case a week's dates do not share one zone.
     """
     fitness = an_area(name="Fitness")
     inputs = await an_assembler(
         areas=FakeAreas([fitness]),
         settings=FakeSettings(zone),
+        overrides=FakeOverrides([travel] if travel is not None else []),
         preferences=FakePreferences(
             [
                 a_preference(
@@ -203,6 +229,20 @@ async def test_a_wrap_carries_the_transition_on_the_night_that_holds_it(
 
     assert nights_into(spring_forward, SPRING_FORWARD.transition_date) == [spring_forward_minutes]
     assert nights_into(fall_back, FALL_BACK.transition_date) == [fall_back_minutes]
+    # The surprising half of the first row, and the module docstring states it: the closing bound
+    # READS 02:00 on the spring-forward date whatever the declaration's own far bound was, because
+    # the hour it names does not exist. Asserted rather than left to the minutes, which are the same
+    # 120 either way.
+    assert closing_reading(spring_forward, SPRING_FORWARD.transition_date) == "02:00"
+
+
+def closing_reading(preference: ResolvedPreference, on: Date) -> str:
+    """The wall time the window closing on ``on`` reads at its far bound, in the London zone."""
+    here = ZoneInfo(LONDON)
+    closing = next(
+        window for window in preference.windows if window.end.astimezone(here).date() == on
+    )
+    return closing.end.astimezone(here).strftime("%H:%M")
 
 
 def nights_into(preference: ResolvedPreference, on: Date) -> list[int]:
@@ -240,6 +280,78 @@ async def test_a_half_whose_bounds_collapse_is_absent_for_its_own_date_alone() -
         ("2025-03-08 23:00", "2025-03-09 01:00", 60),
         ("2025-03-09 23:00", "2025-03-10 00:00", 60),
     ]
+
+
+async def test_the_pre_midnight_half_is_absent_for_its_own_date_alone() -> None:
+    # The mirror of the case above, on the half that CARRIES the wrap. Greenland's clock moves 23:00
+    # to 00:00 on 2026-03-28, so THAT date's 23:00-00:00 half resolves to one instant and is
+    # dropped, and the night into 2026-03-29 loses its first hour rather than its second: the row
+    # for it opens at that date's own 00:00. Every other date keeps the whole wrap, and the week
+    # still holds eight intervals, the same as a week with no transition in it at all, so only the
+    # dates and the minutes show the drop.
+    preference = await resolved(
+        iso_week=SPRING_FORWARD.iso_week, zone=LATE_GAP_ZONE, start=WRAP_START, end=WRAP_END
+    )
+
+    assert local_spans(preference, LATE_GAP_ZONE) == [
+        ("2026-03-23 00:00", "2026-03-23 01:00", 60),
+        ("2026-03-23 23:00", "2026-03-24 01:00", 120),
+        ("2026-03-24 23:00", "2026-03-25 01:00", 120),
+        ("2026-03-25 23:00", "2026-03-26 01:00", 120),
+        ("2026-03-26 23:00", "2026-03-27 01:00", 120),
+        ("2026-03-27 23:00", "2026-03-28 01:00", 120),
+        ("2026-03-29 00:00", "2026-03-29 01:00", 60),
+        ("2026-03-29 23:00", "2026-03-30 00:00", 60),
+    ]
+    assert not [
+        window
+        for window in preference.windows
+        if window.start.astimezone(ZoneInfo(LATE_GAP_ZONE)).date() == LATE_GAP_DATE
+    ]
+
+
+@pytest.mark.parametrize(
+    ("away", "intervals"),
+    [(BERLIN, 8), (TOKYO, 9), (NEW_YORK, 9)],
+    ids=["one hour east", "nine hours east", "five hours west"],
+)
+async def test_a_wrap_over_a_travel_boundary_keeps_only_the_boundary_nights_first_hour(
+    away: ZoneId, intervals: int
+) -> None:
+    # Both bounds of a half resolve against the zone active on the date the half was declared FOR,
+    # so where the traveller crosses at the following midnight the closing bound is read in the
+    # departing zone. Today's answer, pinned rather than described: the night into the boundary date
+    # is the pre-midnight half's SIXTY minutes, the arriving date's own half lands elsewhere, and
+    # the merge cannot rejoin them. A 90-minute session therefore stops fitting that one night.
+    #
+    # The interval count is not the instrument: one hour east it stays at eight, the same as a week
+    # with no travel in it, because both halves resolve to the very same interval.
+    boundary = MONDAY + timedelta(days=2)
+    preference = await resolved(
+        iso_week=WEEK,
+        zone=LONDON,
+        start=WRAP_START,
+        end=WRAP_END,
+        travel=a_travel_override(
+            start_date=boundary, end_date=MONDAY + timedelta(days=6), zone=away
+        ),
+    )
+    across_the_boundary = between(23.5, 25, day=1)
+
+    assert len(preference.windows) == intervals
+    assert Interval(at(23, day=1), at(0, day=2)) in preference.windows
+    assert Interval(at(23, day=1), at(1, day=2)) not in preference.windows
+    assert (
+        misfit_of(
+            across_the_boundary,
+            binding=BindingRef.for_habit(uuid4(), index=0),
+            area_id=preference.owner.id,
+            hour=23,
+            preferences=ResolvedPreferences([preference]),
+            weights=WEIGHTS,
+        )
+        == MISFIT_SOFT
+    )
 
 
 async def test_two_windows_declared_to_abut_reach_the_solver_as_one() -> None:
