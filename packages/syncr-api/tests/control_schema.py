@@ -49,13 +49,21 @@ def new_schema_name(now: datetime) -> str:
 
 
 def created_at(name: str) -> datetime | None:
-    """The instant ``name`` records, or ``None`` when it is not one of these names."""
+    """The instant ``name`` records, or ``None`` when it is not one of these names.
+
+    A run of digits can pass the parse and still name no instant: ``fromtimestamp`` refuses a
+    value outside the platform's ``time_t`` or outside the year range. Such a name is one this
+    module did not make, which is the answer this already has for every other kind.
+    """
     if not name.startswith(SCHEMA_PREFIX):
         return None
     stamp, _, unique = name.removeprefix(SCHEMA_PREFIX).partition("_")
     if not stamp.isdigit() or not unique:
         return None
-    return datetime.fromtimestamp(int(stamp), tz=UTC)
+    try:
+        return datetime.fromtimestamp(int(stamp), tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def stale_schemas(names: Iterable[str], now: datetime) -> list[str]:
