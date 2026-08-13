@@ -9,7 +9,8 @@
  * says `Propose` rather than `Apply`.
  *
  * THE WORDING IS THE API'S. It is per kind and per target and it names the nights a reduction would touch, so a
- * second wording composed here would be a second statement of one thing. */
+ * second wording composed here would be a second statement of one thing. The recovery reads the same way: the route
+ * words it as the ceiling the api says it is, and this row renders that reading rather than sizing it again. */
 
 import { Button } from "../../primitives";
 import type { VerdictTradeoff } from "./verdict";
@@ -26,7 +27,7 @@ export function TradeoffRow({ tradeoff, onPropose }: TradeoffRowProps) {
       <p className="verdict-panel__statement">
         {tradeoff.label}
         {tradeoff.recovers === null ? null : (
-          <span className="verdict-panel__gap">recovers up to {tradeoff.recovers}</span>
+          <span className="verdict-panel__gap">recovers {tradeoff.recovers}</span>
         )}
       </p>
       {onPropose === undefined ? null : (

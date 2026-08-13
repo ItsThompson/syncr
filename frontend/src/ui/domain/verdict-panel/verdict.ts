@@ -45,7 +45,11 @@ export interface VerdictTradeoff {
   /** The api's own wording: it is per kind and per target, and names the nights a reduction would touch. */
   readonly label: string;
   readonly targetId: string;
-  /** What approving it would recover, already formatted, or null where the enumerator could not size it. */
+  /**
+   * What approving it recovers at most, already worded as the ceiling it is, or null where the enumerator could not
+   * size it. The route words it: the figure is an upper bound on the movement, so a surface stating it bare would
+   * promise what nothing computed.
+   */
   readonly recovers: string | null;
 }
 

@@ -10,7 +10,12 @@
  * does not re-key the ones beside it.
  *
  * THE DEADLINE IS READ IN THE WEEK'S OWN ZONE, not the browser's. A reader east of their own plan would otherwise see
- * a Friday deadline reported as Saturday, which is exactly the class of defect the zone map exists to prevent. */
+ * a Friday deadline reported as Saturday, which is exactly the class of defect the zone map exists to prevent.
+ *
+ * WHAT A CONCESSION RECOVERS IS A CEILING, AND IT IS WORDED AS ONE HERE. The api sizes that figure as an upper bound
+ * on the movement approving the concession produces: three of its measurements can state more than approving it
+ * delivers and none can state less. So the bound travels with the figure out of this narrowing rather than being
+ * added by whichever surface renders it, which is what stops a second surface stating the same number as a fact. */
 
 import {
   formatMinutes,
@@ -77,7 +82,7 @@ function tradeoffOf(tradeoff: Tradeoff): VerdictTradeoff {
     recovers:
       tradeoff.deltaMinutes === null || tradeoff.deltaMinutes === undefined
         ? null
-        : formatMinutes(tradeoff.deltaMinutes),
+        : `up to ${formatMinutes(tradeoff.deltaMinutes)}`,
   };
 }
 
