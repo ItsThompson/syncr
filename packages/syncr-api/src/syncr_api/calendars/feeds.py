@@ -5,7 +5,8 @@ rather than a body plus an exception:
 
 ``FeedBody``        the feed was read, with the cursor to send next time.
 ``FeedUnchanged``   the publisher answered ``304``, so the last parse still stands.
-``FeedUnreachable`` a 4xx, a 5xx, a timeout, or a body over the size bound.
+``FeedUnreachable`` a 4xx, a 5xx, a timeout, a body over the size bound, or an address syncr
+                    will not connect to.
 
 The cursor carries whichever validator the publisher offered. An ``ETag`` is the strong one
 and is sent back as ``If-None-Match``; ``Last-Modified`` is the fallback and is sent back as
@@ -33,6 +34,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 import httpx
 
 from syncr_api.calendars.config import CURSOR_MAX_LENGTH, FETCH_TIMEOUT_SECONDS, MAX_FEED_BYTES
+from syncr_api.calendars.fetch_addresses import RefusedAddress, RefusingTransport
 from syncr_api.core.http_reads import read_bounded_body
 
 if TYPE_CHECKING:
@@ -105,6 +107,10 @@ class HttpFeedFetcher:
             # which is what the docstring above claims and what a worker tick needs.
             async with asyncio.timeout(FETCH_TIMEOUT_SECONDS):
                 return await self._read(url, cursor)
+        except RefusedAddress as refused:
+            # The one unreachable answer that is syncr's own rather than a publisher's, and the
+            # only one that carries no observation of what is at the address: nothing was sent.
+            return FeedUnreachable(refused.refusal)
         except (httpx.TimeoutException, TimeoutError):
             return FeedUnreachable(f"the feed did not answer within {FETCH_TIMEOUT_SECONDS:.0f}s")
         except (httpx.HTTPError, httpx.InvalidURL) as error:
@@ -136,9 +142,16 @@ def create_feed_client() -> httpx.AsyncClient:
     """The client the worker and the request path share.
 
     Redirects are followed because a university portal answers a feed URL with one, and a
-    fetch that stopped at the 302 would report a working feed as unreadable.
+    fetch that stopped at the 302 would report a working feed as unreadable. The address of
+    every request is read against the refused ranges, hop included: the address a redirect
+    names was pasted by nobody, so a check on the URL alone would guard the one address a user
+    can be asked about and none of the addresses a publisher can send syncr to.
     """
-    return httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=True)
+    return httpx.AsyncClient(
+        timeout=FETCH_TIMEOUT_SECONDS,
+        follow_redirects=True,
+        transport=RefusingTransport(httpx.AsyncHTTPTransport()),
+    )
 
 
 def conditional_headers(cursor: str | None) -> dict[str, str]:
