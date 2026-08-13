@@ -19,8 +19,9 @@
  * be redundant rather than load-bearing.
  *
  * THE SECOND CASE IS EXPECTED TO FAIL AT THIS COMMIT, and it is written as the assertion it will be rather than as
- * a skip, so the day the flow exists it goes red for passing unexpectedly and the marker has to be removed. Its
- * reason names every part that is missing, each measured rather than read.
+ * a skip, so the day the obstacle goes it goes red for passing unexpectedly and the marker has to be removed. Its
+ * reason names what is in the way, measured rather than read. The flow itself is built: the label opens capture
+ * prefilled, and one confirm writes the task and then the task's own soft preference.
  *
  * WHY THE PREFILL IS READ OFF THE RENDERED CONTROLS as well as from the task the confirm produces: see the
  * paragraph above about the two defects a browser found. The form is also asserted to open with nothing refused,
@@ -151,11 +152,10 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
 }) => {
   test.fail(
     true,
-    "the flow behind the label is half built, and one defect stands beside it: capture opens prefilled from the URL " +
-      "the week screen writes, and nothing writes the task's own preference yet (ticket 1490); and the grid's canvas " +
-      "is sized from the height of the element that contains it, so it grows until layout stops and refuses a press " +
-      "on anything it has pushed out of a pointer's reach, which was measured on a supplied slot label and does " +
-      "not affect the window label the case above presses",
+    "one defect stands in the way of this flow, and it is not in the flow: the grid's canvas is sized from the " +
+      "height of the element that contains it, so it grows until layout stops and refuses a press on anything it " +
+      "has pushed out of a pointer's reach, which was measured on a supplied slot label and does not affect the " +
+      "window label the case above presses",
   );
 
   const week = planWeek();
