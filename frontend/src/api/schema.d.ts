@@ -5440,7 +5440,7 @@ export interface components {
         };
         /**
          * TaskStatus
-         * @description Where a task is. Two of the three are endings, and neither is reversible in P0.
+         * @description Where a task is. Two of the three are endings, and nothing here returns a task to open.
          * @enum {string}
          */
         TaskStatus: "open" | "completed" | "dropped";
