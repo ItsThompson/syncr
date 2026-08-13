@@ -14,10 +14,13 @@ distinguishes a field the request omitted from one it sent as null. Reading the 
 route's job; deciding what an omission means is not, so the three-valued field travels into the
 service rather than being flattened here.
 
-``POST`` takes the idempotency guard because a retried declaration must not become a second
-period. The overlap rule would refuse the retry with a 409, which is the wrong answer to a
-request that already succeeded: the guard replays the stored 201 instead. ``PATCH`` and
-``DELETE`` need no guard, because both name a period and set an absolute state.
+Every unsafe method takes the idempotency guard and none demands the header, which is the api-wide
+rule: the key is offered and a caller that wants the guarantee sends one. What it buys differs per
+method. A retried ``POST`` would be refused by the overlap rule with a 409, which is the wrong
+answer to a request that already succeeded, so the guard replays the stored 201 instead. A ``PATCH``
+and a ``DELETE`` each name a period and set an absolute state, so neither leaves a second row
+behind, but re-running either invalidates every week the span touches a second time, and a
+``DELETE`` re-run after its row is gone answers 404 for a period the caller has just removed.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from starlette.responses import Response
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.core.patches import stated, stated_unless_null
 from syncr_api.idempotency.injection import IdempotencyGuardDep
+from syncr_api.idempotency.schemas import Removed
 from syncr_api.offplan.config import OFF_PLAN_PATH
 from syncr_api.offplan.declarations import OffPlanChange, OffPlanDeclaration
 from syncr_api.offplan.injection import OffPlanServiceDep
@@ -43,7 +47,12 @@ from syncr_api.offplan.schemas import (
 
 router = APIRouter()
 
+# The key each unsafe route's idempotency claim is taken under, one per handler. A claim is
+# `(tenant_id, route, key)` and the request hash carries the addressed path and the body but not the
+# method, so two handlers sharing one of these would share a claim.
 DECLARE_ROUTE = "offplan.declare_period"
+UPDATE_ROUTE = "offplan.update_period"
+REMOVE_ROUTE = "offplan.remove_period"
 
 
 @router.get("", summary="Every declared off-plan period")
@@ -88,6 +97,7 @@ async def update_off_plan_period(
     period_id: UUID,
     body: OffPlanPatchRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: OffPlanServiceDep,
 ) -> OffPlanPeriodResponse:
     """Apply a partial update. An omitted field is left alone; an explicit null clears a label."""
@@ -97,7 +107,11 @@ async def update_off_plan_period(
         keep_frame=stated_unless_null(body.keep_frame),
         label=stated(body, "label", body.label),
     )
-    return OffPlanPeriodResponse.of(await service.update(principal, period_id, change))
+
+    async def update() -> OffPlanPeriodResponse:
+        return OffPlanPeriodResponse.of(await service.update(principal, period_id, change))
+
+    return await guard.once(UPDATE_ROUTE, OffPlanPeriodResponse, update)
 
 
 @router.delete(
@@ -107,10 +121,18 @@ async def update_off_plan_period(
     summary="Remove a period, so its span is on plan again",
 )
 async def remove_off_plan_period(
-    period_id: UUID, principal: PrincipalDep, service: OffPlanServiceDep
+    period_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: OffPlanServiceDep,
 ) -> Response:
     """Remove one period. Every week it touched has its inputs invalidated."""
-    await service.remove(principal, period_id)
+
+    async def remove() -> Removed:
+        await service.remove(principal, period_id)
+        return Removed()
+
+    await guard.once(REMOVE_ROUTE, Removed, remove)
     # Built here rather than returning None, because a returned None is still serialized and a
     # 204 must carry no body at all.
     return Response(status_code=HTTPStatus.NO_CONTENT)

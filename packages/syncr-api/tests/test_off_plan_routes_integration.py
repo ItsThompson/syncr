@@ -65,6 +65,9 @@ FRIDAY_TO_MONDAY = {
 WEEK = str(OFF_PLAN_WEEK.iso_week)
 FOLLOWING_WEEK = str(OFF_PLAN_WEEK.following_week)
 
+# The two ISO weeks the fixture's span reaches into, which is the set a mutation of it invalidates.
+TOUCHED_WEEKS = (OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
+
 
 @pytest.fixture
 def owner(live_database_url: str) -> Iterator[UserRecord]:
@@ -177,16 +180,26 @@ def track(database_url: str, tenant_id: TenantId, *weeks: IsoWeek) -> None:
     run(seed())
 
 
-def input_version(database_url: str, tenant_id: TenantId, week: IsoWeek) -> int | None:
-    async def read() -> int | None:
+def input_versions(database_url: str, tenant_id: TenantId, *weeks: IsoWeek) -> list[int]:
+    """The input version of each week, and a failure naming the weeks that carry no row.
+
+    Read as a list rather than one at a time, because the figure a mutation moves is the whole set
+    of weeks a span touches and asserting on one of them would miss a bump that reached the other.
+    """
+
+    async def read() -> list[int | None]:
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session:
-                return await WeekInputVersionRepository(session, tenant_id).current(week)
+                versions = WeekInputVersionRepository(session, tenant_id)
+                return [await versions.current(week) for week in weeks]
         finally:
             await database.engine.dispose()
 
-    return run(read())
+    found = run(read())
+    untracked = [week for week, counted in zip(weeks, found, strict=True) if counted is None]
+    assert not untracked, f"{untracked} carry no version row, so a bump has nothing to increment"
+    return [counted for counted in found if counted is not None]
 
 
 # --------------------------------------------------------------------------------
@@ -420,11 +433,8 @@ def test_a_retried_patch_replays_rather_than_bumping_the_weeks_again(
     # What separates them is the input version of each week the span touches, which every
     # mutation of a period bumps and which is the figure a running solve's write compares.
     _, created = declare(http, signed_in)
-    track(live_database_url, owner.tenant_id, OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
-    before = [
-        input_version(live_database_url, owner.tenant_id, week)
-        for week in (OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
-    ]
+    track(live_database_url, owner.tenant_id, *TOUCHED_WEEKS)
+    before = input_versions(live_database_url, owner.tenant_id, *TOUCHED_WEEKS)
     keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
     renamed = {"label": "Italy"}
 
@@ -433,10 +443,9 @@ def test_a_retried_patch_replays_rather_than_bumping_the_weeks_again(
 
     # Both weeks, because the span crosses an ISO week boundary and a second execution would
     # invalidate each of them twice.
-    assert [
-        input_version(live_database_url, owner.tenant_id, week)
-        for week in (OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
-    ] == [(counted or 0) + 1 for counted in before]
+    assert input_versions(live_database_url, owner.tenant_id, *TOUCHED_WEEKS) == [
+        counted + 1 for counted in before
+    ]
     assert first.status_code == HTTPStatus.OK, first.text
     assert second.status_code == HTTPStatus.OK, second.text
     assert second.json() == first.json()

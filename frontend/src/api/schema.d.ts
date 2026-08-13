@@ -10032,7 +10032,9 @@ export interface operations {
     remove_off_plan_period_api_v1_off_plan__period_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 period_id: string;
             };
@@ -10106,7 +10108,9 @@ export interface operations {
     update_off_plan_period_api_v1_off_plan__period_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 period_id: string;
             };
@@ -11015,7 +11019,9 @@ export interface operations {
     declare_routine_api_v1_routines_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11151,7 +11157,9 @@ export interface operations {
     remove_routine_api_v1_routines__routine_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 routine_id: string;
             };
@@ -11216,7 +11224,9 @@ export interface operations {
     update_routine_api_v1_routines__routine_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 routine_id: string;
             };

@@ -578,6 +578,7 @@ def test_a_retried_patch_replays_rather_than_bumping_the_week_again(
     created = declare_routine(http, signed_in)
     track(live_database_url, owner.tenant_id, FUTURE_WEEK)
     before = input_version(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    assert before is not None, "the week was not tracked, so a bump has nothing to increment"
     keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
     renamed = {"title": "Sleep, properly"}
 
