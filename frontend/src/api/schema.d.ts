@@ -8799,7 +8799,9 @@ export interface operations {
     declare_day_type_api_v1_day_types_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -12370,7 +12372,9 @@ export interface operations {
     declare_template_api_v1_templates_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -12524,7 +12528,9 @@ export interface operations {
     remove_template_api_v1_templates__template_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_id: string;
             };
@@ -12598,7 +12604,9 @@ export interface operations {
     update_template_api_v1_templates__template_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_id: string;
             };
@@ -12678,7 +12686,9 @@ export interface operations {
     add_template_entry_api_v1_templates__template_id__entries_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_id: string;
             };
@@ -12758,7 +12768,9 @@ export interface operations {
     remove_template_entry_api_v1_templates__template_id__entries__entry_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_id: string;
                 entry_id: string;
@@ -12833,7 +12845,9 @@ export interface operations {
     change_template_entry_api_v1_templates__template_id__entries__entry_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_id: string;
                 entry_id: string;
@@ -12988,7 +13002,9 @@ export interface operations {
     replace_week_pattern_api_v1_week_pattern_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };

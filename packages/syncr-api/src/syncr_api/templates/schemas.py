@@ -20,7 +20,7 @@ package rather than a value quietly dropped.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
@@ -180,3 +180,17 @@ class WeekPatternRequest(_WeekPatternFields):
     """
 
     model_config = ConfigDict(extra="forbid")
+
+
+class Removed(WireModel):
+    """What a removal answers with, so a retried removal replays rather than 404ing.
+
+    Both removals here respond ``204`` and this body never reaches the wire. It exists because
+    the idempotency guard stores and replays a response MODEL, and a removal has no other shape
+    to store: without it, a retry under the same key would find the row already gone.
+
+    One shape for both removals, because what separates their claims is the route key each
+    handler passes rather than what it stores.
+    """
+
+    removed: Literal[True] = True

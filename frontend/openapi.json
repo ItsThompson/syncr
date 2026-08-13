@@ -11371,6 +11371,24 @@
       "post": {
         "description": "Declare a kind of day. The week pattern is what puts weekdays onto it.",
         "operationId": "declare_day_type_api_v1_day_types_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -15935,6 +15953,24 @@
       "post": {
         "description": "Declare the shape of a day type. It starts with no entries.",
         "operationId": "declare_template_api_v1_templates_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -16036,6 +16072,22 @@
               "format": "uuid",
               "title": "Template Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -16214,6 +16266,22 @@
               "title": "Template Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -16317,6 +16385,22 @@
               "format": "uuid",
               "title": "Template Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -16447,6 +16531,22 @@
               "title": "Entry Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
@@ -16541,6 +16641,22 @@
               "format": "uuid",
               "title": "Entry Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -16716,6 +16832,24 @@
       "put": {
         "description": "Replace the mapping. Future weeks re-materialize; approved past weeks do not.",
         "operationId": "replace_week_pattern_api_v1_week_pattern_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

@@ -16,6 +16,13 @@ expressible.
 
 ``PUT /week-pattern`` replaces the whole mapping. There is no ``PATCH``: a pattern maps all seven
 weekdays, so a request naming three would have to mean something about the other four.
+
+Every unsafe method takes the idempotency guard and none demands the header, which is the api-wide
+rule: the key is offered and a caller that wants the guarantee sends one. What it buys here is one
+write in particular. A day type's name and a day type's one shape are each held by a unique index,
+and a rename, a removal and a replacement all converge, so ``POST`` on the entry collection is the
+one repeat that leaves a second row behind: an entry is addressed by an identifier this api mints,
+so nothing in the request says which entry it is.
 """
 
 from __future__ import annotations
@@ -29,10 +36,19 @@ from starlette.responses import Response
 
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.core.patches import stated_unless_null
+from syncr_api.idempotency.injection import IdempotencyGuardDep
 from syncr_api.templates.config import (
+    ADD_ENTRY_ROUTE,
+    CHANGE_ENTRY_ROUTE,
+    DECLARE_DAY_TYPE_ROUTE,
+    DECLARE_TEMPLATE_ROUTE,
+    REMOVE_ENTRY_ROUTE,
+    REMOVE_TEMPLATE_ROUTE,
+    REPLACE_WEEK_PATTERN_ROUTE,
     TEMPLATE_ENTRIES_PATH,
     TEMPLATE_ENTRY_PATH,
     TEMPLATE_PATH,
+    UPDATE_TEMPLATE_ROUTE,
 )
 from syncr_api.templates.declarations import (
     DayTypeDeclaration,
@@ -56,6 +72,7 @@ from syncr_api.templates.schemas import (
     DayTypeCreateRequest,
     DayTypeResponse,
     DayTypesResponse,
+    Removed,
     TemplateCreateRequest,
     TemplatePatchRequest,
     TemplateResponse,
@@ -110,10 +127,17 @@ async def list_day_types(principal: PrincipalDep, service: DayTypeServiceDep) ->
 
 @day_types_router.post("", status_code=HTTPStatus.CREATED, summary="Declare a day type")
 async def declare_day_type(
-    body: DayTypeCreateRequest, principal: PrincipalDep, service: DayTypeServiceDep
+    body: DayTypeCreateRequest,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: DayTypeServiceDep,
 ) -> DayTypeResponse:
     """Declare a kind of day. The week pattern is what puts weekdays onto it."""
-    return _as_day_type(await service.create(principal, DayTypeDeclaration(name=body.name)))
+
+    async def declare() -> DayTypeResponse:
+        return _as_day_type(await service.create(principal, DayTypeDeclaration(name=body.name)))
+
+    return await guard.once(DECLARE_DAY_TYPE_ROUTE, DayTypeResponse, declare)
 
 
 @templates_router.get("", summary="Every day shape, with its entry count")
@@ -125,11 +149,18 @@ async def list_templates(principal: PrincipalDep, service: TemplateServiceDep) -
 
 @templates_router.post("", status_code=HTTPStatus.CREATED, summary="Declare a day shape")
 async def declare_template(
-    body: TemplateCreateRequest, principal: PrincipalDep, service: TemplateServiceDep
+    body: TemplateCreateRequest,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: TemplateServiceDep,
 ) -> TemplateResponse:
     """Declare the shape of a day type. It starts with no entries."""
     declaration = TemplateDeclaration(day_type_id=body.day_type_id, name=body.name)
-    return _as_template(await service.create(principal, declaration))
+
+    async def declare() -> TemplateResponse:
+        return _as_template(await service.create(principal, declaration))
+
+    return await guard.once(DECLARE_TEMPLATE_ROUTE, TemplateResponse, declare)
 
 
 @templates_router.get(TEMPLATE_PATH, summary="One day shape and its entries")
@@ -145,11 +176,16 @@ async def update_template(
     template_id: UUID,
     body: TemplatePatchRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: TemplateServiceDep,
 ) -> TemplateResponse:
     """Apply a partial update. An omitted field is left alone."""
     change = TemplateChange(name=stated_unless_null(body.name))
-    return _as_template(await service.update(principal, template_id, change))
+
+    async def update() -> TemplateResponse:
+        return _as_template(await service.update(principal, template_id, change))
+
+    return await guard.once(UPDATE_TEMPLATE_ROUTE, TemplateResponse, update)
 
 
 @templates_router.delete(
@@ -159,10 +195,18 @@ async def update_template(
     summary="Remove a day shape and its entries",
 )
 async def remove_template(
-    template_id: UUID, principal: PrincipalDep, service: TemplateServiceDep
+    template_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: TemplateServiceDep,
 ) -> Response:
     """Remove a shape. Its entries go with it."""
-    await service.remove(principal, template_id)
+
+    async def remove() -> Removed:
+        await service.remove(principal, template_id)
+        return Removed()
+
+    await guard.once(REMOVE_TEMPLATE_ROUTE, Removed, remove)
     # Built here rather than returning None, because a returned None is still serialized and a
     # 204 must carry no body at all.
     return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -177,12 +221,19 @@ async def add_template_entry(
     template_id: UUID,
     body: EntryRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: TemplateServiceDep,
 ) -> TemplateEntryResponse:
     """Add one entry. A concrete entry names its content; a slot names an Area."""
     with stated_rejection():
         declaration = body.declaration()
-    return TemplateEntryResponse.of(await service.add_entry(principal, template_id, declaration))
+
+    async def add() -> TemplateEntryResponse:
+        return TemplateEntryResponse.of(
+            await service.add_entry(principal, template_id, declaration)
+        )
+
+    return await guard.once(ADD_ENTRY_ROUTE, TemplateEntryResponse, add)
 
 
 @templates_router.patch(TEMPLATE_ENTRY_PATH, summary="Move or resize one entry")
@@ -191,6 +242,7 @@ async def change_template_entry(
     entry_id: UUID,
     body: EntryPatchRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: TemplateServiceDep,
 ) -> TemplateEntryResponse:
     """Apply a partial update to an entry's span. What it holds is declared once."""
@@ -199,9 +251,13 @@ async def change_template_entry(
         duration_minutes=stated_unless_null(body.duration_minutes),
         flex_band_minutes=stated_unless_null(body.flex_band_minutes),
     )
-    return TemplateEntryResponse.of(
-        await service.change_entry(principal, template_id, entry_id, change)
-    )
+
+    async def change_it() -> TemplateEntryResponse:
+        return TemplateEntryResponse.of(
+            await service.change_entry(principal, template_id, entry_id, change)
+        )
+
+    return await guard.once(CHANGE_ENTRY_ROUTE, TemplateEntryResponse, change_it)
 
 
 @templates_router.delete(
@@ -211,10 +267,19 @@ async def change_template_entry(
     summary="Remove one entry from a day shape",
 )
 async def remove_template_entry(
-    template_id: UUID, entry_id: UUID, principal: PrincipalDep, service: TemplateServiceDep
+    template_id: UUID,
+    entry_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: TemplateServiceDep,
 ) -> Response:
     """Remove one entry of a shape."""
-    await service.remove_entry(principal, template_id, entry_id)
+
+    async def remove() -> Removed:
+        await service.remove_entry(principal, template_id, entry_id)
+        return Removed()
+
+    await guard.once(REMOVE_ENTRY_ROUTE, Removed, remove)
     return Response(status_code=HTTPStatus.NO_CONTENT)
 
 
@@ -229,10 +294,17 @@ async def read_week_pattern(
 
 @week_pattern_router.put("", summary="Replace the whole mapping. All seven weekdays required")
 async def replace_week_pattern(
-    body: WeekPatternRequest, principal: PrincipalDep, service: WeekPatternServiceDep
+    body: WeekPatternRequest,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: WeekPatternServiceDep,
 ) -> WeekPatternResponse:
     """Replace the mapping. Future weeks re-materialize; approved past weeks do not."""
     with stated_rejection():
         declared = WeekPattern(body.mapping())
-    replaced = await service.replace(principal, declared)
-    return WeekPatternResponse.of(replaced.mapping)
+
+    async def replace() -> WeekPatternResponse:
+        replaced = await service.replace(principal, declared)
+        return WeekPatternResponse.of(replaced.mapping)
+
+    return await guard.once(REPLACE_WEEK_PATTERN_ROUTE, WeekPatternResponse, replace)

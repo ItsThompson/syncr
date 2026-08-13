@@ -1,4 +1,4 @@
-"""The table names, the route paths, and the two name bounds the day-shape routes read.
+"""The table names, the route paths, the claim keys, and the two name bounds these routes read.
 
 Every other bound this package enforces lives in ``syncr_domain.templates``, beside the shape
 it constrains: a duration, a flex band, and the grid are properties of an entry rather than of
@@ -39,6 +39,19 @@ WEEK_PATTERN_PREFIX: Final = f"{API_PREFIX}/week-pattern"
 TEMPLATE_PATH: Final = "/{template_id}"
 TEMPLATE_ENTRIES_PATH: Final = "/{template_id}/entries"
 TEMPLATE_ENTRY_PATH: Final = "/{template_id}/entries/{entry_id}"
+
+# The key each unsafe route's idempotency claim is taken under, one per handler. A claim is
+# `(tenant_id, route, key)` and the request hash carries the path and the body but not the
+# method, so two handlers sharing one of these would share a claim: `PATCH` and `DELETE` on an
+# entry address the same path, so the key is the whole of what separates them.
+DECLARE_DAY_TYPE_ROUTE: Final = "templates.declare_day_type"
+DECLARE_TEMPLATE_ROUTE: Final = "templates.declare_template"
+UPDATE_TEMPLATE_ROUTE: Final = "templates.update_template"
+REMOVE_TEMPLATE_ROUTE: Final = "templates.remove_template"
+ADD_ENTRY_ROUTE: Final = "templates.add_template_entry"
+CHANGE_ENTRY_ROUTE: Final = "templates.change_template_entry"
+REMOVE_ENTRY_ROUTE: Final = "templates.remove_template_entry"
+REPLACE_WEEK_PATTERN_ROUTE: Final = "templates.replace_week_pattern"
 
 DAY_TYPE_RESOURCE: Final = "day type"
 TEMPLATE_RESOURCE: Final = "template"
