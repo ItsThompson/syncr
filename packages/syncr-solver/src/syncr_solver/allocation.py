@@ -192,12 +192,12 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     # orders candidates by. `max` keeps the first of equal ones and the Areas are in identity
     # order, so a tie is broken the same way twice.
     area, owed = max(owing, key=lambda pair: pair[1])
-    claimable = _free_for(area.area_id, free=free, windows=state.forbidden_windows)
+    may_claim = _free_for(area.area_id, free=free, windows=state.forbidden_windows)
     return Blocked(
         ConstraintRule.AREA_FLOOR,
         candidate.interval,
         f"{area.name} would be left {owed}m short of its floor, "
-        f"with {claimable.total_minutes()}m free",
+        f"with {may_claim.total_minutes()}m free",
     )
 
 
