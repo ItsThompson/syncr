@@ -53,16 +53,24 @@ declared        spring-forward date 2026-03-29        fall-back date 2026-10-25
 01:45-02:00     dropped: the bounds invert            75m
 01:00-02:00     dropped: the bounds collapse          120m
 05:30-07:00     90m                                   90m
+23:00-01:00     120m, its far bound READING 02:00     120m
+                local because 01:00 does not exist
+23:00-02:00     120m, NARROWED                        240m, WIDENED
 ```
+
+The two wrapping rows are the night CLOSING on the transition date, which opens on the day before
+it, and both figures are the merged interval's rather than either half's.
 
 A soft window that is narrower or wider once a year costs nothing, and the narrowing is the more
 surprising of the two because it is the one that can leave a window too small for the session it was
 declared for. Both are stated here and pinned by tests so neither is read later as a defect.
 
-A window sits inside one local day: a declaration whose end is at or before its start is refused
-where it is authored. That refusal is checked in WALL TIME, which is why the guard above exists: an
-invariant verified in one coordinate system does not survive a non-monotonic mapping into another.
-Ticket 1211 carries the question of whether a night-owl window should be expressible.
+A stored window runs forward in wall time, and an end of ``00:00`` is the one bound that may read
+earlier than the start it belongs to: a declaration whose end is at or before its start in any
+other way is refused where it is authored, and one authored across midnight is split into two
+windows there rather than stored as a pair of bounds that run backwards. That rule is checked in
+WALL TIME, which is why the guard above exists: an invariant verified in one coordinate system does
+not survive a non-monotonic mapping into another.
 
 **A daily cap is an Area's and it does not travel here.** It reaches the solver on the Area
 budget, which is what structurally prevents an override relaxing a hard cap: there is no field on
