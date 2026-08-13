@@ -1,6 +1,6 @@
 /* There is nothing here yet, and what to do about it.
  *
- * STATIC, like the other two. The Week screen's two empty states are the visible face of the planning horizon: a
+ * STATIC, like the other two. The Week screen's empty states are the visible face of the planning horizon: a
  * week beyond it has no plan by design, because a read never triggers work, and saying so with an action beats
  * rendering a blank grid.
  *
