@@ -39,7 +39,7 @@ function tradeoff(overrides: Partial<VerdictTradeoff> = {}): VerdictTradeoff {
     kind: "accept_partial",
     label: "Accept partial delivery on F&F Past Papers",
     targetId: "5c9e0d4f-6a12-4f3a-8b21-7d2b1a904c6e",
-    recovers: "1h20m",
+    recovers: "up to 1h20m",
     ...overrides,
   };
 }
@@ -228,6 +228,14 @@ describe("a tradeoff is offered and never chosen", () => {
     await userEvent.click(screen.getAllByRole("button", { name: "Propose" })[1]);
 
     expect(onPropose).toHaveBeenCalledExactlyOnceWith(asked);
+  });
+
+  it("states the recovery exactly as the reading words it, and sizes nothing itself", () => {
+    /* A reading no arithmetic here could have produced, so a row that composed its own figure or added its own bound
+     * would render something other than this. The kit is handed a ceiling and renders a ceiling. */
+    render(<VerdictPanel verdict={verdict({ tradeoffs: [tradeoff({ recovers: "up to 5h" })] })} />);
+
+    expect(screen.getByText("recovers up to 5h")).toBeInTheDocument();
   });
 
   it("renders the offers with no control at all when nothing can be dispatched", () => {

@@ -96,7 +96,7 @@ const TRADEOFF: domain.VerdictTradeoff = {
   kind: "accept_partial",
   label: "Accept partial delivery on F&F Past Papers",
   targetId: "t1",
-  recovers: "1h20m",
+  recovers: "up to 1h20m",
 };
 
 const VERDICT: domain.PanelVerdict = {
