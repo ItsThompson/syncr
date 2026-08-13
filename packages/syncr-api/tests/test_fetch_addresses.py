@@ -19,6 +19,10 @@ against ``refusal_of`` for the same address *and* against what ``normalize_feed_
 the same address pasted as a literal. Two independently composed sentences are how an accept-list
 and a redirect check come to disagree while both stay green.
 
+**A check that could not run is a refusal, and a resolver states two kinds of failure.** The
+fail-closed cases drive the real resolver for the two it raises as a `ValueError` rather than as a
+lookup failure, because a stub can only raise what whoever wrote it thought of.
+
 **Every range is driven, not one address.** The table below is crossed against the predicate's
 own rows, so a range that gains a row without a fetch-time case has nowhere to hide.
 """
@@ -74,6 +78,11 @@ HEXADECIMAL_LOOPBACK: Final = "0x7f000001"
 # spelling finds nothing to answer with.
 UNICODE_NAME: Final = "bücher.example"
 ENCODED_NAME: Final = "xn--bcher-kva.example"
+
+# Two names the door stores and the resolver will not encode: a label with nothing in it, and one
+# over the 63 bytes DNS allows. Neither is crafted; the first is one typed dot too many.
+EMPTY_LABEL_URL: Final = "https://a..b.example/t.ics"
+OVER_LONG_LABEL_URL: Final = f"https://{'a' * 64}.example/t.ics"
 
 # A port nothing serves, so a client with no guard in front of it fails to connect rather than
 # reaching something. Only the unguarded case ever opens a socket at all.
@@ -377,21 +386,44 @@ async def failing_resolution(_host: str) -> Sequence[str]:
 
 
 @pytest.mark.parametrize(
-    "resolve",
-    [failing_resolution, answering(), answering("not-an-address")],
-    ids=["the resolver failed", "the resolver answered nothing", "an answer it cannot read"],
+    ("url", "resolve"),
+    [
+        (FEED_URL, failing_resolution),
+        (FEED_URL, answering()),
+        (FEED_URL, answering("not-an-address")),
+        (EMPTY_LABEL_URL, resolved_addresses),
+        (OVER_LONG_LABEL_URL, resolved_addresses),
+    ],
+    ids=[
+        "the resolver failed",
+        "the resolver answered nothing",
+        "an answer it cannot read",
+        "a real resolver refusing an empty label",
+        "a real resolver refusing a label over 63 bytes",
+    ],
 )
 async def test_an_address_that_could_not_be_read_is_not_connected_to(
-    resolve: AddressResolution,
+    url: str, resolve: AddressResolution
 ) -> None:
+    # The last two run the real resolver, because the property is which failures a resolver states
+    # rather than which ones a stub was written to raise: a lookup failure is an OSError and a name
+    # it will not encode is a ValueError, so a guard reading one of the two lets the other past
+    # itself and past the closed union of answers the fetch path promises.
+    #
+    # Every address in the table is one the door stores, so each is reachable from a stored row
+    # rather than from a crafted request.
+    assert normalize_feed_url(url) == url
+
     publisher, seen = recorded(probe_answer())
     reader, client = fetcher_over(publisher, resolve=resolve)
 
     async with client:
-        answer = await reader.get(FEED_URL, cursor=None)
+        answer = await reader.get(url, cursor=None)
 
+    named = urlsplit(url).hostname
     assert isinstance(answer, FeedUnreachable)
-    assert "example.ac.uk" in answer.reason
+    assert named is not None
+    assert named in answer.reason
     assert "does not connect to an address it has not checked" in answer.reason
     assert "Every source already configured still syncs" in answer.reason
     assert seen == []

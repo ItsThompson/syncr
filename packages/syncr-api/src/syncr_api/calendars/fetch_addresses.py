@@ -23,7 +23,9 @@ status, no timing and no transport error from an address inside this deployment'
 reaches the sentence a user reads.
 
 **A check that could not run is a refusal.** A request allowed through because its resolution
-failed is an unchecked request, which is the state this module exists to prevent.
+failed is an unchecked request, which is the state this module exists to prevent. A resolver refuses
+an address in two ways and both are read: a lookup that answers nothing, and a name it will not
+encode, which is not an ``OSError``.
 
 **One limit, stated because it bounds what this module promises.** The resolution here and the
 resolution the socket makes are two separate calls, so a name that answers a public address to
@@ -82,7 +84,11 @@ async def refusal_for_host(
     """
     try:
         spellings = await resolve(host)
-    except OSError:
+    except (OSError, UnicodeError):
+        # The resolver states a name it will not encode as a ``UnicodeError``, which is a
+        # ``ValueError`` rather than a lookup failure: an empty label or one over 63 bytes. Reading
+        # only the lookup failure lets it past both this refusal and the closed union of answers
+        # the fetch path promises its caller.
         return _unread(host)
     if not spellings:
         return _unread(host)
