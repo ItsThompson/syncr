@@ -38,12 +38,21 @@ from syncr_domain.snap import NotAWallTime, not_a_wall_time
 from syncr_domain.zones import MAX_ZONE_KEY_LENGTH
 
 _DAY_BOUNDS_DESCRIPTION = (
-    "Wall time, no zone: an offset is refused rather than dropped, and so is a value below "
-    "minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is "
-    "accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT "
-    "extent of the Week grid's axis, never a crop: the axis expands to contain every block "
-    "in the visible week, because a block hidden by the axis is a scheduling error the "
-    "reader cannot see."
+    "Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: "
+    "the axis expands to contain every block in the visible week, because a block hidden "
+    "by the axis is a scheduling error the reader cannot see."
+)
+# The refusals and the imperative are the patch shape's alone: a response is received rather
+# than sent, and its own value may be one the patch shape refuses.
+_DAY_BOUNDS_ON_PATCH = (
+    f"{_DAY_BOUNDS_DESCRIPTION} An offset is refused rather than dropped, and so is a value "
+    "below minute resolution: send '07:00', not '07:00+05:00' or '07:00:30'. Any whole "
+    "minute is accepted, because these bounds draw the axis rather than a block."
+)
+_DAY_BOUNDS_ON_READ = (
+    f"{_DAY_BOUNDS_DESCRIPTION} Rendered as HH:MM:SS, and a stored bound may carry seconds, "
+    "which the patch shape refuses: a client sending this value back normalizes it to the "
+    "minute first."
 )
 _ZONE_DESCRIPTION = "An IANA zone identifier, such as 'Europe/London'."
 _VISIBLE_HOURS_DESCRIPTION = (
@@ -93,8 +102,8 @@ class SettingsResponse(WireModel):
     """
 
     visible_hours: int = Field(description=_VISIBLE_HOURS_DESCRIPTION)
-    day_start: time = Field(description=_DAY_BOUNDS_DESCRIPTION)
-    day_end: time = Field(description=_DAY_BOUNDS_DESCRIPTION)
+    day_start: time = Field(description=_DAY_BOUNDS_ON_READ)
+    day_end: time = Field(description=_DAY_BOUNDS_ON_READ)
     review_cadence: ReviewCadence
     home_zone: str = Field(description=_ZONE_DESCRIPTION)
     active_zone: str = Field(
@@ -131,8 +140,8 @@ class SettingsPatchRequest(WireModel):
         le=VISIBLE_HOURS_MAX,
         description=_VISIBLE_HOURS_DESCRIPTION,
     )
-    day_start: DayBound | None = Field(default=None, description=_DAY_BOUNDS_DESCRIPTION)
-    day_end: DayBound | None = Field(default=None, description=_DAY_BOUNDS_DESCRIPTION)
+    day_start: DayBound | None = Field(default=None, description=_DAY_BOUNDS_ON_PATCH)
+    day_end: DayBound | None = Field(default=None, description=_DAY_BOUNDS_ON_PATCH)
     review_cadence: ReviewCadence | None = None
     # Bounded by the domain's own limit, so this rejects nothing the zone lookup would
     # have accepted and the two bounds cannot drift apart.

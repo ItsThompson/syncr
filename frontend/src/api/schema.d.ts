@@ -5085,9 +5085,9 @@ export interface components {
          *     routine, set through ``PATCH /api/v1/routines/{id}``, where the solver reads it.
          */
         SettingsPatchRequest: {
-            /** @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. */
+            /** @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. An offset is refused rather than dropped, and so is a value below minute resolution: send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. */
             dayEnd?: components["schemas"]["DayBound"] | null;
-            /** @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. */
+            /** @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. An offset is refused rather than dropped, and so is a value below minute resolution: send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. */
             dayStart?: components["schemas"]["DayBound"] | null;
             /**
              * Homezone
@@ -5124,13 +5124,13 @@ export interface components {
             /**
              * Dayend
              * Format: time
-             * @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. Rendered as HH:MM:SS, and a stored bound may carry seconds, which the patch shape refuses: a client sending this value back normalizes it to the minute first.
              */
             dayEnd: string;
             /**
              * Daystart
              * Format: time
-             * @description Wall time, no zone: an offset is refused rather than dropped, and so is a value below minute resolution. Send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see.
+             * @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. Rendered as HH:MM:SS, and a stored bound may carry seconds, which the patch shape refuses: a client sending this value back normalizes it to the minute first.
              */
             dayStart: string;
             /**
