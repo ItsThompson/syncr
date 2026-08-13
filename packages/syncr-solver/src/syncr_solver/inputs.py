@@ -313,6 +313,12 @@ class ResolvedPreference:
     shorter or longer one. So a reader counts what is here rather than sizing on seven times the
     declaration count, and the producer states the arithmetic of both directions.
 
+    **These are merged where they meet, and one of them can span two dates.** A window ending at the
+    day's end closes on the following date, so a stretch the user authored across midnight arrives
+    as one interval covering the night rather than as the two halves it is stored as, and two
+    windows declared to abut likewise arrive as one. So the count is not the declaration count
+    either way, and an interval's own two ends can name different dates.
+
     There is no ``max_per_day`` here, and its absence is the rule: a daily cap is an
     Area's and travels on ``AreaBudget``.
     """
