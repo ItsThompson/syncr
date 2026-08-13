@@ -258,9 +258,12 @@ describe("landing on the capture URL an empty slot writes", () => {
     });
   });
 
-  /* A PREFILL THAT OPENS THE FORM ALREADY REFUSING ITSELF IS NOT A PREFILL. The api's default minimum chunk is
-     fifteen minutes, so a slot shorter than one arrives as an estimate the form refuses on a row nobody has
-     touched, with the submit disabled and nothing the reader did to fix. */
+  /* A PREFILL THAT ARRIVES ALREADY REFUSED IS NOT A PREFILL. The api's default minimum chunk is fifteen minutes, so
+     a slot shorter than one arrives as an estimate the form refuses on a row nobody has touched, with the submit
+     disabled and nothing the reader did to fix.
+
+     THE COUNT IS READ WITH ITS OWN CONTROL, because a class that no longer exists reads as zero refusals however
+     many the form is stating: the second half of this case drives one refusal onto the same selector. */
   it("opens with nothing refused, even for a slot shorter than the default minimum chunk", async () => {
     stubBacklog();
 
@@ -270,6 +273,13 @@ describe("landing on the capture URL an empty slot writes", () => {
     expect(theEstimateField(dialog)).toHaveValue(10);
     expect(within(dialog).getByRole("spinbutton", { name: /Minimum chunk/ })).toHaveValue(10);
     expect(dialog.querySelectorAll(".form-row__message--error")).toHaveLength(0);
+
+    const chunk = within(dialog).getByRole("spinbutton", { name: /Minimum chunk/ });
+    await userEvent.clear(chunk);
+    await userEvent.type(chunk, "30");
+    await userEvent.tab();
+
+    expect(dialog.querySelectorAll(".form-row__message--error")).toHaveLength(1);
   });
 
   it("clears the parameters once capture is open", async () => {
