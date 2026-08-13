@@ -4,9 +4,11 @@ The two floor quantities are the pair this module exists to keep apart, and the 
 same shape as the two task quantities in ``demand.py``.
 
 ```
-                       floor_minutes                floor_reservation_minutes
-reader                 the SOLVER, checking a floor the PROBE, via for_probe()
-nets                   IMMOVABLE placements only    EVERY placement in the Area
+                       floor_minutes                 floor_reservation_minutes
+reader                 the SOLVER, checking a floor  the PROBE, via for_probe()
+nets                   IMMOVABLE placements only     EVERY placement in the Area
+counts of each         what the user gave the Area   the time the placement occupies,
+                       inside the span it occupies   whatever the user said happened in it
 ```
 
 **Merged into one field, the probe reports a floor shortfall on the normal healthy state of the
@@ -24,6 +26,11 @@ One consequence of the split is worth stating, because it reads as asymmetric an
 Pinning an already-placed block leaves the reservation UNCHANGED, which is what stops a pin
 improving a verdict, and it LOWERS ``floor_minutes`` by the pinned block's minutes, which is
 correct: the solver now has that much less to place in order to honour the floor.
+
+A confirmed skip is the same shape the other way up. The reservation is unchanged, because the hour
+is still committed time the probe's free capacity has already subtracted, and ``floor_minutes``
+RISES by it, because a floor is not honoured by an hour the user said they did not work. So neither
+a pin nor a skip can improve the verdict, and both move the figure the solver works to.
 
 ``target_minutes`` nets nothing, because it is a reporting figure rather than a reservation.
 ``placed_minutes`` names its own set, which is the reservation's, so the ``floor`` reason clause

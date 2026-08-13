@@ -22,13 +22,25 @@ twice out of every quantity that reads it, and the effect would be invisible: ev
 merely be lower than the truth.
 
 **Attribution and capacity are two separate readings of one placement, and this module carries
-both.** A placement's own interval is what capacity and every Area figure count, whatever the
-user said happened in it: a past span sits before ``now`` and cannot hold new work, so returning
-it to capacity is what would make skipping work improve a verdict. What a placement attributes to
-the CONTENT it holds is the outcome's reading of it, and it comes from
-:func:`syncr_domain.outcomes.attributed_span`, which owns that table. A skipped hour therefore
-stays out of capacity and stops counting toward the task, which raises the demand by the hour the
-user said they did not work.
+both.** A placement's own interval is what capacity counts, whatever the user said happened in it:
+a past span sits before ``now`` and cannot hold new work, so returning it to capacity is what would
+make skipping work improve a verdict. What a placement attributes to the CONTENT it holds is the
+outcome's reading of it, and it comes from :func:`syncr_domain.outcomes.attributed_span`, which owns
+that table. A skipped hour therefore stays out of capacity and stops counting toward the task, which
+raises the demand by the hour the user said they did not work.
+
+Which placements a figure nets and which span it counts of each are two separate choices, and the
+second is made per figure:
+
+```
+own span             the time the placement occupies. What capacity, an Area's placed minutes and
+                     the solver's remaining work count
+
+attributed span      the time the content was given, out of the table above. The probe's demand
+                     counts it clipped at a deadline and split at ``now``; an Area's floor figure
+                     counts the part of it the placement's own span holds, so a floor is honoured
+                     by work done in time the plan holds and by nothing else
+```
 
 **Immovability is decided against ``now``, and ``now`` is the assembler's stamp.** A block that
 has started is immovable whether or not it has finished, which is the reading the solver takes
@@ -154,8 +166,10 @@ class PlacedTime:
         self._immovable_by_task = _by_task(
             (item for item in placed if item.immovable), span=_own_span
         )
-        self._all_by_area = _by_area(placed)
-        self._immovable_by_area = _by_area(item for item in placed if item.immovable)
+        self._all_by_area = _by_area(placed, span=_own_span)
+        self._immovable_by_area = _by_area(
+            (item for item in placed if item.immovable), span=_worked_span
+        )
 
     def immovable_minutes_of_task(self, task_id: TaskId) -> int:
         """Minutes placed for this task the solver cannot re-place. The SOLVER's set.
@@ -172,7 +186,13 @@ class PlacedTime:
         return _minutes(self._all_by_area.get(area_id))
 
     def immovable_minutes_of_area(self, area_id: AreaId) -> int:
-        """Minutes placed in this Area the solver cannot re-place. The SOLVER's set."""
+        """Minutes placed in this Area the solver cannot re-place. The SOLVER's set.
+
+        Counted over the part of each placement's attributed span its own interval holds, so an
+        hour the user said they did not work honours no floor and the minutes the solver must still
+        place rise by it. A pinned hour still to come counts in full: the solver may not move it, so
+        it is an hour of the floor it does not have to find room for.
+        """
         return _minutes(self._immovable_by_area.get(area_id))
 
     def attributed_to_task_before(self, task_id: TaskId, deadline: Instant) -> AttributedMinutes:
@@ -216,13 +236,24 @@ def _placed(
 
 
 def _own_span(placed: Placement) -> Interval | None:
-    """The time this placement occupies, which is what capacity and every Area figure count."""
+    """The time this placement occupies: what capacity and an Area's placed minutes count."""
     return placed.interval
 
 
 def _attributed_span(placed: Placement) -> Interval | None:
     """The time this placement counts toward its content, which an outcome decides."""
     return placed.attributed
+
+
+def _worked_span(placed: Placement) -> Interval | None:
+    """The time this placement gave its Area inside the span it occupies.
+
+    The attributed span narrowed to the placement's own interval, because an Area's floor is
+    honoured by work the user did in time the plan holds. An outcome moving an hour to a span this
+    placement does not cover honours no floor here, so the solver still owes those minutes, which is
+    the direction a floor may safely be wrong in.
+    """
+    return None if placed.attributed is None else placed.attributed.clipped_to(placed.interval)
 
 
 def _placement_order(placed: Placement) -> tuple[Instant, Instant, str, str]:
@@ -252,9 +283,20 @@ def _by_task(
     )
 
 
-def _by_area(placed: Iterable[Placement]) -> Mapping[UUID, IntervalSet]:
-    """The placements of each Area, unioned. The frame and an anchor carry none."""
-    return _grouped((item.area_id, item.interval) for item in placed if item.area_id is not None)
+def _by_area(
+    placed: Iterable[Placement], *, span: Callable[[Placement], Interval | None]
+) -> Mapping[UUID, IntervalSet]:
+    """The placements of each Area, unioned. The frame and an anchor carry none.
+
+    ``span`` is the caller's reading of a placement, injected for the same reason ``_by_task`` takes
+    one: the Area's two figures ask opposite questions of one placement, and one asks what it
+    occupies while the other asks what the user gave the Area inside it.
+    """
+    return _grouped(
+        (item.area_id, taken)
+        for item in placed
+        if item.area_id is not None and (taken := span(item)) is not None
+    )
 
 
 def _grouped(pairs: Iterable[tuple[UUID, Interval]]) -> Mapping[UUID, IntervalSet]:
