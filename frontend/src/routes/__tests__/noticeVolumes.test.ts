@@ -18,7 +18,10 @@ import { describe, expect, it } from "vitest";
 
 import { NARROWING_MODULE, shippedNotices, type NoticeLiteral } from "../../testing/noticeLiterals";
 import { captureRefusedNotice } from "../../app/capture/refusals";
-import { captureNotSavedNotice } from "../../app/notices/refusedWrites";
+import {
+  captureNotSavedNotice,
+  preferredTimeNotSavedNotice,
+} from "../../app/notices/refusedWrites";
 import { completionRefusedNotice, taskCompletedNotice } from "../backlog/notices";
 import { rejectionNotice, staleFeedNotice } from "../settings/sourceNotices";
 import { staleFeedNotices } from "../today/staleFeeds";
@@ -103,6 +106,10 @@ const CASES: readonly { readonly case: string; readonly notice: Notice }[] = [
     case: "a capture the api refused after the form that asked for it had gone",
     notice: captureNotSavedNotice(REFUSED),
   },
+  {
+    case: "a task that landed whose own preferred time the api refused",
+    notice: preferredTimeNotSavedNotice(REFUSED),
+  },
   { case: "a task completed elsewhere", notice: taskCompletedNotice("Past papers") },
   { case: "a completion the api refused", notice: completionRefusedNotice(REFUSED) },
   {
@@ -180,13 +187,20 @@ describe("every case the product raises", () => {
     expect([panel.volume, inline.volume]).toEqual(["panel", "inline"]);
   });
 
-  /* THE ONE THE CLIENT COMPOSES ITSELF. A write the reader's own surface did not survive to receive takes the
-   * loudest non-blocking volume, because it is the only one that outlives the screen they have moved on to, and
-   * oxide because a durable write did not happen: it is the assignment the write target's expiry already carries. */
+  /* THE TWO THE CLIENT COMPOSES ITSELF, which are the two halves of one gesture: a write the reader's own surface
+   * did not survive to receive takes the loudest non-blocking volume, because it is the only one that outlives the
+   * screen they have moved on to, and oxide because a durable write did not happen. It is the assignment the write
+   * target's expiry already carries. Both are asserted, because a capture sends two writes and each has its own
+   * sentence: one says the task is gone and one says the task is there without its preferred time. */
   it("states a write that did not happen in oxide, in the top bar, wherever the reader now is", () => {
-    const notice = captureNotSavedNotice(REFUSED);
+    const capture = captureNotSavedNotice(REFUSED);
+    const preference = preferredTimeNotSavedNotice(REFUSED);
 
-    expect([notice.volume, notice.pigment]).toEqual(["banner", "oxide"]);
+    expect([capture.volume, capture.pigment]).toEqual(["banner", "oxide"]);
+    expect([preference.volume, preference.pigment]).toEqual(["banner", "oxide"]);
+    /* Two ids, because one condition stands once under its own id: a shared id would replace the other's banner
+       and a reader who met both would be told only the second. */
+    expect(capture.id).not.toBe(preference.id);
   });
 
   it("offers at most one repair per notice, so a reader is never asked to choose between two", () => {
@@ -203,7 +217,7 @@ describe("every notice the application declares, found by parsing for the shape"
      * suffix case records why that matters -- ">= 2 passed with three suffixes, and would keep passing if the walk
      * narrowed to two, which is how the systemd units came to be invisible". A notice added or removed is a
      * deliberate change and reddens here with the figure. */
-    expect(declared).toHaveLength(19);
+    expect(declared).toHaveLength(20);
     expect(unreadable(declared, (one) => one.volume)).toEqual([]);
     for (const one of declared) expect(VOLUMES).toContain(one.volume);
   });
