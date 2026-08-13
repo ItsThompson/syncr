@@ -15,10 +15,22 @@
 
 import { createContext, useContext } from "react";
 
+import type { CaptureWindow } from "./preferredWindow";
+
 /** What a caller can say about the opening it is asking for. */
 export interface CaptureOpening {
   /** The Area to open ON, where the caller already knows it. Not a change to a draft in flight. */
   readonly areaId?: string | undefined;
+  /** The work's own length in minutes, where the caller knows it: for a slot, exactly what fits it. */
+  readonly estimateMinutes?: number | undefined;
+  /**
+   * The stretch of time the work should prefer, where the caller came from one.
+   *
+   * IT IS NOT A MEMBER OF THE REQUEST AND CANNOT BECOME ONE. A preferred time is a `Preference`, whose owner is an
+   * Area, a Habit or a Task, and the capture request's shape refuses an unknown field outright. So the window is
+   * carried by the OPENING: the form states it, and what writes it is the task's own preference afterwards.
+   */
+  readonly preferredWindow?: CaptureWindow | undefined;
   /**
    * Where focus returns when the dialog closes. Defaults to wherever the reader was.
    *

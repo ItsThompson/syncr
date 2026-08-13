@@ -8,7 +8,8 @@
  * THERE IS NO PREFERRED-TIME MEMBER, AND THERE CANNOT BE ONE. A preferred time is a `Preference`, whose owner
  * is an Area, a Habit or a Task, so a task inherits its Area's windows unless it overrides them. The api's
  * request shape forbids an unknown field, so a `preferredTimes` member here would be a 422 rather than a value
- * quietly dropped, and the form states the inheritance in a hint instead of offering a control for it.
+ * quietly dropped, and the form states the inheritance in a hint instead of offering a control for it. A window
+ * a caller opened capture from is held by the OPENING for that reason, and never by this draft.
  *
  * THE MINIMUM-CHUNK GUARD IS AN AFFORDANCE AND NOT THE RULE. `syncr_domain.tasks` owns the comparison of a
  * minimum chunk against an estimate, it is the only statement of it in the product, and its 422 names the
@@ -19,6 +20,7 @@
 import { zonedInstant } from "../../lib/zonedInstant";
 import type { TaskCaptureBody } from "../../api/hooks/useBacklog";
 import type { components } from "../../api/schema";
+import type { CaptureOpening } from "./captureContext";
 
 export type Priority = components["schemas"]["Priority"];
 
@@ -58,13 +60,25 @@ export interface CaptureDraft {
 const DEFAULT_ESTIMATE_MINUTES = 30;
 const DEFAULT_MIN_CHUNK_MINUTES = 15;
 
-/** An empty draft, on the api's defaults, in the Area the caller opened capture from. */
-export function emptyDraft(areaId = ""): CaptureDraft {
+/**
+ * The draft an opening starts on: the api's own documented defaults, and whatever the caller already knows.
+ *
+ * No opening at all is the empty form, which is what a closed dialog holds and what `n` gets.
+ *
+ * THE MINIMUM CHUNK FOLLOWS AN ESTIMATE THAT SITS BELOW IT. The default floor is one grid step, so a caller
+ * naming a shorter estimate would otherwise open the form on a pair it refuses, stated on a row nobody has
+ * touched and with the submit disabled: a prefill that arrives already refused is worse than no prefill.
+ *
+ * IT TAKES THE WHOLE OPENING AND READS TWO MEMBERS OF IT, so a member added to an opening cannot silently become
+ * a member of the request: what the draft holds is what the api takes.
+ */
+export function draftFrom(opening: CaptureOpening = {}): CaptureDraft {
+  const estimateMinutes = opening.estimateMinutes ?? DEFAULT_ESTIMATE_MINUTES;
   return {
     title: "",
-    areaId,
-    estimateMinutes: DEFAULT_ESTIMATE_MINUTES,
-    minChunkMinutes: DEFAULT_MIN_CHUNK_MINUTES,
+    areaId: opening.areaId ?? "",
+    estimateMinutes,
+    minChunkMinutes: Math.min(DEFAULT_MIN_CHUNK_MINUTES, estimateMinutes),
     deadline: "",
     priority: "normal",
     splittable: true,

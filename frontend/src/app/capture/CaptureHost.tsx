@@ -51,11 +51,12 @@ import { CAPTURE_KEY } from "../../ui/domain";
 import { captureNotSavedNotice, useClientNotices } from "../notices";
 import { CaptureContext, type Capture, type CaptureOpening } from "./captureContext";
 import { CaptureDialog } from "./CaptureDialog";
+import { preferredWindowReading, type CaptureWindow } from "./preferredWindow";
 import { captureRefusedNotice, refusalsFrom, sendStillOpenNotice } from "./refusals";
 import {
   bodyOf,
   deadlineInstantOf,
-  emptyDraft,
+  draftFrom,
   isSubmittable,
   refusalsIn,
   type CaptureDraft,
@@ -78,6 +79,13 @@ interface CaptureState {
    * dialog has the focus and the answer is gone.
    */
   readonly returnFocusTo: HTMLElement | null;
+  /**
+   * The stretch of time this opening's work should prefer, or null where the caller named none.
+   *
+   * Held beside the draft rather than in it, because the capture request carries no preference member: what the
+   * form does with it is state it, and writing it is a second request against the task the first one creates.
+   */
+  readonly preferredWindow: CaptureWindow | null;
   /**
    * Which opening this is. Bumped on every open and every close.
    *
@@ -103,8 +111,9 @@ interface CaptureState {
 function closedAfter(held: CaptureState): CaptureState {
   return {
     isOpen: false,
-    draft: emptyDraft(),
+    draft: draftFrom(),
     returnFocusTo: held.returnFocusTo,
+    preferredWindow: null,
     generation: held.generation + 1,
     refusedAt: null,
     refusalToReport: held.refusalToReport,
@@ -122,8 +131,9 @@ export function CaptureHost({ children }: CaptureHostProps) {
   const { report } = useClientNotices();
   const [state, setState] = useState<CaptureState>(() => ({
     isOpen: false,
-    draft: emptyDraft(),
+    draft: draftFrom(),
     returnFocusTo: null,
+    preferredWindow: null,
     generation: 0,
     refusedAt: null,
     refusalToReport: false,
@@ -158,8 +168,9 @@ export function CaptureHost({ children }: CaptureHostProps) {
             ? held
             : {
                 isOpen: true,
-                draft: emptyDraft(opening.areaId),
+                draft: draftFrom(opening),
                 returnFocusTo,
+                preferredWindow: opening.preferredWindow ?? null,
                 generation: held.generation + 1,
                 refusedAt: null,
                 refusalToReport: held.refusalToReport,
@@ -257,6 +268,12 @@ export function CaptureHost({ children }: CaptureHostProps) {
       : isSending && state.refusedAt === null
         ? sendStillOpenNotice()
         : undefined;
+  /* THE WINDOW IN THE READER'S OWN ZONE, resolved here because the zone is this host's read: the form is handed
+   * words for the same reason it is handed a date rather than a zone. */
+  const windowStated =
+    state.preferredWindow === null
+      ? undefined
+      : (preferredWindowReading(state.preferredWindow, zone) ?? undefined);
 
   return (
     <CaptureContext.Provider value={capture}>
@@ -274,6 +291,7 @@ export function CaptureHost({ children }: CaptureHostProps) {
         onSubmit={() => {
           void submit(state.draft, state.generation);
         }}
+        preferredWindowReading={windowStated}
         refusals={{ ...refusalsIn(state.draft), ...refusalsFrom(refusal) }}
         returnFocusTo={state.returnFocusTo}
         today={todayIn(zone, Date.now())}

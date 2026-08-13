@@ -13,7 +13,7 @@ import { ZONE } from "./fixtures";
 import {
   bodyOf,
   deadlineInstantOf,
-  emptyDraft,
+  draftFrom,
   isSubmittable,
   priorityOf,
   refusalsIn,
@@ -40,9 +40,9 @@ function refusedWith(errors: { field: string; message: string }[]): Problem {
   };
 }
 
-describe("an empty draft", () => {
+describe("the draft an opening starts on", () => {
   it("opens on the api's own documented defaults", () => {
-    expect(emptyDraft()).toEqual({
+    expect(draftFrom()).toEqual({
       title: "",
       areaId: "",
       estimateMinutes: 30,
@@ -54,32 +54,72 @@ describe("an empty draft", () => {
   });
 
   it("opens on an Area where the caller names one, which is what a slot would do", () => {
-    expect(emptyDraft("area-1").areaId).toBe("area-1");
+    expect(draftFrom({ areaId: "area-1" }).areaId).toBe("area-1");
+  });
+
+  it("opens on the estimate the caller names, which for a slot is what fits it exactly", () => {
+    expect(draftFrom({ areaId: "area-1", estimateMinutes: 90 })).toMatchObject({
+      areaId: "area-1",
+      estimateMinutes: 90,
+      minChunkMinutes: 15,
+    });
+  });
+
+  /* A PREFILL THAT ARRIVES ALREADY REFUSED IS WORSE THAN NO PREFILL. The default floor is fifteen minutes, so an
+     estimate under one would open the form on the pair `refusalsIn` refuses, on a row nobody has touched, with the
+     submit disabled and nothing the reader did to fix. */
+  it("brings the minimum chunk down to an estimate that sits below the default floor", () => {
+    const draft = draftFrom({ areaId: "area-1", estimateMinutes: 10 });
+
+    expect(draft.minChunkMinutes).toBe(10);
+    expect(refusalsIn({ ...draft, title: "one" })).toEqual({});
   });
 
   it("carries no preferred-time member, because a preferred time belongs to an Area", () => {
-    expect(Object.keys(emptyDraft())).not.toContain("preferredTimes");
-    expect(Object.keys(emptyDraft())).not.toContain("preferredTime");
+    expect(Object.keys(draftFrom())).not.toContain("preferredTimes");
+    expect(Object.keys(draftFrom())).not.toContain("preferredTime");
+  });
+
+  /* THE WINDOW AN OPENING CARRIES IS NOT THE DRAFT'S, and this is the assertion that keeps it out: the request
+     shape refuses an unknown member, so a window that reached the draft would be a 422 on every prefilled
+     capture rather than a value quietly dropped. */
+  it("carries no window either, even when the opening it started from named one", () => {
+    const draft = draftFrom({
+      areaId: "area-1",
+      estimateMinutes: 60,
+      preferredWindow: { from: "2026-02-11T14:00:00+00:00", to: "2026-02-11T15:00:00+00:00" },
+    });
+
+    expect(Object.keys(draft)).not.toContain("preferredWindow");
+    expect(bodyOf({ ...draft, title: "one" }, null)).toEqual({
+      areaId: "area-1",
+      title: "one",
+      estimateMinutes: 60,
+      minChunkMinutes: 15,
+      deadline: null,
+      priority: "normal",
+      splittable: true,
+    });
   });
 });
 
 describe("what the form refuses", () => {
   it("refuses a missing title and a missing Area, which are the two required values", () => {
-    const refusals = refusalsIn(emptyDraft());
+    const refusals = refusalsIn(draftFrom());
 
     expect(refusals.title).toContain("needs a title");
     expect(refusals.areaId).toContain("needs an Area");
-    expect(isSubmittable(emptyDraft())).toBe(false);
+    expect(isSubmittable(draftFrom())).toBe(false);
   });
 
   it("refuses a title of nothing but whitespace rather than trimming it into one", () => {
-    const draft = { ...emptyDraft("area-1"), title: "   \t  " };
+    const draft = { ...draftFrom({ areaId: "area-1" }), title: "   \t  " };
 
     expect(refusalsIn(draft).title).toContain("needs a title");
   });
 
   it("refuses a minimum chunk larger than the estimate, and says why", () => {
-    const draft = { ...emptyDraft("area-1"), title: "one", minChunkMinutes: 60 };
+    const draft = { ...draftFrom({ areaId: "area-1" }), title: "one", minChunkMinutes: 60 };
 
     expect(refusalsIn(draft).minChunkMinutes).toContain("no placement could satisfy both");
     expect(isSubmittable(draft)).toBe(false);
@@ -87,7 +127,7 @@ describe("what the form refuses", () => {
 
   it("accepts a minimum chunk equal to the estimate, which is one placement of the whole thing", () => {
     const draft = {
-      ...emptyDraft("area-1"),
+      ...draftFrom({ areaId: "area-1" }),
       title: "one",
       estimateMinutes: 60,
       minChunkMinutes: 60,
@@ -100,7 +140,7 @@ describe("what the form refuses", () => {
 
 describe("the body it sends", () => {
   it("trims the title and sends every other member", () => {
-    const draft = { ...emptyDraft("area-1"), title: "  Kontron take-home " };
+    const draft = { ...draftFrom({ areaId: "area-1" }), title: "  Kontron take-home " };
 
     expect(bodyOf(draft, null)).toEqual({
       areaId: "area-1",
@@ -114,7 +154,7 @@ describe("the body it sends", () => {
   });
 
   it("sends the deadline it was given, so the zone is resolved once and above it", () => {
-    const draft = { ...emptyDraft("area-1"), title: "one" };
+    const draft = { ...draftFrom({ areaId: "area-1" }), title: "one" };
 
     expect(bodyOf(draft, "2026-02-13T23:59:00+00:00").deadline).toBe("2026-02-13T23:59:00+00:00");
   });

@@ -8,6 +8,11 @@
  * Preference column on the Areas screen. A control here would be a second home for a value with one home, and
  * the api's request shape refuses the field outright, so the hint states the inheritance instead.
  *
+ * A WINDOW THE OPENING CARRIES IS STATED AND NOT OFFERED. A reader who activated a slot on the week screen came
+ * from one stretch of time, and the form says which: that is the same value the two rows above are prefilled with,
+ * and a prefill a reader cannot see cannot be told from one that was dropped on the way. It is a sentence rather
+ * than a control for the reason in the paragraph above -- there is nowhere for an edited one to go.
+ *
  * THE MINIMUM CHUNK'S REFUSAL IS RENDERED AT ITS OWN ROW, with the reason, and the submit stays disabled while
  * it stands: a reader is told at the field rather than after a round trip. The rule itself is the domain's, and
  * a refusal the api returns lands on the same rows through the same prop, so the sentence a reader sees when the
@@ -59,6 +64,13 @@ export interface CaptureDialogProps {
   readonly onSubmit: () => void;
   /** `YYYY-MM-DD` in the reader's own zone, which is what the date field opens on. */
   readonly today: string;
+  /**
+   * The window this opening's work should prefer, as the reader's own zone reads it.
+   *
+   * Words rather than the two instants behind them, because the zone is the host's read: the form is handed a
+   * reading for the same reason it is handed today's date.
+   */
+  readonly preferredWindowReading?: string | undefined;
   /** Where focus returns when the dialog closes: the element the reader was on when it opened. */
   readonly returnFocusTo?: HTMLElement | null | undefined;
   /**
@@ -88,6 +100,7 @@ export function CaptureDialog({
   canSubmit,
   onSubmit,
   today,
+  preferredWindowReading,
   returnFocusTo,
   notice,
 }: CaptureDialogProps) {
@@ -211,6 +224,11 @@ export function CaptureDialog({
           </Checkbox>
         )}
       </FormRow>
+      {preferredWindowReading === undefined ? null : (
+        <p className="text-eyebrow text-text-muted">
+          The slot you activated runs {preferredWindowReading}.
+        </p>
+      )}
       <p className="text-eyebrow text-text-muted">
         There is no preferred time here: a preferred time is inherited from the Area, and is edited
         in the Preference column on the Areas screen.

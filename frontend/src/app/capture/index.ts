@@ -2,10 +2,18 @@ export { CaptureDialog, type CaptureArea, type CaptureDialogProps } from "./Capt
 export { CaptureHost, type CaptureHostProps } from "./CaptureHost";
 export { CaptureContext, useCapture, type Capture, type CaptureOpening } from "./captureContext";
 export {
+  capturePath,
+  capturePrefillIn,
+  withoutCapturePrefill,
+  type CaptureInvitation,
+} from "./prefill";
+export { preferredWindowReading, type CaptureWindow } from "./preferredWindow";
+export { useCapturePrefill } from "./useCapturePrefill";
+export {
   PRIORITIES,
   bodyOf,
   deadlineInstantOf,
-  emptyDraft,
+  draftFrom,
   isSubmittable,
   priorityOf,
   refusalsIn,
