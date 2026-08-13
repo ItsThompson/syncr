@@ -6,51 +6,28 @@
  *
  * So the assertions are the ARITHMETIC, from the tokens, rather than a table of expected pixels. A retuned sidebar,
  * panel or column floor then fails here, which is what a derived breakpoint means: the value is not a preference.
+ * The ledger itself lives in `src/testing/widthLedger.ts`, because where the detail panel mounts is worked back
+ * from the same figures and a second copy of them would let one of the two suites pass against a retuned sidebar.
  *
- * WHAT THIS FILE DOES NOT ASSERT is the detail panel closing to its rail, because there is no panel yet. What it can
- * assert is that the mechanism is correct and available: the rail's width is a token, the threshold is the theme's
- * own mirror of --bp-wide, and the utility that pairs them compiles. */
+ * WHAT THIS FILE ASSERTS ABOUT THE RAIL is that the mechanism is correct and available: the rail's width is a
+ * token, the threshold is the theme's own mirror of --bp-wide, and the utility that pairs them compiles. What the
+ * reader reaches through the rail, and where the panel goes when they do, belongs to the surface that mounts it. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "postcss";
 
-import { compileUtilities, srcDir } from "../../../../testing/compileTheme";
+import { compileUtilities } from "../../../../testing/compileTheme";
 import { componentsNaming } from "../../../../testing/kitSources";
 import { domainDir } from "../../../../testing/kitStylesheets";
-
-/** The declared value of a layer 1 token, read from the file that declares it. */
-async function layoutToken(property: string): Promise<string> {
-  const source = await readFile(path.join(srcDir, "tokens", "layout.css"), "utf8");
-  let found: string | null = null;
-  parse(source).walkDecls((declaration) => {
-    if (declaration.prop === property) found = declaration.value.trim();
-  });
-  if (found === null) throw new Error(`layout.css declares no ${property}`);
-  return found;
-}
-
-const pixels = async (property: string): Promise<number> => {
-  const value = await layoutToken(property);
-  /* One level of indirection is followed, because a token legitimately names another: the closed panel's width IS one
-   * control height rather than a length that happens to equal one. */
-  const reference = /^var\((--[\w-]+)\)$/.exec(value);
-  return Number.parseFloat(reference === null ? value : await layoutToken(reference[1]));
-};
-
-/* What a day column loses to the block's own chrome before a character fits: the 1px inset either side, the 3px state
- * rule, and --block-pad-x either side. The ledger in the design record works backwards through exactly these. */
-const CHROME_PX = 2 * 1 + 3 + 2 * 5;
-/**
- * The measured advance of one character at --fs-block in the mono face.
- *
- * A MEASUREMENT RATHER THAN A MIRROR, and the one figure in this component that is held against nothing: it comes
- * from the design record's own character ledger, measured in JetBrains Mono at 11.5px, and a change of face or of
- * --fs-block would move it silently. Everything else here is read from the file that declares it.
- */
-const CHARACTER_PX = 7.02;
-const CHARACTER_FLOOR = 17;
+import {
+  CHARACTER_FLOOR,
+  CHARACTER_PX,
+  CHROME_PX,
+  layoutPixels as pixels,
+  layoutToken,
+} from "../../../../testing/widthLedger";
 
 describe("the floor of 17 characters", () => {
   it("needs the day column --col-min declares, and --col-min is that figure rounded up", async () => {
