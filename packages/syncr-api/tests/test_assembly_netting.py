@@ -429,10 +429,19 @@ def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
         (an_outcome(OutcomeState.PRESUMED), 60),
         (an_outcome(OutcomeState.COMPLETED), 60),
         (an_outcome(OutcomeState.PARTIAL, actual_minutes=20), 20),
+        (an_outcome(OutcomeState.PARTIAL, actual_minutes=90), 60),
         (an_outcome(MISS_STATE), 0),
         (an_outcome(OutcomeState.MOVED, actual_interval=between(9, 10, day=5)), 0),
     ],
-    ids=["no row", "presumed", "completed", "partial", "skipped", "moved off the span"],
+    ids=[
+        "no row",
+        "presumed",
+        "completed",
+        "partial",
+        "partial over the block",
+        "skipped",
+        "moved off the span",
+    ],
 )
 def test_the_areas_floor_reading_counts_what_the_user_gave_it_inside_the_span(
     recorded: RecordedOutcome | None, honoured_minutes: int
@@ -440,6 +449,11 @@ def test_the_areas_floor_reading_counts_what_the_user_gave_it_inside_the_span(
     # The figure the solver's floor arrives netted of. A skipped hour honours no floor, so the
     # minutes the solver must still place RISE by it: read over the placement's own span instead,
     # the floor reads as met by work the user said did not happen.
+    #
+    # A `partial` reporting MORE than the block was planned for is legitimate and is not refused:
+    # the user is reporting how long the work took. The hour the plan holds is what honours the
+    # floor, so ninety reported minutes honour sixty, which is the other place the upper bound of
+    # this reading does work.
     plan = a_past_task_hour()
 
     placed = placed_time(live_plan=plan, outcomes=[] if recorded is None else [recorded])
