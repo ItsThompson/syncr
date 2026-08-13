@@ -71,7 +71,7 @@ from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.plans.week_config import HISTORY_PAGE, IMMEDIATE_PARAMETER
 from syncr_api.routines.config import ROUTINES_PREFIX
-from syncr_api.solving.config import SOLVE
+from syncr_api.solving.config import PENDING, SOLVE
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.outcomes import Failed
 from syncr_api.solving.repository import OperationRepository
@@ -654,6 +654,30 @@ def test_a_week_inside_the_horizon_with_no_plan_yet_says_it_is_awaiting_the_main
     assert view["emptyWeek"]["coversThisWeek"] is True
     assert "inside your" in view["emptyWeek"]["statement"]
     assert "has not been produced yet" in view["emptyWeek"]["statement"]
+
+
+def test_a_week_awaiting_its_plan_carries_the_solve_that_was_asked_for(
+    http: TestClient,
+    owner: UserRecord,
+    configured: dict[str, str],
+    live_database_url: str,
+) -> None:
+    """The window between the request and the revision, which is the state a client waits through.
+
+    The word says the week is waiting and the operation says what for. A payload that named the word
+    and dropped the operation would leave a client with nothing to follow, so the plan would appear
+    on whatever the reader did next rather than on the read the solve's own completion asks for.
+    """
+    week = this_week()
+    enqueue_a_solve(live_database_url, owner.tenant_id, week)
+
+    view = week_view(http, configured, week)
+
+    assert view["live"] is None
+    assert view["emptyReason"] == AWAITING_MAINTAINER
+    assert view["operation"]["kind"] == SOLVE
+    assert view["operation"]["status"] == PENDING
+    assert view["operation"]["target"]["isoWeek"] == str(week)
 
 
 def test_a_missing_input_outranks_the_horizon(http: TestClient, signed_in: dict[str, str]) -> None:
