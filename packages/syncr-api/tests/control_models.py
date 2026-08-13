@@ -19,7 +19,7 @@ from sqlalchemy import DateTime, Index, MetaData, String, Table, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from syncr_api.accounts.models import Tenant
-from syncr_api.core.tenancy import TENANT_ID_COLUMN, TenantScoped
+from syncr_api.core.tenancy import IDENTITY_TABLES, TENANT_ID_COLUMN, TenantScoped
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -54,7 +54,6 @@ class ControlBase(DeclarativeBase):
 # a second hand-written definition of the same table would be free to drift from the one
 # the migration creates.
 table_of(Tenant).to_metadata(ControlBase.metadata)
-CONTROL_TABLES = frozenset({"scoped_things", "unscoped_things"})
 
 
 class ScopedThing(ControlBase, TenantScoped):
@@ -85,6 +84,12 @@ class UnscopedThing(ControlBase):
     label: Mapped[str] = mapped_column(String(20))
 
     __table_args__ = (Index("ix_unscoped_things_label_id", "label", "id"),)
+
+
+# Read off the metadata rather than restated, so a control model added above comes under every
+# rule that reads this set without being named a second time here. The identity tables are
+# excluded because the one this metadata holds is borrowed from the application's.
+CONTROL_TABLES = frozenset(ControlBase.metadata.tables) - IDENTITY_TABLES
 
 
 class StatementRecorder:
