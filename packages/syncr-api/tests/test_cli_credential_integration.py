@@ -53,6 +53,7 @@ from syncr_api.oauth.config import build_oauth_config
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
 from syncr_api.tasks.config import TASKS_PREFIX
+from syncr_api.templates.config import DAY_TYPES_PREFIX
 from tests.cli_credentials import BROWSER_ORIGIN, cli_bearer_header
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 from tests.test_authorization_boundary import CLI_ROUTES
@@ -78,6 +79,11 @@ TASKS_ROUTE = TASKS_PREFIX
 # A route the CLI ships no command for, in a package it does reach, so the refusal is the route's
 # own perimeter rather than a whole router being closed.
 TASK_ROUTE = f"{TASKS_PREFIX}/{uuid4()}"
+
+# A route outside the catalog that also takes the idempotency guard, which resolves the
+# either-credential perimeter as a sub-dependency. Its own browser-only declaration is what has to
+# survive that.
+DAY_TYPES_ROUTE = DAY_TYPES_PREFIX
 
 # A hostile page's origin: not in the deployment's allowed set, and the shape a forged cross-origin
 # request states.
@@ -261,6 +267,31 @@ def test_a_route_outside_the_catalog_refuses_a_token_and_serves_the_cookie(
     # 404 rather than 200: the identifier names no task of this tenant. What matters is that the
     # browser got past the perimeter the token did not.
     assert browser.status_code == 404, browser.text
+
+
+def test_a_guarded_route_outside_the_catalog_refuses_a_token_and_serves_the_cookie(
+    http: TestClient, owner: UserRecord
+) -> None:
+    # The same default, on a route that takes the idempotency guard. The guard resolves the
+    # either-credential perimeter for itself, so a guarded route declaring the browser-only one
+    # resolves both, and this is what says the second did not widen the first. A token getting past
+    # would answer 403 from the scope check rather than 401, so the assertion discriminates.
+    token = cli_bearer_header(http, owner.email)
+    cookie = _signed_in(http, owner.email)
+    declared = {"name": "Weekday"}
+
+    refused = http.post(
+        DAY_TYPES_ROUTE, json=declared, headers={**token, IDEMPOTENCY_KEY_HEADER: "cli-day-type"}
+    )
+    browser = http.post(
+        DAY_TYPES_ROUTE,
+        json=declared,
+        headers={**cookie, "Origin": BROWSER_ORIGIN, IDEMPOTENCY_KEY_HEADER: "browser-day-type"},
+    )
+
+    assert refused.status_code == Unauthorized.status, refused.text
+    assert refused.json()["type"] == Unauthorized.type
+    assert browser.status_code == 201, browser.text
 
 
 def test_every_route_in_the_catalog_gets_past_the_perimeter_with_a_token(

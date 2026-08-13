@@ -36,6 +36,7 @@ from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.config import APPROVED
 from syncr_api.plans.facts import Pin
 from syncr_api.plans.models import PlanRevision, WeekInputVersion
@@ -915,6 +916,206 @@ def test_declaring_a_day_type_bumps_nothing(
     declare_day_type(http, signed_in, "Weekday")
 
     assert week_versions(live_database_url, owner.tenant_id) == before
+
+
+# --------------------------------------------------------------------------------
+# Idempotency, on all eight unsafe methods
+#
+# Each test sends one key twice and asserts what the SECOND request did not do, because the
+# first succeeding says nothing: four of these routes converge on their own, so a retry that
+# re-executed would answer exactly what a replay answers.
+#
+# What separates them is the second write's own trace. A repeated entry POST leaves a second
+# row. A repeated rename, entry patch or pattern replacement bumps the future week a second
+# time, which is what re-running the work is: the bump is how a solve learns its inputs moved.
+# A repeated removal answers 404. A repeated day type or shape declaration answers 409 from the
+# unique index that already refuses it.
+# --------------------------------------------------------------------------------
+
+
+def one_key(signed_in: dict[str, str]) -> dict[str, str]:
+    """The browser's headers plus one idempotency key, to send twice."""
+    return {**signed_in, IDEMPOTENCY_KEY_HEADER: uuid4().hex}
+
+
+def a_mapped_shape(http: TestClient, signed_in: dict[str, str], name: str = "Weekday") -> str:
+    """A shape whose day type every weekday maps, so a mutation of it reaches a future week."""
+    day_type = declare_day_type(http, signed_in, name)
+    declare_pattern(http, signed_in, a_mapping(day_type))
+    return declare_shape(http, signed_in, day_type, f"{name} shape")
+
+
+def add_an_entry(http: TestClient, signed_in: dict[str, str], shape: str) -> str:
+    response = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    identifier: str = response.json()["id"]
+    return identifier
+
+
+def test_a_repeated_entry_post_under_one_key_adds_one_entry(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """The retry this module exists to state: nothing else refuses a second identical entry.
+
+    A day type's name and a day type's one shape are each held by a unique index, and every
+    other unsafe method here converges. An entry is addressed by an identifier the server
+    mints, so a repeat of this one request is the shape's only duplicable part.
+    """
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    once = one_key(signed_in)
+
+    first = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=once)
+    replayed = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=once)
+
+    assert first.status_code == HTTPStatus.CREATED, first.text
+    assert replayed.status_code == HTTPStatus.CREATED, replayed.text
+    # The stored rows first, because a second row is what a re-executed retry leaves behind. The
+    # identifier is then what says the answer was replayed rather than derived a second time.
+    stored = entry_rows(live_database_url, owner.tenant_id)
+    assert [str(row.id) for row in stored] == [first.json()["id"]]
+    assert replayed.json() == first.json()
+
+
+def test_a_repeated_entry_post_without_a_key_still_adds_a_second_entry(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """The header is offered rather than demanded, so a caller sending none gets no guarantee.
+
+    The control on the test above, and the statement of what is left open: two identical
+    entries are two rows, so a client that mints a fresh key per attempt duplicates one.
+    """
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+
+    first = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    again = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+
+    assert first.status_code == HTTPStatus.CREATED, first.text
+    assert again.status_code == HTTPStatus.CREATED, again.text
+    assert len(entry_rows(live_database_url, owner.tenant_id)) == 2
+
+
+def test_a_repeated_day_type_declaration_under_one_key_declares_one(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    once = one_key(signed_in)
+
+    first = http.post(DAY_TYPES, json={"name": "Weekday"}, headers=once)
+    replayed = http.post(DAY_TYPES, json={"name": "Weekday"}, headers=once)
+
+    assert first.status_code == HTTPStatus.CREATED, first.text
+    # 409 without the guard: the name is held by a unique index, so the retry is refused rather
+    # than answered with what it already achieved.
+    assert replayed.status_code == HTTPStatus.CREATED, replayed.text
+    assert replayed.json() == first.json()
+    assert len(http.get(DAY_TYPES, headers=signed_in).json()["dayTypes"]) == 1
+
+
+def test_a_repeated_shape_declaration_under_one_key_declares_one(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    declared = {"dayTypeId": day_type, "name": "Weekday shape"}
+    once = one_key(signed_in)
+
+    first = http.post(TEMPLATES, json=declared, headers=once)
+    replayed = http.post(TEMPLATES, json=declared, headers=once)
+
+    assert first.status_code == HTTPStatus.CREATED, first.text
+    assert replayed.status_code == HTTPStatus.CREATED, replayed.text
+    assert replayed.json() == first.json()
+    assert len(http.get(TEMPLATES, headers=signed_in).json()["templates"]) == 1
+
+
+def test_a_repeated_rename_under_one_key_bumps_the_week_once(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    shape = a_mapped_shape(http, signed_in)
+    before = track_weeks(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    once = one_key(signed_in)
+
+    first = http.patch(f"{TEMPLATES}/{shape}", json={"name": "Weekday, revised"}, headers=once)
+    replayed = http.patch(f"{TEMPLATES}/{shape}", json={"name": "Weekday, revised"}, headers=once)
+
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert replayed.json() == first.json()
+    after = week_versions(live_database_url, owner.tenant_id)
+    assert after[str(FUTURE_WEEK)] == before[str(FUTURE_WEEK)] + 1
+
+
+def test_a_repeated_shape_removal_under_one_key_answers_no_content_rather_than_404(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    once = one_key(signed_in)
+
+    first = http.delete(f"{TEMPLATES}/{shape}", headers=once)
+    replayed = http.delete(f"{TEMPLATES}/{shape}", headers=once)
+
+    assert first.status_code == HTTPStatus.NO_CONTENT, first.text
+    assert replayed.status_code == HTTPStatus.NO_CONTENT, replayed.text
+    assert replayed.content == b""
+
+
+def test_a_repeated_entry_patch_under_one_key_bumps_the_week_once(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    shape = a_mapped_shape(http, signed_in)
+    entry = add_an_entry(http, signed_in, shape)
+    before = track_weeks(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    once = one_key(signed_in)
+    moved = {"targetTime": "07:30:00"}
+
+    first = http.patch(f"{TEMPLATES}/{shape}/entries/{entry}", json=moved, headers=once)
+    replayed = http.patch(f"{TEMPLATES}/{shape}/entries/{entry}", json=moved, headers=once)
+
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert replayed.json() == first.json()
+    after = week_versions(live_database_url, owner.tenant_id)
+    assert after[str(FUTURE_WEEK)] == before[str(FUTURE_WEEK)] + 1
+
+
+def test_a_repeated_entry_removal_under_one_key_answers_no_content_rather_than_404(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    entry = add_an_entry(http, signed_in, shape)
+    once = one_key(signed_in)
+
+    first = http.delete(f"{TEMPLATES}/{shape}/entries/{entry}", headers=once)
+    replayed = http.delete(f"{TEMPLATES}/{shape}/entries/{entry}", headers=once)
+
+    assert first.status_code == HTTPStatus.NO_CONTENT, first.text
+    assert replayed.status_code == HTTPStatus.NO_CONTENT, replayed.text
+    assert replayed.content == b""
+
+
+def test_a_repeated_pattern_replacement_under_one_key_replaces_once(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """The replacement replays rather than replacing a second time.
+
+    The bump is the trace: a replacement invalidates every future week, so a second one moves
+    the figure a solve reads as its inputs' version while changing nothing about the pattern.
+    """
+    weekday = declare_day_type(http, signed_in, "Weekday")
+    weekend = declare_day_type(http, signed_in, "Weekend")
+    mapping = a_mapping(weekday, sunday=weekend)
+    before = track_weeks(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    once = one_key(signed_in)
+
+    first = http.put(WEEK_PATTERN, json=mapping, headers=once)
+    replayed = http.put(WEEK_PATTERN, json=mapping, headers=once)
+
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert replayed.status_code == HTTPStatus.OK, replayed.text
+    assert replayed.json() == first.json()
+    after = week_versions(live_database_url, owner.tenant_id)
+    assert after[str(FUTURE_WEEK)] == before[str(FUTURE_WEEK)] + 1
+    assert len(pattern_rows(live_database_url, owner.tenant_id)) == len(Weekday)
 
 
 # --------------------------------------------------------------------------------
