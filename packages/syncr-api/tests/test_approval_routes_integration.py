@@ -13,7 +13,8 @@ demand is for.
 approved plan was solved against.
 
 **The 409 a client renders as "this proposal has been replaced"**, with the refresh action beside
-it.
+it, and the other 409 beside it: a week that has proposed nothing is told that instead, because a
+client told its proposal was replaced would go looking for the one that took its place.
 
 The last test in this module covers the collision this route's shape is exposed to: bodyless,
 addressed by a path parameter, so the week it names reaches the guard through the request hash and
@@ -243,6 +244,20 @@ class TestTheApproveRoute:
         assert status == Conflict.status
         assert "has been replaced" in refused["detail"]
         assert "reading the week again" in refused["detail"]
+
+    def test_approving_a_week_that_has_proposed_nothing_names_that_rather_than_a_replacement(
+        self, http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+    ) -> None:
+        # The same status and the same type as the test above, over the wire, with the other
+        # sentence. Nothing was seeded, so nothing has been replaced and the detail may not say so.
+        status, refused = post_approval(http, signed_in, key=uuid4().hex)
+
+        assert status == Conflict.status
+        assert refused["type"] == Conflict.type
+        assert "is not proposing anything" in refused["detail"]
+        assert "has been replaced" not in refused["detail"]
+        assert "reading the week again" in refused["detail"]
+        assert approved_revisions(live_database_url, owner.tenant_id) == []
 
     def test_a_week_identifier_the_domain_does_not_parse_is_a_422_naming_the_field(
         self, http: TestClient, signed_in: dict[str, str]
