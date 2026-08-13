@@ -78,13 +78,16 @@ def test_the_refusal_says_which_half_of_the_rule_the_value_breaks(bound: str) ->
 
 @pytest.mark.parametrize(("bound", "attribute"), BOUNDS.items())
 @pytest.mark.parametrize(
-    "offered", ["07:00", OFF_THE_QUARTER_HOUR], ids=["a quarter hour", "off the quarter hour"]
+    "offered",
+    ["07:00", "07:00:00", OFF_THE_QUARTER_HOUR],
+    ids=["a quarter hour", "the form a read returns", "off the quarter hour"],
 )
 def test_a_wall_time_on_any_whole_minute_is_accepted(
     bound: str, attribute: str, offered: str
 ) -> None:
-    # Off the quarter hour is the load-bearing half. The day bounds take the wall-time rule and
-    # not the snap rule, so a bound a placement could not hold is still a bound.
+    # Two of these carry the rule. Off the quarter hour says the day bounds take the wall-time
+    # rule without the snap, so a bound a placement could not hold is still a bound. `07:00:00` is
+    # the form a read renders, so read-modify-write does not have to normalize what it was given.
     declared = SettingsPatchRequest.model_validate({bound: offered})
 
     assert getattr(declared, attribute) == time.fromisoformat(offered)
