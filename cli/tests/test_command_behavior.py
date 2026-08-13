@@ -143,10 +143,14 @@ def test_approving_a_proposal_that_is_gone_exits_six_whichever_way_it_went(
     """The condition code 6 exists for, in both of the shapes the api answers it with.
 
     Approving a proposal that is no longer there is not a usage error and not a generic failure.
-    The api answers one type for two reasons and the code is read off the type, so both are 6 and
-    which of them happened is in the words alone. A caller that never saw the words could not tell
-    a slot somebody else approved from a week that has proposed nothing, so the sentence is
-    asserted where the caller reads it rather than only the number.
+    The api answers one condition with two sentences, so both reach one code and which of them
+    happened is in the words alone. A caller that never saw the words could not tell a slot somebody
+    else approved from a week that has proposed nothing, so the sentence is asserted where the
+    caller reads it rather than the number alone.
+
+    **Which of the two mappings carries the code is not what this asserts.** The type's row and the
+    409 fallback both answer 6, so either one alone keeps this green. ``test_problems.py`` is what
+    holds the type's own row.
     """
     with FakeApi() as api:
         _serving(api, tmp_path)
