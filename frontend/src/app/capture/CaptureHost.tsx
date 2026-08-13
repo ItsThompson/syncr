@@ -40,7 +40,7 @@
  * THE DRAFT IS DISCARDED WHEN THE DIALOG CLOSES AND KEPT WHILE IT IS REFUSED. A reader whose title was too long
  * has to be able to fix the title, and a reader who just captured a task wants an empty form the next time. */
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAreas } from "../../api/hooks/useAreas";
 import { useTaskCapture } from "../../api/hooks/useBacklog";
@@ -48,6 +48,7 @@ import { useSettings } from "../../api/hooks/useSettings";
 import { useKeyBinding } from "../../lib/keyboard";
 import { todayIn } from "../../lib/zonedInstant";
 import { CAPTURE_KEY } from "../../ui/domain";
+import { captureNotSavedNotice, useClientNotices } from "../notices";
 import { CaptureContext, type Capture, type CaptureOpening } from "./captureContext";
 import { CaptureDialog } from "./CaptureDialog";
 import { captureRefusedNotice, refusalsFrom, sendStillOpenNotice } from "./refusals";
@@ -87,6 +88,15 @@ interface CaptureState {
   readonly generation: number;
   /** The opening the last refusal belongs to, so a refusal cannot land on a draft that replaced it. */
   readonly refusedAt: number | null;
+  /**
+   * A refusal answered for an opening that had already gone, which no form is left to state.
+   *
+   * It is held here rather than beside the request because the answer belongs to whichever opening was current
+   * when it arrived, and that is what `generation` says: the comparison that keeps a refusal off a draft it is
+   * not about is the one that says the refusal has no draft at all. Carried across an open and a close, because
+   * a refusal nobody has been told about yet is not answered by the reader opening the form again.
+   */
+  readonly refusalToReport: boolean;
 }
 
 /** A closed dialog with an empty form, one opening on from whatever it closed. */
@@ -97,6 +107,7 @@ function closedAfter(held: CaptureState): CaptureState {
     returnFocusTo: held.returnFocusTo,
     generation: held.generation + 1,
     refusedAt: null,
+    refusalToReport: held.refusalToReport,
   };
 }
 
@@ -108,12 +119,14 @@ export function CaptureHost({ children }: CaptureHostProps) {
   const areas = useAreas();
   const settings = useSettings();
   const write = useTaskCapture();
+  const { report } = useClientNotices();
   const [state, setState] = useState<CaptureState>(() => ({
     isOpen: false,
     draft: emptyDraft(),
     returnFocusTo: null,
     generation: 0,
     refusedAt: null,
+    refusalToReport: false,
   }));
   /* THE REQUEST, which outlives the dialog that started it. `isSending` is what disables the control and the ref
    * is the same fact answerable inside a click handler, where the state is one render too late. Both move in
@@ -149,6 +162,7 @@ export function CaptureHost({ children }: CaptureHostProps) {
                 returnFocusTo,
                 generation: held.generation + 1,
                 refusedAt: null,
+                refusalToReport: held.refusalToReport,
               },
         );
       },
@@ -164,7 +178,8 @@ export function CaptureHost({ children }: CaptureHostProps) {
    *
    * It ends the OPENING and not the request: a POST already sent will be applied whatever this form does, so
    * releasing the lock here is what let a second identical task be captured. The generation moves so the send in
-   * flight owns nothing, and the refusal it may answer with is left unstated for the reason ticket 1464 records.
+   * flight owns nothing, and a refusal it answers with is reported in the top bar instead of inside a form that
+   * no longer exists.
    */
   const close = () => {
     setState(closedAfter);
@@ -208,14 +223,30 @@ export function CaptureHost({ children }: CaptureHostProps) {
     try {
       const applied = await write.submit(bodyOf(held, deadlineInstantOf(held.deadline, zone)));
 
+      /* FOUR OUTCOMES, AND WHICH OPENING THE SEND BELONGS TO DECIDES BETWEEN THEM. A send whose opening is gone
+       * closes nothing and states nothing in the form; what it can still do is report a refusal, because a reader
+       * who dismissed the dialog has no other way to learn the task was not accepted. */
       setState((current) => {
-        if (current.generation !== generation) return current;
+        if (current.generation !== generation)
+          return applied ? current : { ...current, refusalToReport: true };
         return applied ? closedAfter(current) : { ...current, refusedAt: generation };
       });
     } finally {
       released();
     }
   };
+
+  /* THE OTHER CHANNEL, FOR THE REFUSAL NO FORM IS LEFT TO STATE. It is raised after the commit rather than in the
+   * send, because the api's own sentence arrives on the write hook's state: the send's continuation holds whether
+   * it was refused and not the words. One send at a time, so the problem standing when the flag is set is that
+   * send's. Clearing the flag is this host's business and dismissing the banner is the reader's, which the notice
+   * source owns: a notice raised twice replaces whatever stands under its id, so one refused capture is one
+   * banner however many times it is reported. */
+  useEffect(() => {
+    if (!state.refusalToReport || write.problem === null) return;
+    report(captureNotSavedNotice(write.problem));
+    setState((current) => ({ ...current, refusalToReport: false }));
+  }, [state.refusalToReport, write.problem, report]);
 
   /* The refusal is shown only to the opening it was refused for. A send the reader dismissed can still answer,
    * and its sentence names a draft that is gone. */
