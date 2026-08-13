@@ -197,9 +197,15 @@ describe("the rail's control at 1440x900", () => {
     expect(await screen.findByLabelText("Detail")).toBeInTheDocument();
   });
 
-  it("is not the only keyboard route: Enter on a selected block opens it too", async () => {
+  /* THE SCREEN'S OWN `Enter` BINDING, WITH FOCUS OFF THE BLOCK. A cursor move focuses the block it lands on, and
+   * `Enter` on a focused block activates the block, which opens the panel through the selection rather than through
+   * the binding: a case that pressed `Enter` there passes with the binding deleted. So focus is dropped first, which
+   * leaves the binding as the only thing that can answer. */
+  it("opens on Enter with a block selected and focus off it, which is the screen's binding", async () => {
     await renderWeekAt(VIEWPORT.widthPx);
     await userEvent.keyboard("j");
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.body).toHaveFocus();
     expect(screen.queryByLabelText("Detail")).not.toBeInTheDocument();
 
     await userEvent.keyboard("{Enter}");
