@@ -1,14 +1,16 @@
 """The gutter's wordings have one home, and this is the crossing that keeps the client out of it.
 
 Each empty-slot reason renders exactly one wording, defined in :mod:`syncr_domain.gaps`, and the
-week payload now carries the rendered string. So the grid reads it. A second copy of any wording in
-the client is the thing that rule exists to forbid: it would go stale silently, because a wording it
+week payload carries the rendered string. So the grid reads it. A second copy of any wording in the
+client is the thing that rule exists to forbid: it would go stale silently, because a wording it
 disagreed with would still draw.
 
 **The wordings are read from the vocabulary rather than listed here.** A member added to the enum is
 covered by this reading on the commit that adds it, with no list to remember.
 
-**What is scanned, and what is not.** The trees the week's gutter is drawn from, source only. Two
+**What is scanned, and what is not.** The trees a gutter wording could be composed in, source only:
+the screen that maps a gap onto a band, the kit that draws one, and where activating a slot's label
+sends the reader, because the slot's own words are next tempting as prefill copy there. Two
 exclusions, both deliberate rather than convenient:
 
 - **Test modules.** A case asserting the words it fed a stub is not a second statement of the rule,
@@ -36,9 +38,14 @@ from tests.test_alert_rules import repo_root
 if TYPE_CHECKING:
     from pathlib import Path
 
-# The trees the week's gutter is drawn from: the screen that maps a gap onto a band, and the kit
-# that draws one.
-GUTTER_TREES = ("frontend/src/routes/week", "frontend/src/ui/domain")
+# The trees a gutter wording could be composed in: the screen that maps a gap onto a band, the kit
+# that draws one, and the capture destination an empty slot's label navigates to.
+GUTTER_TREES = (
+    "frontend/src/routes/week",
+    "frontend/src/ui/domain",
+    "frontend/src/routes/backlog",
+    "frontend/src/app",
+)
 
 # A name no Area could be called, so a wording that substitutes one splits at a character no source
 # contains and the literals it is made of come back separately.
@@ -46,10 +53,11 @@ SENTINEL = "\x00"
 
 
 def gutter_sources() -> tuple[Path, ...]:
-    """Every client source the gutter is drawn from, as the index holds them, tests excluded.
+    """Every client source a gutter wording could be composed in, as the index holds them.
 
-    Git answers what the files are rather than a walk: a file added to either tree is covered
-    without anyone remembering to add it, and a generated or ignored file cannot creep in.
+    Tests excluded, per the docstring above. Git answers what the files are rather than a walk: a
+    file added to any of the trees is covered without anyone remembering to add it, and a generated
+    or ignored file cannot creep in.
     """
     listed = subprocess.run(  # noqa: S603 - the arguments are this module's own constants
         ["git", "ls-files", "--cached", "-z", *GUTTER_TREES],  # noqa: S607
@@ -96,16 +104,28 @@ def test_no_gutter_source_restates_a_wording_the_domain_defines(reason: EmptySlo
     )
 
 
-def test_every_reason_yields_a_literal_long_enough_to_be_worth_searching_for() -> None:
-    """The positive control: a wording reduced to a word or two would make the reading above pass
-    over anything.
+@pytest.mark.parametrize(
+    "reason", list(EmptySlotReason), ids=[reason.value for reason in EmptySlotReason]
+)
+def test_every_reason_yields_a_literal_long_enough_to_be_worth_searching_for(
+    reason: EmptySlotReason,
+) -> None:
+    """The control on the reading above: what it searches for has to be able to answer about a
+    wording rather than about a word.
 
-    It is the substituting wordings this can go wrong for, because their fixed halves are shorter
-    than the whole. One added as a bare substitution would leave nothing distinctive to search for.
+    A one-word literal cannot tell a copy of a wording from ordinary prose. If the word is a common
+    one the reading fires on sources that copied nothing, and the exemption someone adds to quiet it
+    is what takes the reading out. That is the path to blindness, and it starts here rather than at
+    a green run.
+
+    Asserted per reason rather than over the set, because an aggregate answers about one member and
+    reports on all of them. It is the substituting wordings this can go wrong for: their fixed
+    halves are shorter than the whole, and one added as a bare substitution leaves a single word
+    behind.
     """
-    shortest = min(longest_literal(reason) for reason in EmptySlotReason)
+    literal = longest_literal(reason)
 
-    assert len(shortest.split()) > 1, (
-        f"{shortest!r} is the most distinctive text one wording holds, and a single word is not "
-        "distinctive enough to tell a copy of a wording from ordinary prose"
+    assert len(literal.split()) > 1, (
+        f"{literal!r} is the most distinctive text {reason.value}'s wording holds, and a single "
+        "word is not distinctive enough to tell a copy of a wording from ordinary prose"
     )
