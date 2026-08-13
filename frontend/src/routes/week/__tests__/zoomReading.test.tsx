@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import { apiServer } from "../../../testing/apiServer";
 import { jsonHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
-import { GRID_H_PX } from "../../../ui/domain";
+import { GRID_H_PX, ZOOM_MIN_HOURS } from "../../../ui/domain";
 import { SETTINGS, WEEK_PATH, buildWeekView, installWeekReads } from "./fixtures";
 
 /** The level the reader stores or cycles to, which this display cannot draw. */
@@ -35,14 +35,22 @@ const DRAWN_HOURS = 16;
 const EXTENT_MINUTES = 16 * 60;
 
 /** The canvas height a column takes at a given zoom, from the reference grid and nothing the screen reports. */
-function canvasHeightAt(hours: number): string {
-  return `${(EXTENT_MINUTES * (GRID_H_PX / (hours * 60))).toFixed(3)}px`;
+function canvasPxAt(hours: number): number {
+  return EXTENT_MINUTES * (GRID_H_PX / (hours * 60));
 }
 
 /** The band's own line, which is where the zoom reading is rendered. */
 async function bandLine(): Promise<string> {
   return (await screen.findByText(/h visible/)).textContent ?? "";
 }
+
+/** The one canvas a column draws, in pixels, which is where the level the grid actually drew is observable. */
+function canvasPxOf(container: Element): number {
+  const canvas = container.querySelector(".week-day__canvas");
+  return Number.parseFloat((canvas as HTMLElement).style.height);
+}
+
+const press = () => userEvent.keyboard("z");
 
 async function renderWeekStoring(visibleHours: number) {
   installWeekReads(buildWeekView());
@@ -60,29 +68,39 @@ describe("the band states the level the grid draws", () => {
       PROPOSED_HOURS,
       "a proposal the grid could draw would make these cases vacuous",
     ).not.toBe(DRAWN_HOURS);
-    expect(canvasHeightAt(PROPOSED_HOURS)).not.toBe(canvasHeightAt(DRAWN_HOURS));
+    expect(canvasPxAt(PROPOSED_HOURS)).not.toBeCloseTo(canvasPxAt(DRAWN_HOURS), 1);
   });
 
   it(`reads ${DRAWN_HOURS}h visible where a stored ${PROPOSED_HOURS} draws at ${DRAWN_HOURS}`, async () => {
     const { container } = await renderWeekStoring(PROPOSED_HOURS);
 
-    expect(container.querySelector(".week-day__canvas")).toHaveStyle({
-      height: canvasHeightAt(DRAWN_HOURS),
-    });
+    expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(DRAWN_HOURS), 1);
+    expect(canvasPxOf(container)).not.toBeCloseTo(canvasPxAt(PROPOSED_HOURS), 1);
     expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
     expect(await bandLine()).not.toContain(`${PROPOSED_HOURS}h visible`);
   });
 
-  it(`reads ${DRAWN_HOURS}h visible where z cycles to ${PROPOSED_HOURS} on the same grid`, async () => {
+  /* THE WRAP IS WHAT PROVES THE PRESSES LANDED, and it is here because the two figures this case is about are
+   * indistinguishable on this display: a press that proposes 20 and a press the screen never saw both leave the band
+   * reading 16. The ladder is 6, 9, 12, 16, 20, 24 and it wraps, so from the fixture's stored 12 exactly four presses
+   * read 6: three would leave 24 and five would leave 9. So the last assertion is what makes the middle two mean that
+   * the screen proposed a level this grid refuses, rather than that nothing happened. */
+  it(`reads ${DRAWN_HOURS}h visible while z cycles past what this grid can draw`, async () => {
     const { container } = await renderWeekStoring(SETTINGS.visibleHours);
 
-    /* The ladder is 6, 9, 12, 16, 20, 24 and the fixture stores 12, so two presses propose 20. */
-    await userEvent.keyboard("zz");
+    await press();
+    expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
 
-    expect(container.querySelector(".week-day__canvas")).toHaveStyle({
-      height: canvasHeightAt(DRAWN_HOURS),
-    });
+    await press();
     expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
     expect(await bandLine()).not.toContain(`${PROPOSED_HOURS}h visible`);
+    expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(DRAWN_HOURS), 1);
+
+    await press();
+    expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
+
+    await press();
+    expect(await bandLine()).toContain(`${ZOOM_MIN_HOURS}h visible`);
+    expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(ZOOM_MIN_HOURS), 1);
   });
 });

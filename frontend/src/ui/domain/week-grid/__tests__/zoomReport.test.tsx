@@ -39,8 +39,8 @@ const DAY: WeekDay = {
 };
 
 /** The canvas height a column takes at a zoom, from the two figures the geometry is derived from and nothing else. */
-function canvasHeightAt(gridPx: number, hours: number): string {
-  return `${(EXTENT_MINUTES * (gridPx / (hours * 60))).toFixed(3)}px`;
+function canvasPxAt(gridPx: number, hours: number): number {
+  return EXTENT_MINUTES * (gridPx / (hours * 60));
 }
 
 /** The deepest level the reported range offers, which is the display's own cap as the report states it. */
@@ -93,6 +93,7 @@ describe("the level and the range the grid reports", () => {
     );
     const canvasHeight = (): string =>
       (view.container.querySelector(".week-day__canvas") as HTMLElement).style.height;
+    const canvasPx = (): number => Number.parseFloat(canvasHeight());
     const draw = (hours: number) => {
       view.rerender(
         <WeekGrid
@@ -105,16 +106,16 @@ describe("the level and the range the grid reports", () => {
         />,
       );
     };
-    return { canvasHeight, draw };
+    return { canvasPx, draw };
   }
 
   it("reports the level it drew, which on this display is not the level it was given", () => {
     const proposed = 20;
-    const { canvasHeight } = renderGrid(proposed);
+    const { canvasPx } = renderGrid(proposed);
 
     expect(lastReport().hours).toBe(16);
-    expect(canvasHeight()).toBe(canvasHeightAt(REFERENCE_GRID_PX, 16));
-    expect(canvasHeight()).not.toBe(canvasHeightAt(REFERENCE_GRID_PX, proposed));
+    expect(canvasPx()).toBeCloseTo(canvasPxAt(REFERENCE_GRID_PX, 16), 1);
+    expect(canvasPx()).not.toBeCloseTo(canvasPxAt(REFERENCE_GRID_PX, proposed), 1);
   });
 
   it("reports the whole range, each level marked with whether this display can offer it", () => {
@@ -135,12 +136,12 @@ describe("the level and the range the grid reports", () => {
    * report exists to close, one direction over. */
   it("keeps a taller display's own deeper level, in the report and in the drawing", () => {
     measuredGridPx = TALL_GRID_PX;
-    const { canvasHeight } = renderGrid(24);
+    const { canvasPx } = renderGrid(24);
 
     expect(lastReport().hours).toBe(24);
     expect(deepestOffered(lastReport())).toBe(24);
-    expect(canvasHeight()).toBe(canvasHeightAt(TALL_GRID_PX, 24));
-    expect(canvasHeight()).not.toBe(canvasHeightAt(TALL_GRID_PX, 16));
+    expect(canvasPx()).toBeCloseTo(canvasPxAt(TALL_GRID_PX, 24), 1);
+    expect(canvasPx()).not.toBeCloseTo(canvasPxAt(TALL_GRID_PX, 16), 1);
   });
 
   it("reports once per measurement rather than once per render", () => {
@@ -152,11 +153,11 @@ describe("the level and the range the grid reports", () => {
   });
 
   it("reports again where the level changes, so a cycled level reaches whatever states it", () => {
-    const { canvasHeight, draw } = renderGrid(12);
+    const { canvasPx, draw } = renderGrid(12);
 
     draw(6);
 
     expect(reports.map((report) => report.hours)).toEqual([12, 6]);
-    expect(canvasHeight()).toBe(canvasHeightAt(REFERENCE_GRID_PX, 6));
+    expect(canvasPx()).toBeCloseTo(canvasPxAt(REFERENCE_GRID_PX, 6), 1);
   });
 });
