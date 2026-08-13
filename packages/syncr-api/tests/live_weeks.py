@@ -128,8 +128,13 @@ def set_home_zone(http: TestClient, headers: dict[str, str], zone: str) -> None:
     assert answered.status_code == HTTPStatus.OK, answered.text
 
 
+# What the one declared Area is called. A gap's wording names it, so a suite asserting one needs the
+# name rather than only the identifier.
+AREA_NAME = "Career"
+
+
 def declare_an_area(http: TestClient, headers: dict[str, str], **body: object) -> str:
-    answered = http.post(AREAS_PREFIX, json={"name": "Career", **body}, headers=headers)
+    answered = http.post(AREAS_PREFIX, json={"name": AREA_NAME, **body}, headers=headers)
     assert answered.status_code == HTTPStatus.CREATED, answered.text
     return str(answered.json()["area"]["id"])
 

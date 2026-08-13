@@ -53,10 +53,12 @@ from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.config import PENDING_PROPOSALS_TABLE
 from syncr_api.solving.config import SOLVE
 from syncr_domain.feasibility import Provenance, ShortfallKind
+from syncr_domain.gaps import EmptySlotReason, SlotContext, gutter_label
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import provision_owner, remove_tenant, row_counts
 from tests.live_weeks import (
+    AREA_NAME,
     BLOCKS_IN_A_FULL_WEEK,
     LONDON,
     UNPLACEABLE,
@@ -759,6 +761,11 @@ def test_a_weeks_gaps_cost_no_areas_read_of_their_own_and_none_per_gap(
 
     assert planned["live"]["emptySlots"] == [], "the produced plan is the control"
     assert [one["areaId"] for one in gapped["live"]["emptySlots"]] == [area_id] * SLOTS_MEASURED
+    # Through the route, so the wording is asserted where a client reads it: rendered from the name
+    # this read resolved, in the spelling the wire uses.
+    assert [one["label"] for one in gapped["live"]["emptySlots"]] == [
+        gutter_label(EmptySlotReason.NO_ELIGIBLE_CONTENT, SlotContext(area_name=AREA_NAME))
+    ] * SLOTS_MEASURED
     assert without_a_gap == AREAS_READS_PER_COMPOSED_READ, reads
     assert with_gaps == without_a_gap
 
