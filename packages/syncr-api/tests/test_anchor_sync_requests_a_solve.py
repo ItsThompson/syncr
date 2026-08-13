@@ -32,6 +32,8 @@ and a solve of it would produce a plan for a week outside everything the tenant 
 
 from __future__ import annotations
 
+import io
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -51,6 +53,7 @@ from syncr_api.calendars.sync import SourceSyncer
 from syncr_api.conflicts.ingest import IngestConflicts
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
+from syncr_api.plans.config import FIRST_INPUT_VERSION
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import PENDING, SOLVE
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
@@ -58,12 +61,13 @@ from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
+from syncr_common.logging import configure_logging
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncIterator, Iterator, Sequence
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -86,6 +90,10 @@ DEBOUNCE = debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
 
 TIMETABLE = "https://example.ac.uk/timetable.ics"
 LECTURE_UID = "lecture@example.ac.uk"
+
+# The line the coordinator writes when it creates an operation, and the field on it that names the
+# input state the request was made at.
+SCHEDULED_EVENT = "solving.solve.scheduled"
 
 
 @pytest.fixture
@@ -110,6 +118,19 @@ async def owner(sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[Use
 @pytest.fixture
 def tenant_id(owner: UserRecord) -> TenantId:
     return owner.tenant_id
+
+
+@pytest.fixture
+def production_log_stream() -> Iterator[io.StringIO]:
+    """Render every log line as the JSON a deployment collects, then hand the config back.
+
+    Logging configuration is process-global, so the restore is what keeps this file from changing
+    what runs after it.
+    """
+    stream = io.StringIO()
+    configure_logging(environment="production", log_level="info", stream=stream)
+    yield stream
+    configure_logging(environment="test", log_level="info")
 
 
 @pytest.fixture
@@ -259,6 +280,15 @@ def weeks_of(operations: Sequence[Operation]) -> list[str | None]:
     return [one.iso_week for one in operations]
 
 
+def scheduled_lines(stream: io.StringIO) -> list[dict[str, object]]:
+    """Every line the coordinator wrote when it created an operation, as a deployment reads them."""
+    return [
+        parsed
+        for line in stream.getvalue().splitlines()
+        if line and (parsed := json.loads(line))["event"] == SCHEDULED_EVENT
+    ]
+
+
 # --------------------------------------------------------------------------------
 # A change leaves one pending solve per week it invalidated.
 # --------------------------------------------------------------------------------
@@ -340,6 +370,34 @@ async def test_the_solve_a_poll_asks_for_is_due_at_the_end_of_the_debounce_windo
 
     scheduled = [one.scheduled_for for one in await pending_solves(sessions, tenant_id)]
     assert scheduled == [NOW + DEBOUNCE]
+
+
+async def test_the_version_the_request_reports_is_the_one_the_bump_left(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+    production_log_stream: io.StringIO,
+) -> None:
+    """The input state the operation's own line names, which is the answer an operator reads.
+
+    Nothing compares this figure to anything: the guard is the conditional write, made against the
+    version the worker stamps when it loads the inputs. What it is for is the reading, and a
+    background pass has no client to hand it to, so the line is the only place it surfaces. A pass
+    that reported a constant would leave an operator unable to tell which occupancy the solve was
+    asked about.
+
+    Read through the JSON a deployment collects rather than through a captured intermediate.
+    """
+    await synced(sessions, tenant_id, source, a_read(an_event()))
+    await track(sessions, tenant_id, WEEK)
+
+    await synced(
+        sessions, tenant_id, source, a_read(an_event(start=WEDNESDAY_1000 + timedelta(hours=3)))
+    )
+
+    lines = scheduled_lines(production_log_stream)
+    assert [one["iso_week"] for one in lines] == [str(WEEK)]
+    assert [one["at_version"] for one in lines] == [FIRST_INPUT_VERSION + 1]
 
 
 async def test_a_second_changed_pass_joins_the_pending_solve_rather_than_adding_one(
