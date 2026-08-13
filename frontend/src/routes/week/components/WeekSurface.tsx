@@ -49,7 +49,8 @@ export function WeekSurface({ screen, interaction, words, nowMs }: WeekSurfacePr
           }}
           labels={dates.map(columnLabel)}
           nowMs={nowMs}
-          visibleHours={interaction.visibleHours}
+          onZoom={interaction.onZoom}
+          visibleHours={interaction.proposedHours}
         />
       </div>
       <DetailRail isPanelOpen={interaction.isDetailOpen} onToggle={interaction.onToggleDetail} />

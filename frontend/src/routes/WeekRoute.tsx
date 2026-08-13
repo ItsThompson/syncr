@@ -157,12 +157,12 @@ export function WeekRoute() {
       <div className="flex flex-col gap-3.25">
         <WeekActions
           blockCount={screen.readings.blockCount}
+          drawnHours={interaction.zoom?.hours ?? null}
           hasProposal={screen.view.proposal !== null}
           onApprove={interaction.onApprove}
           onResolveNow={interaction.onResolveNow}
           sessionHref={sessionPath(isoWeek)}
           unconfirmedDays={screen.readings.unconfirmedDays}
-          visibleHours={interaction.visibleHours}
         />
         <SummaryStrip
           readings={{ ...screen.readings, planCurrency: interaction.operation.planCurrency }}

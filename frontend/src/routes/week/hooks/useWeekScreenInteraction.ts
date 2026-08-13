@@ -20,6 +20,11 @@
  * range, and cycling a stored setting would mean a request per keystroke on the densest surface in the product. The
  * reader's stored value is what the screen opens at, and what they cycle to is theirs until they leave.
  *
+ * A LEVEL TRAVELS DOWN AS A PROPOSAL AND COMES BACK AS A READING. Only the grid has a measurement, so only the grid can
+ * say which level a display can draw: what this hook holds is the level the reader asked for, and `zoom` is what the
+ * grid answered. A surface that states the level reads the answer, because stating the question is how a band comes to
+ * claim a level the grid is not drawing.
+ *
  * THE DETAIL PANEL IS OPEN WHERE THERE IS ROOM FOR ITS COLUMN AND CLOSED WHERE THERE IS NOT, and the panel is drawn
  * from that state AND the selection rather than from the selection alone. Above --bp-wide the column is reserved and
  * selecting a block is the whole gesture; below it the column would starve the grid of the width a title needs, so the
@@ -38,7 +43,13 @@ import { usePinning } from "../../../api/hooks/usePins";
 import { useWeekSolve } from "../../../api/hooks/useWeek";
 import { useWeekWrites } from "../../../api/hooks/useWeekWrites";
 import { useServerEvents } from "../../../api/events";
-import type { BlockDrop, BlockStates, VerdictTradeoff, WeekDay } from "../../../ui/domain";
+import type {
+  BlockDrop,
+  BlockStates,
+  VerdictTradeoff,
+  WeekDay,
+  ZoomReport,
+} from "../../../ui/domain";
 import { isoWeekOf } from "../../today/isoWeek";
 import { hasRoomForDetailPanel } from "../panelRoom";
 import { stepColumn, stepInColumn, surviving, type Selected } from "../selection";
@@ -71,7 +82,12 @@ export interface WeekInteraction {
   readonly selected: Selected | null;
   /** Whether the panel is open. Open where the viewport has room for its column, and never opened by hover. */
   readonly isDetailOpen: boolean;
-  readonly visibleHours: number;
+  /** The level the screen asks the grid for, which the grid brings inside the range its own measurement offers. */
+  readonly proposedHours: number;
+  /** What the grid answered with, or null before it has measured. What a surface stating the level reads. */
+  readonly zoom: ZoomReport | null;
+  /** The grid's own answer, handed back once per measurement. */
+  readonly onZoom: (report: ZoomReport) => void;
   readonly statesOf: (blockId: string) => BlockStates;
   readonly onSelect: (blockId: string) => void;
   readonly onDrop: (drop: BlockDrop) => void;
@@ -96,6 +112,7 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
   const [held, setHeld] = useState<Selected | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(hasRoomForDetailPanel);
   const [zoomHours, setZoomHours] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<ZoomReport | null>(null);
 
   const operation = useOperation(isoWeek);
   const pinning = usePinning(isoWeek, view?.inputVersion ?? 0, operation.track);
@@ -215,7 +232,9 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
   return {
     selected,
     isDetailOpen,
-    visibleHours: zoomHours ?? visibleHours,
+    proposedHours: zoomHours ?? visibleHours,
+    zoom,
+    onZoom: setZoom,
     statesOf,
     onSelect: (blockId) => {
       const date = days.find((day) => day.blocks.some((block) => block.id === blockId))?.date;

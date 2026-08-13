@@ -20,6 +20,11 @@
  * block count, and a band that repeated the word would be the second surface the rule exists to prevent. The count
  * here is the same figure the strip's cell reads, which is why the two cannot disagree about it.
  *
+ * THE ZOOM READING IS THE GRID'S OWN ANSWER, not the level the screen asked for. The offerable range is clamped per
+ * display, from a measurement only the grid has, so a band that rendered the setting would read `20h visible` over a
+ * grid drawing 16 whenever the reader's level is past their display's cap. There is no figure to render before the grid
+ * has reported one, which is what `null` states: a band with no grid beside it states no level rather than a guess.
+ *
  * THE UNCONFIRMED DAYS ARE SERVED, NOT COUNTED HERE. The api decides which of a week's days have ended, hold a block
  * and are still unanswered, and the Today band reads the same rule's answer for its own window; counting the columns
  * this band sits above would be a second rule, and the payload carries no per-day confirmation for it to count. */
@@ -33,7 +38,8 @@ export interface WeekActionsProps {
   readonly blockCount: number;
   /** Days of THIS week that have ended, hold a block and are unconfirmed, as the week read served it. */
   readonly unconfirmedDays: number;
-  readonly visibleHours: number;
+  /** The visible hours the grid reported it is drawing, or null before it has measured. */
+  readonly drawnHours: number | null;
   readonly hasProposal: boolean;
   /** Where the weekly session opens for this week, or null when this band IS the session. */
   readonly sessionHref: string | null;
@@ -48,7 +54,7 @@ function unconfirmedReading(unconfirmedDays: number): string {
 export function WeekActions({
   blockCount,
   unconfirmedDays,
-  visibleHours,
+  drawnHours,
   hasProposal,
   sessionHref,
   onResolveNow,
@@ -57,8 +63,13 @@ export function WeekActions({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <p className="text-eyebrow text-text-muted">
-        {blockCount} blocks · {unconfirmedReading(unconfirmedDays)} · {visibleHours}h visible{" "}
-        <KeyHint keys="z" />
+        {blockCount} blocks · {unconfirmedReading(unconfirmedDays)}
+        {drawnHours === null ? null : (
+          <>
+            {" · "}
+            {drawnHours}h visible <KeyHint keys="z" />
+          </>
+        )}
       </p>
       {sessionHref === null ? null : (
         <Link className="text-sm underline" to={sessionHref}>
