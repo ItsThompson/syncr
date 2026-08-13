@@ -3,8 +3,9 @@
 The service suite proves the rules with fakes. This proves what only a real request and a real
 database can: that a wall time survives a ``time without time zone`` column unchanged, that a
 refused span is not stored, that the response carries no Area field, that the sleep floor has
-exactly one home across two feature modules, and that every mutation increments the input
-version row a running solve is guarding against.
+exactly one home across two feature modules, that every mutation increments the input
+version row a running solve is guarding against, and that a retried unsafe request sent under one
+key is applied once.
 
 Two tests are worth reading. ``test_the_stored_frame_resolves_to_the_span_the_dst_fixture_records``
 takes the row back out of Postgres and resolves it against a real transition date, which is the
@@ -35,6 +36,7 @@ from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.routines.models import RoutineRow
@@ -529,6 +531,95 @@ def test_a_refused_mutation_bumps_nothing(
 
     assert refused.status_code == ValidationFailed.status, refused.text
     assert input_version(live_database_url, owner.tenant_id, FUTURE_WEEK) == before
+
+
+# --------------------------------------------------------------------------------
+# Idempotency, on all three unsafe methods
+# --------------------------------------------------------------------------------
+
+
+def test_a_retried_declaration_replays_rather_than_declaring_a_second_routine(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # Nothing about a routine is unique, and the table says so on purpose: two routines may share
+    # a title. So a repeat is a second row rather than a refusal, and the frame carries the same
+    # span twice with nothing downstream able to tell the copy from a deliberate second span.
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+
+    first = http.post(ROUTINES, json=SLEEP, headers=keyed)
+    second = http.post(ROUTINES, json=SLEEP, headers=keyed)
+
+    # The row set first: the second write is the defect and the response is only its symptom.
+    assert [row.title for row in routine_rows(live_database_url, owner.tenant_id)] == ["Sleep"]
+    assert first.status_code == HTTPStatus.CREATED, first.text
+    assert second.status_code == HTTPStatus.CREATED, second.text
+    assert second.json() == first.json()
+
+
+def test_a_repeated_declaration_without_a_key_still_declares_a_second_routine(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The control on the offered-not-demanded rule. The header buys the guarantee and its absence
+    # leaves the route as it was, so this is what says the tests around it assert a guarantee a
+    # caller opted into rather than a constraint the route now enforces for everyone.
+    declare_routine(http, signed_in)
+    declare_routine(http, signed_in)
+
+    assert len(routine_rows(live_database_url, owner.tenant_id)) == 2
+
+
+def test_a_retried_patch_replays_rather_than_bumping_the_week_again(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # A rename converges: sent twice it leaves the same row either way, so an assertion on the
+    # response alone could not tell a replay from a second execution and would be decoration.
+    # What separates them is the week input version, which every frame mutation bumps and which
+    # is the figure a running solve's conditional write compares.
+    created = declare_routine(http, signed_in)
+    track(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    before = input_version(live_database_url, owner.tenant_id, FUTURE_WEEK)
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+    renamed = {"title": "Sleep, properly"}
+
+    first = http.patch(f"{ROUTINES}/{created['id']}", json=renamed, headers=keyed)
+    second = http.patch(f"{ROUTINES}/{created['id']}", json=renamed, headers=keyed)
+
+    assert input_version(live_database_url, owner.tenant_id, FUTURE_WEEK) == before + 1
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert second.status_code == HTTPStatus.OK, second.text
+    assert second.json() == first.json()
+
+
+def test_a_retried_removal_replays_the_stored_answer_rather_than_404ing(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The row is gone once the first removal commits, so re-running the work answers 404: a client
+    # that resends a request it never saw the answer to is told the routine it just removed does
+    # not exist. The replay answers the stored 204 instead, and carries no body.
+    created = declare_routine(http, signed_in)
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+
+    first = http.delete(f"{ROUTINES}/{created['id']}", headers=keyed)
+    second = http.delete(f"{ROUTINES}/{created['id']}", headers=keyed)
+
+    assert second.status_code == HTTPStatus.NO_CONTENT, second.text
+    assert second.content == b""
+    assert first.status_code == HTTPStatus.NO_CONTENT, first.text
+    assert routine_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_repeated_removal_without_a_key_still_answers_404(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # The control for the replay above, and the reading that says the 404 is the route's real
+    # behavior rather than something the test constructed.
+    created = declare_routine(http, signed_in)
+
+    first = http.delete(f"{ROUTINES}/{created['id']}", headers=signed_in)
+    second = http.delete(f"{ROUTINES}/{created['id']}", headers=signed_in)
+
+    assert first.status_code == HTTPStatus.NO_CONTENT
+    assert second.status_code == NotFound.status, second.text
 
 
 # --------------------------------------------------------------------------------

@@ -52,6 +52,7 @@ from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.oauth.config import build_oauth_config
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
+from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.templates.config import DAY_TYPES_PREFIX
 from tests.cli_credentials import BROWSER_ORIGIN, cli_bearer_header
@@ -84,6 +85,15 @@ TASK_ROUTE = f"{TASKS_PREFIX}/{uuid4()}"
 # either-credential perimeter as a sub-dependency. Its own browser-only declaration is what has to
 # survive that.
 DAY_TYPES_ROUTE = DAY_TYPES_PREFIX
+ROUTINES_ROUTE = ROUTINES_PREFIX
+
+# One guarded, browser-only route per feature module that declares the guard on a collection POST.
+# Two rather than one, because the redundancy that makes the route's own declaration survivable is a
+# property of each module's `injection.py` and not of the api.
+GUARDED_AND_BROWSER_ONLY = {
+    "day_type": (DAY_TYPES_ROUTE, {"name": "Weekday"}),
+    "routine": (ROUTINES_ROUTE, {"title": "Sleep", "targetTime": "23:00", "durationMinutes": 480}),
+}
 
 # A hostile page's origin: not in the deployment's allowed set, and the shape a forged cross-origin
 # request states.
@@ -269,8 +279,11 @@ def test_a_route_outside_the_catalog_refuses_a_token_and_serves_the_cookie(
     assert browser.status_code == 404, browser.text
 
 
+@pytest.mark.parametrize(
+    ("route", "declared"), GUARDED_AND_BROWSER_ONLY.values(), ids=GUARDED_AND_BROWSER_ONLY.keys()
+)
 def test_a_guarded_route_outside_the_catalog_refuses_a_token_and_serves_the_cookie(
-    http: TestClient, owner: UserRecord
+    http: TestClient, owner: UserRecord, route: str, declared: dict[str, object]
 ) -> None:
     # The same default, on a route that takes the idempotency guard. The guard resolves the
     # either-credential perimeter for itself, so a guarded route declaring the browser-only one
@@ -278,15 +291,14 @@ def test_a_guarded_route_outside_the_catalog_refuses_a_token_and_serves_the_cook
     # would answer 403 from the scope check rather than 401, so the assertion discriminates.
     token = cli_bearer_header(http, owner.email)
     cookie = _signed_in(http, owner.email)
-    declared = {"name": "Weekday"}
 
     refused = http.post(
-        DAY_TYPES_ROUTE, json=declared, headers={**token, IDEMPOTENCY_KEY_HEADER: "cli-day-type"}
+        route, json=declared, headers={**token, IDEMPOTENCY_KEY_HEADER: f"cli-{route}"}
     )
     browser = http.post(
-        DAY_TYPES_ROUTE,
+        route,
         json=declared,
-        headers={**cookie, "Origin": BROWSER_ORIGIN, IDEMPOTENCY_KEY_HEADER: "browser-day-type"},
+        headers={**cookie, "Origin": BROWSER_ORIGIN, IDEMPOTENCY_KEY_HEADER: f"browser-{route}"},
     )
 
     assert refused.status_code == Unauthorized.status, refused.text

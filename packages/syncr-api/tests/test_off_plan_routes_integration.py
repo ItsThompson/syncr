@@ -2,8 +2,8 @@
 
 The service suite proves the rules with fakes. This proves what only a real request and a real
 database can: that the wire shape is camelCase and half-open, that a refused declaration is not
-stored, that a retried ``POST`` does not become a second period, that another tenant's identifier
-is a 404 rather than an edit, and that the budget report over an off-plan week says so.
+stored, that a retried unsafe request sent under one key is applied once, that another tenant's
+identifier is a 404 rather than an edit, and that the budget report over an off-plan week says so.
 
 The two tests worth reading are ``test_a_span_beginning_where_another_ends_is_accepted``, which is
 the half-open reading at the one boundary a user will really hit, and
@@ -30,6 +30,7 @@ from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX
 from syncr_api.budgets.config import BUDGET_PREFIX, PERIOD_PARAMETER
 from syncr_api.core.app_factory import create_app
+from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
@@ -37,6 +38,7 @@ from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.offplan.config import LABEL_MAX_LENGTH, OFF_PLAN_PREFIX
 from syncr_api.offplan.models import OffPlanPeriodRow
 from syncr_api.offplan.reading import WHOLE_WEEK_STATEMENT
+from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.user_settings.config import SETTINGS_PREFIX
 from syncr_domain.fixtures.off_plan_week import LONDON, OFF_PLAN_WEEK
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
@@ -47,6 +49,7 @@ if TYPE_CHECKING:
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import TenantId
+    from syncr_domain.weeks import IsoWeek
 
 pytestmark = pytest.mark.integration
 
@@ -152,6 +155,38 @@ def budget(http: TestClient, headers: dict[str, str], period: str) -> dict[str, 
     assert answered.status_code == HTTPStatus.OK, answered.text
     body: dict[str, Any] = answered.json()
     return body
+
+
+def track(database_url: str, tenant_id: TenantId, *weeks: IsoWeek) -> None:
+    """Give each week an input-version row, so a bump has something to increment.
+
+    A week with no row is not tracked, because it has no plan and no running solve to invalidate,
+    so a test that reads a bump has to put the row there first.
+    """
+
+    async def seed() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                versions = WeekInputVersionRepository(session, tenant_id)
+                for week in weeks:
+                    await versions.bump(week, at=utc_now())
+        finally:
+            await database.engine.dispose()
+
+    run(seed())
+
+
+def input_version(database_url: str, tenant_id: TenantId, week: IsoWeek) -> int | None:
+    async def read() -> int | None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                return await WeekInputVersionRepository(session, tenant_id).current(week)
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
 
 
 # --------------------------------------------------------------------------------
@@ -375,6 +410,69 @@ def test_a_retried_declaration_replays_rather_than_declaring_a_second_period(
     assert second.status_code == HTTPStatus.CREATED, second.text
     assert second.json() == first.json()
     assert len(period_rows(live_database_url, owner.tenant_id)) == 1
+
+
+def test_a_retried_patch_replays_rather_than_bumping_the_weeks_again(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # A rename converges: sent twice it leaves the same row either way, so an assertion on the
+    # response alone could not tell a replay from a second execution and would be decoration.
+    # What separates them is the input version of each week the span touches, which every
+    # mutation of a period bumps and which is the figure a running solve's write compares.
+    _, created = declare(http, signed_in)
+    track(live_database_url, owner.tenant_id, OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
+    before = [
+        input_version(live_database_url, owner.tenant_id, week)
+        for week in (OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
+    ]
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+    renamed = {"label": "Italy"}
+
+    first = http.patch(f"{OFF_PLAN}/{created['id']}", json=renamed, headers=keyed)
+    second = http.patch(f"{OFF_PLAN}/{created['id']}", json=renamed, headers=keyed)
+
+    # Both weeks, because the span crosses an ISO week boundary and a second execution would
+    # invalidate each of them twice.
+    assert [
+        input_version(live_database_url, owner.tenant_id, week)
+        for week in (OFF_PLAN_WEEK.iso_week, OFF_PLAN_WEEK.following_week)
+    ] == [(counted or 0) + 1 for counted in before]
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert second.status_code == HTTPStatus.OK, second.text
+    assert second.json() == first.json()
+
+
+def test_a_retried_removal_replays_the_stored_answer_rather_than_404ing(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The row is gone once the first removal commits, so re-running the work answers 404: a client
+    # that resends a request it never saw the answer to is told the time off it just removed does
+    # not exist. The replay answers the stored 204 instead, and carries no body.
+    _, created = declare(http, signed_in)
+    keyed = {**signed_in, IDEMPOTENCY_KEY_HEADER: str(uuid4())}
+
+    first = http.delete(f"{OFF_PLAN}/{created['id']}", headers=keyed)
+    second = http.delete(f"{OFF_PLAN}/{created['id']}", headers=keyed)
+
+    assert second.status_code == HTTPStatus.NO_CONTENT, second.text
+    assert second.content == b""
+    assert first.status_code == HTTPStatus.NO_CONTENT, first.text
+    assert period_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_repeated_removal_without_a_key_still_answers_404(
+    http: TestClient, signed_in: dict[str, str]
+) -> None:
+    # The control for the replay above, and the reading that says the 404 is the route's real
+    # behavior rather than something the test constructed. It is also the control on the
+    # offered-not-demanded rule for this module's two new guards.
+    _, created = declare(http, signed_in)
+
+    first = http.delete(f"{OFF_PLAN}/{created['id']}", headers=signed_in)
+    second = http.delete(f"{OFF_PLAN}/{created['id']}", headers=signed_in)
+
+    assert first.status_code == HTTPStatus.NO_CONTENT
+    assert second.status_code == NotFound.status, second.text
 
 
 @pytest.mark.parametrize(
