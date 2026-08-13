@@ -14,7 +14,8 @@
  * unexercised: a grid whose height changes under a reader. What is driven below is the same callback a real
  * `ResizeObserver` invokes, against the same stubbed height the rest of the file reads. */
 
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { WeekGrid } from "../WeekGrid";
@@ -206,5 +207,41 @@ describe("the level and the range the grid reports", () => {
     resizeTo(TALL_GRID_PX);
 
     expect(reports).toHaveLength(2);
+  });
+
+  /* A RECEIVER WRITTEN INLINE IS A NEW FUNCTION EVERY RENDER, and a caller that holds the report re-renders this grid,
+   * so keying the report on the receiver's identity would report once per render forever. Nothing mechanical refuses
+   * that call site: the identity is not a dependency a linter can object to. So the grid is required to ignore it, and
+   * the case renders the shape a caller most easily writes.
+   *
+   * The re-render is driven by the receiver's own state, which is what makes this the loop rather than a re-render with
+   * new props: a grid that reported per render would drive it without end and take the screen down. */
+  it("ignores the identity of what receives the report, so a receiver written inline is safe", () => {
+    const seen: number[] = [];
+
+    function Holder() {
+      const [held, setHeld] = useState<ZoomReport | null>(null);
+      return (
+        <>
+          <WeekGrid
+            days={[DAY]}
+            extent={EXTENT}
+            labels={[DATE]}
+            nowMs={null}
+            onZoom={(report) => {
+              seen.push(report.hours);
+              setHeld(report);
+            }}
+            visibleHours={20}
+          />
+          <p>{held === null ? "no level" : `${held.hours}h visible`}</p>
+        </>
+      );
+    }
+
+    render(<Holder />);
+
+    expect(seen).toEqual([16]);
+    expect(screen.getByText("16h visible")).toBeInTheDocument();
   });
 });

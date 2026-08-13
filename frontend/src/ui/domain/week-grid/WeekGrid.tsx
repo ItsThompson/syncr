@@ -64,7 +64,8 @@ export interface WeekGridProps {
   /**
    * What this grid drew and what the display it measured can offer, once per measurement.
    *
-   * Called from a layout effect, so a caller hands over a stable function rather than a fresh one per render.
+   * A fresh function per render is harmless: the report is keyed on the measurement, never on the identity of what
+   * receives it.
    */
   readonly onZoom?: ((report: ZoomReport) => void) | undefined;
   readonly interaction?: GridInteraction | undefined;
@@ -92,12 +93,20 @@ export function WeekGrid({
   const canvasPx = canvasHeightPx(extent, pxPerMin);
   const drag = useDiscreteDrag({ extent, pxPerMin, onDrop: interaction.onDrop });
 
-  /* KEYED ON THE MEASUREMENT AND THE LEVEL IT SETTLED, not on the render: a report per render would re-render whatever
-   * holds it, which renders this grid, which reports again. Before the paint rather than after it, because a surface
-   * drawn from the report would otherwise paint once with no figure at all. */
+  /* KEYED ON THE MEASUREMENT AND THE LEVEL IT SETTLED, and on nothing else: a report per render would re-render
+   * whatever holds it, which renders this grid, which reports again. The callback is held rather than depended on,
+   * because a caller writing the receiver inline is a new identity every render and would be exactly that loop. It is
+   * stored in the commit rather than in the render, which is where React allows a ref to be written.
+   *
+   * Before the paint rather than after it, because a surface drawn from the report would otherwise paint once with no
+   * figure at all. Stored first so the mount's own report reaches the caller it was rendered with. */
+  const receiver = useRef(onZoom);
   useLayoutEffect(() => {
-    onZoom?.({ hours, levels: zoomLevels(gridPx) });
-  }, [gridPx, hours, onZoom]);
+    receiver.current = onZoom;
+  });
+  useLayoutEffect(() => {
+    receiver.current?.({ hours, levels: zoomLevels(gridPx) });
+  }, [gridPx, hours]);
 
   return (
     <div
