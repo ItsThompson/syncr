@@ -80,8 +80,10 @@ room for.
 Three things. An Area outside the reservation is protected by nothing here, so a week that arrived
 unable to meet a floor can end short of it by more than it arrived short by: that figure is the
 verdict's, and refusing content over it would leave an infeasible week with nothing in it. Free time
-inside a window that forbids the Area owing the floor is counted as usable here, so this rule
-refuses fewer candidates than the capacity check the verdict is taken from. And a placement carrying
+inside a window that forbids the Area owing the floor is counted as usable by the COMPARISON, so
+this rule refuses fewer candidates than the capacity check the verdict is taken from; the clause
+quotes what the Area it names may claim, which subtracts those windows, so a refusal never states
+minutes its own Area cannot use. And a placement carrying
 NO Area occupies claimable time that ``free`` still counts as available, because ``_spans`` reads
 only the placements an Area claims. The oracle in the suite shares that last blind spot by design,
 since it nets the same way, so no property can see it: it is recorded here because a blind spot an
@@ -108,6 +110,7 @@ from syncr_solver.constraints import Blocked, ConstraintRule
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
+    from syncr_domain.gaps import ForbiddenWindow
     from syncr_domain.identifiers import AreaId
     from syncr_domain.intervals import Interval
     from syncr_solver.inputs import AreaBudget
@@ -168,6 +171,13 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     time that is about 350 us a candidate over four Areas, on the one host that measured it. Nothing
     in the suite crosses either figure, deliberately: a wall-time assertion measures the machine it
     runs on, and counting the reads needs the instrument that counts them.
+
+    **The clause states what the Area it names may claim, and that reading is taken once a refusal
+    is decided.** The comparison above is a whole-week one, so the minutes it measures include time
+    a window forbids the Area that owes the floor, and a clause quoting them states minutes that
+    Area cannot use. Scoping them needs the Area, which only the rejection names, so the
+    subtraction sits after the comparison: a candidate nothing refuses walks no window and the
+    figures above are unmoved.
     """
     if candidate.area_id is None or state.holds(candidate):
         return None
@@ -175,17 +185,19 @@ def area_floor(candidate: Placement, state: PartialPlan) -> Blocked | None:
     already_short = max(0, _shortfall(reading, offered=None))
     owing = _unmet(reading, offered=candidate)
     free = _free(reading, offered=candidate)
-    shortfall = sum(owed for _, owed in owing) - free
+    shortfall = sum(owed for _, owed in owing) - free.total_minutes()
     if shortfall <= already_short:
         return None
     # The largest unmet floor names the rejection, which is the axis the solver's own tie-breaking
     # orders candidates by. `max` keeps the first of equal ones and the Areas are in identity
     # order, so a tie is broken the same way twice.
     area, owed = max(owing, key=lambda pair: pair[1])
+    claimable = _free_for(area.area_id, free=free, windows=state.forbidden_windows)
     return Blocked(
         ConstraintRule.AREA_FLOOR,
         candidate.interval,
-        f"{area.name} would be left {owed}m short of its floor, with {free}m free",
+        f"{area.name} would be left {owed}m short of its floor, "
+        f"with {claimable.total_minutes()}m free",
     )
 
 
@@ -280,15 +292,32 @@ def _shortfall(reading: _Reading, *, offered: Placement | None) -> int:
     the time is unioned because one free minute serves one Area.
     """
     owing = _unmet(reading, offered=offered)
-    return sum(owed for _, owed in owing) - _free(reading, offered=offered)
+    return sum(owed for _, owed in owing) - _free(reading, offered=offered).total_minutes()
 
 
-def _free(reading: _Reading, *, offered: Placement | None) -> int:
-    """Minutes of claimable time no Area's placement covers, counting ``offered`` as placed."""
+def _free(reading: _Reading, *, offered: Placement | None) -> IntervalSet:
+    """The claimable time no Area's placement covers, counting ``offered`` as placed."""
     claimed = reading.claimed
     if offered is not None and offered.area_id is not None:
         claimed = claimed.union(IntervalSet([offered.interval]))
-    return reading.claimable.subtract(claimed).total_minutes()
+    return reading.claimable.subtract(claimed)
+
+
+def _free_for(
+    area_id: AreaId, *, free: IntervalSet, windows: Iterable[ForbiddenWindow]
+) -> IntervalSet:
+    """What one Area may claim of the free time: that time less the windows that name it.
+
+    The probe's own reading of the same question is
+    :meth:`~syncr_domain.feasibility.inputs.ProbeInputs.scoped_against`, and the scope is read here
+    through the window's own :meth:`~syncr_domain.gaps.ForbiddenWindow.forbids` for the same reason
+    it is read there: a window forbidding every Area and one naming this Area both forbid it, and a
+    caller deciding that for itself is how two readings of a scope come apart. A window that forbids
+    everybody has already left the claimable set, so naming it again subtracts nothing twice.
+    """
+    return free.subtract(
+        IntervalSet(window.interval for window in windows if window.forbids(area_id))
+    )
 
 
 def _unmet(reading: _Reading, *, offered: Placement | None) -> tuple[Unmet, ...]:

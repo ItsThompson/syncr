@@ -187,7 +187,8 @@ class PartialPlan:
     inherited: tuple[Interval, ...]
     # H1, and H11 for an imported commitment
     anchors: tuple[Anchor, ...]
-    # H2 for the windows that forbid every Area, H13 for the ones that name some
+    # H2 for the windows that forbid every Area, H13 for the ones that name some, and H9 for the
+    # ones that name the Area its clause reports
     forbidden_windows: tuple[ForbiddenWindow, ...]
     # H12
     off_plan: tuple[OffPlanPeriod, ...]
