@@ -2982,6 +2982,11 @@
           "interval": {
             "$ref": "#/components/schemas/WireSpan"
           },
+          "label": {
+            "description": "The one wording this reason renders beside the slot, with the Area's own name substituted where it names one. Rendered here rather than by the client, because the wordings have one home and it is not reachable from one.",
+            "title": "Label",
+            "type": "string"
+          },
           "reason": {
             "$ref": "#/components/schemas/EmptySlotReason",
             "description": "Why the slot holds nothing."
@@ -2990,7 +2995,8 @@
         "required": [
           "interval",
           "areaId",
-          "reason"
+          "reason",
+          "label"
         ],
         "title": "EmptySlotResponse",
         "type": "object"

@@ -75,6 +75,12 @@ export const APPLICATION = "36 South Application";
 export const GYM = "Gym";
 export const SLIVER = "Wake Up";
 
+/* AN EMPTY SLOT'S GUTTER WORDING, AND DELIBERATELY NOT ONE THE SERVER WOULD SEND. One wording per reason is the
+ * domain's own statement of it, in Python, so a fixture spelling a real one would put a copy of that statement in
+ * this tree. A string the server could never produce makes the assertion stronger anyway: the gutter can only read
+ * this if it rendered the payload's own words rather than composing any of its own. */
+export const SLOT_LABEL = "a wording only the payload knows";
+
 export function span(start: string, end: string): Span {
   return { start, end };
 }
@@ -299,6 +305,7 @@ export function buildPlan(overrides: Partial<PlanDocument> = {}): PlanDocument {
         interval: span("2026-02-11T14:00:00+00:00", "2026-02-11T15:00:00+00:00"),
         areaId: AREA_CAREER,
         reason: "no_eligible_content",
+        label: SLOT_LABEL,
       },
     ],
     adjustments: [],

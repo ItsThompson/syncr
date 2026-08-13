@@ -24,6 +24,12 @@ to repeat it.
 user's own word for a row they may rename, and a stored week is a fact about that week, so the name
 is resolved here against the Areas this response was read with. ``slot_contexts.py`` holds that
 resolution and the refusal it raises when the two do not cover each other.
+
+**An empty slot's gutter wording is RENDERED here, and its reason travels beside it.** One wording
+per reason is :mod:`syncr_domain.gaps`'s single statement of it. That module is Python and the
+clients that draw a gap are not, so a client composing the words from the reason code would be the
+second statement that rule exists to forbid. The reason stays on the wire because it is what a
+client branches on.
 """
 
 from __future__ import annotations
@@ -150,16 +156,26 @@ class EmptySlotResponse(WireModel):
     interval: WireSpan
     area_id: UUID
     reason: EmptySlotReason = Field(description="Why the slot holds nothing.")
+    label: str = Field(
+        description="The one wording this reason renders beside the slot, with the Area's own name "
+        "substituted where it names one. Rendered here rather than by the client, because the "
+        "wordings have one home and it is not reachable from one."
+    )
 
     @classmethod
     def of(cls, slot: EmptySlot, context: SlotContext) -> Self:
-        """One empty slot on the wire, beside what a wording about it may name.
+        """One empty slot on the wire, and the wording a gutter states it in.
 
         ``context`` carries what the slot itself cannot: the name of the Area it is charged to,
         which :func:`syncr_domain.gaps.gutter_label` substitutes into the wordings that name one.
         It is resolved per slot by the caller, from one read, rather than looked up here.
         """
-        return cls(interval=WireSpan.of(slot.interval), area_id=slot.area_id, reason=slot.reason)
+        return cls(
+            interval=WireSpan.of(slot.interval),
+            area_id=slot.area_id,
+            reason=slot.reason,
+            label=slot.gutter_label(context),
+        )
 
 
 class PlanDocumentResponse(WireModel):

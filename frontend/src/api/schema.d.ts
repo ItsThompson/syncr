@@ -3366,6 +3366,11 @@ export interface components {
              */
             areaId: string;
             interval: components["schemas"]["WireSpan"];
+            /**
+             * Label
+             * @description The one wording this reason renders beside the slot, with the Area's own name substituted where it names one. Rendered here rather than by the client, because the wordings have one home and it is not reachable from one.
+             */
+            label: string;
             /** @description Why the slot holds nothing. */
             reason: components["schemas"]["EmptySlotReason"];
         };

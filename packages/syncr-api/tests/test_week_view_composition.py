@@ -2,8 +2,8 @@
 
 Six subjects, each a pure function or a pure mapping, so every case a request cannot reach is
 still driven: the eight readings, the three currency words, the three reasons a week holds no plan,
-the six reason clauses on the wire, the names an empty slot's Area is resolved to, and the
-response's own field set.
+the six reason clauses on the wire, the name an empty slot's Area is resolved to and the wording it
+reaches the wire with, and the response's own field set.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from syncr_api.core.schemas import WireModel
 from syncr_api.offplan.reading import off_plan_reading
 from syncr_api.plans.clause_schemas import ClauseResponse, ReasonResponse, as_clause
 from syncr_api.plans.currency import CURRENT, PLAN_CURRENCIES, SOLVING, STALE, plan_currency
-from syncr_api.plans.document_schemas import PlanDocumentResponse
+from syncr_api.plans.document_schemas import EmptySlotResponse, PlanDocumentResponse
 from syncr_api.plans.emptiness import (
     AWAITING_MAINTAINER,
     EMPTY_REASONS,
@@ -48,7 +48,7 @@ from syncr_api.solving.config import (
 )
 from syncr_api.solving.records import OperationRecord
 from syncr_domain.budgets import BudgetReport
-from syncr_domain.gaps import SlotContext
+from syncr_domain.gaps import EmptySlotReason, SlotContext, gutter_label
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.plan import PlanDocument
 from syncr_domain.reasons import (
@@ -590,7 +590,7 @@ def test_a_blocks_derived_identity_origin_and_chunk_reach_the_wire() -> None:
 
 
 # --------------------------------------------------------------------------------
-# The name an empty slot's Area is resolved to
+# The name an empty slot's Area is resolved to, and the wording it reaches the wire with
 # --------------------------------------------------------------------------------
 
 
@@ -645,6 +645,43 @@ def test_a_slot_charged_to_an_area_the_read_did_not_name_is_refused_rather_than_
         PlanDocumentResponse.of(
             a_document_holding_two_slots(), area_names={named: AREA_NAMES[named]}
         )
+
+
+def test_each_slots_label_names_the_area_that_slot_is_charged_to() -> None:
+    """The rendered wording, per slot, with the name this read resolved for that slot in it.
+
+    The one wording spelled out in full here. Every other assertion below takes the domain's own
+    rendering as its expectation, and a wording asserted only against itself could go stale on the
+    wire while staying green.
+
+    This is also the positive form of the refusal above: a resolution that reused the first slot's
+    context for the rest names one Area twice, which the two names here separate.
+    """
+    rendered = PlanDocumentResponse.of(a_document_holding_two_slots(), area_names=AREA_NAMES)
+
+    assert [one.label for one in rendered.empty_slots] == [
+        "no eligible Career content",
+        "no eligible Fitness content",
+    ]
+
+
+@pytest.mark.parametrize(
+    "reason", list(EmptySlotReason), ids=[reason.value for reason in EmptySlotReason]
+)
+def test_a_slot_reaches_the_wire_with_its_reason_and_the_label_that_reason_renders(
+    reason: EmptySlotReason,
+) -> None:
+    """Driven over whatever members the vocabulary holds, so one added with no wording reddens here.
+
+    The code travels beside the wording rather than being replaced by it: a client branching on the
+    reason keeps working, and one drawing the gutter no longer has to compose the words itself.
+    """
+    context = SlotContext(area_name="Career")
+
+    rendered = EmptySlotResponse.of(a_slot(reason=reason), context)
+
+    assert rendered.reason is reason
+    assert rendered.label == gutter_label(reason, context)
 
 
 # --------------------------------------------------------------------------------
