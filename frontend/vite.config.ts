@@ -24,6 +24,11 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/testing/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
+    /* One worker per core is the default, so one run of this suite takes most of a host that
+     * other suites are also running on. Capped rather than tuned: 40s at 14 workers against 97s
+     * at 2, and a host running several suites at once finishes all of them sooner than it
+     * finishes the one that took the whole box. `maxWorkers` caps whichever pool vitest runs. */
+    maxWorkers: 2,
     /* Well above the 5s default. The first test in a file pays the module transform and the
      * interceptor start that the rest of the file amortises, and on a loaded host that alone can
      * exceed 5s: two tests timed out in review at load average 395 and passed at 30s. A flaky first
