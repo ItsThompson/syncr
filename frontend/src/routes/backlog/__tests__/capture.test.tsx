@@ -586,6 +586,42 @@ describe("a refusal that arrives after the reader dismissed the form", () => {
 
     expect(bannersInTheTopBar()).toEqual([]);
   });
+  /* THE SILENCE HAS TO SURVIVE THE NEXT REFUSAL. A capture that landed leaves nothing to report, and the send
+     that reports nothing must not leave the report armed for whatever is refused next: the reader would then read
+     a banner saying a task was not saved about the very refusal standing in the form in front of them. */
+  it("does not turn a later refusal in the form into a banner", async () => {
+    const stub = await renderBacklog();
+    await screen.findByRole("table", { name: "The backlog" });
+    stub.holdCapture();
+    await pressN();
+    await fillTitle("Kontron take-home");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => {
+      expect(stub.captured).toHaveLength(1);
+    });
+    await dismissTheForm();
+    const readsBefore = stub.queries.length;
+    stub.releaseCapture();
+    await waitFor(() => {
+      expect(stub.queries.length).toBeGreaterThan(readsBefore);
+    });
+
+    stub.refuseCaptureWith(
+      422,
+      buildProblem({
+        errors: [{ field: "areaId", message: "names no Area of this tenant" }],
+      }),
+    );
+    await pressN();
+    await fillTitle("a second task");
+    await chooseArea("Career");
+    await userEvent.click(screen.getByRole("button", { name: "Capture" }));
+
+    expect(await screen.findByText("names no Area of this tenant")).toBeInTheDocument();
+    expect(bannersInTheTopBar()).toEqual([]);
+  });
+
   /* THE SAME REPORT WHEN THE READER HAS SINCE REOPENED THE FORM, which is the case the two rules meet in: the
      refusal is about a draft that no longer exists, so it may not land on the one the reader is typing into, and
      it is still a task the api never accepted, so it is still reported. */
