@@ -1,8 +1,8 @@
 /* ONE TRADEOFF: A STATEMENT PLUS A `Propose` BUTTON. Nothing else, and nothing chosen.
  *
  * syncr NEVER SELECTS A TRADEOFF. The row offers and stops: there is no recommended one, no default, no ordering by
- * preference and no pre-selection. The decision stays the reader's, which is the whole of `US-FEAS-04`, and the
- * panel's test asserts that no row is ever selected.
+ * preference and no pre-selection. The decision stays the reader's, and the panel's test asserts that no row is
+ * ever selected.
  *
  * REQUESTING ONE MUTATES NOTHING. The button dispatches a solve against modified inputs and the result lands in the
  * pending slot as a proposal; the plan of record is untouched until the reader approves it. That is why the control
