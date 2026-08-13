@@ -150,6 +150,7 @@ describe("the words the contract carries for a week with no plan", () => {
   it("draws a heading of its own for each state, so none can borrow its neighbour's", async () => {
     const drawn: string[] = [];
     for (const reason of EMPTY_REASONS) {
+      // oxlint-disable-next-line no-await-in-loop -- one screen at a time: each state installs the reads it answers
       drawn.push(titleIn(await openAPlanlessWeek(reason)));
       cleanup();
     }
