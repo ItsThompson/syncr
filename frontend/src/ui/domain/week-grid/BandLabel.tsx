@@ -1,9 +1,13 @@
-/* THE GUTTER LABEL ON A BAND, which is a reading or a control depending on whether anything is behind it.
+/* THE GUTTER LABEL ON A BAND, which is a reading or a control depending on whether the caller hands it an
+ * activation.
  *
  * AN EMPTY SLOT'S LABEL IS THE ONE INVITATION ON THIS SCREEN. Activating it opens capture prefilled with the slot's
- * Area and an estimate equal to the slot's duration, which is what stops an unfillable slot being a dead end. A
- * window's label and an off-plan span's have nothing behind them, so they stay text: a control that did nothing would
- * be worse than a reading, because a reader would press it.
+ * Area, an estimate equal to the slot's own duration, and the window it runs in, which is what stops an unfillable
+ * slot being a dead end.
+ *
+ * WHICH BANDS GET AN ACTIVATION IS THE SCREEN'S, NOT THIS FILE'S. The week screen hands one to every band, so a
+ * window's label and an off-plan span's are controls too, and activating one of those resolves to no slot and does
+ * nothing.
  *
  * THE TWO FORMS SHARE ONE CLASS, so the knockout over the hatch is one declaration. A button's own reset comes from
  * the bundle's preflight, which is why the class carries no font of its own here. */
