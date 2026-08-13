@@ -306,10 +306,16 @@ describe("the window a preference declares", () => {
   });
 
   /* NOTHING TO SEND RATHER THAN A PAIR OF FAILURES, and it is the same absence the form's own sentence answers
-     with: a window the reader was never shown is not one their confirm declares. */
+     with: a window the reader was never shown is not one their confirm declares.
+
+     BOTH ENDS ARE READ, and the second one is here because it was measured missing: with only the cases that
+     spoil the START, dropping the guard on the END left every case green, so half the refusal was decoration. */
   it("declares nothing where the zone or an instant cannot be read", () => {
     expect(preferredWindowDeclaration({ from: SLOT_FROM, to: SLOT_TO }, "Mars/Olympus")).toBeNull();
     expect(preferredWindowDeclaration({ from: "soon", to: SLOT_TO }, "Europe/London")).toBeNull();
+    expect(
+      preferredWindowDeclaration({ from: SLOT_FROM, to: "whenever" }, "Europe/London"),
+    ).toBeNull();
   });
 
   /* THE ZONE THROUGH THE WHOLE PATH. A reader in Madrid activated the slot their own week screen drew at 15:00, and

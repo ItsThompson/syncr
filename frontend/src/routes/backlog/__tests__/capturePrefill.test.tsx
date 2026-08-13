@@ -211,10 +211,15 @@ describe("the window as the form states it", () => {
   });
 
   /* NOTHING TO SAY RATHER THAN A PAIR OF FAILURES. A zone the runtime does not know and an instant that is not one
-     both reach this, and a form is better carrying no sentence than one reading `null to null`. */
+     both reach this, and a form is better carrying no sentence than one reading `null to null`.
+
+     THE END IS READ TOO, and its own case is here because it was measured missing: the reading and the
+     declaration answer from one reading of the two instants, and with only the cases that spoil the START,
+     dropping the guard on the END left every case on both of them green. */
   it("states nothing where the zone or an instant cannot be read", () => {
     expect(preferredWindowReading({ from: SLOT_FROM, to: SLOT_TO }, "Mars/Olympus")).toBeNull();
     expect(preferredWindowReading({ from: "soon", to: SLOT_TO }, "Europe/London")).toBeNull();
+    expect(preferredWindowReading({ from: SLOT_FROM, to: "whenever" }, "Europe/London")).toBeNull();
   });
 });
 
