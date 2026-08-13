@@ -111,13 +111,8 @@ function bandsOf(view: WeekView): WeekBand[] {
  */
 function emptyState(view: WeekView): WeekScreenState {
   if (view.emptyReason === null || view.emptyWeek === null) return { status: "loading" };
-  return { status: "empty", reason: renderedReason(view.emptyReason), facts: view.emptyWeek };
-}
-
-/* THE WIRE NAMES THREE EMPTY STATES AND THIS SCREEN RENDERS TWO. `awaiting_maintainer` is a week inside the
- * horizon whose plan has not been produced yet; it needs a title and one action of its own, and until it has
- * them it draws as the horizon state. The sentence a reader actually reads is the server's either way, and it
- * says the week is inside the horizon and waiting. */
-function renderedReason(reason: NonNullable<WeekView["emptyReason"]>): EmptyWeekReason {
-  return reason === "awaiting_maintainer" ? "outside_horizon" : reason;
+  /* THE PAYLOAD'S WORD TRAVELS TO THE KIT UNCHANGED, which is what keeps the heading and the sentence a reader gets
+   * about one word. A word the kit has no state for is a `tsc` error on this line rather than a heading borrowed
+   * from the state next to it. */
+  return { status: "empty", reason: view.emptyReason, facts: view.emptyWeek };
 }

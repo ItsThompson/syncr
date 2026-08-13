@@ -1,10 +1,10 @@
-/* THE WEEK WITH NO PLAN, WHICH IS TWO STATES AND NEVER A BLANK GRID.
+/* THE WEEK WITH NO PLAN, WHICH IS THREE STATES AND NEVER A BLANK GRID.
  *
- * The two are the visible face of the planning horizon. A week beyond it has no plan BY DESIGN, because a read
- * never triggers work, so saying so with an action beats rendering an empty grid the reader cannot tell from a
- * failure.
+ * All three are the visible face of the planning horizon. A read never triggers work, so a week beyond the horizon
+ * has no plan BY DESIGN and a week inside it has none until one is produced, so saying which, with an action, beats
+ * rendering an empty grid the reader cannot tell from a failure.
  *
- * BOTH STATES ARE STATIC. Nothing here spins, and there is nothing in the kit it could spin with.
+ * ALL THREE STATES ARE STATIC. Nothing here spins, and there is nothing in the kit it could spin with.
  *
  * THE SENTENCE IS THE SERVER'S. `statement` is composed where the horizon's own dates and the missing inputs are
  * in hand, so this screen and the horizon maintainer cannot word the same fact differently. What this component
@@ -21,7 +21,7 @@ import { Button } from "../../primitives";
 import { EmptyState } from "../status";
 
 /** Why a week holds no plan, in the words this screen has a title and an action for. */
-export type EmptyWeekReason = "outside_horizon" | "setup_incomplete";
+export type EmptyWeekReason = "outside_horizon" | "setup_incomplete" | "awaiting_maintainer";
 
 export interface EmptyWeekProps {
   readonly reason: EmptyWeekReason;
@@ -31,47 +31,62 @@ export interface EmptyWeekProps {
   readonly setupHref: string;
   /** Where the reader goes to widen the projection horizon. Rendered for the horizon state only. */
   readonly extendHorizonHref: string;
-  /** Asks for this week to be solved now. Rendered for the horizon state only. */
+  /** Asks for this week to be solved now. Rendered for every state but the incomplete setup. */
   readonly onSolveNow: () => void;
 }
 
 const TITLE: Readonly<Record<EmptyWeekReason, string>> = {
   outside_horizon: "This week is beyond your planning horizon",
   setup_incomplete: "This week cannot be planned yet",
+  awaiting_maintainer: "syncr is planning this week",
 };
 
-/* TWO ACTIONS FOR THE HORIZON AND ONE FOR THE SETUP STATE, because the horizon has two honest repairs and a missing
- * Area has exactly one. A reader is never asked to choose between two ways of fixing one thing.
+/* TWO ACTIONS FOR THE HORIZON AND ONE EACH FOR THE OTHER TWO, because the horizon has two honest repairs and a
+ * missing Area and an unfinished solve have one apiece. A reader is never asked to choose between two ways of fixing
+ * one thing, and a week the horizon already holds is never offered a wider horizon: that offer repairs nothing and
+ * contradicts the sentence beneath it.
  *
  * WIDENING THE HORIZON IS A DESTINATION AND SOLVING IS A REQUEST, so one is a link and the other is a button. Both
  * destinations are routes this application owns, so they are `Link`s: a raw `href` would reload the document,
  * discarding the cache and re-running the gate and the bundle to reach a screen already in memory. A `Link` still
  * renders a real anchor, so middle-click, cmd-click and the browser's own affordances are unaffected.
  *
+ * KEYED ON THE REASON RATHER THAN BRANCHED ON IT, so a word added to the vocabulary is a compile error here as it
+ * is in `TITLE`: a state nobody wrote the repairs for cannot reach a reader wearing a neighbouring state's.
+ *
  * Declared above the component rather than inside it, so a reader scanning for the body does not stop at a `return`
  * with a helper hoisted below it. */
-function actionsFor(props: EmptyWeekProps): ReactNode {
-  if (props.reason === "setup_incomplete") {
-    return (
-      <Button asChild rank="primary">
-        <Link to={props.setupHref}>Finish setting up</Link>
-      </Button>
-    );
-  }
+function solveNow(props: EmptyWeekProps): ReactNode {
   return (
+    <Button onClick={props.onSolveNow} rank="primary">
+      Solve this week now
+    </Button>
+  );
+}
+
+const ACTIONS: Readonly<Record<EmptyWeekReason, (props: EmptyWeekProps) => ReactNode>> = {
+  setup_incomplete: (props) => (
+    <Button asChild rank="primary">
+      <Link to={props.setupHref}>Finish setting up</Link>
+    </Button>
+  ),
+  outside_horizon: (props) => (
     <>
       <Button asChild rank="secondary">
         <Link to={props.extendHorizonHref}>Extend the horizon</Link>
       </Button>
-      <Button onClick={props.onSolveNow} rank="primary">
-        Solve this week now
-      </Button>
+      {solveNow(props)}
     </>
-  );
-}
+  ),
+  awaiting_maintainer: (props) => solveNow(props),
+};
 
 export function EmptyWeek(props: EmptyWeekProps) {
   return (
-    <EmptyState action={actionsFor(props)} detail={props.statement} title={TITLE[props.reason]} />
+    <EmptyState
+      action={ACTIONS[props.reason](props)}
+      detail={props.statement}
+      title={TITLE[props.reason]}
+    />
   );
 }
