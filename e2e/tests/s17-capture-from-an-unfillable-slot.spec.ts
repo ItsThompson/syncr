@@ -151,9 +151,9 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
 }) => {
   test.fail(
     true,
-    "the flow behind the label does not exist yet, in two places and on one defect: nothing reads the capture URL " +
-      "the week screen writes and nothing writes a task's own preference (ticket 1490); and the grid's canvas is " +
-      "sized from the height of the element that contains it, so it grows until layout stops and refuses a press " +
+    "the flow behind the label is half built, and one defect stands beside it: capture opens prefilled from the URL " +
+      "the week screen writes, and nothing writes the task's own preference yet (ticket 1490); and the grid's canvas " +
+      "is sized from the height of the element that contains it, so it grows until layout stops and refuses a press " +
       "on anything it has pushed out of a pointer's reach, which was measured on a supplied slot label and does " +
       "not affect the window label the case above presses",
   );
