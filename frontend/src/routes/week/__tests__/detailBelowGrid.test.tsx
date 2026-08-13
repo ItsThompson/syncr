@@ -3,7 +3,7 @@
  * At 1440x900 the panel has no room for a column of its own and the rail's control is what a reader has instead.
  * What these cases hold is the whole gesture rather than the state behind it: the control is reached, named,
  * activated, and the reason it exists for is READ off the panel that appears. A case asserting the open state
- * alone passes against a panel a browser never displays, which is the shape this screen shipped.
+ * alone says nothing about whether a browser draws the panel that state is supposed to produce.
  *
  * THE PANEL LANDS BELOW THE GRID, and that is the one arrangement that leaves the grid's own width alone: the
  * panel's column is fenced to `wide:`, so below the threshold the only width reserved beside the grid is the
@@ -37,7 +37,7 @@ import {
 } from "./fixtures";
 import { WIDE_MIN_WIDTH_PX } from "../panelRoom";
 
-/** The display the ticket names: the widest one with no room for the panel's own column. */
+/** The widest display with no room for the panel's own column, which is where the rail is the only route. */
 const VIEWPORT = { widthPx: 1440, heightPx: 900 };
 
 const JSDOM_VIEWPORT = { widthPx: window.innerWidth, heightPx: window.innerHeight };
