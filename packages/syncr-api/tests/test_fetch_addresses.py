@@ -438,6 +438,11 @@ async def test_an_address_that_could_not_be_read_is_not_connected_to(
 async def test_a_spelling_the_door_stores_is_refused_by_the_resolver(spelling: str) -> None:
     # The door reads dotted and colon spellings only, so both of these are stored as names. The
     # resolver reads them as the loopback address they spell, which is what closes them here.
+    #
+    # Both rest on the platform resolver accepting them through `inet_aton`, which glibc and BSD do
+    # and musl does not, so this case states what the deployment's own C library reads rather than a
+    # property of the language. On a musl image it fails here rather than silently widening what
+    # syncr fetches, because a spelling the resolver rejects is refused rather than fetched.
     assert address_in(spelling) is None
     assert normalize_feed_url(f"http://{spelling}/t.ics") == f"http://{spelling}/t.ics"
 
