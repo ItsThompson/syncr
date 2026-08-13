@@ -7,7 +7,11 @@ export {
   withoutCapturePrefill,
   type CaptureInvitation,
 } from "./prefill";
-export { preferredWindowReading, type CaptureWindow } from "./preferredWindow";
+export {
+  preferredWindowDeclaration,
+  preferredWindowReading,
+  type CaptureWindow,
+} from "./preferredWindow";
 export { useCapturePrefill } from "./useCapturePrefill";
 export {
   PRIORITIES,

@@ -8,8 +8,8 @@
  * THERE IS NO PREFERRED-TIME MEMBER, AND THERE CANNOT BE ONE. A preferred time is a `Preference`, whose owner
  * is an Area, a Habit or a Task, so a task inherits its Area's windows unless it overrides them. The api's
  * request shape forbids an unknown field, so a `preferredTimes` member here would be a 422 rather than a value
- * quietly dropped, and the form states the inheritance in a hint instead of offering a control for it. A window
- * a caller opened capture from is held by the OPENING for that reason, and never by this draft.
+ * quietly dropped. A window a caller opened capture from is held by the OPENING for that reason, and never by
+ * this draft: what writes it is a second request, against the task this one creates.
  *
  * THE MINIMUM-CHUNK GUARD IS AN AFFORDANCE AND NOT THE RULE. `syncr_domain.tasks` owns the comparison of a
  * minimum chunk against an estimate, it is the only statement of it in the product, and its 422 names the

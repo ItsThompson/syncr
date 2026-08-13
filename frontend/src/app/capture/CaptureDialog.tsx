@@ -4,14 +4,21 @@
  * network fixture and the host above it owns the reads and the write.
  *
  * THERE IS NO PREFERRED-TIME FIELD, AND THE FORM SAYS WHY. A preferred time is a `Preference` whose owner is an
- * Area, so a task inherits its Area's windows unless it overrides them, and the place to author one is the
- * Preference column on the Areas screen. A control here would be a second home for a value with one home, and
- * the api's request shape refuses the field outright, so the hint states the inheritance instead.
+ * Area, a Habit or a Task, and the api's capture request refuses the field outright, so a control here would be a
+ * second home for a value that has one. Where the reader named no stretch of time, the hint states the
+ * inheritance: the task takes its Area's windows, and the place to author those is the Preference column on the
+ * Areas screen.
  *
- * A WINDOW THE OPENING CARRIES IS STATED AND NOT OFFERED. A reader who activated a slot on the week screen came
- * from one stretch of time, and the form says which: that is the same value the two rows above are prefilled with,
- * and a prefill a reader cannot see cannot be told from one that was dropped on the way. It is a sentence rather
- * than a control for the reason in the paragraph above -- there is nowhere for an edited one to go.
+ * A WINDOW THE OPENING CARRIES IS STATED AND NOT OFFERED, AND STATING IT IS A CLAIM ABOUT THE WRITE. A reader who
+ * activated a slot on the week screen came from one stretch of time, the confirm declares that stretch as this
+ * task's own soft preference, and the sentence says so: a prefill a reader cannot see cannot be told from one that
+ * was dropped on the way, and a write nobody was told about is worse. It is a sentence rather than a control
+ * because there is nowhere for an edited one to go -- the request shape refuses the field, and the value has one
+ * home, which is the preference the confirm writes.
+ *
+ * THE INHERITANCE SENTENCE BELONGS TO THE OPENING THAT HAS NO WINDOW, and only to it. A task whose own preference
+ * this confirm declares does not inherit its Area's: saying both would state the two rules that cannot hold at
+ * once. So the form states exactly one of them, chosen by whether the opening carries a window.
  *
  * THE MINIMUM CHUNK'S REFUSAL IS RENDERED AT ITS OWN ROW, with the reason, and the submit stays disabled while
  * it stands: a reader is told at the field rather than after a round trip. The rule itself is the domain's, and
@@ -68,7 +75,9 @@ export interface CaptureDialogProps {
    * The window this opening's work should prefer, as the reader's own zone reads it.
    *
    * Words rather than the two instants behind them, because the zone is the host's read: the form is handed a
-   * reading for the same reason it is handed today's date.
+   * reading for the same reason it is handed today's date. Absent where the opening names no window, and absent
+   * where its instants could not be read in the reader's zone, which is the same case the confirm declares no
+   * preference for.
    */
   readonly preferredWindowReading?: string | undefined;
   /** Where focus returns when the dialog closes: the element the reader was on when it opened. */
@@ -224,15 +233,17 @@ export function CaptureDialog({
           </Checkbox>
         )}
       </FormRow>
-      {preferredWindowReading === undefined ? null : (
+      {preferredWindowReading === undefined ? (
         <p className="text-eyebrow text-text-muted">
-          The slot you activated runs {preferredWindowReading}.
+          There is no preferred time here: a preferred time is inherited from the Area, and is
+          edited in the Preference column on the Areas screen.
+        </p>
+      ) : (
+        <p className="text-eyebrow text-text-muted">
+          The slot you activated runs {preferredWindowReading}, and capturing this prefers that
+          stretch for this task alone: a soft preference of its own, in place of its Area's.
         </p>
       )}
-      <p className="text-eyebrow text-text-muted">
-        There is no preferred time here: a preferred time is inherited from the Area, and is edited
-        in the Preference column on the Areas screen.
-      </p>
     </Dialog>
   );
 }

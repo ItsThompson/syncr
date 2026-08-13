@@ -5,12 +5,14 @@
  * rather than something a client can reproduce.
  *
  * A WRITE INVALIDATES EVERY BACKLOG KEY AND NOTHING ELSE. That is not a blanket revalidation: one resource has
- * several keys because the filters are in them, and a capture changes the list under all of them. What must NOT
+ * several keys because the filters are in them, and a write changes the list under all of them. What must NOT
  * be invalidated is a week, which is asserted by counting a read that does not run.
  *
- * NOTHING POLLS. `US-TASK-03` says the at-risk determination is recomputed on every read rather than on a timer
- * and that nothing pushes it, so a hook with a refresh interval would be the defect: the clock is advanced here
- * and the read count is asserted not to move. */
+ * NOTHING POLLS. The at-risk determination is recomputed on every read rather than on a timer, and nothing pushes
+ * it, so a hook with a refresh interval would be the defect: the clock is advanced here and the read count is
+ * asserted not to move.
+ *
+ * THE CAPTURE'S OWN CASES ARE IN `useTaskCapture.test.tsx`, with the second write it sends. */
 
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +25,7 @@ import { FreshCache } from "../../testing/renderRoute";
 import { client } from "../client";
 import { backlogKey, isBacklogKey, weekKey } from "../keys";
 import { read as readBody } from "./request";
-import { useBacklog, useTaskCapture, useTaskCompletion } from "./useBacklog";
+import { useBacklog, useTaskCompletion } from "./useBacklog";
 
 const origin = window.location.origin;
 const TASK_ID = "7c2d1a10-0001-4a3b-8b21-000000000001";
@@ -119,81 +121,7 @@ describe("reading the backlog", () => {
   });
 });
 
-describe("the writes", () => {
-  it("captures with the body the caller built, and reads the list again", async () => {
-    const capture = recordingHandler("post", "/api/v1/tasks", { status: 201, body: {} });
-    const list = countedHandler("/api/v1/tasks", { status: 200, body: BACKLOG });
-    apiServer.use(list.handler, capture.handler);
-    const { result } = renderHook(
-      () => ({ read: useBacklog({ status: "open" }), write: useTaskCapture() }),
-      { wrapper: FreshCache },
-    );
-    await waitFor(() => {
-      expect(result.current.read.status).toBe("ready");
-    });
-    expect(list.count()).toBe(1);
-
-    const applied = await result.current.write.submit({
-      areaId: "a1",
-      title: "Kontron take-home",
-      estimateMinutes: 30,
-      minChunkMinutes: 15,
-      deadline: null,
-      priority: "normal",
-      splittable: true,
-    });
-
-    expect(applied).toBe(true);
-    expect(capture.bodies).toEqual([
-      {
-        areaId: "a1",
-        title: "Kontron take-home",
-        estimateMinutes: 30,
-        minChunkMinutes: 15,
-        deadline: null,
-        priority: "normal",
-        splittable: true,
-      },
-    ]);
-    await waitFor(() => {
-      expect(list.count()).toBe(2);
-    });
-  });
-
-  it("keeps the refusal a capture was answered with, so a form can render it", async () => {
-    apiServer.use(
-      http.get(`${origin}/api/v1/tasks`, () => HttpResponse.json(BACKLOG)),
-      http.post(`${origin}/api/v1/tasks`, () =>
-        HttpResponse.json(
-          {
-            type: "syncr:validation-failed",
-            title: "Validation failed",
-            status: 422,
-            detail: "One or more members were refused.",
-            errors: [{ field: "title", message: "is too long" }],
-          },
-          { status: 422 },
-        ),
-      ),
-    );
-    const { result } = renderHook(() => useTaskCapture(), { wrapper: FreshCache });
-
-    const applied = await result.current.submit({
-      areaId: "a1",
-      title: "x".repeat(400),
-      estimateMinutes: 30,
-      minChunkMinutes: 15,
-      deadline: null,
-      priority: "normal",
-      splittable: true,
-    });
-
-    expect(applied).toBe(false);
-    await waitFor(() => {
-      expect(result.current.problem?.errors).toEqual([{ field: "title", message: "is too long" }]);
-    });
-  });
-
+describe("the completion", () => {
   /* A COMPLETION DOES NOT REFETCH THE WEEK. It changes no block of the plan of record: the blocks bound to the
      task become empty space in the NEXT solve, which the version bump is what causes. Refetching the week here
      would redraw the same plan and imply something in it had changed.

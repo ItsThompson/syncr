@@ -1,8 +1,12 @@
-/* The backlog, and the two writes the Backlog screen and the global capture make on it.
+/* The backlog: the read the Backlog screen draws, and the completion it writes.
  *
- * THREE HOOKS RATHER THAN ONE, because a read and two writes have three different shapes. What they share is
- * which keys they invalidate: both writes change the list under every filter, so each names
- * `isBacklogKey` rather than the one key the screen happens to be reading.
+ * TWO HOOKS RATHER THAN ONE, because a read and a write have two different shapes. What they share with the
+ * capture in `useTaskCapture` is which keys they invalidate: every write changes the list under every filter, so
+ * each names `isBacklogKey` rather than the one key the screen happens to be reading.
+ *
+ * THE CAPTURE IS NOT HERE. It sends a second request of its own, against a task's preference rather than against
+ * this list, so it lives in `useTaskCapture` with the ordering that pair needs. `TaskCaptureBody` stays here,
+ * because the shape a capture sends is this resource's own.
  *
  * THE AT-RISK MARK IS THE SERVER'S AND THIS FILE COMPUTES NOTHING. `atRisk` arrives on the row, derived from
  * the current week's verdict by the same collaborator the Week screen's read uses, so a task cannot be at risk
@@ -14,10 +18,9 @@
  * `refreshInterval` here and the event stream carries no verdict member, because only a conflict notifies.
  * What re-reads the list is a write on it, which is exactly when this client can know something moved.
  *
- * NO WRITE IS OPTIMISTIC. A capture's answer includes the server's own defaults, its identifier and its place
- * in the ordering; a completion's answer changes the header's counts and can change which OTHER rows are
- * marked, because the verdict is recomputed over a backlog one task lighter. Neither is predictable here, and
- * an optimistic row that guessed either would have to be corrected in a second redraw. */
+ * NO WRITE ON THIS LIST IS OPTIMISTIC. A completion's answer changes the header's counts and can change which
+ * OTHER rows are marked, because the verdict is recomputed over a backlog one task lighter. That is not
+ * predictable here, and an optimistic row that guessed it would have to be corrected in a second redraw. */
 
 import useSWR, { useSWRConfig } from "swr";
 
@@ -56,23 +59,6 @@ async function readBacklog(filters: BacklogFilters): Promise<Backlog> {
 
 export function useBacklog(filters: BacklogFilters = {}): Resource<Backlog> {
   return toResource(useSWR<Backlog, Problem>(backlogKey(filters), () => readBacklog(filters)));
-}
-
-/**
- * Capturing a task, which is the one write reachable from every screen.
- *
- * The body is the request shape itself rather than a flattened set of parameters, so the two required
- * members and every documented default are the api's own contract at the call site.
- */
-export function useTaskCapture(): Write<TaskCaptureBody> {
-  const { mutate } = useSWRConfig();
-
-  return useWrite(async (body: TaskCaptureBody) => {
-    const refusal = await apply(() => client.POST("/api/v1/tasks", { body }));
-    if (refusal !== null) return refusal;
-    await mutate(isBacklogKey);
-    return null;
-  });
 }
 
 /**
