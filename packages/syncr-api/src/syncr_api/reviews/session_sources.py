@@ -28,11 +28,16 @@ make the composer decide again which suppressions are still in force, which is t
 question.
 
 **The debt reading is taken over the log the raise is about, which is not one log.** A habit at its
-cap is an ACCUMULATED figure and needs the whole log; an ``escalate`` habit is raised for a miss in
-the week under review, because "raised in the next weekly session" is about the week that just
+cap is an ACCUMULATED figure and needs the whole log; an ``escalate`` habit is raised for a miss the
+week under review settled, because "raised in the next weekly session" is about the week that just
 happened. Passing the whole log to an ``escalate`` habit raises it forever after one miss, which is
 a nag rather than an escalation. So the log is chosen per policy, from one read, and the choice is
-made here because this is where both logs exist."""
+made here because this is where both logs exist.
+
+**The week a miss belongs to is the week its day was CONFIRMED in, not the week it came due.** A day
+is settled whenever the user answers for it, which can be any number of weeks after the occurrence,
+so a miss can come due long before the first session that could know about it. See
+:func:`_was_settled_in` for why one of the two dates a row carries decides rather than either."""
 
 from __future__ import annotations
 
@@ -61,7 +66,7 @@ if TYPE_CHECKING:
     from syncr_api.tasks.repository import TaskRepository
     from syncr_domain.debt import DebtReading
     from syncr_domain.identifiers import HabitId
-    from syncr_domain.intervals import Instant
+    from syncr_domain.intervals import Instant, Interval
     from syncr_domain.outcomes import HabitOutcome
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import ZoneId, ZoneProfile
@@ -159,12 +164,12 @@ class SessionSources:
         ``syncr_domain.debt`` states.
         """
         span = week_span(reviewed, profile)
-        inside = [one for one in log if span.start <= one.occurred_at < span.end]
+        settled = [one for one in log if _was_settled_in(one, span)]
         readings = {}
         for habit in habits:
             about_the_week = habit.miss_policy is MissPolicy.ESCALATE
             outcomes = [
-                one for one in (inside if about_the_week else log) if one.habit_id == habit.id
+                one for one in (settled if about_the_week else log) if one.habit_id == habit.id
             ]
             readings[habit.id] = debt_reading(habit.as_habit(), outcomes, now)
         return readings
@@ -197,3 +202,19 @@ class SessionSources:
             )
             for pin in await self._pins.for_weeks(weeks)
         )
+
+
+def _was_settled_in(outcome: HabitOutcome, span: Interval) -> bool:
+    """Whether ``span`` holds the day this outcome was settled on.
+
+    The confirmation, because that is the day the outcome became a miss or a completion: an
+    occurrence comes due on one day and the user answers for it on another, and until they do it is
+    neither. A day nobody has confirmed is settled on no day at all, and charges nothing under any
+    policy, so leaving it out of the window costs no figure.
+
+    **One of the two dates decides rather than either.** A row admitted by the day it came due AND
+    by the day it was settled falls inside two weeks whenever those days sit in different ones,
+    which is one miss raised in two consecutive sessions.
+    """
+    settled = outcome.confirmed_at
+    return settled is not None and span.start <= settled < span.end
