@@ -25,7 +25,7 @@ conflict target, so a target pointed at the wrong one would leave a kind of owne
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -46,7 +46,13 @@ from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.preferences.models import PreferenceRow
 from syncr_api.preferences.repository import OWNER_COLUMN, PreferenceRepository
 from syncr_api.tasks.config import TASKS_PREFIX
-from syncr_domain.preferences import PreferenceOwnerKind
+from syncr_domain.preferences import (
+    LocalTimeWindow,
+    Preference,
+    PreferenceOwner,
+    PreferenceOwnerKind,
+    PreferenceStrength,
+)
 from tests.control_models import table_of
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 
@@ -59,7 +65,6 @@ if TYPE_CHECKING:
     from syncr_api.core.settings import ServiceSettings
     from syncr_api.preferences.records import PreferenceRecord
     from syncr_domain.identifiers import TenantId
-    from syncr_domain.preferences import PreferenceOwner
 
 pytestmark = pytest.mark.integration
 
@@ -69,6 +74,10 @@ NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 # Long enough that the racing request's commit lands inside the window, short enough that a window
 # nobody closes fails the test rather than hanging the suite.
 WINDOW_SECONDS = 10
+
+# How long a replacement blocked on an uncommitted one is given to prove it is still blocked. The
+# assertion is that it has NOT finished, so a slower box waits longer and cannot turn it green.
+BLOCKED_SECONDS = 1.0
 
 EARLY = {"start": "05:30", "end": "07:00"}
 EVENING = {"start": "19:00", "end": "21:00"}
@@ -80,6 +89,11 @@ WRITTEN_SECOND = {"windows": [EVENING], "strength": "soft"}
 
 STORED_FIRST = [{"start": "05:30:00", "end": "07:00:00"}]
 STORED_SECOND = [{"start": "19:00:00", "end": "21:00:00"}]
+
+# The same two declarations as entities, for the pair of writes driven over two connections of
+# this test's own rather than over two requests.
+WINDOW_WRITTEN_FIRST = LocalTimeWindow(start=time(5, 30), end=time(7, 0))
+WINDOW_WRITTEN_SECOND = LocalTimeWindow(start=time(19, 0), end=time(21, 0))
 
 
 @pytest.fixture
@@ -228,6 +242,17 @@ async def stored_windows(
     return [[dict(window) for window in row.windows] for row in stored]
 
 
+def a_preference(owner: PreferenceOwner, window: LocalTimeWindow) -> Preference:
+    """One owner's preference over a single window, as the entity a replacement stores."""
+    return Preference(
+        owner=owner,
+        windows=(window,),
+        strength=PreferenceStrength.SOFT,
+        preferred_duration_minutes=None,
+        max_per_day_minutes=None,
+    )
+
+
 # --------------------------------------------------------------------------------
 # The two races: what each caller is answered, and what ends up stored
 # --------------------------------------------------------------------------------
@@ -311,6 +336,44 @@ async def test_a_removal_inside_the_window_does_not_leave_a_replacement_unstored
         "the replacement answered 200 for a declaration it did not store"
     )
     assert replaced.json()["declared"]["windows"] == STORED_SECOND
+    assert await stored_windows(sessions, owner.tenant_id) == [STORED_SECOND]
+
+
+async def test_a_replacement_waits_for_an_uncommitted_one_rather_than_being_refused(
+    wired: httpx.AsyncClient,
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+) -> None:
+    # The third interleaving, and the one no request-level seam can reach: the racing replacement
+    # has written and NOT committed, so the index has nothing to refuse yet and Postgres makes the
+    # second writer wait for the first transaction to end. Driven over two connections of this
+    # test's own, because holding a request's transaction open past its response is not something
+    # the app offers.
+    headers = await signed_in(wired, owner)
+    owned = await an_owner_of_each_kind(wired, headers)
+    area = PreferenceOwner(
+        kind=PreferenceOwnerKind.AREA, id=owned.owner_id(PreferenceOwnerKind.AREA)
+    )
+
+    async def replace_over_a_second_connection() -> None:
+        async with sessions() as second, second.begin():
+            await PreferenceRepository(second, owner.tenant_id).upsert(
+                a_preference(area, WINDOW_WRITTEN_SECOND), created_at=NOW
+            )
+
+    async with sessions() as first, first.begin():
+        await PreferenceRepository(first, owner.tenant_id).upsert(
+            a_preference(area, WINDOW_WRITTEN_FIRST), created_at=NOW
+        )
+        waiting = asyncio.create_task(replace_over_a_second_connection())
+        _, pending = await asyncio.wait([waiting], timeout=BLOCKED_SECONDS)
+        # Not cancelled on the timeout: the claim is that it is still waiting, and a refusal would
+        # have finished the task with an `IntegrityError` instead.
+        assert waiting in pending, (
+            "the second replacement did not wait for the uncommitted first one"
+        )
+
+    await asyncio.wait_for(waiting, timeout=WINDOW_SECONDS)
     assert await stored_windows(sessions, owner.tenant_id) == [STORED_SECOND]
 
 
