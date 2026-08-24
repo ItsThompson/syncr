@@ -13,9 +13,12 @@
  *
  * EVERY NOTICE NAMES WHAT STILL WORKS, which the kit's type refuses to let a caller leave empty. A refusal
  * that says only what failed leaves a reader unable to decide what to do next, and on this screen the
- * answer is always the same shape: the rest of the ledger is unaffected and the act can be repeated. */
+ * answer is always the same shape: the rest of the ledger is unaffected and the act can be repeated.
+ *
+ * A FEED THAT CANNOT BE READ IS NOT COMPOSED HERE. The api composes that notice -- threshold, words, days in
+ * doubt -- and sends it on the source list; this screen only renders the ones whose scope names THIS day. */
 
-import type { Notice } from "../../ui/domain";
+import { noticeFrom, type Notice, type WireNotice } from "../../ui/domain";
 import type { Problem } from "../../contract";
 
 /** The api's own sentence, with the members it named first: a 422 says which figure to change. */
@@ -90,4 +93,19 @@ export function backfillSettledNotice(date: string, reading: string, outstanding
     action: null,
     scope: { screen: "today", date },
   };
+}
+
+/**
+ * The api's own notices that put THIS day in doubt, narrowed to the kit's type.
+ *
+ * Whether a feed is stale, and which days its outage touches, are decided where the anchors live, on the api:
+ * the notice carries those days in its scope, so rendering one on the day it names is a filter rather than a
+ * computation. A notice whose list cannot be narrowed is dropped, as `noticesAt` drops it everywhere else.
+ */
+export function noticesOnDate(wire: readonly WireNotice[], date: string): readonly Notice[] {
+  return wire.flatMap((notice) => {
+    if (!notice.scope?.dates?.includes(date)) return [];
+    const narrowed = noticeFrom(notice);
+    return narrowed === null ? [] : [narrowed];
+  });
 }

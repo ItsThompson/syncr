@@ -28,15 +28,15 @@ export function useSetupReads(): Resource<SetupReads> {
   const pattern = useWeekPattern();
   const sources = useCalendarSources();
 
-  const reading = readingOf({ areas, shapes, pattern, sources });
+  const reading = readingOf({ areas, shapes, pattern, listing: sources });
   if (reading.status === "loading") return { status: "loading" };
   if (reading.status === "error") return { status: "error", problem: reading.problem };
 
-  const target = writeTargetOf(reading.data.sources);
+  const target = writeTargetOf(reading.data.listing.sources);
   return {
     status: "ready",
     data: {
-      sourceCount: reading.data.sources.length,
+      sourceCount: reading.data.listing.sources.length,
       areaCount: reading.data.areas.areas.length,
       dayShapeCount: reading.data.shapes.length,
       isPatternDeclared: reading.data.pattern !== null,

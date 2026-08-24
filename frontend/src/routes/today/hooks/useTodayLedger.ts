@@ -29,7 +29,7 @@ import { useState } from "react";
 
 import { useKeyBinding } from "../../../lib/keyboard";
 import { useAreas, type Areas } from "../../../api/hooks/useAreas";
-import { useCalendarSources, type CalendarSource } from "../../../api/hooks/useCalendarSources";
+import { useCalendarSources } from "../../../api/hooks/useCalendarSources";
 import {
   useBackfill,
   useDay,
@@ -47,6 +47,7 @@ import { bodyFor, movedFormFor, partialFormFor, stateBody } from "../drafts";
 import { hostDateOf } from "../instants";
 import { isoWeekOf } from "../isoWeek";
 import type { Problem } from "../../../contract";
+import type { WireNotice } from "../../../ui/domain";
 import type { OutcomeForm, RowActions } from "../types";
 
 /**
@@ -74,22 +75,23 @@ export interface TodayLedger {
   /** The last refused confirmation of the day. */
   readonly confirmationRefusal: Problem | null;
   /**
-   * The calendar sources, or none while they have not arrived.
+   * The notices the api composed about this tenant's sources, or none while the read has not arrived.
    *
    * NOT PART OF THE READING, deliberately. A day whose commitments came from a feed reads identically whether
-   * that feed is answering or not, which is what the inline notice exists to say; but the ledger's whole job is
-   * answering for blocks, and a source list that failed to arrive must not take the rows off the screen. So this
-   * read degrades to silence rather than to a failure surface.
+   * that feed is answering or not, and the notice that says otherwise is composed on the api -- staleness is
+   * never computed here. But the ledger's whole job is answering for blocks, and a source read that failed to
+   * arrive must not take the rows off the screen. So this read degrades to silence rather than to a failure
+   * surface.
    */
-  readonly sources: readonly CalendarSource[];
+  readonly sourceNotices: readonly WireNotice[];
   /** What the last backfill settled. */
   readonly settled: Backfill | null;
   readonly onConfirm: () => void;
   readonly onBackfill: () => void;
 }
 
-/* A stable empty list, so a render before the sources arrive does not hand the screen a fresh array every time. */
-const NO_SOURCES: readonly CalendarSource[] = [];
+/* A stable empty list, so a render before the source read arrives does not hand the screen a fresh array every time. */
+const NO_SOURCE_NOTICES: readonly WireNotice[] = [];
 
 export function useTodayLedger(): TodayLedger {
   const [date] = useState(() => hostDateOf(new Date()));
@@ -165,7 +167,7 @@ export function useTodayLedger(): TodayLedger {
     actions,
     rowRefusal: recording.refusal,
     confirmationRefusal: confirmation.problem,
-    sources: sources.status === "ready" ? sources.data : NO_SOURCES,
+    sourceNotices: sources.status === "ready" ? sources.data.notices : NO_SOURCE_NOTICES,
     settled: backfill.settled,
     onConfirm: confirm,
     onBackfill: () => void backfill.submit(backfillRange(date)),

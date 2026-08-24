@@ -30,10 +30,10 @@ import { AHEAD_TITLE, BEHIND_TITLE, backfillReading, bandReading, dayStanding } 
 import {
   backfillSettledNotice,
   confirmationRefusedNotice,
+  noticesOnDate,
   recordingRefusedNotice,
   unconfirmedNotice,
 } from "./notices";
-import { staleFeedNotices } from "./staleFeeds";
 
 /** The ramp step each Area holds, so a chip is drawn with the pigment the domain assigned it. */
 function pigmentsOf(areas: Areas): ReadonlyMap<string, AreaPigment> {
@@ -46,7 +46,8 @@ function pigmentsOf(areas: Areas): ReadonlyMap<string, AreaPigment> {
  * The unconfirmed one is informational and the other two are amber and verdigris, which is the shell's own
  * table: an unconfirmed day is the ordinary state of a day until the evening pass. A feed that can no longer be
  * read is amber too, and it is here rather than on a row because it is about every imported commitment on the
- * day at once.
+ * day at once. The api composed it, and named the days it puts in doubt, so what is applied here is the day's
+ * own filter over the api's words.
  */
 function dayNotices(day: Day, ledger: TodayLedger): Notice[] {
   const notices: Notice[] = [];
@@ -65,7 +66,7 @@ function dayNotices(day: Day, ledger: TodayLedger): Notice[] {
       ),
     );
   }
-  notices.push(...staleFeedNotices(day, ledger.sources, Date.parse(ledger.nowIso)));
+  notices.push(...noticesOnDate(ledger.sourceNotices, day.date));
   return notices;
 }
 

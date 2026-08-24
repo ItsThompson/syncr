@@ -10,9 +10,9 @@
  * broken one. `readingOf` makes the same choice one layer down, where a refusal outranks an outstanding read.
  *
  * THE DEGRADATION PANELS SIT AT THE HEAD, WHICH IS WHAT VOLUME 2 MEANS. A reader walks past them to reach the
- * screen's content. Two of them are composed by the api, so the banner in the top bar and the panel here cannot
- * word the same outage differently; the feed panels are composed from the sync state each source already carries,
- * because the api composes none for a feed.
+ * screen's content. Every one of them is composed by the api -- expiry and stopped projection on the connection
+ * read, an unreadable feed on the source list itself -- so the banner in the top bar, the panels here and the day
+ * notices on Today cannot word one outage differently; only the parse rejection is worded on this screen.
  *
  * NOTHING HERE SPINS AND NOTHING ANIMATES. A sync reports progress by the anchor count in its row changing, and
  * there is no spinner in the kit to reach for even if one were wanted.
@@ -67,7 +67,7 @@ import { WriteTargetPanel } from "./components/WriteTargetPanel";
 import { ZonePanel } from "./components/ZonePanel";
 import { statedInstant } from "./format";
 import { gridHeightFor } from "./geometry";
-import { sourcePanelNotices } from "./sourceNotices";
+import { rejectionPanels } from "./sourceNotices";
 
 /** The zone every instant renders in until the settings read lands. One zone, and never a second one. */
 const ZONE_BEFORE_THE_READ = "UTC";
@@ -109,7 +109,11 @@ export function SettingsRoute() {
 
   const panels = [
     ...(connection.status === "ready" ? noticesAt("panel", connection.data.notices) : []),
-    ...(sources.status === "ready" ? sourcePanelNotices(sources.data, now) : []),
+    /* The stale-feed panels are the api's own words, arrived on the source list; the rejection panels are the
+       one condition this screen still composes, and both name what survives. */
+    ...(sources.status === "ready"
+      ? [...noticesAt("panel", sources.data.notices), ...rejectionPanels(sources.data.sources)]
+      : []),
   ];
 
   return (
@@ -126,20 +130,20 @@ export function SettingsRoute() {
         ))}
 
         <ReadingSection
-          reading={readingOf({ sources, connection })}
+          reading={readingOf({ listing: sources, connection })}
           title="Reading your calendars"
           detail="Which feeds syncr reads, what each one contributed, and which calendar it writes to."
         >
           {(read) => (
             <>
               <SourcesPanel
-                sources={read.sources}
+                sources={read.listing.sources}
                 zone={activeZone}
                 inclusion={inclusion}
                 removal={sourceRemoval}
                 sync={sync}
               />
-              <WriteTargetPanel sources={read.sources} horizon={horizon} role={role} />
+              <WriteTargetPanel sources={read.listing.sources} horizon={horizon} role={role} />
               <SourceAddition write={sourceAddition} />
               <GoogleConsentPanel connection={read.connection} request={consent} />
             </>

@@ -34,6 +34,13 @@ export type CalendarSourceBody = components["schemas"]["AddCalendarSourceRequest
 export type GoogleConnection = components["schemas"]["GoogleConnectionResponse"];
 export type GoogleConsent = components["schemas"]["GoogleConsentResponse"];
 
+/** The list response: every source, and every notice the api composed about them. */
+export interface SourceListing {
+  readonly sources: readonly CalendarSource[];
+  /** The degradation notices the api raises for these sources, staleness among them. */
+  readonly notices: components["schemas"]["Notice"][];
+}
+
 /** Whether a source contributes anchors. An excluded source reports zero and is not an error. */
 export interface SourceInclusion {
   readonly sourceId: string;
@@ -50,19 +57,19 @@ export interface HorizonEdit {
   readonly horizonDays: number;
 }
 
-async function readCalendarSources(): Promise<readonly CalendarSource[]> {
-  const { sources } = await read(() => client.GET("/api/v1/calendar-sources"));
-  return sources;
+/** The sources, with the notices the api composed about them: the words are the server's, not ours. */
+async function readCalendarSources(): Promise<SourceListing> {
+  const { sources, notices } = await read(() => client.GET("/api/v1/calendar-sources"));
+  return { sources, notices: notices ?? [] };
 }
 
 async function readGoogleConnection(): Promise<GoogleConnection> {
   return read(() => client.GET("/api/v1/calendar-sources/google/connection"));
 }
 
-export function useCalendarSources(): Resource<readonly CalendarSource[]> {
-  return toResource(
-    useSWR<readonly CalendarSource[], Problem>(calendarSourcesKey(), readCalendarSources),
-  );
+/** Every calendar source, with the notices the api composed about them. */
+export function useCalendarSources(): Resource<SourceListing> {
+  return toResource(useSWR<SourceListing, Problem>(calendarSourcesKey(), readCalendarSources));
 }
 
 /** The connected account, and every notice its state raises at either volume. */

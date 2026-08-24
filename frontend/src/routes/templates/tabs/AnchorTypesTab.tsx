@@ -21,13 +21,13 @@ import type { Resource } from "../../../contract";
 import type { AnchorPage } from "../../../api/hooks/useAnchors";
 import type { AnchorType, AnchorTypeEdit } from "../../../api/hooks/useAnchorTypes";
 import type { Areas } from "../../../api/hooks/useAreas";
-import type { CalendarSource } from "../../../api/hooks/useCalendarSources";
+import type { SourceListing } from "../../../api/hooks/useCalendarSources";
 import type { Write } from "../../../api/hooks/useWrite";
 
 export interface AnchorTypesTabProps {
   readonly types: Resource<readonly AnchorType[]>;
   readonly areas: Resource<Areas>;
-  readonly sources: Resource<readonly CalendarSource[]>;
+  readonly sources: Resource<SourceListing>;
   readonly anchors: Resource<AnchorPage>;
   readonly selectedId: string | null;
   readonly onSelect: (anchorTypeId: string) => void;
@@ -102,7 +102,7 @@ export function AnchorTypesTab({
         <AnchorTypeTable
           types={typeList}
           areas={areaReading.areas}
-          sources={sourceList}
+          sources={sourceList.sources}
           selectedId={selectedId}
           onSelect={onSelect}
           onMoveEarlier={onMoveEarlier}
