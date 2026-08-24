@@ -21,6 +21,8 @@ behind a retry.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 from uuid import uuid4
@@ -106,7 +108,10 @@ def test_the_oversize_message_states_the_size_rather_than_the_value() -> None:
 
 
 # --------------------------------------------------------------------------------------
-# The state parameter
+# The state parameter: the four properties the connect flow's no-PKCE judgment rests on.
+# A state is signed, tenant-bound, and short-lived, and the callback compares it against the
+# session's tenant. Weaken any one of them and the flow needs PKCE; each property below goes
+# red if an edit weakens it.
 # --------------------------------------------------------------------------------------
 
 
@@ -152,6 +157,24 @@ def test_a_state_signed_under_another_secret_is_refused() -> None:
     state = issue_state(tenant_id=TENANT, secret="another-deployments-secret", at=NOW)
 
     assert isinstance(read_state(state, secret=SIGNING_SECRET, now=NOW), StateRejected)
+
+
+def test_a_value_signed_under_the_undifferentiated_secret_is_not_a_state() -> None:
+    """The key a state signs under is derived FOR this purpose alone.
+
+    Anything else this deployment authenticates is signed under the raw signing secret. If a
+    state verified under that same undifferentiated key, a value one mechanism signed could be
+    presented as a state, so one purpose could forge for the other.
+    """
+    state = issue_state(tenant_id=TENANT, secret=SIGNING_SECRET, at=NOW)
+    payload = state.rpartition(".")[0]
+    re_signed = hmac.new(
+        SIGNING_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    assert isinstance(
+        read_state(f"{payload}.{re_signed}", secret=SIGNING_SECRET, now=NOW), StateRejected
+    )
 
 
 def test_a_state_older_than_its_lifetime_is_refused_with_what_to_do() -> None:
