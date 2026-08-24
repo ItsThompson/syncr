@@ -209,6 +209,42 @@ The alternative is to complete syncr's own connect flow against a development de
 
 So before running this, **the development calendar must hold nothing between 2 and 5 days from now.** A failed run can leave one event behind, titled `syncr live suite · safe to delete`; deleting it by hand is safe, and is sometimes what the next run needs.
 
+## The connect flow's state, and why there is no PKCE here
+
+Google sends the browser back to the callback URL with the code in the address bar. Anyone can
+build such a URL: a link in an email, or a page that silently redirects to the callback carrying a
+code the attacker obtained. Without a binding to the flow that started, the callback would connect
+whichever Google account the attacker chose to whoever is signed in at syncr, and report success.
+That threat, login CSRF by code injection, is what the `state` parameter answers.
+
+The state answers that threat and nothing else. It says nothing about who sees the code while it
+travels from Google's consent screen to syncr's callback; that is the threat PKCE addresses. One
+parameter cannot carry both, so the judgment below rests on four properties of the state instead,
+each pinned by a test against `google_account/state.py` that goes red if an edit weakens it:
+
+| Property | What it means | What it refuses |
+|---|---|---|
+| Signed | An HMAC over the whole value under a key derived from the deployment signing secret for this one purpose | A state nobody here issued |
+| Tenant-bound | Carries the tenant it was issued for | A state whose tenant was edited after issue |
+| Short-lived | Refused once it is more than **15 minutes** old | A flow somebody abandoned days ago |
+| Session-compared | The callback compares the verified tenant against the signed-in session's tenant | A code obtained in one account connecting whoever is signed in now |
+
+**Why there is no PKCE in this flow.** PKCE binds an authorization code to a secret held only by
+the party that started the flow, which matters most for public clients that have no other secret.
+syncr is a confidential client here: the code is exchanged at Google's token endpoint together
+with `GOOGLE_OAUTH_CLIENT_SECRET`, which Google verifies server to server. A code read off the
+browser cannot be redeemed without that secret. The CLI against syncr's own authorization server
+is a different client with no such secret, and that server keeps PKCE for it.
+
+**What would reopen the question:**
+
+- The exchange stops presenting the client secret, making this an effectively public client.
+- Google deprecates the confidential-client grant or mandates PKCE for web applications.
+- A second front end appears whose origin the deployment does not control end to end over HTTPS.
+
+Adding PKCE then needs the verifier to survive the round trip, carried inside the state or stored
+server-side against a flow identifier. That is design work, not a query parameter.
+
 ## Two decisions recorded here rather than rediscovered
 
 **The callback path is `/api/v1/calendar-sources/google/callback`.** The route catalog did not define one. It sits under the existing calendar-sources resource so the connect flow needs no new top-level namespace. Changing it means re-registering redirect URIs in the console, so it is fixed here. Note for whoever adds the route: this puts a literal `google` where the sibling calendar-source routes put `{id}`. Nothing collides, because no sibling has the shape `/calendar-sources/{id}/callback`, but a router that greedily matches `{id}` two segments deep would capture it.

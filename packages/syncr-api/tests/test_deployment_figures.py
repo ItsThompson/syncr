@@ -42,6 +42,7 @@ from ops.restore import RestoreRefused, require_empty
 from ops.verdict import compare
 
 from syncr_api.core.settings import EnvSettings
+from syncr_api.google_account.config import STATE_LIFETIME
 from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
 from tests.test_deploy_topology import DEPLOYED_FILES
@@ -60,6 +61,7 @@ ROTATE_SECRETS = RUNBOOKS / "rotate-secrets.md"
 DISK_PRESSURE = RUNBOOKS / "disk-pressure.md"
 CLOCK_DRIFT = RUNBOOKS / "clock-drift.md"
 ICS_FEED_BROKEN = RUNBOOKS / "ics-feed-broken.md"
+GOOGLE_OAUTH_VERIFICATION = RUNBOOKS / "google-oauth-verification.md"
 
 # The eleven runbooks a rule names by file name, kept as one list. The assertion below is an
 # existence check rather than a claim about content: a pointer that does not resolve is worse than
@@ -488,6 +490,40 @@ class TestTheDiskRunbook:
 
     def test_it_states_that_unshipped_wal_is_the_recovery_point(self) -> None:
         assert "They are the recovery point" in read(DISK_PRESSURE)
+
+
+class TestTheGoogleOAuthRunbooksStateJudgment:
+    """The connect flow's no-PKCE judgment, stated where an operator reconnects a credential.
+
+    The judgment itself is pinned in code: four properties of the state parameter, each with a
+    test against `google_account/state.py`. This crossing keeps the runbook's prose saying the
+    same thing the tests assert, and quoting the same lifetime figure the configuration decides.
+    """
+
+    def test_it_names_the_judgment_and_what_it_rests_on(self) -> None:
+        runbook = read(GOOGLE_OAUTH_VERIFICATION)
+
+        assert "no PKCE" in runbook
+        for property in ("Signed", "Tenant-bound", "Short-lived", "Session-compared"):
+            assert f"| {property} |" in runbook
+
+    def test_it_quotes_the_lifetime_the_configuration_decides(self) -> None:
+        lifetime_minutes = int(STATE_LIFETIME.total_seconds() // 60)
+
+        assert f"**{lifetime_minutes} minutes**" in read(GOOGLE_OAUTH_VERIFICATION)
+
+    def test_it_states_the_confidential_client_reason(self) -> None:
+        runbook = read(GOOGLE_OAUTH_VERIFICATION)
+
+        assert "confidential client" in runbook
+        assert "GOOGLE_OAUTH_CLIENT_SECRET" in runbook
+
+    def test_it_says_what_would_reopen_the_question(self) -> None:
+        runbook = read(GOOGLE_OAUTH_VERIFICATION)
+
+        assert "What would reopen the question:" in runbook
+        # The one cost of adding it later, named rather than left to be rediscovered.
+        assert "verifier to survive the round trip" in runbook
 
 
 class TestTheTimersAgreeWithTheConfiguration:
