@@ -821,32 +821,45 @@ describe("the degradation panels", () => {
     expect(panel).toHaveTextContent("since 2026-08-01 \u00b7 10:00");
   });
 
-  it("shows an unreachable feed at amber, naming when it last succeeded and what survives", async () => {
+  /* THE NOTICE IS THE API'S OWN, arrived on the source list, and the row's sync state is deliberately FRESH: a
+   * surface that computed staleness for itself would stay silent. What is asserted is that the api's words,
+   * threshold sentence and all, reach the reader unchanged -- so a figure changed on the server moves this panel
+   * with no edit here. */
+  it("renders the api's stale-feed notice verbatim, naming a threshold this screen does not know", async () => {
+    const stale = buildSource({ displayName: "Uni timetable" });
     apiServer.use(
       ...settingsHandlers({
-        sources: [
-          buildSource({
-            state: "error",
-            syncState: buildSyncState({
-              lastError: "The feed answered 503 Service Unavailable.",
-              lastSuccessAt: new Date(NOW - 30 * HOUR).toISOString(),
-              lastAttemptAt: new Date(NOW - HOUR).toISOString(),
-            }),
-          }),
+        sources: [stale],
+        sourceNotices: [
+          {
+            id: `calendar.feed-stale.${stale.id}`,
+            volume: "panel",
+            pigment: "amber",
+            title: "Uni timetable could not be read",
+            detail:
+              "The feed answered 503 Service Unavailable. It last answered 2 days ago. A feed is reported " +
+              "here once it has been failing for more than 36 hours.",
+            unavailable: ["Reading new commitments from Uni timetable"],
+            stillWorks: [
+              "The commitments this feed already contributed, which are retained and marked possibly stale",
+              "Solving the week, which still plans around every commitment already read",
+            ],
+            since: new Date(NOW - 48 * HOUR).toISOString(),
+            action: null,
+            scope: { screen: "settings", sourceId: stale.id },
+          },
         ],
       }),
     );
     renderAt("/settings");
     await settled();
 
-    const panel = noticeAt("panel", "status", "Timetable could not be read");
+    const panel = noticeAt("panel", "status", "Uni timetable could not be read");
     expect(panel.className).toContain("notice--amber");
-    expect(panel).toHaveTextContent("retained and marked possibly stale");
+    expect(panel).toHaveTextContent("more than 36 hours");
     expect(panel).toHaveTextContent(
-      "still works \u00b7 The anchors this feed already contributed, which are retained and marked possibly stale",
+      "still works \u00b7 The commitments this feed already contributed",
     );
-    /* When it last succeeded, which is the fact that makes the retained-anchors claim checkable. */
-    expect(panel).toHaveTextContent("since 2026-08-04 \u00b7 04:00");
   });
 
   it("shows a parse rejection stating the count and the reason per class", async () => {

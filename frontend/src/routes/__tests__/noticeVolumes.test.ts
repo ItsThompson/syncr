@@ -23,8 +23,7 @@ import {
   preferredTimeNotSavedNotice,
 } from "../../app/notices/refusedWrites";
 import { completionRefusedNotice, taskCompletedNotice } from "../backlog/notices";
-import { rejectionNotice, staleFeedNotice } from "../settings/sourceNotices";
-import { staleFeedNotices } from "../today/staleFeeds";
+import { rejectionNotice } from "../settings/sourceNotices";
 import {
   backfillSettledNotice,
   confirmationRefusedNotice,
@@ -32,9 +31,9 @@ import {
   unconfirmedNotice,
 } from "../today/notices";
 import { conflictNotice, refusedNotice, solveFailedNotice } from "../week/notices";
-import { buildSource, buildSyncState } from "../settings/__tests__/fixtures";
-import { buildDay } from "../today/__tests__/fixtures";
+import { SOURCE_TIMETABLE, buildSource, buildSyncState } from "../settings/__tests__/fixtures";
 import type { Notice, NoticePigment, NoticeVolume } from "../../ui/domain";
+import { noticesAt } from "../../ui/domain";
 import type { Problem } from "../../contract";
 
 const VOLUMES: readonly NoticeVolume[] = ["inline", "panel", "banner"];
@@ -46,30 +45,6 @@ const REFUSED: Problem = {
   status: 409,
   detail: "A newer proposal replaced the one you approved, so nothing was applied.",
 };
-
-/** A feed that stopped answering long enough ago to be reported, with a day that holds its commitments. */
-const stale = buildSource({
-  syncState: buildSyncState({
-    lastSuccessAt: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
-    lastError: "The feed did not answer.",
-  }),
-});
-
-const dayWithAnAnchor = buildDay({
-  behind: [],
-  ahead: [
-    {
-      blockId: "a1".repeat(32),
-      interval: { start: "2026-02-09T09:00:00+00:00", end: "2026-02-09T10:00:00+00:00" },
-      durationMinutes: 60,
-      areaId: null,
-      areaName: null,
-      title: "Lecture",
-      origin: "anchor",
-      outcome: null,
-    },
-  ],
-});
 
 /** Section 16's cases, each raised by the factory the screen raising it calls. */
 const CASES: readonly { readonly case: string; readonly notice: Notice }[] = [
@@ -113,17 +88,6 @@ const CASES: readonly { readonly case: string; readonly notice: Notice }[] = [
   { case: "a task completed elsewhere", notice: taskCompletedNotice("Past papers") },
   { case: "a completion the api refused", notice: completionRefusedNotice(REFUSED) },
   {
-    case: "an unreadable feed, on Settings",
-    notice: expected(staleFeedNotice(stale, Date.now()), "the stale-feed panel"),
-  },
-  {
-    case: "an unreadable feed, on an affected day",
-    notice: expectedFirst(
-      staleFeedNotices(dayWithAnAnchor, [stale], Date.now()),
-      "the stale-feed inline notice",
-    ),
-  },
-  {
     case: "a feed with rejected components",
     notice: expected(
       rejectionNotice(
@@ -148,11 +112,27 @@ function expected(notice: Notice | null, what: string): Notice {
   return notice;
 }
 
-function expectedFirst(notices: readonly Notice[], what: string): Notice {
-  const first = notices.at(0);
-  if (first === undefined)
-    throw new Error(`${what} was not raised, so the case below asserts nothing`);
-  return first;
+/** The api's notice about an unreadable feed, in the wire shape both surfaces are handed. */
+function unreadableFeedNotices(): readonly Notice[] {
+  return noticesAt("panel", [
+    {
+      id: `calendar.feed-stale.${SOURCE_TIMETABLE}`,
+      volume: "panel",
+      pigment: "amber",
+      title: "Timetable could not be read",
+      detail:
+        "The feed did not answer. It last answered a day ago. A feed is reported once it has been failing " +
+        "for more than 12 hours.",
+      unavailable: ["Reading new commitments from Timetable"],
+      stillWorks: [
+        "The commitments this feed already contributed, which are retained and marked possibly stale",
+        "Solving the week, which still plans around every commitment already read",
+      ],
+      since: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
+      action: null,
+      scope: { screen: "settings", sourceId: SOURCE_TIMETABLE },
+    },
+  ]);
 }
 
 describe("every case the product raises", () => {
@@ -169,22 +149,22 @@ describe("every case the product raises", () => {
     for (const capability of notice.stillWorks) expect(capability.trim()).not.toBe("");
   });
 
-  /* THE TWO THE SHELL'S TABLE SINGLES OUT. An unconfirmed day must read as the ordinary state of a day rather
-   * than as something wrong, and a stale feed needs attention with nothing broken. Marking either in oxide would
-   * teach a reader to distrust a working system. */
+  /* THE ONE THE SHELL'S TABLE SINGLES OUT. An unconfirmed day must read as the ordinary state of a day rather
+   * than as something wrong; amber would teach a reader to distrust it. */
   it("states an unconfirmed day informationally, spending no signal pigment", () => {
     expect(unconfirmedNotice("2026-02-09", 0).pigment).toBe("info");
   });
 
-  it("states an unreadable feed in amber at both of its volumes, because nothing is broken", () => {
-    const panel = expected(staleFeedNotice(stale, Date.now()), "the stale-feed panel");
-    const inline = expectedFirst(
-      staleFeedNotices(dayWithAnAnchor, [stale], Date.now()),
-      "the stale-feed inline notice",
-    );
+  /* THE UNREADABLE FEED IS NOT IN THE CASES ABOVE, because no client module composes it any more: the api words
+   * it and both surfaces render what arrives. What is asserted here is against the WIRE SHAPE the surfaces are
+   * handed, which the api composes once: amber, because nothing is broken, naming what survives. Its threshold
+   * and its words are pinned where they are composed, on the api. */
+  it("states an unreadable feed in amber, in the one notice the api composes for both surfaces", () => {
+    const [feedPanel] = unreadableFeedNotices();
 
-    expect([panel.pigment, inline.pigment]).toEqual(["amber", "amber"]);
-    expect([panel.volume, inline.volume]).toEqual(["panel", "inline"]);
+    expect(feedPanel.pigment).toBe("amber");
+    expect(feedPanel.volume).toBe("panel");
+    expect(feedPanel.stillWorks.length).toBeGreaterThan(0);
   });
 
   /* THE TWO THE CLIENT COMPOSES ITSELF, which are the two halves of one gesture: a write the reader's own surface
@@ -217,7 +197,7 @@ describe("every notice the application declares, found by parsing for the shape"
      * suffix case records why that matters -- ">= 2 passed with three suffixes, and would keep passing if the walk
      * narrowed to two, which is how the systemd units came to be invisible". A notice added or removed is a
      * deliberate change and reddens here with the figure. */
-    expect(declared).toHaveLength(20);
+    expect(declared).toHaveLength(18);
     expect(unreadable(declared, (one) => one.volume)).toEqual([]);
     for (const one of declared) expect(VOLUMES).toContain(one.volume);
   });
@@ -252,7 +232,6 @@ describe("every notice the application declares, found by parsing for the shape"
       "routes/settings/sourceNotices.ts",
       "routes/templates/rejection.ts",
       "routes/today/notices.ts",
-      "routes/today/staleFeeds.ts",
       "routes/week/notices.ts",
     ]);
   });

@@ -19,6 +19,8 @@ export interface SettingsState {
   readonly settings?: Settings;
   readonly overrides?: readonly TravelOverride[];
   readonly sources?: readonly CalendarSource[];
+  /** The notices the api composes about those sources, staleness among them. */
+  readonly sourceNotices?: readonly Record<string, unknown>[];
   readonly connection?: GoogleConnection;
   readonly routines?: readonly Routine[];
   readonly periods?: readonly OffPlanPeriod[];
@@ -35,7 +37,10 @@ export function settingsHandlers(state: SettingsState = {}): RequestHandler[] {
     }),
     jsonHandler("/api/v1/calendar-sources", {
       status: 200,
-      body: { sources: state.sources ?? [buildSource()] },
+      body: {
+        sources: state.sources ?? [buildSource()],
+        notices: state.sourceNotices ?? [],
+      },
     }),
     jsonHandler("/api/v1/calendar-sources/google/connection", {
       status: 200,

@@ -1,94 +1,19 @@
-/* The two feed panels this screen composes, and the field the kit's type will not let them omit.
+/* The one panel this screen still composes -- the parse rejection -- and the field the kit's type will not let it
+ * omit.
+ *
+ * THE STALENESS CASES LIVE WITH THE COMPOSER now. Whether a feed counts as stale is decided by the api, on
+ * `packages/syncr-api/tests/test_feed_notices.py`; this screen renders the notice that read produces. What is
+ * asserted here is only what this module itself words.
  *
  * `stillWorks` IS THE CLAIM UNDER TEST here, not a detail. Every degradation notice in this product names the
- * capability that survives, and for a feed a great deal does: the anchors already read are retained and marked
- * possibly stale, and the week still solves and still reaches the calendar. A notice that said only what broke
- * would leave a reader unable to decide whether to plan around what they can see. */
+ * capability that survives, and for a rejected read a great deal does: the anchors already read are retained and
+ * marked possibly stale, and the week still solves and still reaches the calendar. A notice that said only what
+ * broke would leave a reader unable to decide whether to plan around what they can see. */
 
 import { describe, expect, it } from "vitest";
 
-import {
-  STALE_AFTER_HOURS,
-  isFeedStale,
-  rejectionNotice,
-  sourcePanelNotices,
-  staleFeedNotice,
-} from "../sourceNotices";
-import { NOW, SOURCE_PERSONAL, buildSource, buildSyncState } from "./fixtures";
-
-const HOUR = 60 * 60 * 1000;
-
-const failing = (hoursSinceSuccess: number | null) =>
-  buildSource({
-    state: "error",
-    syncState: buildSyncState({
-      lastError: "The feed answered 503 Service Unavailable.",
-      lastAttemptAt: new Date(NOW - HOUR).toISOString(),
-      lastSuccessAt:
-        hoursSinceSuccess === null ? null : new Date(NOW - hoursSinceSuccess * HOUR).toISOString(),
-    }),
-  });
-
-describe("whether a feed counts as stale", () => {
-  it("is not stale while its last attempt succeeded", () => {
-    expect(isFeedStale(buildSource(), NOW)).toBe(false);
-  });
-
-  it("is not stale while the failure is inside the threshold", () => {
-    expect(isFeedStale(failing(STALE_AFTER_HOURS - 1), NOW)).toBe(false);
-  });
-
-  it("is stale once the last success is older than the threshold", () => {
-    expect(isFeedStale(failing(STALE_AFTER_HOURS + 1), NOW)).toBe(true);
-  });
-
-  /* A feed that has never been read has no last success to be inside the threshold of, so its first failure is
-   * reportable: there is nothing to wait for. */
-  it("is stale on the first failure of a feed that has never been read", () => {
-    expect(isFeedStale(failing(null), NOW)).toBe(true);
-  });
-});
-
-describe("the panel a stale feed raises", () => {
-  const notice = staleFeedNotice(failing(30), NOW);
-
-  it("is amber at panel volume, because nothing is broken and the plan is unaffected", () => {
-    expect(notice?.pigment).toBe("amber");
-    expect(notice?.volume).toBe("panel");
-  });
-
-  it("names what still works, which is what makes it actionable", () => {
-    expect(notice?.stillWorks).toContain(
-      "The anchors this feed already contributed, which are retained and marked possibly stale",
-    );
-    expect(notice?.stillWorks).toContain("Solving the week, and writing the plan to your calendar");
-  });
-
-  it("carries when it last succeeded, so the panel can state the age", () => {
-    expect(notice?.since).toBe(new Date(NOW - 30 * HOUR).toISOString());
-  });
-
-  it("states that the anchors are retained and marked possibly stale rather than removed", () => {
-    expect(notice?.detail).toContain("retained and marked possibly stale");
-  });
-
-  it("names the threshold, so the reader knows why it appeared now", () => {
-    expect(notice?.detail).toContain(String(STALE_AFTER_HOURS));
-  });
-
-  it("says instead that nothing has ever been read where there was no success", () => {
-    expect(staleFeedNotice(failing(null), NOW)?.detail).toContain("never been read successfully");
-  });
-
-  it("is absent while the feed reads, so a working source raises nothing", () => {
-    expect(staleFeedNotice(buildSource(), NOW)).toBeNull();
-  });
-
-  it("is scoped to the source it is about", () => {
-    expect(notice?.scope?.sourceId).toBe(failing(30).id);
-    expect(notice?.scope?.screen).toBe("settings");
-  });
-});
+import { rejectionNotice, rejectionPanels } from "../sourceNotices";
+import { SOURCE_PERSONAL, buildSource, buildSyncState } from "./fixtures";
 
 describe("the panel a parse rejection raises", () => {
   const rejected = buildSource({
@@ -150,63 +75,48 @@ describe("the panel a parse rejection raises", () => {
     expect(rejectionNotice(buildSource())).toBeNull();
   });
 
-  /* The sample on the wire is bounded per kind while the count is not, so a panel that read the
-   * total off the list's length would understate what happened. */
-  it("states what was shown against how many were refused where the api kept fewer than it refused", () => {
-    const truncated = buildSource({
-      syncState: buildSyncState({
-        rejectedCount: 10,
-        rejections: [
-          {
-            kind: "unknown-zone",
-            line: 41,
-            component: "VEVENT",
-            detail: "TZID=Mars/Olympus",
-            uid: null,
-          },
-          {
-            kind: "unknown-zone",
-            line: 88,
-            component: "VEVENT",
-            detail: "TZID=Mars/Olympus",
-            uid: null,
-          },
-          {
-            kind: "missing-duration",
-            line: 120,
-            component: "VEVENT",
-            detail: "no DTEND and no DURATION",
-            uid: null,
-          },
-        ],
-      }),
-    });
-
-    expect(rejectionNotice(truncated)?.detail).toContain("showing the first 3 of 10");
-  });
-
-  it("drops the upper bound where the sample holds everything that was refused", () => {
-    expect(rejectionNotice(rejected)?.detail).not.toMatch(/of \d+/);
-  });
-
   /* The api reports a count and may report no rows for it, and a panel that then said `` for the classes would be
-   * worse than one that says it does not know. There is nothing shown to bound, so no sample sentence either. */
+   * worse than one that says it does not know. */
   it("says the classes are unknown where the count has no rows behind it", () => {
     const counted = buildSource({
       syncState: buildSyncState({ rejectedCount: 2, rejections: [] }),
     });
 
     expect(rejectionNotice(counted)?.detail).toContain("did not say which components");
-    expect(rejectionNotice(counted)?.detail).not.toContain("showing the first");
   });
 });
 
-describe("every panel the screen raises about its sources", () => {
-  it("raises both for one source that is stale and rejecting", () => {
-    const source = buildSource({
+describe("every panel this screen composes about its sources", () => {
+  /* The unreadable feed is NOT among them, whatever its sync state says: its panel arrives on the source list,
+   * composed by the api, so a failing feed alone raises nothing here. */
+  it("composes no panel for a feed that can no longer be read", () => {
+    const stale = buildSource({ state: "error" });
+
+    expect(rejectionPanels([stale])).toEqual([]);
+  });
+
+  /* An excluded source contributes zero anchors because the reader asked it to, so reporting its state would be
+   * telling them something broke when they turned it off themselves. */
+  it("raises nothing for an excluded source, whatever was rejected in its last read", () => {
+    const excluded = buildSource({
+      id: SOURCE_PERSONAL,
+      included: false,
+      state: "excluded",
       syncState: buildSyncState({
-        lastError: "The feed answered 503.",
-        lastSuccessAt: new Date(NOW - 30 * HOUR).toISOString(),
+        rejectedCount: 2,
+        rejections: [
+          { kind: "unknown-zone", line: 41, component: "VEVENT", detail: "TZID", uid: null },
+        ],
+      }),
+    });
+
+    expect(rejectionPanels([excluded])).toEqual([]);
+  });
+
+  it("raises the rejection panel beside the source that caused it, in source order", () => {
+    const rejecting = buildSource({
+      id: SOURCE_PERSONAL,
+      syncState: buildSyncState({
         rejectedCount: 1,
         rejections: [
           { kind: "unknown-zone", line: 41, component: "VEVENT", detail: "TZID", uid: null },
@@ -214,29 +124,8 @@ describe("every panel the screen raises about its sources", () => {
       }),
     });
 
-    expect(sourcePanelNotices([source], NOW).map((notice) => notice.pigment)).toEqual([
-      "amber",
-      "amber",
+    expect(rejectionPanels([buildSource(), rejecting]).map((notice) => notice.id)).toEqual([
+      `calendar.feed-rejections.${rejecting.id}`,
     ]);
-  });
-
-  /* An excluded source contributes zero anchors because the reader asked it to, so reporting its stale state
-   * would be telling them something broke when they turned it off themselves. */
-  it("raises nothing for an excluded source, whatever its last attempt did", () => {
-    const excluded = buildSource({
-      id: SOURCE_PERSONAL,
-      included: false,
-      state: "excluded",
-      syncState: buildSyncState({
-        lastError: "The feed answered 503.",
-        lastSuccessAt: new Date(NOW - 300 * HOUR).toISOString(),
-      }),
-    });
-
-    expect(sourcePanelNotices([excluded], NOW)).toEqual([]);
-  });
-
-  it("raises nothing at all for sources that read", () => {
-    expect(sourcePanelNotices([buildSource()], NOW)).toEqual([]);
   });
 });

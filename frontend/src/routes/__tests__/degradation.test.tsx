@@ -50,7 +50,7 @@ import {
 /** The resource whose read composes the two oxide banners, which is where their words are written. */
 const CONNECTION_PATH = "/api/v1/calendar-sources/google/connection";
 
-/** A feed that failed a day ago, which is past the threshold Settings reports one at. */
+/** An instant some hours before the host's now. The staleness threshold itself lives on the api. */
 const staleSince = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
 /** A day holding an imported commitment, which is what makes it a day a feed's outage can have touched. */
@@ -159,21 +159,50 @@ describe("a write the api refused", () => {
 });
 
 describe("a feed that can no longer be read", () => {
+  /* THE NOTICE IS THE API'S OWN, arrived on the source list. Its sync state is deliberately FRESH: a surface that
+   * computed staleness from the row would stay silent, so rendering the notice at all is the proof it renders
+   * what the api composed. The days in doubt are named in the notice's scope, which is how a day marks itself
+   * without computing anything. */
+  const feedPanel = (dates: string[]) => [
+    {
+      id: `calendar.feed-stale.${failing.id}`,
+      volume: "panel",
+      pigment: "amber",
+      title: "Uni timetable could not be read",
+      detail:
+        "The feed did not answer. It last answered a day ago. The commitments this feed already contributed " +
+        "are retained and marked possibly stale rather than removed, so nothing disappears from a day you have " +
+        "already planned.",
+      unavailable: ["Reading new commitments from Uni timetable"],
+      stillWorks: [
+        "The commitments this feed already contributed, which are retained and marked possibly stale",
+        "Solving the week, which still plans around every commitment already read",
+      ],
+      since: staleSince(30),
+      action: null,
+      scope: { screen: "settings", sourceId: failing.id, dates },
+    },
+  ];
+
   const failing = buildSource({
     displayName: "Uni timetable",
     state: "error",
     syncState: buildSyncState({
-      lastSuccessAt: staleSince(30),
+      lastSuccessAt: staleSince(1),
       lastAttemptAt: staleSince(1),
-      lastError: "The feed did not answer.",
+      lastError: null,
     }),
   });
 
-  it("marks the day it contributed commitments to, in amber, naming when it last answered", async () => {
+  const sourcesRead = (notices: unknown[] = []) =>
+    jsonHandler("/api/v1/calendar-sources", {
+      status: 200,
+      body: { sources: [failing], notices },
+    });
+
+  it("marks the day the api named as in doubt, in amber, with the api's own words", async () => {
     stubDay(dayWithAnAnchor(), buildTodayAreas());
-    apiServer.use(
-      jsonHandler("/api/v1/calendar-sources", { status: 200, body: { sources: [failing] } }),
-    );
+    apiServer.use(sourcesRead(feedPanel([hostToday()])));
     const { container } = renderAt("/today");
 
     const inline = await waitFor(() => {
@@ -183,29 +212,26 @@ describe("a feed that can no longer be read", () => {
     });
 
     expect(inline.className).toContain("notice--inline");
-    expect(inline.textContent).toContain("Uni timetable may be out of date");
+    expect(inline.textContent).toContain("Uni timetable could not be read");
     expect(inline.textContent).toContain("marked possibly stale rather than removed");
-    expect(inline.textContent).toContain("still works · every commitment already read from it");
-    /* WHEN IT LAST SUCCEEDED, as a wall reading in the day's own zone rather than an instant a reader has to
-     * convert. The formatter is the route's, because the kit knows no zone. */
+    expect(inline.textContent).toContain(
+      "still works · The commitments this feed already contributed",
+    );
+    /* WHEN IT LAST ANSWERED, as a wall reading in the day's own zone rather than an instant a reader has to
+     * convert. */
     expect(inline.textContent).toMatch(/since \d{4}-\d{2}-\d{2}/);
   });
 
-  it("says nothing on a day that holds no imported commitment, which the outage cannot have touched", async () => {
-    stubDay(
-      buildDay({ date: hostToday(), span: hostSpan(), behind: [], ahead: [], blockCount: 0 }),
-      buildTodayAreas(),
-    );
-    apiServer.use(
-      jsonHandler("/api/v1/calendar-sources", { status: 200, body: { sources: [failing] } }),
-    );
+  it("says nothing on a day the api did not name, which the outage cannot have touched", async () => {
+    stubDay(dayWithAnAnchor(), buildTodayAreas());
+    apiServer.use(sourcesRead(feedPanel(["2036-01-01"])));
     const { container } = renderAt("/today");
 
-    await screen.findByText("No blocks are planned for this day");
+    await screen.findByText("Lecture · Signals");
     expect(noticeSurfaces(container, "amber")).toEqual([]);
   });
 
-  it("says nothing while the feed is answering, so the notice tracks the condition", async () => {
+  it("says nothing while the api composes no notice, so the notice tracks the condition", async () => {
     stubDay(dayWithAnAnchor(), buildTodayAreas());
     apiServer.use(calendarSources({ status: 200, body: { sources: [buildSource()] } }));
     const { container } = renderAt("/today");

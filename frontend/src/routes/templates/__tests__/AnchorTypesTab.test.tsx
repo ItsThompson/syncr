@@ -37,7 +37,7 @@ function renderTab(overrides: Partial<Parameters<typeof AnchorTypesTab>[0]> = {}
       <AnchorTypesTab
         types={{ status: "ready", data: types }}
         areas={{ status: "ready", data: buildAreas() }}
-        sources={{ status: "ready", data: [buildSource()] }}
+        sources={{ status: "ready", data: { sources: [buildSource()], notices: [] } }}
         anchors={{ status: "ready", data: { anchors: [buildAnchor()], nextCursor: null } }}
         selectedId={TYPE_INTERVIEW}
         onSelect={() => {}}
