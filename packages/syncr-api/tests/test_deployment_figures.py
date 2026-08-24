@@ -504,8 +504,8 @@ class TestTheGoogleOAuthRunbooksStateJudgment:
         runbook = read(GOOGLE_OAUTH_VERIFICATION)
 
         assert "no PKCE" in runbook
-        for property in ("Signed", "Tenant-bound", "Short-lived", "Session-compared"):
-            assert f"| {property} |" in runbook
+        for property_name in ("Signed", "Tenant-bound", "Short-lived", "Session-compared"):
+            assert f"| {property_name} |" in runbook
 
     def test_it_quotes_the_lifetime_the_configuration_decides(self) -> None:
         lifetime_minutes = int(STATE_LIFETIME.total_seconds() // 60)

@@ -220,7 +220,8 @@ That threat, login CSRF by code injection, is what the `state` parameter answers
 The state answers that threat and nothing else. It says nothing about who sees the code while it
 travels from Google's consent screen to syncr's callback; that is the threat PKCE addresses. One
 parameter cannot carry both, so the judgment below rests on four properties of the state instead,
-each pinned by a test against `google_account/state.py` that goes red if an edit weakens it:
+each pinned by a test that goes red if an edit weakens it: the first three against
+`google_account/state.py`, and the session comparison where the callback makes it:
 
 | Property | What it means | What it refuses |
 |---|---|---|
