@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
 
 import httpx
@@ -295,6 +296,24 @@ async def test_the_authorization_url_asks_for_a_refresh_token_every_time() -> No
     # issues none on a RECONNECT, which is the flow offered to repair a dead credential.
     assert "access_type=offline" in surface.authorization_url
     assert "prompt=consent" in surface.authorization_url
+
+
+async def test_the_authorization_url_sends_no_code_challenge() -> None:
+    """The connect flow declines PKCE, and the decline is asserted rather than merely true.
+
+    syncr is a confidential client here: the code is exchanged with the client secret Google
+    verifies server to server, so a code read off the browser cannot be redeemed. The threat a
+    challenge answers is answered by the state's four properties instead.
+    """
+    surface = await service().begin_connect(OWNER)
+
+    query = parse_qs(urlparse(surface.authorization_url).query)
+    # Positive control: the parse sees what IS sent, so an empty reading cannot pass below.
+    assert query["client_id"]
+    assert query["state"]
+
+    assert "code_challenge" not in query
+    assert "code_challenge_method" not in query
 
 
 async def test_a_first_connect_states_that_nothing_is_read_until_it_is_included() -> None:
