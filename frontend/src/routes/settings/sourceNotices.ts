@@ -93,7 +93,7 @@ export function rejectionNotice(source: CalendarSource): Notice | null {
     pigment: "amber",
     title: `${rejectedCount} event${rejectedCount === 1 ? "" : "s"} in ${source.displayName} could not be read`,
     detail:
-      `${countByClass(rejections)}. Every other event in the feed was read, so the anchors from it are ` +
+      `${countByClass(rejections)}${sampleSentence(rejections.length, rejectedCount)}. Every other event in the feed was read, so the anchors from it are ` +
       "complete apart from these. A rejection names the line it began on, so the feed's owner can be told " +
       "exactly what to correct.",
     unavailable: [
@@ -114,6 +114,16 @@ function countByClass(rejections: CalendarSource["syncState"]["rejections"]): st
   }
   if (counts.size === 0) return "The feed did not say which components it refused";
   return [...counts].map(([kind, count]) => `${count} ${kind}`).join(", ");
+}
+
+/* The wire's rejection list is a bounded sample and its count is not, so the per-class figures above are
+ * what was SHOWN rather than what happened. The sentence names both, so a reader never mistakes the list
+ * for the whole refusal. Where the api reported a count with no rows behind it there is nothing shown to
+ * bound, and `countByClass` already says the classes are unknown. */
+function sampleSentence(sampled: number, total: number): string {
+  if (sampled === 0) return "";
+  if (total > sampled) return `; showing the first ${sampled} of ${total}`;
+  return ", all of which are shown";
 }
 
 /** Every panel this screen raises about its sources, in source order. */

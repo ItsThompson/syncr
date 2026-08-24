@@ -150,14 +150,54 @@ describe("the panel a parse rejection raises", () => {
     expect(rejectionNotice(buildSource())).toBeNull();
   });
 
+  /* The sample on the wire is bounded per kind while the count is not, so a panel that read the
+   * total off the list's length would understate what happened. */
+  it("states what was shown against how many were refused where the api kept fewer than it refused", () => {
+    const truncated = buildSource({
+      syncState: buildSyncState({
+        rejectedCount: 10,
+        rejections: [
+          {
+            kind: "unknown-zone",
+            line: 41,
+            component: "VEVENT",
+            detail: "TZID=Mars/Olympus",
+            uid: null,
+          },
+          {
+            kind: "unknown-zone",
+            line: 88,
+            component: "VEVENT",
+            detail: "TZID=Mars/Olympus",
+            uid: null,
+          },
+          {
+            kind: "missing-duration",
+            line: 120,
+            component: "VEVENT",
+            detail: "no DTEND and no DURATION",
+            uid: null,
+          },
+        ],
+      }),
+    });
+
+    expect(rejectionNotice(truncated)?.detail).toContain("showing the first 3 of 10");
+  });
+
+  it("drops the upper bound where the sample holds everything that was refused", () => {
+    expect(rejectionNotice(rejected)?.detail).not.toMatch(/of \d+/);
+  });
+
   /* The api reports a count and may report no rows for it, and a panel that then said `` for the classes would be
-   * worse than one that says it does not know. */
+   * worse than one that says it does not know. There is nothing shown to bound, so no sample sentence either. */
   it("says the classes are unknown where the count has no rows behind it", () => {
     const counted = buildSource({
       syncState: buildSyncState({ rejectedCount: 2, rejections: [] }),
     });
 
     expect(rejectionNotice(counted)?.detail).toContain("did not say which components");
+    expect(rejectionNotice(counted)?.detail).not.toContain("showing the first");
   });
 });
 
