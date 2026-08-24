@@ -13,7 +13,7 @@ it LEFT as well as the weeks it now covers, because both sets of denominators ch
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -28,8 +28,8 @@ from syncr_api.offplan.records import OffPlanPeriodRecord
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.offplan.service import OffPlanService
 from syncr_api.user_settings.config import ReviewCadence
-from syncr_api.user_settings.records import SettingsRecord
-from syncr_api.user_settings.repository import SettingsRepository
+from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
+from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
 from syncr_domain.intervals import Interval
@@ -139,6 +139,17 @@ class FakeSettingsRepository(SettingsRepository):
         return await self.read()
 
 
+class StoredTravel(TravelOverrideRepository):
+    """The declared overrides over a list, and no database."""
+
+    def __init__(self, tenant_id: TenantId, *overrides: TravelOverrideRecord) -> None:
+        self._tenant_id = tenant_id
+        self._overrides = overrides
+
+    async def list_all(self) -> tuple[TravelOverrideRecord, ...]:
+        return self._overrides
+
+
 class RecordingWeekInputVersions:
     """Every range the service asked to have bumped, in order."""
 
@@ -182,11 +193,16 @@ def build(
     *,
     stored: list[OffPlanPeriodRecord] | None = None,
     home_zone: str = LONDON,
+    travel: TravelOverrideRepository | None = None,
 ) -> tuple[OffPlanService, FakeOffPlanRepository, FakeSettingsRepository]:
     periods = FakeOffPlanRepository(principal.tenant_id, stored)
     settings = FakeSettingsRepository(principal.tenant_id, home_zone)
     service = OffPlanService(
-        periods=periods, settings=settings, versions=versions, clock=lambda: NOW
+        periods=periods,
+        settings=settings,
+        overrides=travel if travel is not None else StoredTravel(principal.tenant_id),
+        versions=versions,
+        clock=lambda: NOW,
     )
     return service, periods, settings
 
@@ -352,6 +368,33 @@ async def test_declaring_bumps_every_week_the_span_touches(
     await service.declare(principal, declaring(FRIDAY))
 
     assert versions.bumped == [WeekRange(first=WEEK_10, last=WEEK_11)]
+
+
+async def test_declaring_inside_a_travel_override_bumps_the_active_zone_week(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The seam the two-zone reading got wrong. Home Europe/London, an override to Pacific/Auckland
+    # over 2026-03-01..22: Auckland's Monday of W11 begins at 2026-03-08 11:00Z (UTC+13), so this
+    # span is Sunday morning at home but the FIRST quarter hour of the override's Monday. The
+    # week whose denominator changes is W11; the home-zone reading named W10.
+    travel = StoredTravel(
+        principal.tenant_id,
+        TravelOverrideRecord(
+            id=uuid4(),
+            tenant_id=principal.tenant_id,
+            start_date=date(2026, 3, 1),
+            end_date=date(2026, 3, 22),
+            zone="Pacific/Auckland",
+        ),
+    )
+    service, _, _ = build(principal, versions, travel=travel)
+    aucklands_first_quarter_hour = Interval(
+        datetime(2026, 3, 8, 11, 0, tzinfo=UTC), datetime(2026, 3, 8, 11, 15, tzinfo=UTC)
+    )
+
+    await service.declare(principal, declaring(aucklands_first_quarter_hour))
+
+    assert versions.bumped == [WeekRange(first=WEEK_11, last=WEEK_11)]
 
 
 async def test_declaring_a_past_span_bumps_it_too(

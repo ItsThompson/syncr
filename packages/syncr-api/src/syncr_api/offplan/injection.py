@@ -8,9 +8,11 @@ can reach another tenant's rows.
 Two collaborators come from other feature modules, and both are deliberate rather than
 convenient. The settings repository is read for the home zone, because which ISO weeks a span
 touches is decided by LOCAL dates, and resolving that in a second place would let the two
-disagree; it is also the row a declaration serializes on. The week input version counter is plan
-storage's, because an off-plan span is a solve input and there is one serialization point for
-anything that invalidates a running solve.
+disagree; it is also the row a declaration serializes on. The travel overrides ride along with
+it because a week's real bounds resolve against the whole zone profile, so the range an
+override displaces is the range this module must invalidate. The week input version counter is
+plan storage's, because an off-plan span is a solve input and there is one serialization point
+for anything that invalidates a running solve.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from syncr_api.core.clock import utc_now
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.offplan.service import OffPlanService
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.user_settings.repository import SettingsRepository
+from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 
 
@@ -36,6 +38,7 @@ def get_off_plan_service(principal: PrincipalDep, transaction: TransactionDep) -
     return OffPlanService(
         periods=OffPlanPeriodRepository(transaction, principal.tenant_id),
         settings=SettingsRepository(transaction, principal.tenant_id),
+        overrides=TravelOverrideRepository(transaction, principal.tenant_id),
         versions=TrackedWeekInputVersions(
             WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
         ),

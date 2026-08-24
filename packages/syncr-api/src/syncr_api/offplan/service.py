@@ -52,6 +52,13 @@ from syncr_api.offplan.config import OFF_PLAN_RESOURCE
 from syncr_api.offplan.records import OffPlanPeriodRecord
 from syncr_api.offplan.rules import find_period, others_than, stated_rejection
 from syncr_api.offplan.weeks import weeks_touching
+from syncr_api.user_settings.zone_reading import (
+    as_domain,
+    zone_profile,
+)
+from syncr_api.user_settings.zone_reading import (
+    stated_rejection as stated_zone_rejection,
+)
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 from syncr_domain.intervals import Interval
@@ -64,10 +71,11 @@ if TYPE_CHECKING:
     from syncr_api.core.principal import Principal
     from syncr_api.offplan.declarations import OffPlanChange, OffPlanDeclaration
     from syncr_api.offplan.repository import OffPlanPeriodRepository
-    from syncr_api.user_settings.repository import SettingsRepository
+    from syncr_api.user_settings.records import SettingsRecord
+    from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_api.user_settings.solve_inputs import WeekInputVersions
     from syncr_domain.identifiers import OffPlanPeriodId
-    from syncr_domain.zones import ZoneId
+    from syncr_domain.zones import ZoneProfile
 
 _log = get_logger("syncr.offplan")
 
@@ -79,11 +87,13 @@ class OffPlanService:
         self,
         periods: OffPlanPeriodRepository,
         settings: SettingsRepository,
+        overrides: TravelOverrideRepository,
         versions: WeekInputVersions,
         clock: Clock,
     ) -> None:
         self._periods = periods
         self._settings = settings
+        self._overrides = overrides
         self._versions = versions
         self._clock = clock
 
@@ -129,7 +139,7 @@ class OffPlanService:
             keep_frame=created.keep_frame,
             minutes=created.interval.total_minutes(),
         )
-        await self._bump(settings.home_zone, created.interval)
+        await self._bump(await self._profile(settings), created.interval)
         return created
 
     @measured("offplan")
@@ -168,7 +178,7 @@ class OffPlanService:
         )
         # Both spans, because a moved period changes the denominator of the weeks it left as
         # well as the weeks it now covers. Identical ranges are bumped once.
-        await self._bump(settings.home_zone, current.interval, candidate.interval)
+        await self._bump(await self._profile(settings), current.interval, candidate.interval)
         return _changed(current, candidate)
 
     @measured("offplan")
@@ -188,9 +198,19 @@ class OffPlanService:
             minutes=found.interval.total_minutes(),
         )
         settings = await self._settings.read()
-        await self._bump(settings.home_zone, found.interval)
+        await self._bump(await self._profile(settings), found.interval)
 
-    async def _bump(self, home_zone: ZoneId, *spans: Interval) -> None:
+    async def _profile(self, settings: SettingsRecord) -> ZoneProfile:
+        """The tenant's zone profile, which every week span resolves against.
+
+        One extra read beside the settings row the mutating path already holds: no second lock,
+        because the row is locked and the overrides are read-only here.
+        """
+        overrides = await self._overrides.list_all()
+        with stated_zone_rejection(field="home zone"):
+            return zone_profile(settings.home_zone, as_domain(overrides))
+
+    async def _bump(self, profile: ZoneProfile, *spans: Interval) -> None:
         """Invalidate the weeks the given spans touch, each RANGE at most once.
 
         Per range rather than per week: two ranges that share a week without being equal both
@@ -198,7 +218,7 @@ class OffPlanService:
         guard compares a version for equality rather than counting increments, and deduplicating
         per week would buy nothing for a set of ranges this small.
         """
-        ranges = dict.fromkeys(weeks_touching(span, home_zone=home_zone) for span in spans)
+        ranges = dict.fromkeys(weeks_touching(span, profile=profile) for span in spans)
         for affected in ranges:
             await self._versions.bump(affected)
 

@@ -37,7 +37,7 @@ from syncr_api.offplan.models import OffPlanPeriodRow
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.offplan.service import OffPlanService
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.user_settings.repository import SettingsRepository
+from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
 from syncr_domain.intervals import Interval
@@ -138,6 +138,7 @@ def build_service(session: AsyncSession, tenant_id: TenantId) -> OffPlanService:
     return OffPlanService(
         periods=OffPlanPeriodRepository(session, tenant_id),
         settings=SettingsRepository(session, tenant_id),
+        overrides=TravelOverrideRepository(session, tenant_id),
         versions=TrackedWeekInputVersions(
             WeekInputVersionRepository(session, tenant_id), clock=utc_now
         ),

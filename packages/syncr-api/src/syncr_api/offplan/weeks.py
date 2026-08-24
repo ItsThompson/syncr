@@ -20,47 +20,55 @@ so a past week nothing has planned is never touched.
 ``end``.** The bounds are half-open, so a period ending at a Monday's local midnight ends
 where the next week begins and reaches nothing inside it. Reading ``end``'s own week would bump
 one week too many at exactly the boundary a user is most likely to declare.
-
-**Under a travel override this range can miss a week whose denominator changed.** The zone here
-is the HOME zone, which is what ``local_date`` documents for every caller, while ``week_span``
-bounds a week with the ACTIVE zone. When an override displaces the home zone, a week's real
-bounds move relative to its home-zone dates, and a bounded range cannot absorb the disagreement
-the way an open-ended one does: a fifteen-minute span at the seam removes minutes from a week
-this range does not name, so that week's input version is not bumped. Nothing acts on the miss
-today, because the budget report reads the periods live and no consumer re-derives a week from
-its counter, so the reported figure is never wrong. Closing it means resolving the span against
-the whole ``ZoneProfile`` rather than the home zone alone, which is the profile a week's
-assembly already needs. Tracked as ticket 1170.
 """
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import TYPE_CHECKING
 
 from syncr_api.user_settings.solve_inputs import WeekRange
-from syncr_api.user_settings.zone_reading import local_date
 from syncr_domain.snap import SNAP
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.weeks import IsoWeek, week_span
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from syncr_domain.intervals import Interval
-    from syncr_domain.zones import ZoneId
+    from syncr_domain.zones import ZoneProfile
 
 
-def weeks_touching(interval: Interval, *, home_zone: ZoneId) -> WeekRange:
+def weeks_touching(interval: Interval, *, profile: ZoneProfile) -> WeekRange:
     """Every ISO week ``interval`` reaches into, as one contiguous range.
 
-    The zone is the HOME zone, matching every other week derivation in the product: an ISO
-    week is a pair of local Mondays, and resolving which one a span falls inside in a travel
-    override's zone would make the answer depend on which day of the trip is being asked
-    about. Under an override that makes this imprecise at the seam, in the way the module
-    docstring states and ticket 1170 closes.
+    Which weeks those are is asked of the weeks themselves: each week's ``week_span``, built
+    from the whole profile, is bounded by the ACTIVE zone on its two Mondays, so the range
+    names every week whose span overlaps the interval and no other. Resolving the bounds in
+    the HOME zone instead answers where the span sits among home-zone dates, which under a
+    travel override names a week beside the one whose denominator actually changed.
     """
     # The final quarter hour the span covers. Clamped to the start so a span shorter than one
     # quarter hour, which the grid rule forbids and this function does not require, still names
     # an instant inside itself rather than one before it.
     last_covered = max(interval.start, interval.end - SNAP)
     return WeekRange(
-        first=IsoWeek.containing(local_date(interval.start, home_zone)),
-        last=IsoWeek.containing(local_date(last_covered, home_zone)),
+        first=_week_holding(interval.start, profile),
+        last=_week_holding(last_covered, profile),
     )
+
+
+def _week_holding(instant: datetime, profile: ZoneProfile) -> IsoWeek:
+    """The one ISO week whose span contains ``instant``.
+
+    Consecutive spans abut -- a week ends exactly where its successor begins, both being the
+    following Monday's local midnight resolved through the same profile -- so the spans tile
+    the timeline and every instant belongs to exactly one of them. The walk starts from the
+    UTC date, which no zone's local date can disagree with by more than a day, and corrects
+    in whichever direction the real bounds fall on the other side.
+    """
+    week = IsoWeek.containing(instant.astimezone(UTC).date())
+    while week_span(week, profile).end <= instant:
+        week = week.following()
+    while week_span(week, profile).start > instant:
+        week = week.preceding()
+    return week
