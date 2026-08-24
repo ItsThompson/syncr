@@ -1572,6 +1572,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "hypothesis" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1601,6 +1602,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "hypothesis", specifier = ">=6.100.0,<7" },
     { name = "mypy", specifier = ">=1.13.0,<3" },
     { name = "pytest", specifier = ">=8.3.0,<10" },
     { name = "pytest-asyncio", specifier = ">=0.24.0,<2" },
@@ -1740,7 +1742,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "hypothesis" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1763,7 +1764,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "hypothesis", specifier = ">=6.100.0,<7" },
     { name = "mypy", specifier = ">=1.13.0,<3" },
     { name = "pytest", specifier = ">=8.3.0,<10" },
     { name = "pytest-asyncio", specifier = ">=0.24.0,<2" },
