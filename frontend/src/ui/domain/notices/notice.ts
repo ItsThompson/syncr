@@ -39,6 +39,8 @@ export interface NoticeScope {
   readonly blockId?: string | undefined;
   readonly sourceId?: string | undefined;
   readonly date?: string | undefined;
+  /** Every day this condition puts in doubt, earliest first. A surface marks a day from this rather than computing anything. */
+  readonly dates?: readonly string[] | undefined;
 }
 
 interface NoticeFields {
@@ -103,6 +105,7 @@ interface WireNoticeScope {
   readonly blockId?: string | null | undefined;
   readonly sourceId?: string | null | undefined;
   readonly date?: string | null | undefined;
+  readonly dates?: readonly string[] | null | undefined;
 }
 
 /** A wire scope with its nulls read as absences, which is what the kit's own scope means by them. */
@@ -113,6 +116,7 @@ function scopeFrom(scope: WireNoticeScope | null | undefined): NoticeScope | nul
     blockId: scope.blockId ?? undefined,
     sourceId: scope.sourceId ?? undefined,
     date: scope.date ?? undefined,
+    dates: scope.dates ?? undefined,
   };
 }
 
