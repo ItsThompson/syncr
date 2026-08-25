@@ -40,6 +40,7 @@ from syncr_domain.routines import (
     MAX_FLEX_BAND_MINUTES,
     MIN_DURATION_MINUTES,
 )
+from syncr_domain.snap import SNAP_MINUTES
 
 
 class RoutineRow(Base, TenantScoped):
@@ -72,6 +73,21 @@ class RoutineRow(Base, TenantScoped):
         CheckConstraint(
             f"flex_band_minutes BETWEEN 0 AND {MAX_FLEX_BAND_MINUTES}",
             name="flex_band_shifts_within_half_a_day",
+        ),
+        # Both bounds of the span owe the fifteen-minute grid, as the domain reads them: a start
+        # on the grid plus either bound has to end on it too. The floor's lower bound is already
+        # one step through `minimum_is_within_the_target` plus this multiple.
+        CheckConstraint(
+            f"mod(duration_minutes, {SNAP_MINUTES}) = 0 "
+            f"AND mod(min_duration_minutes, {SNAP_MINUTES}) = 0",
+            name="durations_land_on_the_grid",
+        ),
+        # The target is wall time on the same quarter-hour grid every placement lands on, so
+        # ``Wake 05:07`` names a start no block could hold.
+        CheckConstraint(
+            f"mod(EXTRACT(MINUTE FROM target_time)::int, {SNAP_MINUTES}) = 0 "
+            "AND EXTRACT(SECOND FROM target_time) = 0",
+            name="target_time_is_on_the_grid",
         ),
         # Every read is this tenant's whole frame, in the order the day runs.
         Index(
