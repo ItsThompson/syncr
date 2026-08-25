@@ -244,10 +244,12 @@ class TestTheRehearsalRefusesWhatItMust:
     def test_nothing_is_on_ci_and_the_reason_is_stated_in_the_recipe(self) -> None:
         """An omission explained nowhere reads as an oversight; this one is a decision."""
         justfile = (repo_root() / "justfile").read_text(encoding="utf-8")
+        workflows = sorted((repo_root() / ".github" / "workflows").glob("*.yml"))
 
-        for name in ("ci.yml", "cd.yml", "healthcheck.yml"):
-            workflow = (repo_root() / ".github" / "workflows" / name).read_text(encoding="utf-8")
-            assert "drill-pitr" not in workflow, f"{name} must not run the rehearsal"
+        assert workflows, "no workflows found, so this crossing is vacuous"
+        for workflow in workflows:
+            text = workflow.read_text(encoding="utf-8")
+            assert "drill-pitr" not in text, f"{workflow.name} must not run the rehearsal"
         assert "WHY NOTHING HERE IS ON CI" in justfile, (
             "the recipe states why the run itself is rehearsed by hand"
         )
