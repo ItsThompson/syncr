@@ -11,6 +11,16 @@ Connecting is lazy, so building an app does not require a reachable database.
 There is ONE session dependency, :func:`get_transaction`, and it commits. A second
 dependency that handed out an uncommitted session would make "did my write land"
 depend on which one a route happened to ask for.
+
+A route whose response names a row the client will read next (an ``OperationResponse``, or
+a shape carrying one) does NOT rely on that teardown commit: FastAPI has run ``yield``
+teardown after the response was sent since 0.106, so a teardown commit leaves the named row
+unreadable on every other connection at the instant the client first holds its identifier,
+and a failing teardown commit surfaces only after a 200 was already sent. Those routes call
+``session.commit()`` after their work and before building the answer. The rule is not
+widened to every mutating route: one that answers no identifier cannot name a row nobody
+can read, because its effects are observable only through reads that happen once the
+request, and therefore the teardown commit, has finished.
 """
 
 from __future__ import annotations
@@ -116,6 +126,13 @@ async def get_transaction(request: Request) -> AsyncIterator[AsyncSession]:
 
     The session factory is read from ``app.state.db``, attached at wiring time, so
     this dependency holds no module-global state and is substitutable in tests.
+
+    Routes whose response carries an identifier the client reads next (an operation, a pin's
+    answer) inject this same dependency and issue ``await transaction.commit()`` after their
+    service call, before building the answer: the commit is theirs, not the teardown's. An
+    explicit commit inside the ``begin()`` block ends the transaction, so the block's own exit
+    below is a no-op and nothing commits twice. See the module docstring for why this is scoped
+    to those routes rather than made the rule for every one.
     """
     database: Database = request.app.state.db
     async with database.sessionmaker() as session, session.begin():

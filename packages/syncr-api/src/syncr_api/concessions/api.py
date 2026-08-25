@@ -30,7 +30,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from starlette.responses import Response
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import PrincipalDep, TransactionDep
 from syncr_api.concessions.config import ADJUSTMENT_PATH, ADJUSTMENTS_PATH, TRADEOFFS_PATH
 from syncr_api.concessions.declarations import RequestedConcession
 from syncr_api.concessions.injection import (
@@ -59,10 +59,15 @@ async def request_tradeoff(
     body: TradeoffRequest,
     principal: PrincipalDep,
     service: TradeoffServiceDep,
+    transaction: TransactionDep,
 ) -> OperationResponse:
     """Ask for a proposal that honors one concession. Nothing is conceded until it is approved."""
     requested = RequestedConcession(kind=body.kind, target_id=body.target_id)
-    return OperationResponse.of(await service.request(principal, iso_week, requested))
+    operation = await service.request(principal, iso_week, requested)
+    # The answer names this operation, so the row must be readable the instant the client holds
+    # its identifier. See `get_transaction` for why this commit is here rather than on teardown.
+    await transaction.commit()
+    return OperationResponse.of(operation)
 
 
 @adjustment_router.get(ADJUSTMENTS_PATH, summary="The concessions this week has absorbed")

@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from starlette.responses import Response
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import PrincipalDep, TransactionDep
 from syncr_api.calendars.config import (
     SOURCE_HORIZON_PATH,
     SOURCE_PATH,
@@ -120,13 +120,18 @@ async def sync_calendar_source(
     principal: PrincipalDep,
     guard: IdempotencyGuardDep,
     service: CalendarSourceServiceDep,
+    transaction: TransactionDep,
 ) -> OperationResponse:
     """Sync one source now, and answer with the operation that did it."""
 
     async def sync() -> OperationResponse:
         return OperationResponse.of(await service.sync_source(principal, source_id))
 
-    return await guard.once(SYNC_SOURCE_ROUTE, OperationResponse, sync)
+    answered = await guard.once(SYNC_SOURCE_ROUTE, OperationResponse, sync)
+    # The answer names the operation, so the row must be readable the instant the client holds
+    # its identifier. See `get_transaction` for why this commit is here rather than on teardown.
+    await transaction.commit()
+    return answered
 
 
 @router.put(SOURCE_ROLE_PATH, summary="Assign the write-target role. 409 if one exists")

@@ -20,7 +20,7 @@ from http import HTTPStatus
 
 from fastapi import APIRouter, Query
 
-from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep, TransactionDep
 from syncr_api.plans.injection import WeekServiceDep
 from syncr_api.plans.proposal_schemas import PendingProposalResponse
 from syncr_api.plans.schemas import (
@@ -87,11 +87,14 @@ async def request_solve(
     iso_week: str,
     principal: ClientPrincipalDep,
     service: WeekServiceDep,
+    transaction: TransactionDep,
     immediate: bool = Query(
         default=False, alias=IMMEDIATE_PARAMETER, description=_IMMEDIATE_DESCRIPTION
     ),
 ) -> OperationResponse:
     """Ask for a plan for this week, and answer with the operation to follow."""
-    return OperationResponse.of(
-        await service.request_solve(principal, iso_week, immediate=immediate)
-    )
+    operation = await service.request_solve(principal, iso_week, immediate=immediate)
+    # The answer names this operation, so the row must be readable the instant the client holds
+    # its identifier. See `get_transaction` for why this commit is here rather than on teardown.
+    await transaction.commit()
+    return OperationResponse.of(operation)

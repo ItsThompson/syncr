@@ -29,7 +29,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from starlette.responses import Response
 
-from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
+from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep, TransactionDep
 from syncr_api.idempotency.injection import IdempotencyGuardDep
 from syncr_api.pins.config import (
     PIN_PATH,
@@ -62,6 +62,7 @@ async def create_pin(
     principal: ClientPrincipalDep,
     guard: IdempotencyGuardDep,
     service: PinServiceDep,
+    transaction: TransactionDep,
 ) -> PinnedResponse:
     """Record one manual edit, and answer with a verdict computed without waiting for a solve."""
     requested = PinRequested(block_id=body.block_id, start=body.start)
@@ -69,7 +70,12 @@ async def create_pin(
     async def hold() -> PinnedResponse:
         return PinnedResponse.of(await service.pin(principal, iso_week, requested))
 
-    return await guard.once(PIN_ROUTE, PinnedResponse, hold)
+    answered = await guard.once(PIN_ROUTE, PinnedResponse, hold)
+    # The answer carries the operation of the solve the pin scheduled, so that row must be
+    # readable the instant the client holds its identifier. See `get_transaction` for why this
+    # commit is here rather than on teardown.
+    await transaction.commit()
+    return answered
 
 
 @router.post(
@@ -83,6 +89,7 @@ async def reject_block(
     principal: PrincipalDep,
     guard: IdempotencyGuardDep,
     service: PinServiceDep,
+    transaction: TransactionDep,
 ) -> PinnedResponse:
     """Refuse one change without refusing the rest, which is what makes a rejection teach."""
     rejected = BlockRejected(block_id=body.block_id)
@@ -90,7 +97,10 @@ async def reject_block(
     async def hold() -> PinnedResponse:
         return PinnedResponse.of(await service.reject(principal, iso_week, rejected))
 
-    return await guard.once(REJECT_BLOCK_ROUTE, PinnedResponse, hold)
+    answered = await guard.once(REJECT_BLOCK_ROUTE, PinnedResponse, hold)
+    # Same reason as `create_pin`: the answer carries the scheduled solve's operation.
+    await transaction.commit()
+    return answered
 
 
 @router.delete(
