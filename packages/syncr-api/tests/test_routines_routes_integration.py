@@ -43,7 +43,12 @@ from syncr_api.routines.models import RoutineRow
 from syncr_api.routines.records import RoutineRecord
 from syncr_api.user_settings.config import SETTINGS_PREFIX
 from syncr_domain.fixtures.dst_weeks import DST_WEEKS
-from syncr_domain.routines import MAX_DURATION_MINUTES, MAX_FLEX_BAND_MINUTES, RoutineSpan
+from syncr_domain.routines import (
+    MAX_DURATION_MINUTES,
+    MAX_FLEX_BAND_MINUTES,
+    MIN_DURATION_MINUTES,
+    RoutineSpan,
+)
 from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 
@@ -333,10 +338,10 @@ def test_a_patch_refuses_a_target_time_that_is_not_wall_time_either(
 
 @pytest.mark.parametrize(
     "target_time",
-    ["00:00", "05:00", "23:59", "01:30"],
+    ["00:00", "05:00", "23:45", "01:30"],
     ids=["midnight", "wake", "late", "in a gap"],
 )
-def test_a_wall_time_on_any_minute_of_the_day_is_accepted(
+def test_a_wall_time_on_any_quarter_hour_is_accepted(
     http: TestClient, signed_in: dict[str, str], target_time: str
 ) -> None:
     # The control for the rejections above: they must distinguish rather than refuse a time.
@@ -345,6 +350,71 @@ def test_a_wall_time_on_any_minute_of_the_day_is_accepted(
     created = declare_routine(http, signed_in, targetTime=target_time, durationMinutes=30)
 
     assert created["targetTime"].startswith(target_time)
+
+
+def test_a_target_time_off_the_grid_is_refused_and_not_stored(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # Every placement lands on the quarter-hour grid, so ``Wake 05:07`` names a start no block
+    # could hold. The boundary states it where the user can still fix it, and nothing is stored.
+    response = http.post(ROUTINES, json={**SLEEP, "targetTime": "05:07"}, headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status, response.text
+    assert [error["field"] for error in response.json()["errors"]] == ["targetTime"]
+    assert routine_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_duration_off_the_grid_is_refused_and_not_stored(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # A start on the grid plus fifty minutes ends between two of the grid's lines.
+    response = http.post(ROUTINES, json={**SLEEP, "durationMinutes": 50}, headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status, response.text
+    assert [error["field"] for error in response.json()["errors"]] == ["durationMinutes"]
+    assert routine_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_minimum_off_the_grid_is_refused_on_both_verbs(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # An occurrence resolved to the floor must end on the grid too, so the floor owes the same
+    # multiples its target does, on a create and on a patch alike.
+    declared = http.post(ROUTINES, json={**SLEEP, "minDurationMinutes": 470}, headers=signed_in)
+    created = declare_routine(http, signed_in)
+    patched = http.patch(
+        f"{ROUTINES}/{created['id']}", json={"minDurationMinutes": 470}, headers=signed_in
+    )
+
+    assert declared.status_code == ValidationFailed.status, declared.text
+    assert [error["field"] for error in declared.json()["errors"]] == ["minDurationMinutes"]
+    assert patched.status_code == ValidationFailed.status, patched.text
+    assert [error["field"] for error in patched.json()["errors"]] == ["minDurationMinutes"]
+    stored = routine_rows(live_database_url, owner.tenant_id)
+    assert [row.min_duration_minutes for row in stored] == [480]
+
+
+def test_wake_at_five_with_three_quarters_of_an_hour_succeeds(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # ``Wake 05:00 + 45m``: on the grid at both ends, where its five-past sibling is refused.
+    created = declare_routine(http, signed_in, title="Wake", targetTime="05:00", durationMinutes=45)
+
+    assert created["targetTime"].startswith("05:00")
+    assert created["durationMinutes"] == 45
+    rows = routine_rows(live_database_url, owner.tenant_id)
+    assert [(row.title, row.target_time, row.duration_minutes) for row in rows] == [
+        ("Wake", time(5, 0), 45)
+    ]
 
 
 def test_a_floor_above_its_target_is_refused_and_nothing_is_stored(
@@ -363,11 +433,11 @@ def test_a_floor_above_its_target_is_refused_and_nothing_is_stored(
     "body",
     [
         {"durationMinutes": MAX_DURATION_MINUTES, "minDurationMinutes": MAX_DURATION_MINUTES},
-        {"durationMinutes": 1, "minDurationMinutes": 1},
+        {"durationMinutes": MIN_DURATION_MINUTES, "minDurationMinutes": MIN_DURATION_MINUTES},
         {"flexBandMinutes": MAX_FLEX_BAND_MINUTES},
         {"flexBandMinutes": 0},
     ],
-    ids=["a whole day", "a single minute", "the widest band", "no band"],
+    ids=["a whole day", "one grid step", "the widest band", "no band"],
 )
 def test_a_value_at_the_edge_of_its_bounds_is_accepted(
     http: TestClient, signed_in: dict[str, str], body: dict[str, object]

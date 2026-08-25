@@ -82,7 +82,7 @@ def test_each_label_names_its_target_in_the_users_own_words() -> None:
     )
     assert labels.floor_breached(name="Fitness", minutes=80) == "Breach the Fitness floor by 1h20m"
     assert (
-        labels.routine_reduced(title="Sleep", minutes_each=20, nights=WEEK_DATES[1:4])
+        labels.routine_reduced(title="Sleep", minutes_each=30, nights=WEEK_DATES[1:4])
         == elastic_sleep.LABEL
     )
 
@@ -206,7 +206,7 @@ def test_a_night_with_no_give_is_dropped_rather_than_killing_the_offer() -> None
     distribution = nights.distributed(40, over=[elastic, rigid, later], dates=DATES)
 
     assert distribution is not None
-    assert distribution.recovers == 2 * elastic_sleep.GIVE_MINUTES
+    assert distribution.recovers == 40
     assert list(distribution.reductions) == [elastic_sleep.TUESDAY, elastic_sleep.THURSDAY]
 
 
@@ -221,13 +221,14 @@ def test_nights_that_cannot_reach_the_gap_are_all_used_at_their_full_give() -> N
 
 
 def test_a_gap_that_does_not_divide_evenly_rounds_up_rather_than_falling_short() -> None:
-    # Fifty minutes over twenty a night is three nights of seventeen, which recovers fifty-one. The
-    # rounding is upward so the concession covers the gap rather than leaving one minute of it.
-    distribution = nights.distributed(50, over=[a_night(day=day) for day in (1, 2, 3)], dates=DATES)
+    # Fifty-five minutes over thirty a night is two nights of twenty-eight, which recovers
+    # fifty-six. The rounding is upward so the concession covers the gap rather than leaving part
+    # of it behind.
+    distribution = nights.distributed(55, over=[a_night(day=day) for day in (1, 2, 3)], dates=DATES)
 
     assert distribution is not None
-    assert distribution.each == 17
-    assert distribution.recovers == 51
+    assert distribution.each == 28
+    assert distribution.recovers == 56
 
 
 def test_an_occurrence_already_under_way_is_not_reducible() -> None:

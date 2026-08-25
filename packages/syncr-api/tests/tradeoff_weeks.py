@@ -72,10 +72,13 @@ def a_week_every_kind_can_be_offered_in(**overrides: Any) -> WeekAssembler:
     """
     career = an_area(area_id=CAREER_AREA, name="Career")
     fitness = an_area(area_id=FITNESS_AREA, name="Fitness", floor_hours=Decimal(5))
+    # Half a step past the forty hours is what makes the shortfall the fixture's own ninety
+    # minutes: three reducible nights at the sleep routine's give, which is what the fixture's
+    # REDUCTIONS and LABEL describe.
     task = a_task(
         task_id=CAREER_TASK,
         area_id=career.id,
-        estimate_minutes=40 * MINUTES_PER_HOUR,
+        estimate_minutes=40 * MINUTES_PER_HOUR + 30,
         deadline=at(10, day=3),
     )
     seams: dict[str, Any] = {

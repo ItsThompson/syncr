@@ -73,9 +73,9 @@ def test_the_document_spells_a_date_the_way_the_stored_column_does() -> None:
     document = as_document(candidate)
 
     assert document[REDUCTIONS] == {
-        "2026-02-10": 20,
-        "2026-02-11": 20,
-        "2026-02-12": 20,
+        "2026-02-10": 30,
+        "2026-02-11": 30,
+        "2026-02-12": 30,
     }
     assert document[KIND] == AdjustmentKind.REDUCE_ROUTINE.value
     assert document[TARGET_ID] == str(candidate.target_id)

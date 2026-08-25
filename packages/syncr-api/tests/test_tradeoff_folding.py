@@ -332,9 +332,9 @@ async def test_breaching_a_floor_closes_the_floors_gap_the_probe_reports() -> No
 
 
 async def test_reducing_a_routine_closes_the_gap_the_nights_were_chosen_for() -> None:
-    # The elastic_sleep fixture end to end: sixty minutes short, twenty minutes of give a night,
+    # The elastic_sleep fixture end to end: ninety minutes short, thirty minutes of give a night,
     # three nights named, and the gap gone afterwards.
-    fitness = an_area(name="Fitness", floor_hours=Decimal(95))
+    fitness = an_area(name="Fitness", floor_hours=Decimal("95.5"))
     assembler = an_assembler(
         areas=FakeAreas([fitness]), routines=FakeRoutines([an_elastic_sleep()])
     )
@@ -350,7 +350,7 @@ async def test_reducing_a_routine_closes_the_gap_the_nights_were_chosen_for() ->
     )
 
     assert offer.reductions == elastic_sleep.REDUCTIONS
-    assert minutes_of(probe(before.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY) == 60
+    assert minutes_of(probe(before.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY) == 90
     assert gap_of(probe(after.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY) is None
 
 
@@ -408,7 +408,7 @@ async def test_several_concessions_in_one_week_compose_because_each_names_a_dist
                 an_adjustment(
                     kind=AdjustmentKind.REDUCE_ROUTINE.value,
                     target_id=sleep.id,
-                    reductions={elastic_sleep.WEDNESDAY.isoformat(): 20},
+                    reductions={elastic_sleep.WEDNESDAY.isoformat(): 30},
                 ),
             ]
         ),
@@ -421,7 +421,7 @@ async def test_several_concessions_in_one_week_compose_because_each_names_a_dist
     )
     assert inputs.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR - 60
     assert inputs.eligible_tasks == ()
-    assert wednesday.interval.total_minutes() == elastic_sleep.DURATION_MINUTES - 20
+    assert wednesday.interval.total_minutes() == elastic_sleep.DURATION_MINUTES - 30
     assert len(inputs.adjustments) == 3
 
 
@@ -583,14 +583,14 @@ async def test_a_reduction_frees_nothing_the_live_plan_still_commits_that_night_
     tuesday_night = next(
         entry for entry in after.frame if entry.occurrence_key == tuesday.isoformat()
     )
-    assert tuesday_night.interval.total_minutes() == elastic_sleep.DURATION_MINUTES - 20
+    assert tuesday_night.interval.total_minutes() == elastic_sleep.DURATION_MINUTES - 30
     assert (
         probe(after.for_probe()).discretionary_minutes
         - probe(before.for_probe()).discretionary_minutes
         == offer.recovers
     )
     # And the gap falls by the two nights the plan does NOT hold a block for, not by all three: the
-    # Tuesday block still commits its own twenty minutes.
+    # Tuesday block still commits its own thirty minutes.
     held = minutes_of(probe(before.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY)
     left = minutes_of(probe(after.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY)
-    assert held - left == offer.recovers - 20
+    assert held - left == offer.recovers - 30

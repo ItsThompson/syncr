@@ -388,14 +388,15 @@ async def test_an_unreachable_floor_offers_dropping_the_other_areas_work_that_co
 
 
 async def a_week_needing_the_sleep_concession(**overrides: object) -> SolveInputs:
-    """The ``elastic_sleep`` week: a sixty-minute gap against twenty minutes of give a night.
+    """The ``elastic_sleep`` week: a ninety-minute gap against thirty minutes of give a night.
 
     The gap is a floor the week cannot hold. From Tuesday morning the week has 94 hours of free
-    capacity, of which sleep takes none that is left, so a floor of 95 hours is short by exactly the
-    fixture's sixty minutes. A floor that size is not a plausible declaration: what is under test is
-    the arithmetic, and the gap has to be the fixture's figure for the distribution to be readable.
+    capacity, of which sleep takes none that is left, so a floor of 95.5 hours is short by exactly
+    the fixture's ninety minutes. A floor that size is not a plausible declaration: what is under
+    test is the arithmetic, and the gap has to be the fixture's figure for the distribution to be
+    readable.
     """
-    fitness = an_area(name="Fitness", floor_hours=Decimal(95))
+    fitness = an_area(name="Fitness", floor_hours=Decimal("95.5"))
     stated: dict[str, object] = {
         "areas": FakeAreas([fitness]),
         "routines": FakeRoutines([elastic_sleep_routine()]),
@@ -406,8 +407,8 @@ async def a_week_needing_the_sleep_concession(**overrides: object) -> SolveInput
 
 
 async def test_the_reduce_routine_offer_names_the_nights_and_what_each_gives_up() -> None:
-    # The fixture's own expectation, asserted through the enumerator: three nights at twenty minutes
-    # each, named in the label because the concession stores them.
+    # The fixture's own expectation, asserted through the enumerator: three nights at thirty
+    # minutes each, named in the label because the concession stores them.
     inputs = await a_week_needing_the_sleep_concession()
 
     offers = offers_over(inputs)

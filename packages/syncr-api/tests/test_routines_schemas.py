@@ -30,8 +30,9 @@ SLEEP = {
     "flexBandMinutes": 0,
 }
 
-# A whole minute off the quarter hour. A routine does not owe the grid, so this is the value that
-# separates "not a wall time" from "not on the grid" at this boundary.
+# A whole minute off the quarter hour. This boundary holds only the wall-time rule: the grid is
+# the span's to refuse, so this is the value that separates "not a wall time" from "not on the
+# grid" at this boundary.
 OFF_THE_QUARTER_HOUR = "23:07"
 
 
