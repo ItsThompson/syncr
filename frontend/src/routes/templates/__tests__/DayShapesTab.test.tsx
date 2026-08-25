@@ -87,13 +87,15 @@ describe("the day shapes list", () => {
 
   /* THE LIST DECLARES ITS COLUMNS, and the shape column is the one that absorbs the surplus: the other two
    * hold the widths they declare whatever any name beside them says, so a long name spends its own row's
-   * height instead of moving its neighbours. The widths are read from the style ATTRIBUTE because jsdom's
-   * style object drops a value its parser does not understand, and `calc()` over mixed units is exactly
-   * such a value. */
+   * height instead of moving its neighbours. Scoped to this table, because a sibling sheet in the tab may
+   * declare its own columns one day. The widths are read from the style ATTRIBUTE because jsdom's style
+   * object drops a value its parser does not understand, and `calc()` over mixed units is exactly such a
+   * value. */
   it("declares the shape column as the one that absorbs the surplus", () => {
-    const { container } = renderTab();
+    renderTab();
 
-    const widths = [...container.querySelectorAll("col")].map((col) => col.getAttribute("style"));
+    const table = screen.getByRole("table", { name: "Day shapes" });
+    const widths = [...table.querySelectorAll("col")].map((col) => col.getAttribute("style"));
 
     expect(widths).toEqual(["width: calc(100% - (72px + 72px));", "width: 72px;", "width: 72px;"]);
   });
@@ -253,13 +255,19 @@ describe("declaring a concrete entry", () => {
     expect(screen.queryByRole("combobox", { name: /Area/ })).not.toBeInTheDocument();
   });
 
-  /* The words are the control: a group named only by an `aria-label` gives a sighted reader no question. */
-  it("draws the kind question as well as announcing it", () => {
+  /* Named by the words the screen draws, not by a string of its own: a group carrying its own `aria-label`
+   * beside the drawn question announces the same words twice. */
+  it("names the kind group by the drawn question and no string of its own", () => {
     renderTab();
 
-    expect(screen.getAllByText("Kind").filter((element) => element.tagName === "P")).toHaveLength(
-      1,
-    );
+    const drawn = screen
+      .getAllByText("Kind")
+      .filter((element) => element.classList.contains("form-row__label"));
+    expect(drawn).toHaveLength(1);
+
+    const kind = screen.getByRole("radiogroup", { name: "Kind" });
+    expect(kind).toHaveAttribute("aria-labelledby", drawn[0].id);
+    expect(kind).not.toHaveAttribute("aria-label");
   });
 });
 
