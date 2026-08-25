@@ -88,7 +88,9 @@ def an_instant(on: Date, hour: int) -> datetime:
     return datetime.combine(on, time(hour), tzinfo=UTC)
 
 
-def a_gym_block(*, on: Date, hour: int, index: int, area_id: AreaId) -> Block:
+def a_gym_block(
+    *, on: Date, hour: int, index: int, area_id: AreaId, make_up: bool = False
+) -> Block:
     return Block(
         iso_week=IsoWeek.containing(on),
         interval=Interval(an_instant(on, hour), an_instant(on, hour + 1)),
@@ -96,6 +98,7 @@ def a_gym_block(*, on: Date, hour: int, index: int, area_id: AreaId) -> Block:
         title="Gym",
         reason=A_REASON,
         area_id=area_id,
+        make_up=make_up,
     )
 
 
@@ -454,6 +457,56 @@ def test_recording_the_same_block_twice_replaces_the_row_rather_than_adding_one(
     assert status == HTTPStatus.OK, corrected
     stored = outcome_rows(live_database_url, owner.tenant_id)
     assert [(row.block_id, row.state) for row in stored] == [(first.id, "skipped")]
+
+
+def test_recording_a_made_up_occurrence_stores_the_mark_on_the_rows_binding(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    """The mark travels from the block to the log, so the debt derivation can read it there.
+
+    Both halves are asserted against the stored document, because the projection reads the
+    binding's own keys: a mark stored beside the binding rather than inside it would match no
+    read and every made-up completion would silently discharge nothing.
+    """
+    area_id = declare_area(http, signed_in)
+    fresh = a_gym_block(on=YESTERDAY, hour=9, index=0, area_id=area_id)
+    made_up = a_gym_block(on=YESTERDAY, hour=11, index=1, area_id=area_id, make_up=True)
+    seed_plan(live_database_url, owner.tenant_id, a_week([fresh, made_up]))
+
+    for block in (fresh, made_up):
+        status, body = record(http, signed_in, block.id, {"state": "completed"})
+        assert status == HTTPStatus.OK, body
+
+    stored = {row.block_id: row.binding for row in outcome_rows(live_database_url, owner.tenant_id)}
+
+    assert stored[fresh.id]["make_up"] is False
+    assert stored[made_up.id]["make_up"] is True
+
+
+def test_confirming_a_day_presumes_a_made_up_occurrence_with_its_mark(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    """A made-up occurrence the user never touched is presumed complete AS a make-up.
+
+    The day's confirmation writes its rows through ``settle``, so this is the half of the write
+    path a recording never reaches: without the mark here, a disengaged user's presumed completions
+    would stop settling the misses they were placed for.
+    """
+    area_id = declare_area(http, signed_in)
+    made_up = a_gym_block(on=YESTERDAY, hour=11, index=1, area_id=area_id, make_up=True)
+    seed_plan(live_database_url, owner.tenant_id, a_week([made_up]))
+
+    status, _ = confirm(http, signed_in, YESTERDAY)
+    assert status == HTTPStatus.OK
+
+    (row,) = outcome_rows(live_database_url, owner.tenant_id)
+    assert (row.state, row.binding["make_up"]) == ("presumed", True)
 
 
 def test_a_move_longer_than_a_day_is_refused_over_the_wire(

@@ -38,6 +38,7 @@ from syncr_api.plans.stored_values import (
     read_list,
     read_mapping,
     read_member,
+    read_optional_flag,
     read_optional_id,
     read_optional_interval,
     read_optional_number,
@@ -90,6 +91,7 @@ KIND = "kind"
 ENTITY_ID = "entity_id"
 OCCURRENCE_KEY = "occurrence_key"
 SPLIT_INDEX = "split_index"
+MAKE_UP = "make_up"
 
 SCOPE = "scope"
 FORBIDDEN_AREA_IDS = "forbidden_area_ids"
@@ -187,6 +189,7 @@ def _stored_block(block: Block) -> JsonObject:
         ),
         OBJECTIVE_DELTA: block.objective_delta,
         SPLIT_COUNT: block.split_count,
+        MAKE_UP: block.make_up,
     }
 
 
@@ -210,6 +213,7 @@ def _read_block(value: object, iso_week: IsoWeek, *, field: str) -> Block:
             split_count=read_optional_whole_number(
                 stored.get(SPLIT_COUNT), field=f"{field}.{SPLIT_COUNT}"
             ),
+            make_up=read_optional_flag(stored.get(MAKE_UP), field=f"{field}.{MAKE_UP}"),
         ),
         field=field,
     )

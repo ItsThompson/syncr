@@ -167,6 +167,16 @@ def read_flag(value: object, *, field: str) -> bool:
     return value
 
 
+def read_optional_flag(value: object, *, field: str) -> bool:
+    """The boolean a stored value names, or false when the document states none.
+
+    For a flag added to documents that already exist: a row written before the flag did
+    reads as its default rather than as a corrupt row, which is what ``read_flag`` would
+    call it.
+    """
+    return False if value is None else read_flag(value, field=field)
+
+
 def read_text(value: object, *, field: str) -> str:
     """The string a stored value names, or a stated refusal."""
     if not isinstance(value, str):

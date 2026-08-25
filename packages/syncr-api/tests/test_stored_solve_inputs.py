@@ -246,6 +246,9 @@ def a_plan_stating_every_optional(**overrides: Any) -> PlanDocument:
     placement and what replacing it cost are what the domain requires of a pin and forbids of
     anything else. It binds a task chunk for the same reason, since a chunk index is the one
     binding component only a task's identity may carry.
+
+    Beside it, a made-up habit occurrence: the one block whose make-up mark can be true, which is
+    what keeps that key load-bearing in the walk below.
     """
     pinned = a_block_holding(
         BindingRef.for_task(A_TASK, split_index=1),
@@ -256,8 +259,14 @@ def a_plan_stating_every_optional(**overrides: Any) -> PlanDocument:
         split_count=2,
         reason=A_ROTATION_REASON,
     )
+    made_up = a_block_holding(
+        BindingRef.for_habit(A_HABIT, index=1),
+        between(11, 12),
+        make_up=True,
+        reason=A_ROTATION_REASON,
+    )
     stated: dict[str, Any] = {
-        "blocks": (pinned,),
+        "blocks": (pinned, made_up),
         "forbidden_windows": (a_window(),),
         "empty_slots": (a_slot(),),
         "adjustments": (AN_ADJUSTMENT,),

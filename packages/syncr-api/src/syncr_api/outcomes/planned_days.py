@@ -61,6 +61,7 @@ class PlannedDay:
                 binding=block.binding,
                 revision_id=self.revision.id,
                 occurred_at=block.interval.start,
+                make_up=block.make_up,
             )
             for block in self.blocks
         )

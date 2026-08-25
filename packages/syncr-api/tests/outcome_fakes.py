@@ -112,7 +112,11 @@ class FakeOutcomeLog(BlockOutcomeRepository):
         block_id: BlockId,
         revision_id: PlanRevisionId,
         occurred_at: datetime,
+        make_up: bool = False,
     ) -> BlockOutcomeRecord:
+        # The mark is a fact of the stored binding document, which records hold as the rebuilt
+        # ``BindingRef``; this fake keeps the write rules, not the document's spelling.
+        del make_up
         previous = self._rows.get(block_id)
         written = BlockOutcomeRecord(
             id=uuid4() if previous is None else previous.id,

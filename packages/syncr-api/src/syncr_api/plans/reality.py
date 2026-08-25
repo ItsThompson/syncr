@@ -52,7 +52,7 @@ from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.plans.config import BLOCK_OUTCOMES_TABLE
 from syncr_api.plans.facts import BlockOutcome
 from syncr_api.plans.records import BlockOutcomeRecord
-from syncr_api.plans.stored_documents import read_binding, stored_binding
+from syncr_api.plans.stored_documents import MAKE_UP, read_binding, stored_binding
 from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import OutcomeState
 
@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
+    from syncr_api.core.columns import JsonObject
     from syncr_domain.identifiers import PlanRevisionId
     from syncr_domain.identity import BindingRef, BlockId
     from syncr_domain.outcomes import RecordedOutcome
@@ -73,14 +74,16 @@ class Presumption:
     """One block a day's confirmation has to record something about.
 
     A block with no row of its own is ``presumed`` complete with no user action, so confirming the
-    day is what turns that reading into a row. The four fields are what a row needs beyond its
-    state: which block, what it held, which plan of record placed it, and when it was scheduled.
+    day is what turns that reading into a row. The five fields are what a row needs beyond its
+    state: which block, what it held, whether it was a made-up occurrence, which plan of record
+    placed it, and when it was scheduled.
     """
 
     block_id: BlockId
     binding: BindingRef
     revision_id: PlanRevisionId
     occurred_at: datetime
+    make_up: bool = False
 
 
 class BlockOutcomeRepository(TenantScopedRepository):
@@ -93,6 +96,7 @@ class BlockOutcomeRepository(TenantScopedRepository):
         block_id: BlockId,
         revision_id: PlanRevisionId,
         occurred_at: datetime,
+        make_up: bool = False,
     ) -> BlockOutcomeRecord:
         """State what happened to one block, replacing whatever the log said before.
 
@@ -108,11 +112,11 @@ class BlockOutcomeRepository(TenantScopedRepository):
         """
         written = await self._session.scalars(
             insert(BlockOutcome)
-            .values([self._row(outcome, block_id, revision_id, occurred_at)])
+            .values([self._row(outcome, block_id, revision_id, occurred_at, make_up)])
             .on_conflict_do_update(
                 index_elements=list(_IDENTITY),
                 set_={
-                    "binding": stored_binding(outcome.binding),
+                    "binding": self._binding_document(outcome.binding, make_up=make_up),
                     "revision_id": revision_id,
                     "state": outcome.state.value,
                     "actual_minutes": outcome.actual_minutes,
@@ -173,12 +177,13 @@ class BlockOutcomeRepository(TenantScopedRepository):
         block_id: BlockId,
         revision_id: PlanRevisionId,
         occurred_at: datetime,
+        make_up: bool,
     ) -> dict[str, object]:
         return {
             "id": uuid4(),
             TENANT_ID_COLUMN: self.tenant_id,
             "block_id": block_id,
-            "binding": stored_binding(outcome.binding),
+            "binding": self._binding_document(outcome.binding, make_up=make_up),
             "revision_id": revision_id,
             "state": outcome.state.value,
             "actual_minutes": outcome.actual_minutes,
@@ -192,7 +197,7 @@ class BlockOutcomeRepository(TenantScopedRepository):
             "id": uuid4(),
             TENANT_ID_COLUMN: self.tenant_id,
             "block_id": presumption.block_id,
-            "binding": stored_binding(presumption.binding),
+            "binding": self._binding_document(presumption.binding, make_up=presumption.make_up),
             "revision_id": presumption.revision_id,
             "state": OutcomeState.PRESUMED.value,
             "actual_minutes": None,
@@ -200,6 +205,16 @@ class BlockOutcomeRepository(TenantScopedRepository):
             "actual_ends_at": None,
             "occurred_at": presumption.occurred_at,
         }
+
+    def _binding_document(self, binding: BindingRef, *, make_up: bool) -> JsonObject:
+        """The identity a row denormalizes, restated with the mark the expansion gave it.
+
+        The mark rides INSIDE the binding document rather than beside it, because it is what the
+        habit projection reads the binding for and because the column already survives the entity:
+        a fact about which occurrence this was belongs with which occurrence this names. It is
+        always written on an outcome row, so a row that states nothing owes no debt made good.
+        """
+        return {**stored_binding(binding), MAKE_UP: make_up}
 
 
 def _as_record(row: BlockOutcome) -> BlockOutcomeRecord:

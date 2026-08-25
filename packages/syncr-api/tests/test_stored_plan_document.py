@@ -336,6 +336,22 @@ def test_an_instant_survives_a_zone_the_row_was_not_written_in() -> None:
     assert read.blocks[0].interval.start == datetime(2026, 2, 9, 6, tzinfo=UTC)
 
 
+def test_a_made_up_occurrence_round_trips_to_the_same_value() -> None:
+    document = a_document(blocks=(a_block(Origin.HABIT, make_up=True),))
+
+    assert plan_document(stored_document(document)) == document
+
+
+def test_a_row_written_before_the_mark_existed_reads_as_a_fresh_occurrence() -> None:
+    """The honest default: an expansion nobody recorded cannot be claimed as a discharge."""
+    stored = stored_document(a_document())
+    del stored["blocks"][0]["make_up"]
+
+    read = plan_document(stored)
+
+    assert not read.blocks[0].make_up
+
+
 # --------------------------------------------------------------------------------
 # What is not written
 # --------------------------------------------------------------------------------
@@ -466,6 +482,23 @@ def _a_pin_flag_that_is_not_a_boolean(stored: JsonObject) -> None:
     stored["blocks"][0]["pinned"] = "yes"
 
 
+def _a_make_up_mark_that_is_not_a_boolean(stored: JsonObject) -> None:
+    stored["blocks"][0]["make_up"] = "yes"
+
+
+def _a_make_up_mark_on_content_that_is_never_expanded(stored: JsonObject) -> None:
+    # A legal task block carrying the mark, spelled beside the habit block the week already holds:
+    # the refusal is the domain's, not the reader's.
+    (habit,) = stored["blocks"]
+    stored["blocks"].append(
+        {
+            **habit,
+            "binding": {**habit["binding"], "kind": "task", "occurrence_key": "00"},
+            "make_up": True,
+        }
+    )
+
+
 def _a_delta_that_is_text(stored: JsonObject) -> None:
     stored["blocks"][0]["objective_delta"] = "-4.25"
 
@@ -527,6 +560,16 @@ REFUSALS = [
     pytest.param(_a_scope_that_names_no_areas, "names", id="a scope that names no Areas"),
     pytest.param(_a_slot_reason_no_reader_knows, "reason", id="a slot reason nothing produces"),
     pytest.param(_a_pin_flag_that_is_not_a_boolean, "true or false", id="a pin flag that is text"),
+    pytest.param(
+        _a_make_up_mark_that_is_not_a_boolean,
+        "true or false",
+        id="a make-up mark that is text",
+    ),
+    pytest.param(
+        _a_make_up_mark_on_content_that_is_never_expanded,
+        "only a habit occurrence",
+        id="a made-up block of another origin",
+    ),
     pytest.param(_a_delta_that_is_text, "a number", id="an objective delta that is text"),
     pytest.param(_a_delta_that_is_not_finite, "finite", id="an objective delta that is infinite"),
     pytest.param(_blocks_that_are_not_an_array, "an array", id="blocks that are an object"),

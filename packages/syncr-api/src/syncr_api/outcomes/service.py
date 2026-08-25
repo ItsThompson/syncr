@@ -134,7 +134,11 @@ class OutcomeService:
             )
 
         recorded = await self._outcomes.record(
-            outcome, block_id=block.id, revision_id=revision.id, occurred_at=block.interval.start
+            outcome,
+            block_id=block.id,
+            revision_id=revision.id,
+            occurred_at=block.interval.start,
+            make_up=block.make_up,
         )
         _log.info(
             "outcomes.outcome.recorded",
