@@ -39,8 +39,8 @@ from typing import TYPE_CHECKING
 from syncr_api.core.repository import TenantScopedReader
 from syncr_api.plans.config import BLOCK_OUTCOMES_TABLE
 from syncr_api.plans.facts import BlockOutcome
-from syncr_api.plans.stored_documents import ENTITY_ID, KIND, OCCURRENCE_KEY
-from syncr_api.plans.stored_values import read_id, read_text
+from syncr_api.plans.stored_documents import ENTITY_ID, KIND, MAKE_UP, OCCURRENCE_KEY
+from syncr_api.plans.stored_values import read_id, read_optional_flag, read_text
 from syncr_domain.identity import BindingKind
 from syncr_domain.outcomes import HabitOutcome, OutcomeState
 
@@ -95,6 +95,11 @@ def _as_habit_outcome(row: BlockOutcome) -> HabitOutcome:
     The occurrence key is then checked against the one derivation of a habit key inside
     ``HabitOutcome``, so a row spelling an index some other way is refused here rather than matching
     no block two layers down.
+
+    The make-up mark reads as its default when the row states none, because a row written before
+    the mark existed was written about an expansion this code cannot see: reading it as a fresh
+    occurrence is the honest answer, and reading it as a discharge would forgive a miss nothing
+    earned.
     """
     field = f"{BLOCK_OUTCOMES_TABLE}.binding"
     return HabitOutcome(
@@ -105,4 +110,5 @@ def _as_habit_outcome(row: BlockOutcome) -> HabitOutcome:
         state=OutcomeState(row.state),
         occurred_at=row.occurred_at,
         confirmed_at=row.confirmed_at,
+        is_make_up=read_optional_flag(row.binding.get(MAKE_UP), field=f"{field}.{MAKE_UP}"),
     )

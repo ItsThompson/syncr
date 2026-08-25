@@ -50,16 +50,25 @@ from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.outcomes.config import BLOCKS_PREFIX, DAYS_PREFIX
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.config import APPLIED, BLOCK_OUTCOMES_TABLE
+from syncr_api.plans.facts import BlockOutcome
+from syncr_api.plans.habit_log import HabitOutcomeLog
 from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.repository import PlanRepository
-from syncr_api.plans.stored_documents import BINDING, ENTITY_ID, KIND, stored_document
+from syncr_api.plans.stored_documents import (
+    BINDING,
+    ENTITY_ID,
+    KIND,
+    OCCURRENCE_KEY,
+    SPLIT_INDEX,
+    stored_document,
+)
 from syncr_domain.habits import (
     DEFAULT_DEBT_CAP_PERIODS,
     BindingSource,
     TimesPerWeek,
     occurrences_per_period,
 )
-from syncr_domain.identity import BindingRef, index_occurrence_key
+from syncr_domain.identity import BindingKind, BindingRef, index_occurrence_key
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, ReasonRecord
@@ -73,6 +82,7 @@ if TYPE_CHECKING:
     from syncr_api.accounts.records import UserRecord
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import AreaId, TenantId
+    from syncr_domain.outcomes import HabitOutcome
     from syncr_domain.zones import Date
     from syncr_solver.inputs import SolveInputs
 
@@ -164,7 +174,9 @@ def read_habit(http: TestClient, headers: dict[str, str], habit_id: UUID) -> dic
     return read
 
 
-def an_occurrence(*, habit_id: UUID, index: int, hour: int, area_id: AreaId) -> Block:
+def an_occurrence(
+    *, habit_id: UUID, index: int, hour: int, area_id: AreaId, make_up: bool = False
+) -> Block:
     """One habit occurrence as the assembler places it: a block bound to the habit and its index."""
     starts = datetime.combine(YESTERDAY, time(hour), tzinfo=UTC)
     return Block(
@@ -174,6 +186,7 @@ def an_occurrence(*, habit_id: UUID, index: int, hour: int, area_id: AreaId) -> 
         title="Gym",
         reason=A_REASON,
         area_id=area_id,
+        make_up=make_up,
     )
 
 
@@ -223,13 +236,22 @@ def record_skip(http: TestClient, headers: dict[str, str], block: Block) -> None
     assert answered.status_code == HTTPStatus.OK, answered.text
 
 
+def record_completion(http: TestClient, headers: dict[str, str], block: Block) -> None:
+    answered = http.put(
+        f"{BLOCKS_PREFIX}/{block.id}/outcome",
+        json={"isoWeek": str(WEEK), "state": "completed"},
+        headers=headers,
+    )
+    assert answered.status_code == HTTPStatus.OK, answered.text
+
+
 def confirm_day(http: TestClient, headers: dict[str, str], on: Date) -> None:
     answered = http.post(f"{DAYS_PREFIX}/{on.isoformat()}/confirm", headers=headers)
     assert answered.status_code == HTTPStatus.OK, answered.text
 
 
-def assemble(database_url: str, tenant_id: TenantId) -> SolveInputs:
-    """The seeded week's solve inputs, composed exactly as every week route composes them.
+def assemble(database_url: str, tenant_id: TenantId, week: IsoWeek = WEEK) -> SolveInputs:
+    """One week's solve inputs, composed exactly as every week route composes them.
 
     Through the wiring rather than through a hand-built assembler, because the composition is what
     decides which log the expansion derives from and that is the claim under test.
@@ -240,7 +262,7 @@ def assemble(database_url: str, tenant_id: TenantId) -> SolveInputs:
         try:
             async with database.sessionmaker() as session:
                 assembler = build_week_assembler(session, tenant_id, caller=AssemblyCaller.REQUEST)
-                return await assembler.assemble(WEEK, utc_now())
+                return await assembler.assemble(week, utc_now())
         finally:
             await database.engine.dispose()
 
@@ -356,6 +378,123 @@ def test_confirmed_skips_reach_the_debt_figure_the_habit_resource_reports(
     assert (before["misses"], before["outstanding"]) == (0, 0)
     assert (after["misses"], after["outstanding"], after["cap"]) == (2, 2, 6)
     assert not after["raisedInWeeklySession"]
+
+
+def test_the_projection_reads_the_mark_the_write_path_stored_and_defaults_the_rows_without_one(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """``habit_log.py`` projects the binding's own key into ``HabitOutcome``.
+
+    One row here was written by the route, so its mark is the write path's own spelling; the other
+    is seeded with a binding that names no mark at all, which is every row written before the mark
+    existed. Those read as fresh occurrences, which is the honest default rather than a claimed
+    discharge.
+    """
+
+    area_id = declare_area(http, signed_in)
+    habit_id = declare_habit(http, signed_in, area_id)
+    made_up = an_occurrence(habit_id=habit_id, index=1, hour=11, area_id=area_id, make_up=True)
+    seed_plan(live_database_url, owner.tenant_id, [made_up])
+    record_completion(http, signed_in, made_up)
+
+    # A row from before the mark existed, spelled exactly as ``stored_binding`` spelled it then,
+    # against the plan of record the route's own row names.
+    async def seed_unmarked() -> None:
+        database = create_database(live_database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                revision = await PlanRepository(session, owner.tenant_id).latest(WEEK)
+                assert revision is not None
+                session.add(
+                    BlockOutcome(
+                        id=uuid4(),
+                        tenant_id=owner.tenant_id,
+                        block_id="e" * 64,
+                        binding={
+                            KIND: BindingKind.HABIT.value,
+                            ENTITY_ID: str(habit_id),
+                            OCCURRENCE_KEY: "00",
+                            SPLIT_INDEX: None,
+                        },
+                        revision_id=revision.id,
+                        state="completed",
+                        occurred_at=datetime.combine(YESTERDAY, time(9), tzinfo=UTC),
+                    )
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(seed_unmarked())
+
+    async def project() -> tuple[HabitOutcome, ...]:
+        database = create_database(live_database_url)
+        try:
+            async with database.sessionmaker() as session:
+                return await HabitOutcomeLog(session, owner.tenant_id).read([habit_id])
+        finally:
+            await database.engine.dispose()
+
+    rows = {row.occurrence_key: row for row in run(project())}
+
+    assert (rows["00"].is_make_up, rows["01"].is_make_up) == (False, True)
+
+
+def test_two_made_up_completions_settle_the_debt_by_the_next_weeks_assembly(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    """The whole loop, over HTTP and through the wiring both assemblies compose.
+
+    Two confirmed skips charge two. This week's expansion carries them as made-up occurrences;
+    placed, completed, and confirmed, their rows carry the mark, and NEXT week's assembly expands
+    the cadence alone: nothing is owed, because the log holds a discharge for each charge. Driven
+    through the assembler rather than through ``outstanding_debt``, so the claim is what a week
+    route would expand and not only what a function would answer.
+    """
+    area_id = declare_area(http, signed_in)
+    habit_id = declare_habit(http, signed_in, area_id, title="Anki", missPolicy="debt")
+
+    # Two misses, yesterday, confirmed: debt stands at two.
+    missed = [
+        an_occurrence(habit_id=habit_id, index=index, hour=9 + index, area_id=area_id)
+        for index in range(2)
+    ]
+    seed_plan(live_database_url, owner.tenant_id, missed)
+    for occurrence in missed:
+        record_skip(http, signed_in, occurrence)
+    confirm_day(http, signed_in, YESTERDAY)
+
+    owing = assemble(live_database_url, owner.tenant_id).habit_occurrences
+    assert [occurrence.is_debt for occurrence in owing] == [False] * THREE_A_WEEK[
+        "timesPerWeek"
+    ] + [True, True]
+
+    # The made-up occurrences are placed, marked the way the solver marks them, done, and settled.
+    made_up = [
+        an_occurrence(
+            habit_id=habit_id,
+            index=int(occurrence.binding.occurrence_key),
+            hour=13 + position,
+            area_id=area_id,
+            make_up=True,
+        )
+        for position, occurrence in enumerate(o for o in owing if o.is_debt)
+    ]
+    seed_plan(live_database_url, owner.tenant_id, made_up)
+    for block in made_up:
+        record_completion(http, signed_in, block)
+    confirm_day(http, signed_in, YESTERDAY)
+
+    # Before the mark existed this read back as two forever; now the next week owes nothing.
+    settled = read_habit(http, signed_in, habit_id)["debt"]
+    following = assemble(live_database_url, owner.tenant_id, week=WEEK.following())
+
+    assert (settled["misses"], settled["outstanding"]) == (0, 0)
+    assert [occurrence.is_debt for occurrence in following.habit_occurrences] == [False] * (
+        THREE_A_WEEK["timesPerWeek"]
+    )
+    assert [occurrence.binding.occurrence_key for occurrence in following.habit_occurrences] == [
+        index_occurrence_key(index) for index in range(THREE_A_WEEK["timesPerWeek"])
+    ]
 
 
 def test_the_live_schema_carries_the_index_the_projection_reads_through(
