@@ -48,6 +48,7 @@
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
+import type { ApiClient } from "../src/api/client.ts";
 import type { Operation, Verdict, WeekView } from "../src/api/schemas.ts";
 import { planWeek } from "../src/harness/subject-weeks.ts";
 import { awaitTerminal, pendingProposal, solveNow, until, weekView } from "../src/harness/week.ts";
@@ -93,22 +94,22 @@ const effectiveBlocks = (
 const holdsPin = (view: WeekView, blockId: string): boolean =>
   (view.pins ?? []).some((pin) => pin.blockId === blockId);
 
-/** One merged timeline: overlapping placements contribute one minute, as the probe counts them. */
-const unionMinutes = (spans: readonly Span[]): number => {
+/** One merged timeline, and the minutes it covers: overlapping placements contribute one minute,
+ * as the probe counts them. The merge is stated once and the total derives from it. */
+const unionSpans = (spans: readonly Span[]): readonly Span[] => {
   const sorted = [...spans].sort((a, b) => a.start - b.start);
-  let total = 0;
-  let open: Span | null = null;
+  const merged: Span[] = [];
   for (const span of sorted) {
-    if (open === null || span.start > open.end) {
-      if (open !== null) total += open.end - open.start;
-      open = { ...span };
-    } else if (span.end > open.end) {
-      open = { start: open.start, end: span.end };
-    }
+    const last = merged.at(-1);
+    if (last === undefined || span.start > last.end) merged.push({ ...span });
+    else if (span.end > last.end)
+      merged.splice(merged.length - 1, 1, { start: last.start, end: span.end });
   }
-  if (open !== null) total += open.end - open.start;
-  return total / MINUTE_MS;
+  return merged;
 };
+
+const unionMinutes = (spans: readonly Span[]): number =>
+  unionSpans(spans).reduce((total, span) => total + span.end - span.start, 0) / MINUTE_MS;
 
 /** Everything the week effectively occupies, clipped to `[from, to)`, in milliseconds. */
 const occupied = (view: WeekView, from: number, to: number): readonly Span[] =>
@@ -129,18 +130,6 @@ const freeStretches = (view: WeekView, from: number, to: number): readonly Span[
   }
   if (cursor < to) gaps.push({ start: cursor, end: to });
   return gaps;
-};
-
-const unionSpans = (spans: readonly Span[]): readonly Span[] => {
-  const sorted = [...spans].sort((a, b) => a.start - b.start);
-  const merged: Span[] = [];
-  for (const span of sorted) {
-    const last = merged.at(-1);
-    if (last === undefined || span.start > last.end) merged.push({ ...span });
-    else if (span.end > last.end)
-      merged.splice(merged.length - 1, 1, { start: last.start, end: span.end });
-  }
-  return merged;
 };
 
 /**
@@ -167,7 +156,7 @@ const expectDeadlineGap = (view: WeekView, minutes: number, at: string): number 
  * that figure is the same number the probe computes over live-plus-pins, so the checkpoints hold
  * across both branches of the week's read. */
 const pinAndSettle = async (
-  api: import("../src/api/client.ts").ApiClient,
+  api: ApiClient,
   week: string,
   blockId: string,
   start: string,
@@ -182,7 +171,7 @@ const pinAndSettle = async (
 
 /** Adopt the pending proposal if the settled solve left one, and wait until the slot answers empty. */
 const adoptSettled = async (
-  api: import("../src/api/client.ts").ApiClient,
+  api: ApiClient,
   week: string,
   idempotencyKey: string,
 ): Promise<void> => {
@@ -341,11 +330,11 @@ test("S25 progress does not manufacture a shortfall", async ({ api }) => {
     ).toBeLessThanOrEqual(2);
     const before = await weekView(api, week);
     const stretches = freeStretches(before, windowStart, windowEnd);
+    const stretch = stretches.at(-1);
     expect(
-      stretches.at(-1),
+      stretch,
       `the window holds no free stretch to pin unrelated work into after ${unrelated} committed minutes`,
     ).toBeDefined();
-    const stretch = stretches.at(-1);
     const bystander = effectiveBlocks(before)
       .filter(({ id, span }) => {
         const block = before.live!.blocks.find((each) => each.id === id);
