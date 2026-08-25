@@ -34,8 +34,7 @@ class TemplateBindings:
     """Reads whether a concrete entry's binding names a row this tenant holds."""
 
     def __init__(self, routines: RoutineRepository, habits: HabitRepository) -> None:
-        self._readers: dict[BindingTarget, Callable[[UUID], Awaitable[bool]]]
-        self._readers = {
+        self._readers: dict[BindingTarget, Callable[[UUID], Awaitable[bool]]] = {
             BindingTarget.ROUTINE: self._a_routine,
             BindingTarget.HABIT: self._a_habit,
         }

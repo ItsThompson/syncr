@@ -242,7 +242,7 @@ class FakeHabitRepository(HabitRepository):
         self._tenant_id = tenant_id
         self.rows: list[HabitRecord] = []
 
-    async def find(self, habit_id: object) -> HabitRecord | None:
+    async def find(self, habit_id: HabitId) -> HabitRecord | None:
         return next(
             (row for row in self.rows if row.id == habit_id and row.tenant_id == self._tenant_id),
             None,
