@@ -94,12 +94,17 @@ class ShadowSet:
 
     blocks: tuple[ShadowBlock, ...] = ()
     forbidden: tuple[ForbiddenWindow, ...] = ()
+    # The journeys a collision dropped whole, as the blocks they were cast as. Reported beside
+    # the survivors rather than lost, because an absence explains nothing on its own: a reader
+    # cannot tell a dropped leg from a leg no type ever declared without this.
+    dropped_legs: tuple[ShadowBlock, ...] = ()
 
     EMPTY: ClassVar[ShadowSet]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "blocks", tuple(sorted(self.blocks, key=_block_order)))
         object.__setattr__(self, "forbidden", tuple(sorted(self.forbidden, key=_window_order)))
+        object.__setattr__(self, "dropped_legs", tuple(sorted(self.dropped_legs, key=_block_order)))
 
     def absolute_forbidden(self) -> IntervalSet:
         """The spans no Area may claim, unioned.

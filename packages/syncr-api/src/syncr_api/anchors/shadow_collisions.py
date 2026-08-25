@@ -41,7 +41,7 @@ is taken where the spans are read.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.identity import Origin
@@ -62,10 +62,23 @@ PRECEDENCE_BY_ORIGIN: Final[Mapping[Origin, int]] = {Origin.TRANSIT: 0, Origin.P
 type GiveWay = Callable[[ShadowBlock, Instant], ShadowBlock | None]
 
 
+@dataclass(frozen=True, slots=True)
+class Survivors:
+    """What one pass leaves: the blocks that stand, and the legs that were dropped whole.
+
+    A dropped leg is reported, not inferred from an absence: the block that lost is carried
+    beside the survivors, so a reader can be told a journey was declared and did not survive,
+    with the binding that says which commitment's which leg it was.
+    """
+
+    blocks: tuple[ShadowBlock, ...] = ()
+    dropped_legs: tuple[ShadowBlock, ...] = ()
+
+
 def without_collisions(
     in_cast_order: Sequence[tuple[ShadowBlock, ...]],
-) -> tuple[ShadowBlock, ...]:
-    """The blocks that survive, once no two of them cover the same minute.
+) -> Survivors:
+    """The blocks that survive, once no two of them cover the same minute, and what does not.
 
     ``in_cast_order`` is one commitment's blocks per member, ordered by the commitment that cast
     them. Blocks are then fitted in precedence order: transit before prep, and within each the
@@ -75,12 +88,19 @@ def without_collisions(
     holds them normalizes to interval order, so no caller depends on this one.
     """
     kept: list[ShadowBlock] = []
+    dropped: list[ShadowBlock] = []
     candidates = [(cast, block) for cast, blocks in enumerate(in_cast_order) for block in blocks]
     for _, block in sorted(candidates, key=_precedence):
         fitted = _fitted(block, kept)
-        if fitted is not None:
+        # Classified by origin rather than by who returned nothing: a leg gives way by being
+        # dropped, while a prep that loses everything is a truncation with nothing drawable left,
+        # an absence too small to explain rather than a journey declared and lost.
+        if fitted is None:
+            if block.origin is Origin.TRANSIT:
+                dropped.append(block)
+        else:
             kept.append(fitted)
-    return tuple(kept)
+    return Survivors(blocks=tuple(kept), dropped_legs=tuple(dropped))
 
 
 def _precedence(candidate: tuple[int, ShadowBlock]) -> tuple[int, int, Interval]:

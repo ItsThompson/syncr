@@ -171,9 +171,11 @@ def regenerate(anchors: Sequence[TypedAnchor]) -> ShadowSet:
     generated = [
         (pair, generate(pair.anchor, pair.anchor_type)) for pair in sorted(anchors, key=_cast_order)
     ]
+    survived = without_collisions([shadows.blocks for _, shadows in generated])
     return ShadowSet(
-        blocks=without_collisions([shadows.blocks for _, shadows in generated]),
+        blocks=survived.blocks,
         forbidden=tuple(window for _, shadows in generated for window in shadows.forbidden),
+        dropped_legs=survived.dropped_legs,
     )
 
 

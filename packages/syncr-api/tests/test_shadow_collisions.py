@@ -404,6 +404,46 @@ def test_a_journey_home_that_gives_way_is_dropped_like_the_outbound_leg() -> Non
     assert [block.anchor_id for block in shadows.blocks] == [keeps_its_journey_home.id]
 
 
+def test_the_dropped_leg_is_reported_beside_the_survivors() -> None:
+    """A drop is carried, not implied by an absence: the block that lost is named.
+
+    The arrangement is the later-cast journey that loses to the earlier one, and what is asserted
+    is the report rather than the inventory: a reader on that day has to be able to tell a
+    declared journey that did not survive from a journey no type ever declared, which an absence
+    alone cannot say.
+    """
+    earlier = a_journey_only_type(lead=120, duration=60)
+    later = a_journey_only_type(lead=210, duration=120)
+    keeps = an_anchor(earlier, start=at(INTERVIEW_DAY, 12), minutes=60, title="Earlier")
+    loses = an_anchor(later, start=at(INTERVIEW_DAY, 13), minutes=60, title="Later")
+
+    shadows = regenerate([TypedAnchor(loses, later), TypedAnchor(keeps, earlier)])
+
+    assert [block.title for block in shadows.dropped_legs] == ["Leave for Later"]
+    assert [(block.origin, block.occurrence_key) for block in shadows.dropped_legs] == [
+        (Origin.TRANSIT, TransitLeg.OUT.value)
+    ]
+    assert [block.anchor_id for block in shadows.dropped_legs] == [loses.id]
+
+
+def test_a_prep_truncated_to_nothing_is_not_reported_as_a_dropped_leg() -> None:
+    """A prep with less than one grid step left is an absence too small to explain.
+
+    Nothing drawable was lost, so reporting it would state that a declared journey was dropped
+    when what happened is that a preference about how far ahead to prepare gave way entirely.
+    """
+    travels = a_journey_only_type(lead=120, duration=60)
+    prepares = a_prep_only_type(lead=370, duration=40)
+    pair = [
+        TypedAnchor(an_anchor(travels, start=at(INTERVIEW_DAY, 12), minutes=60), travels),
+        TypedAnchor(an_anchor(prepares, start=at(INTERVIEW_DAY, 16), minutes=60), prepares),
+    ]
+
+    shadows = regenerate(pair)
+
+    assert shadows.dropped_legs == ()
+
+
 def test_every_origin_a_shadow_block_can_carry_has_a_precedence() -> None:
     # The table is bounded by what a block may BE rather than by a list of what it may not, so a
     # block whose origin has no precedence cannot reach the collision rule at all.
