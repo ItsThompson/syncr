@@ -18,6 +18,30 @@ class NoLayoutResizeObserver implements ResizeObserver {
 
 function scrollIntoView(): void {}
 
+/**
+ * A rect that offers the surface `heightPx` pixels of viewport: its top sits that far above the bottom.
+ *
+ * The week grid's hook measures the space the display still offers it, from `getBoundingClientRect().top`
+ * against `window.innerHeight`. A rect is a record here rather than an instance mock, because the hook reads
+ * it through the ref before any instance exists to mock one on.
+ */
+export function offeredRect(heightPx: number): DOMRect {
+  /* Not clamped at zero: a display taller than jsdom's own viewport is exactly the case the tall-display tests
+   * describe, so the top simply sits above the viewport's top when the offer exceeds it. */
+  const top = window.innerHeight - heightPx;
+  return {
+    top,
+    bottom: window.innerHeight,
+    height: heightPx,
+    left: 0,
+    right: 0,
+    width: 0,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
 function hasPointerCapture(): boolean {
   return false;
 }

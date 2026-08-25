@@ -15,6 +15,7 @@ import { TimeAxis } from "../TimeAxis";
 import { WeekGrid } from "../WeekGrid";
 import { DAY_HEADER_H_PX, GRID_H_PX } from "../metrics";
 import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
+import { offeredRect } from "../../../../testing/layoutStubs";
 import type { ReactElement } from "react";
 
 import type { Extent, GridBlock, StripReadings, WeekDay } from "..";
@@ -454,15 +455,16 @@ describe("the week with no plan", () => {
  * hold. Clamping above this component made both impossible, and no test could see it because the constant and the
  * fallback are the same number.
  *
- * `clientHeight` is stubbed on the prototype rather than mocked on an instance, because the hook reads it through the
- * ref it observes and there is no instance to reach before the effect runs. */
+ * `getBoundingClientRect` is stubbed on the prototype rather than mocked on an instance, because the hook reads it
+ * through the ref it observes and there is no instance to reach before the effect runs. The stub is the shared
+ * `offeredRect`, which places a rect's top so the surface is `heightPx` above the viewport's bottom. */
 describe("the clamp against a measured height", () => {
   function renderMeasuring(heightPx: number, visibleHours: number): string {
-    const original = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
-    Object.defineProperty(Element.prototype, "clientHeight", {
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, "getBoundingClientRect");
+    Object.defineProperty(Element.prototype, "getBoundingClientRect", {
       configurable: true,
-      get() {
-        return heightPx;
+      value() {
+        return offeredRect(heightPx);
       },
     });
     try {
@@ -478,8 +480,8 @@ describe("the clamp against a measured height", () => {
       return canvasHeightOf(container);
     } finally {
       if (original === undefined)
-        delete (Element.prototype as { clientHeight?: unknown }).clientHeight;
-      else Object.defineProperty(Element.prototype, "clientHeight", original);
+        delete (Element.prototype as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+      else Object.defineProperty(Element.prototype, "getBoundingClientRect", original);
     }
   }
 

@@ -7,7 +7,9 @@
  *
  * THE HEIGHT IS STUBBED ON `Element.prototype`, as `grid.test.tsx` stubs it, because the hook reads it through the ref
  * it observes and there is no instance to reach before the effect runs. jsdom lays nothing out, so without the stub
- * every case here would measure the reference display and the two rows below would be the same row.
+ * every case here would measure the reference display and the two rows below would be the same row. The hook reads
+ * the space the viewport offers the surface, so a stubbed rect whose top sits `measured` pixels above the viewport's
+ * bottom is what a measured grid is here.
  *
  * A CHANGE OF MEASUREMENT IS DRIVEN THROUGH AN OBSERVER OF THIS FILE'S OWN. The suite's shared stub answers the call
  * and never calls back, which is right for a DOM with no layout and leaves the one path that matters in a browser
@@ -20,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { WeekGrid } from "../WeekGrid";
 import { DAY_HEADER_H_PX, ZOOM_MAX_HOURS, ZOOM_MIN_HOURS } from "../metrics";
+import { offeredRect } from "../../../../testing/layoutStubs";
 import type { Extent, WeekDay, ZoomReport } from "..";
 
 const DATE = "2026-02-09";
@@ -93,11 +96,11 @@ describe("the level and the range the grid reports", () => {
       unobserve(): void {}
       disconnect(): void {}
     };
-    original = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
-    Object.defineProperty(Element.prototype, "clientHeight", {
+    original = Object.getOwnPropertyDescriptor(Element.prototype, "getBoundingClientRect");
+    Object.defineProperty(Element.prototype, "getBoundingClientRect", {
       configurable: true,
-      get() {
-        return measuredGridPx + DAY_HEADER_H_PX;
+      value() {
+        return offeredRect(measuredGridPx + DAY_HEADER_H_PX);
       },
     });
   });
@@ -105,8 +108,8 @@ describe("the level and the range the grid reports", () => {
   afterEach(() => {
     globalThis.ResizeObserver = installedObserver;
     if (original === undefined)
-      delete (Element.prototype as { clientHeight?: unknown }).clientHeight;
-    else Object.defineProperty(Element.prototype, "clientHeight", original);
+      delete (Element.prototype as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+    else Object.defineProperty(Element.prototype, "getBoundingClientRect", original);
   });
 
   function renderGrid(visibleHours: number) {

@@ -1,12 +1,12 @@
 /* THE WEEK GRID. Seven proportional columns and one axis, and the geometry every one of them is drawn from.
  *
  * PIXELS PER MINUTE AND THE ZOOM CLAMP BOTH COME FROM THE SAME MEASURED HEIGHT, and they have to. The grid observes
- * its own height and subtracts the day header, because the figure the arithmetic wants is the canvas the blocks are
- * drawn in: the reference figure, 626px on a 13 inch display, is a 790px viewport less the page band, the summary
- * strip and that header. The CLAMP IS APPLIED HERE rather than by the caller for the same reason: a caller has no
- * measurement, so clamping above this component would cap every display at the reference display's own cap. On a 27
- * inch display that renders a stored 24 as 16, and on a window shorter than the reference it offers a level at which
- * the modal thirty-minute block loses its title, which is the one thing the clamp exists to prevent.
+ * the space the display still offers it and subtracts the day header, because the figure the arithmetic wants is the
+ * canvas the blocks are drawn in: the reference figure, 626px on a 13 inch display, is a 790px viewport less the page
+ * band, the summary strip and that header. The CLAMP IS APPLIED HERE rather than by the caller for the same reason: a
+ * caller has no measurement, so clamping above this component would cap every display at the reference display's own
+ * cap. On a 27 inch display that renders a stored 24 as 16, and on a window shorter than the reference it offers a
+ * level at which the modal thirty-minute block loses its title, which is the one thing the clamp exists to prevent.
  *
  * SO THE CLAMPED LEVEL AND THE DISPLAY'S RANGE ARE REPORTED UPWARD, once per measurement. A surface that states the
  * level, or a control that offers the range, has nowhere else to read either from: what a caller holds is the level it
@@ -33,7 +33,7 @@ import { useLayoutEffect, useRef } from "react";
 
 import { canvasHeightPx, gridHeightPx, pxPerMinute } from "./geometry";
 import { DAY_HEADER_H_PX } from "./metrics";
-import { useObservedHeight } from "./useObservedHeight";
+import { useOfferedHeight } from "./useOfferedHeight";
 import { useDiscreteDrag, type BlockDrop } from "./useDiscreteDrag";
 import { clampVisibleHours, zoomLevels, type ZoomReport } from "./zoom";
 import { DayColumn, type ColumnInteraction } from "./DayColumn";
@@ -87,7 +87,7 @@ export function WeekGrid({
   /* Named for what it IS rather than for where it came from: the measurement OR the reference display's height where
    * nothing has been laid out. In the one component whose fix was about not confusing a constant with a measurement,
    * calling this `measuredHeightPx` would be the same conflation one identifier over. */
-  const gridPx = gridHeightPx(useObservedHeight(viewport) - DAY_HEADER_H_PX);
+  const gridPx = gridHeightPx(useOfferedHeight(viewport) - DAY_HEADER_H_PX);
   const hours = clampVisibleHours(visibleHours, gridPx);
   const pxPerMin = pxPerMinute(gridPx, hours);
   const canvasPx = canvasHeightPx(extent, pxPerMin);
