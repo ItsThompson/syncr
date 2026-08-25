@@ -114,8 +114,10 @@ def build(session: AsyncSession, owner: UserRecord) -> LearnedService:
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.learned.activation import FutureWeeksResolved, WeightSetActivation
     from syncr_api.learned.service import LearnedService
+    from syncr_api.plans.versions import WeekInputVersionRepository
     from syncr_api.solving.injection import build_solve_coordinator
     from syncr_api.user_settings.repository import SettingsRepository
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
     tenant_id = owner.tenant_id
     return LearnedService(
@@ -124,7 +126,12 @@ def build(session: AsyncSession, owner: UserRecord) -> LearnedService:
         activation=WeightSetActivation(session, tenant_id),
         resolver=FutureWeeksResolved(
             versions=WeekInputVersionRepository(session, tenant_id),
-            settings=SettingsRepository(session, tenant_id),
+            bump=BacklogWideBump(
+                versions=TrackedWeekInputVersions(
+                    WeekInputVersionRepository(session, tenant_id), clock=lambda: NOW
+                ),
+                settings=SettingsRepository(session, tenant_id),
+            ),
             coordinator=build_solve_coordinator(
                 session, tenant_id, clock=lambda: NOW, debounce=DEFAULT_DEBOUNCE
             ),

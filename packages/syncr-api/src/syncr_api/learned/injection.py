@@ -5,9 +5,10 @@ available and before the service exists, so no statement they compose reaches an
 
 Three collaborators come from other feature modules and each is read rather than reimplemented. The
 week input version counter is plan storage's, because that table is the single serialization point
-for every mutation a running solve has to see. The settings row is ``user_settings``', because which
-week holds today's local date is one question with one answer. And the solve coordinator is the
-solving module's, because it is the only creation path for a ``solve`` operation.
+for every mutation a running solve has to see. The open-ended floor is ``BacklogWideBump``'s,
+because which week holds today's local date in the home zone is one question with one answer. And
+the solve coordinator is the solving module's, because it is the only creation path for a
+``solve`` operation.
 
 The Areas are read through their own repository for the same reason: a maturity row names the Area
 it is about by identifier, and what an Area is CALLED has one owner.
@@ -32,6 +33,7 @@ from syncr_api.learned.service import LearnedService
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
 from syncr_api.user_settings.repository import SettingsRepository
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
 def get_learned_service(
@@ -48,7 +50,12 @@ def get_learned_service(
         activation=WeightSetActivation(transaction, tenant_id),
         resolver=FutureWeeksResolved(
             versions=WeekInputVersionRepository(transaction, tenant_id),
-            settings=SettingsRepository(transaction, tenant_id),
+            bump=BacklogWideBump(
+                versions=TrackedWeekInputVersions(
+                    WeekInputVersionRepository(transaction, tenant_id), clock=utc_now
+                ),
+                settings=SettingsRepository(transaction, tenant_id),
+            ),
             coordinator=build_solve_coordinator(
                 transaction,
                 tenant_id,

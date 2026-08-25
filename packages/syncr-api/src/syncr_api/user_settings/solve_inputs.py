@@ -211,13 +211,23 @@ class BacklogWideBump:
 
     A collaborator rather than a function so a service takes one dependency instead of two and a
     service test can record what would have been bumped without a settings row.
+
+    The floor is computed HERE and nowhere else. :meth:`open_ended_range` is the tree's one
+    expression for "the week holding today's local date in the home zone", and every other
+    open-ended mutation reads it rather than re-deriving the date and its week, which is what
+    keeps two services from disagreeing about which week a bump starts at. The settings service's
+    own home-zone bump is the stated exception, and states its reason where it happens.
     """
 
     def __init__(self, versions: WeekInputVersions, settings: SettingsRepository) -> None:
         self._versions = versions
         self._settings = settings
 
+    async def open_ended_range(self, now: datetime) -> WeekRange:
+        """Every week from the one holding ``now``'s local date in the HOME zone onwards."""
+        settings = await self._settings.read()
+        return weeks_from(local_date(now, settings.home_zone))
+
     async def from_the_week_holding(self, now: datetime) -> None:
         """Bump every tracked week from the one holding ``now``'s local date onwards."""
-        settings = await self._settings.read()
-        await self._versions.bump(weeks_from(local_date(now, settings.home_zone)))
+        await self._versions.bump(await self.open_ended_range(now))

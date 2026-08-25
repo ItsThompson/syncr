@@ -13,8 +13,9 @@ one active per tenant" true rather than the order of these two lines.
 
 Then every FUTURE week the tenant has planned is invalidated and re-solved. Future only, because a
 past week's approved revision is immutable: re-deriving one would change history rather than the
-plan. The floor is the week holding today's LOCAL date in the home zone, the same floor every
-open-ended mutation in this application takes.
+plan. The floor is read from ``user_settings.solve_inputs.BacklogWideBump``, which computes "the
+week holding today's LOCAL date in the home zone" for every open-ended mutation in this application;
+this module names no week of its own.
 
 **A week with no version row is not re-solved**, and that is not an omission. Such a week has no
 plan and no running solve to invalidate, and the horizon maintainer is what brings a week into
@@ -27,8 +28,6 @@ from typing import TYPE_CHECKING
 
 from syncr_api.core.repository import TenantScopedRepository
 from syncr_api.learned.models import WeightSet
-from syncr_api.user_settings.solve_inputs import weeks_from
-from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -37,7 +36,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.versions import WeekInputVersionRepository
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
-    from syncr_api.user_settings.repository import SettingsRepository
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump
     from syncr_domain.weeks import IsoWeek
 
 _log = get_logger("syncr.learned")
@@ -78,20 +77,24 @@ class FutureWeeksResolved:
         self,
         *,
         versions: WeekInputVersionRepository,
-        settings: SettingsRepository,
+        bump: BacklogWideBump,
         coordinator: SolveCoordinator,
         session_mode_active: bool = False,
     ) -> None:
         self._versions = versions
-        self._settings = settings
+        self._bump = bump
         self._coordinator = coordinator
         # What the activating request stated about the weekly session, bound at composition.
         self._session_mode_active = session_mode_active
 
     async def from_the_week_holding(self, now: datetime) -> list[OperationRecord]:
-        """Bump and re-solve every tracked week from the one holding ``now``'s local date on."""
-        settings = await self._settings.read()
-        span = weeks_from(local_date(now, settings.home_zone))
+        """Bump and re-solve every tracked week from the open-ended floor onwards.
+
+        The floor comes from ``BacklogWideBump`` rather than being derived here: it is the same
+        computation every open-ended mutation takes, and a second derivation here could disagree
+        with theirs about which week holds today.
+        """
+        span = await self._bump.open_ended_range(now)
         tracked = await self._versions.tracked_weeks(span.first, span.last)
         operations = [await self._resolved(week, at=now) for week in tracked]
         _log.info(

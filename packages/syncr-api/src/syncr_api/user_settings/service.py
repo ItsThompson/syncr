@@ -155,6 +155,11 @@ class SettingsService:
         )
 
         if merged.home_zone != current.home_zone:
+            # Not ``BacklogWideBump``, though this is an open-ended bump: the collaborator resolves
+            # its floor by reading the stored settings row again, while this method holds that row
+            # under ``lock`` and resolved ``view.active_zone_date`` against the MERGED zone before
+            # the write, so an unknown zone is refused rather than stored. Bumping from the view
+            # invalidates exactly what was written; a second read could disagree with it.
             affected = weeks_from(view.active_zone_date)
             # The zone identifier is deliberately absent from this line: it is coarse
             # location data, and identifiers are logged while content is not.
