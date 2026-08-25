@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from datetime import time
 from typing import TYPE_CHECKING
@@ -158,18 +159,25 @@ def test_the_revision_refuses_an_off_grid_row_and_names_it(scratch_url: str) -> 
     upgrade_to(scratch_url, PREVIOUS_REVISION)
     bad_target = seed_routine(scratch_url, target_time="05:07", duration=480, minimum=480)
     bad_duration = seed_routine(scratch_url, target_time="23:00", duration=50, minimum=15)
+    # Only offense is the floor, so the naming branch for min_duration_minutes has a row of its
+    # own rather than sharing one whose target or duration would be named regardless.
+    bad_minimum = seed_routine(scratch_url, target_time="23:00", duration=480, minimum=470)
 
     with pytest.raises(RuntimeError, match="Offending rows") as refused:
         upgrade_to(scratch_url, GRID_REVISION)
 
     message = str(refused.value)
-    assert bad_target in message and bad_duration in message
-    assert "target_time" in message and "duration_minutes" in message
+    assert bad_target in message and bad_duration in message and bad_minimum in message
+    assert "target_time 05:07" in message
+    # Not a substring check: "duration_minutes" is inside "min_duration_minutes", so the name is
+    # anchored to what the row's own value follows it.
+    assert re.search(r"(?<![a-z_])duration_minutes 50", message)
+    assert "min_duration_minutes 470" in message
     # Nothing was snapped: the rows read back exactly as they were stored.
     durations = read_column(scratch_url, "SELECT duration_minutes FROM routines ORDER BY id")
-    assert sorted(int(value) for value in durations) == [50, 480]
+    assert sorted(int(value) for value in durations) == [50, 480, 480]
     targets = read_column(scratch_url, "SELECT target_time::text FROM routines ORDER BY id")
-    assert sorted(targets) == ["05:07:00", "23:00:00"]
+    assert sorted(targets) == ["05:07:00", "23:00:00", "23:00:00"]
 
 
 def test_the_revision_accepts_on_grid_rows_and_the_constraints_then_bite(

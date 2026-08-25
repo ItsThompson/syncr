@@ -53,7 +53,7 @@ _OFF_GRID_TARGET_TIME = (
 _OFF_GRID_DURATIONS = "mod(duration_minutes, 15) <> 0 OR mod(min_duration_minutes, 15) <> 0"
 
 TARGET_TIME_GRID_SQL = (
-    "mod(EXTRACT(MINUTE FROM target_time)::int, 15) = 0 AND EXTRACT(SECOND FROM target_time) = 0"  # noqa: E501
+    "mod(EXTRACT(MINUTE FROM target_time)::int, 15) = 0 AND EXTRACT(SECOND FROM target_time) = 0"
 )
 DURATIONS_GRID_SQL = "mod(duration_minutes, 15) = 0 AND mod(min_duration_minutes, 15) = 0"
 
