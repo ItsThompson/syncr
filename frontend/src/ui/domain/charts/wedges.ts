@@ -44,8 +44,37 @@ export interface WedgeLabel {
   readonly anchor: "start" | "end";
 }
 
+/**
+ * The width one character of the label face sets, measured in Chrome at --fs-eyebrow in the mono family.
+ *
+ * Held a tenth above the measured 5.7px deliberately: a count derived from the bare measurement admits a
+ * seventeenth character whose rendered width overshoots the run by a fraction of a pixel, and a label that
+ * paints outside the svg's own edge is a label past its bound.
+ */
+const PX_PER_CHAR = 5.8;
+
+/**
+ * How many characters of a name the pie's own gutter holds.
+ *
+ * Derived from the geometry this module owns rather than copied from a measurement of it: the run a label has
+ * beside the circle is `labelGutter - labelGap` on either side, and this is what fits in that run at the label
+ * face. A caller cannot restate the figure without restating the gutter it came from.
+ */
+export const WEDGE_LABEL_CHARS = Math.floor((PIE.labelGutter - PIE.labelGap) / PX_PER_CHAR);
+
+/** U+2026 HORIZONTAL ELLIPSIS, one glyph, so a bounded label spends one character rather than three. */
+const ELLIPSIS = "\u2026";
+
+/** A name the gutter holds untouched; one it does not keeps its head and takes an ellipsis. */
+function boundLabel(name: string): string {
+  if (name.length <= WEDGE_LABEL_CHARS) return name;
+  return `${name.slice(0, WEDGE_LABEL_CHARS - 1).trimEnd()}${ELLIPSIS}`;
+}
+
 export interface Wedge {
   readonly id: string;
+  /** The category's whole name, which a `<title>` carries whenever the drawn label is bounded. */
+  readonly name: string;
   readonly label: string;
   readonly pigment: ChartPigment;
   /** The category's share of the whole, 0 to 1. */
@@ -199,7 +228,8 @@ export function layOutPie(slices: readonly AreaQuantity[]): PieLayout {
     const middle = (from + to) / 2;
     drawn.push({
       id: slice.id,
-      label: slice.label,
+      name: slice.label,
+      label: boundLabel(slice.label),
       pigment: slice.pigment,
       share: slice.minutes / total,
       d:
@@ -217,6 +247,7 @@ export function layOutPie(slices: readonly AreaQuantity[]): PieLayout {
     height,
     wedges: drawn.map((wedge, index) => ({
       id: wedge.id,
+      name: wedge.name,
       label: wedge.label,
       pigment: wedge.pigment,
       share: wedge.share,

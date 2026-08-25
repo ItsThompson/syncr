@@ -139,6 +139,33 @@ describe("PieChart", () => {
 
     expect(screen.getByText(/no composition to draw/i)).toBeInTheDocument();
   });
+
+  /* A BOUNDED LABEL KEEPS THE WHOLE NAME. The drawn text is bounded to the gutter the geometry reserves, so
+   * the wedge's `<title>` carries the name in full; an unbounded label already is the whole name and gets no
+   * title beside it. */
+  it("carries the whole name on a bounded label's own title", () => {
+    const { container } = render(
+      <PieChart
+        slices={[quantity("Career, interview preparation and the long game beyond it", 300, "01")]}
+        caption="Composition"
+      />,
+    );
+    const labels = [...container.querySelectorAll("text.pie__label")];
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0].textContent).not.toBe(
+      "Career, interview preparation and the long game beyond it",
+    );
+    expect(labels[0].querySelector("title")?.textContent).toBe(
+      "Career, interview preparation and the long game beyond it",
+    );
+  });
+
+  it("gives an unbounded label no title, since its drawn text is already the whole name", () => {
+    const { container } = render(<PieChart slices={[CAREER]} caption="Composition" />);
+
+    expect(container.querySelector("text.pie__label title")).toBeNull();
+  });
 });
 
 describe("Unallocated", () => {

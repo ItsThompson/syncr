@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { PIE, layOutPie } from "../wedges";
+import { PIE, WEDGE_LABEL_CHARS, layOutPie } from "../wedges";
 import { UNALLOCATED, type AreaQuantity } from "../series";
 import { AREA_PIGMENTS } from "../../marks/pigment";
 
@@ -233,5 +233,76 @@ describe("a thirteenth category", () => {
 
   it("closes the circle across all thirteen", () => {
     expect(endOf(laid.wedges[12].d)).toBe(startOf(laid.wedges[0].d));
+  });
+});
+
+/* THE BOUND IS PINNED TO THE LITERALS IT WAS MEASURED AGAINST, not to the arithmetic that derives the constant:
+ * the gutter run is 97px and the label face sets at about 5.7px per character in Chrome, held at 5.8 so the
+ * count stays inside the run under sub-pixel variation. Deriving the expectation from `PIE` itself would let
+ * any formula pass, exactly as the label-pitch assertion above argues. */
+const GUTTER_PX = 97;
+const LABEL_PX_PER_CHAR = 5.8;
+
+/** An Area name may be sixty characters, so a sixty-character name is an ordinary input, not an edge case. */
+const SIXTY = "A sixty character Area name, the longest declaration the form accepts in full";
+
+describe("a bounded wedge label", () => {
+  it("is counted from the run the gutter actually holds", () => {
+    expect(WEDGE_LABEL_CHARS).toBe(Math.floor(GUTTER_PX / LABEL_PX_PER_CHAR));
+    // What the count admits still fits between the arc and the box's own edge.
+    expect(WEDGE_LABEL_CHARS * LABEL_PX_PER_CHAR).toBeLessThanOrEqual(
+      PIE.labelGutter - PIE.labelGap,
+    );
+  });
+
+  it("leaves a name the gutter holds exactly as it is", () => {
+    const laid = layOutPie([slice("career", 60, { label: "Fitness" })]);
+
+    expect(laid.wedges[0].label).toBe("Fitness");
+    expect(laid.wedges[0].name).toBe("Fitness");
+  });
+
+  it("bounds a name the gutter does not hold, keeping an ellipsis tail", () => {
+    const laid = layOutPie([slice("career", 60, { label: SIXTY })]);
+
+    expect(laid.wedges[0].label.length).toBeLessThanOrEqual(WEDGE_LABEL_CHARS);
+    expect(laid.wedges[0].label.endsWith("\u2026")).toBe(true);
+    // And the whole name stays on the wedge, which is what the drawn `<title>` carries.
+    expect(laid.wedges[0].name).toBe(SIXTY);
+  });
+
+  it("keeps two names distinct where they differ only past the bound", () => {
+    /* Two names sharing their first seventeen characters draw the same bounded text, which is why the wedge
+     * carries its whole name too: the `<title>` renders the difference the drawn text cannot. */
+    const head = "Career development";
+    const laid = layOutPie([
+      slice("one", 30, { label: `${head} of design systems` }),
+      slice("two", 30, { label: `${head} of platform engineering` }),
+    ]);
+
+    expect(laid.wedges[0].label).toBe(laid.wedges[1].label);
+    expect(laid.wedges[0].name).not.toBe(laid.wedges[1].name);
+  });
+
+  /* THE CLAIM THAT MATTERS, STATED AS ARITHMETIC: a label anchored on either column extends at most one
+   * bounded label's width away from its anchor, and that extent stays inside the svg's own box at sixty
+   * characters. Re-measured in a browser; see this ticket's verification record. */
+  it("paints inside the box even at sixty characters, from either column", () => {
+    const laid = layOutPie([
+      slice("right", 300, { label: SIXTY }),
+      slice("left", 300, { label: SIXTY }),
+    ]);
+
+    expect(laid.wedges.map((wedge) => wedge.labelAt.anchor)).toEqual(["start", "end"]);
+    for (const wedge of laid.wedges) {
+      // The label's far edge from its anchor: rightward on the right column, leftward on the left one.
+      const edge =
+        wedge.labelAt.anchor === "start"
+          ? wedge.labelAt.x + WEDGE_LABEL_CHARS * LABEL_PX_PER_CHAR
+          : wedge.labelAt.x - WEDGE_LABEL_CHARS * LABEL_PX_PER_CHAR;
+
+      expect(edge).toBeGreaterThanOrEqual(0);
+      expect(edge).toBeLessThanOrEqual(laid.width);
+    }
   });
 });

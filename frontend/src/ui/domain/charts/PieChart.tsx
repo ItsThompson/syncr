@@ -71,6 +71,7 @@ export function PieChart({ slices, caption }: PieChartProps) {
               dominantBaseline="middle"
             >
               {wedge.label}
+              {wedge.name !== wedge.label ? <title>{wedge.name}</title> : null}
             </text>
           ))}
         </svg>
