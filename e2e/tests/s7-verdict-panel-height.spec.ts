@@ -135,18 +135,22 @@ test("S7 the verdict panel keeps its height across a sequence of pins while its 
   // reading after each of the three. Compared exactly: the height is a declared token, not a
   // measurement of wrapped text, so two readings of one panel differ by nothing at all.
   const [first] = readings;
-  for (const [index, reading] of readings.entries()) {
+  // THE FIRST READING IS THE BASELINE, SO IT IS NOT COMPARED TO ITSELF: the loop starts at the
+  // reading after the first pin.
+  for (let index = 1; index < readings.length; index += 1) {
     expect(
-      reading.height,
+      readings[index]!.height,
       `reading ${index} (after ${index} pins) measured a different panel height from the first`,
     ).toBe(first!.height);
   }
 
   // THE OBSERVATION, SECOND HALF, AND WHY THE FIRST CANNOT PASS ON NOTHING: the row count DID change
-  // across the same sequence. A fixed height held over four readings of an untouched panel satisfies
-  // the loop above; it cannot satisfy this.
-  const last = readings.at(-1)!;
-  expect(last.rowCount, "the panel's rows did not change across three pins").not.toBe(
-    first!.rowCount,
-  );
+  // across the same sequence, and stayed changed at every reading after a pin. A fixed height held
+  // over four readings of an untouched panel satisfies the loop above; it cannot satisfy this.
+  for (let index = 1; index < readings.length; index += 1) {
+    expect(
+      readings[index]!.rowCount,
+      `reading ${index} (after ${index} pins) still drew the pre-pin rows`,
+    ).not.toBe(first!.rowCount);
+  }
 });
