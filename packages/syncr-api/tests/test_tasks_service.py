@@ -441,17 +441,43 @@ async def test_a_stated_minimum_chunk_is_kept_rather_than_defaulted(
     assert captured.min_chunk_minutes == 45
 
 
-async def test_an_estimate_smaller_than_the_grid_step_clamps_the_default_chunk_down(
+async def test_an_estimate_smaller_than_the_grid_step_is_refused_naming_the_chunk(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # Without the clamp this capture would be a 422 for a field the caller never sent.
+    # The default chunk is clamped down to the estimate, so a 10-minute estimate derives a
+    # 10-minute chunk. The clamp keeps T1 quiet, but the derived chunk is still the smallest
+    # placement a splittable task may take, and no block can hold one that misses the grid: no
+    # legal chunk exists for this estimate, so capture is refused and names the field the rule
+    # answers about.
     area = an_area(principal.tenant_id)
-    service, _ = build(principal, versions, areas=[area])
+    service, tasks = build(principal, versions, areas=[area])
 
-    captured = await service.capture(principal, a_declaration(area.id, estimate_minutes=10))
+    with pytest.raises(ValidationFailed) as refused:
+        await service.capture(principal, a_declaration(area.id, estimate_minutes=10))
 
-    assert captured.min_chunk_minutes == 10
-    assert captured.is_eligible_for_solving() is True
+    assert [error.field for error in refused.value.errors or []] == ["minChunkMinutes"]
+    assert tasks.rows == []
+    assert versions.bumped == []
+
+
+async def test_a_minimum_chunk_off_the_grid_is_refused_and_stores_nothing(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # 25 passes the schema's floor of one grid step but misses the grid itself, so the refusal
+    # is the domain's, stated beside T1 rather than inside it.
+    area = an_area(principal.tenant_id)
+    service, tasks = build(principal, versions, areas=[area])
+
+    with pytest.raises(ValidationFailed) as refused:
+        await service.capture(
+            principal, a_declaration(area.id, estimate_minutes=90, min_chunk_minutes=25)
+        )
+
+    assert "does not land on the 15-minute grid" in refused.value.detail
+    assert "Nothing was changed" in refused.value.detail
+    assert [error.field for error in refused.value.errors or []] == ["minChunkMinutes"]
+    assert tasks.rows == []
+    assert versions.bumped == []
 
 
 async def test_a_minimum_chunk_above_the_estimate_is_refused_and_stores_nothing(
@@ -564,6 +590,22 @@ async def test_raising_a_minimum_chunk_above_the_stored_estimate_is_refused(
         await service.update(principal, stored.id, no_change(min_chunk_minutes=61))
 
     assert tasks.writes == 0
+
+
+async def test_patching_a_minimum_chunk_off_the_grid_is_refused(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The merged pair fits T1; the refusal is the new value's shape alone.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id, estimate_minutes=90, min_chunk_minutes=15)
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored])
+
+    with pytest.raises(ValidationFailed) as refused:
+        await service.update(principal, stored.id, no_change(min_chunk_minutes=25))
+
+    assert [error.field for error in refused.value.errors or []] == ["minChunkMinutes"]
+    assert tasks.writes == 0
+    assert tasks.rows == [stored]
 
 
 async def test_changing_both_numbers_together_is_accepted(

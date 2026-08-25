@@ -74,6 +74,7 @@ from syncr_domain.projects import require_matching_area
 from syncr_domain.tasks import (
     TaskStatus,
     default_min_chunk_minutes,
+    require_a_chunk_on_the_grid,
     require_a_chunk_that_fits,
     require_a_compatible_ending,
 )
@@ -222,6 +223,7 @@ class TaskService:
             require_a_chunk_that_fits(
                 estimate_minutes=declaration.estimate_minutes, min_chunk_minutes=minimum
             )
+            require_a_chunk_on_the_grid(min_chunk_minutes=minimum)
             await self._require_a_matching_project(declaration.project_id, declaration.area_id)
 
         created = await self._tasks.create(
@@ -265,6 +267,7 @@ class TaskService:
                 estimate_minutes=merged.estimate_minutes,
                 min_chunk_minutes=merged.min_chunk_minutes,
             )
+            require_a_chunk_on_the_grid(min_chunk_minutes=merged.min_chunk_minutes)
             await self._require_a_matching_project(merged.project_id, merged.area_id)
 
         await self._tasks.write(

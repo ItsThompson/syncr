@@ -24,7 +24,8 @@ from typing import TYPE_CHECKING
 from syncr_api.core.errors import Conflict, FieldError, ValidationFailed
 from syncr_api.tasks.config import TASK_RESOURCE
 from syncr_domain.projects import ProjectAreaMismatch
-from syncr_domain.tasks import ChunkLargerThanEstimate, TaskAlreadyEnded
+from syncr_domain.snap import SNAP_MINUTES
+from syncr_domain.tasks import ChunkLargerThanEstimate, ChunkOffTheGrid, TaskAlreadyEnded
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -62,6 +63,17 @@ def stated_rejection() -> Iterator[None]:
             errors=[
                 FieldError(field=MIN_CHUNK_FIELD, message="It exceeds the estimate."),
                 FieldError(field=ESTIMATE_FIELD, message="It is below the minimum chunk."),
+            ],
+        ) from error
+    except ChunkOffTheGrid as error:
+        raise ValidationFailed(
+            f"That {TASK_RESOURCE} was not accepted: {error}. Nothing was changed. State the "
+            f"minimum chunk in whole {SNAP_MINUTES}-minute steps, the grid every placement "
+            "lands on. Every other task still reads as it did.",
+            errors=[
+                FieldError(
+                    field=MIN_CHUNK_FIELD, message="It is not a whole number of grid steps."
+                ),
             ],
         ) from error
     except ProjectAreaMismatch as error:

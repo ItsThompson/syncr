@@ -22,10 +22,13 @@ once the parts' deadlines or their Areas do. The figure is 168 hours for the sam
 ``FLOOR_HOURS_MAX`` is: it rejects nonsense rather than describing a real week, and a real week is
 167 or 169 hours whenever a zone transitions.
 
-**Neither minute bound is a multiple of the grid step**, and that is deliberate. The snap grid
-governs the instants a placement starts and ends on, not the physics a task declares:
-`04-domain-model.md`'s own elasticity example puts one task at 25, 45, and 90 minutes, so
-requiring a multiple of fifteen here would refuse a value the domain model uses.
+**The estimate's bounds are not multiples of the grid step**, and that is deliberate. An
+estimate is a quantity of work, not a span the solver places: the snap grid governs the instants
+a placement starts and ends on, and `04-domain-model.md`'s own elasticity example puts one
+task at 25, 45, and 90 minutes of work. The minimum chunk is different: it is the smallest
+PLACEMENT a splittable task may take, so it owes the same grid every placement lands on, which
+is why ``MIN_CHUNK_MINUTES_MIN`` is one grid step and why the stored value must be a whole
+number of steps.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from __future__ import annotations
 from typing import Final
 
 from syncr_api.core.settings import API_PREFIX
+from syncr_domain.snap import SNAP_MINUTES
 
 # `/api/v1/tasks`, built from the versioned prefix rather than written out.
 TASKS_PREFIX: Final = f"{API_PREFIX}/tasks"
@@ -56,8 +60,9 @@ ESTIMATE_MINUTES_MAX: Final = MINUTES_IN_AN_HOUR * HOURS_IN_A_NOMINAL_WEEK
 
 # A minimum chunk is a chunk OF the estimate, so it can never usefully exceed the estimate's
 # own ceiling. T1 is what compares the two, in the domain; this only keeps a stored value
-# inside the column's range.
-MIN_CHUNK_MINUTES_MIN: Final = 1
+# inside the column's range. The floor is one grid step, because the chunk is the smallest
+# placement a splittable task may take and every placement lands on the grid.
+MIN_CHUNK_MINUTES_MIN: Final = SNAP_MINUTES
 MIN_CHUNK_MINUTES_MAX: Final = ESTIMATE_MINUTES_MAX
 
 RECORDED_MINUTES_MIN: Final = 0

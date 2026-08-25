@@ -18,9 +18,10 @@ completed row without an instant and an open row carrying one are both refused.
 
 **T1 is checked here as a backstop, not as its statement.** The rule lives in
 ``syncr_domain.tasks.require_a_chunk_that_fits``, which is what produces the 422 and its
-stated reason. This constraint is what makes a write bypassing that path fail rather than store
-a task no placement could satisfy, the same way the unique index on an Area's name backs up the
-409 the service raises.
+stated reason, and the minimum chunk's grid obligation lives beside it in
+``require_a_chunk_on_the_grid``. These constraints are what make a write bypassing that path
+fail rather than store a task no placement could satisfy or no block could hold, the same way
+the unique index on an Area's name backs up the 409 the service raises.
 
 **T3 is NOT a constraint.** Remaining work is clamped at zero where it is computed, because
 recording more time than was estimated is ordinary: an estimate is a guess and an outcome is a
@@ -47,6 +48,7 @@ from syncr_api.tasks.config import (
     TASKS_TABLE,
     TITLE_MAX_LENGTH,
 )
+from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.tasks import Priority, TaskStatus
 
 # A varchar plus a generated CHECK rather than a Postgres enum type, matching the Areas and
@@ -82,7 +84,8 @@ class TaskRow(Base, TenantScoped):
             name="estimate_minutes_could_be_placed",
         ),
         CheckConstraint(
-            f"min_chunk_minutes BETWEEN {MIN_CHUNK_MINUTES_MIN} AND {MIN_CHUNK_MINUTES_MAX}",
+            f"min_chunk_minutes BETWEEN {MIN_CHUNK_MINUTES_MIN} AND {MIN_CHUNK_MINUTES_MAX} "
+            f"AND mod(min_chunk_minutes, {SNAP_MINUTES}) = 0",
             name="min_chunk_minutes_is_a_duration",
         ),
         # T1's backstop. The domain states the rule and the reason; this is what a write

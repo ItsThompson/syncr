@@ -407,10 +407,10 @@ def test_a_value_outside_its_declared_bounds_is_refused_rather_than_stored(
 @pytest.mark.parametrize(
     "body",
     [
-        {"estimateMinutes": 1, "minChunkMinutes": 1},
+        {"estimateMinutes": 15, "minChunkMinutes": 15},
         {"estimateMinutes": 10080, "minChunkMinutes": 10080},
     ],
-    ids=["a one-minute task", "a task the size of a nominal week"],
+    ids=["a task of exactly one grid step", "a task the size of a nominal week"],
 )
 def test_a_value_at_its_bound_is_accepted(
     http: TestClient, signed_in: dict[str, str], area: str, body: dict[str, object]
@@ -448,6 +448,26 @@ def test_a_minimum_chunk_above_the_estimate_is_a_422_from_the_domain(
 
     accepted = TaskCreateRequest.model_validate(body)
     assert (accepted.estimate_minutes, accepted.min_chunk_minutes) == (60, 61)
+
+
+def test_a_minimum_chunk_off_the_grid_is_a_422_naming_the_field(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # 25 clears the schema's floor of one grid step, so the refusal is the domain's: the same
+    # rule a habit's minimum duration answers to, stated beside T1.
+    body = {"areaId": area, "title": "Leetcode", "estimateMinutes": 90, "minChunkMinutes": 25}
+
+    response = http.post(TASKS, json=body, headers=signed_in)
+
+    assert response.status_code == ValidationFailed.status, response.text
+    problem = response.json()
+    assert "does not land on the 15-minute grid" in problem["detail"]
+    assert [error["field"] for error in problem["errors"]] == ["minChunkMinutes"]
+    assert task_rows(live_database_url, owner.tenant_id) == []
 
 
 def test_an_unknown_area_is_a_422_naming_the_field(
