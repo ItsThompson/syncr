@@ -24,7 +24,8 @@ const INK =
 
 const escapeRegExp = (selector: string): string => selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Every sheet read once up front, so no test awaits inside a loop. */
+/** Every sheet read once up front, so no test awaits inside a loop. A missing sheet fails module load,
+ *   which reports as a collection error naming the path; there is nothing a per-test assert adds. */
 const TEXTS = new Map(
   await Promise.all(
     Object.keys(PAINTERS).map(async (sheet) => {
@@ -38,8 +39,10 @@ describe("the reference sheets draw each hatch through the painter's own color",
     const text = TEXTS.get(sheet) ?? "";
 
     it(`${sheet} carries no element-level --hatch-ink write`, () => {
-      expect(TEXTS.has(sheet), `${sheet} disappeared from ${designSheetDir}`).toBe(true);
-      expect(text.match(/--hatch-ink\s*:/g) ?? []).toEqual([]);
+      /* Comments are stripped first: the sheets explain the substitution mechanism in prose, and a
+         sentence like "an --hatch-ink: write is dead" must not read as an offense. */
+      const css = text.replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(css.match(/--hatch-ink\s*:/g) ?? []).toEqual([]);
     });
 
     for (const selector of painters) {
