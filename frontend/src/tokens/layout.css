@@ -225,6 +225,41 @@
                                         seen is clipped rather than removed. */
 
   /* ------------------------------------------------------------------------
+     THE STACKING LADDER. Every height the kit spends, declared once here, lowest first, so the
+     order reads off this block instead of being reconstructed across seven component sheets.
+     `src/ui/stackingLadder.test.ts` holds the block to both halves of that claim.
+
+     THE IN-FLOW RUNGS order the week grid's own stacking context, floor to ceiling:
+
+       --z-underlay    texture at the floor: a forbidden band under every block, and a block's
+                       hatch under its own content
+       --z-content     what a surface says: a block's glyph slot and wrapping title, and the
+                       highlighted row lifted over its neighbours so its ring draws whole
+       --z-axis        the sticky time axis, above the content it labels
+       --z-now         the now rule, above bands and blocks alike
+       --z-focus       the focused block, lifted so its outset ring clears the block below
+       --z-insertion   the drag's insertion marker, above every block
+
+     THE FLOATING RUNGS sit on the document root, where a portal has left every in-flow stacking
+     context behind, so the two tiers are an order of magnitude apart rather than adjacent:
+
+       --z-scrim       the dialog scrim, which covers the page it dims
+       --z-popover     a control's floating panel: a select's list, a date field's month grid.
+                       Both are controls a dialog can contain, so both clear the scrim.
+
+     A staggered block's paint order is not a rung on this ladder: `overlap.ts` computes it per
+     block from its column, and it never leaves the grid's own context.
+     ------------------------------------------------------------------------ */
+  --z-underlay: 0;
+  --z-content: 1;
+  --z-axis: 2;
+  --z-now: 3;
+  --z-focus: 4;
+  --z-insertion: 7;
+  --z-scrim: 50;
+  --z-popover: 60;
+
+  /* ------------------------------------------------------------------------
      MOTION IS ZERO, WITHOUT EXCEPTION.
 
      Nothing eases, fades, slides, shimmers or spins. There are no skeleton loaders and no
