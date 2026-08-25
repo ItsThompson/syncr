@@ -24,7 +24,12 @@ export const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");
 
 /* Both files, in this order, so the project directory is the repository root and every relative
  * path in the overlay resolves from there. This is the same pair `just e2e-up` passes. */
-const COMPOSE_FILES = ["-f", "docker-compose.yml", "-f", "e2e/docker-compose.e2e.yml"] as const;
+export const COMPOSE_FILES = [
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "e2e/docker-compose.e2e.yml",
+] as const;
 
 /* A one-shot must not start dependencies: Postgres is already up, and `run` without this waits on
  * a health check it does not need. */

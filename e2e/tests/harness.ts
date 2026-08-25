@@ -17,9 +17,22 @@
  * over HTTP and ticking the maintainer is fifteen seconds, and several scenarios are sequences whose
  * later observations are about what the earlier ones left. A file is the unit of shared state, and
  * `test.describe.configure({ mode: "serial" })` in such a file makes that dependence explicit.
+ *
+ * THE STACK CLOCK HAS ONE WRITER, AND THE PROJECT THAT MOVED IT PUTS IT BACK. The same reasoning,
+ * one level up. `just e2e-clock <offset>` shifts the clock every service reads (the offset
+ * `syncr_api.core.clock.utc_now` applies, read nowhere else in the tree) and restarts api and
+ * worker. That shift is STACK STATE, not
+ * test state: it outlives the file that asked for it, survives a suite restart, and nothing else in
+ * the tree sets it. So a FILE may no more shift the clock than it may skip another file's seed:
+ * clock-moving scenarios live under `tests/clock/`, which only the `clock` project runs, and that
+ * project declares `clock-restore` as its teardown project. The teardown puts the real clock back
+ * when the project finishes (success, failure, or a bite mid-file) and then asserts, as a file
+ * running after the clock-moving ones, that it sees the real clock. Every other file treats the
+ * stack clock as the real one, because by the time it can run, it is.
  */
 
 import { test as base, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import type { ApiClient } from "../src/api/client.ts";
 import { SESSION_COOKIE } from "../src/api/headers.ts";
@@ -65,6 +78,20 @@ export const usingFixture = (name: string): void => {
   test.afterAll(() => {
     seeded = null;
   });
+};
+
+/** Pin the browser's own clock to `instant`, which is the instant the shifted stack reports.
+ *
+ * WHY THIS EXISTS AND WHY THE CALLER PASSES THE INSTANT IN: the week grid reads `Date.now()`
+ * (`WeekRoute.tsx:147,177`) to place the current hour, and the browser's clock is one of the clocks
+ * a stack shift does not move: the offset lives in the api and worker processes only. A server-only
+ * shift therefore leaves a browser assertion comparing two clocks, which passes whenever both are
+ * wrong the same way. Pinning the page to the SAME instant the stack reports makes the two agree by
+ * construction rather than by luck; deriving the instant inside the helper would be exactly the kind
+ * of second reading that lets them disagree again.
+ */
+export const pinBrowserClock = async (page: Page, instant: Date | number): Promise<void> => {
+  await page.clock.setFixedTime(instant);
 };
 
 export { expect };
