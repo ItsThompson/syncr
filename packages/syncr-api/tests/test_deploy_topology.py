@@ -10,6 +10,7 @@ style preference:
   default for the four this repository builds, so a missing digest ABORTS compose rather than
   floating to `latest`.
 - **Every service declares a memory limit**, and each matches `MEMORY_LIMITS` below.
+- **Every service declares a bounded log**, so no container's log grows until the disk is full.
 - **The nightly one-shots are not resident**, so nothing that should run once a day is a service.
 
 READ FROM `docker compose config` RATHER THAN FROM THE FILES. That is the resolved form, with
@@ -28,6 +29,7 @@ import json
 import os
 import shutil
 import subprocess
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Final
 
 import pytest
@@ -102,6 +104,10 @@ DATA_NET_SERVICES: Final[Mapping[str, str]] = {
 # The services that must not be resident. Each is work that happens on a schedule, and a service
 # that restarts them would hold their memory all day: the fitter alone is ~800 MB while running.
 ONE_SHOTS: Final = ("learning", "ops", "fingerprint")
+
+# The two `json-file` options that bound a container's log, and BOTH must be declared:
+# `max-file` alone rotates nothing, because rotation has no size to trigger on.
+BOUNDED_LOG_KEYS: Final = ("max-size", "max-file")
 
 # Every third-party image the deploy overlay pins LITERALLY, with the tag each digest was read from.
 # An exact list rather than a count, so a pin that goes missing while another is added is visible.
@@ -182,6 +188,26 @@ def published_ports(configuration: dict[str, Any]) -> Iterator[tuple[str, Any]]:
     for name, service in services(configuration).items():
         for port in service.get("ports", ()):
             yield name, port
+
+
+def logging_options(service: dict[str, Any]) -> dict[str, str]:
+    return ((service.get("logging") or {}).get("options")) or {}
+
+
+def assert_every_service_declares_a_bounded_log(configuration: dict[str, Any]) -> None:
+    """Fail unless every service in this resolved configuration carries the log bound.
+
+    An empty service set fails too: a reading over nothing would otherwise pass while looking
+    as though it had bounded a stack. The failure names each service and the keys it lacks.
+    """
+    found = services(configuration)
+    assert found, "the configuration declares no services, so there is nothing to bound"
+    unbounded = {
+        name: missing
+        for name, service in found.items()
+        if (missing := [key for key in BOUNDED_LOG_KEYS if key not in logging_options(service)])
+    }
+    assert not unbounded, f"these services declare no bounded log: {unbounded}"
 
 
 class TestTheTunnelIsTheOnlyIngress:
@@ -382,6 +408,58 @@ class TestTheResourceBudget:
         )
 
         assert resident < 8 * 1024**3
+
+
+class TestEveryServiceDeclaresABoundedLog:
+    """Docker's default driver keeps a container's log until the disk is full.
+
+    READ FROM THE RESOLVED CONFIGURATION rather than from the files, like every other claim
+    here: an anchor does not cross a file boundary and an overlay may add a service, so files
+    that agree can still resolve into a stack that runs something unbounded. The values the
+    bound carries are read over the source by `test_compose_logging.py`; this is the crossing
+    that says the deployed stack resolves to them.
+
+    THIS TEST STARTS NO CONTAINER. `docker compose config` parses and prints the resolved
+    configuration and exits, which is what makes this module runnable in CI and by an AFK agent.
+    """
+
+    def test_every_deployed_service_declares_a_bounded_log(self, deployed) -> None:
+        assert_every_service_declares_a_bounded_log(deployed)
+
+    # The two keys are RESTATED here rather than read from `BOUNDED_LOG_KEYS`, so a key dropped
+    # from the required set reddens this control instead of taking its own witness with it.
+    @pytest.mark.parametrize("key", ["max-size", "max-file"])
+    def test_a_service_that_loses_one_bound_is_reported_by_name(
+        self, deployed: dict[str, Any], key: str
+    ) -> None:
+        """The positive control for vacuity: drop one option from one service, and the failure
+        names it. Parametrized over both keys, because either alone missing is unbounded."""
+        wounded = deepcopy(deployed)
+        victim = sorted(services(wounded))[0]
+        del services(wounded)[victim]["logging"]["options"][key]
+
+        # The name must come from the assertion's own message, not from a bare-assert repr.
+        with pytest.raises(AssertionError, match=f"declare no bounded log: .*'{victim}'"):
+            assert_every_service_declares_a_bounded_log(wounded)
+
+    def test_an_empty_service_set_fails_rather_than_passing(self) -> None:
+        """A reading over nothing asserts nothing, so emptiness is a failure of its own."""
+        with pytest.raises(AssertionError, match="no services"):
+            assert_every_service_declares_a_bounded_log({"services": {}})
+
+    def test_the_stack_resolves_to_the_decided_bound(self, deployed: dict[str, Any]) -> None:
+        """The figures are a decision recorded once over the source files, and this says the
+        resolved stack carries them: an overlay could shadow an anchor with other values and
+        no reader over the declaring files would see it."""
+        # Imported here rather than at the top: that module imports `MEMORY_LIMITS` from this
+        # one, and the cycle only resolves when this import runs after both modules exist.
+        from tests.test_compose_logging import DECIDED
+
+        for name, service in services(deployed).items():
+            declared = service.get("logging") or {}
+            for key, value in DECIDED.items():
+                found = (declared if key == "driver" else logging_options(service)).get(key)
+                assert found == value, (name, key, found)
 
 
 class TestTheOneShots:
