@@ -19,12 +19,15 @@ answer observable, so the bodies here are permuted and the answer must not move.
 
 from __future__ import annotations
 
+import ast
 from datetime import UTC, datetime
 from itertools import permutations
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
+import syncr_api.calendars.ics_series as ics_series_module
 from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import UNREPRESENTABLE, IcsRejection
 from syncr_api.calendars.ics_lines import events_in, parse_components
@@ -133,7 +136,7 @@ def test_the_index_carries_every_key_that_survived_sorting(label: str) -> None:
 
     carried = _carried(series)
 
-    assert sorted(carried) == sorted(set(series.overrides) | series.tombstones)
+    assert sorted(carried) == sorted(set(series.overrides) | series.tombstones.keys())
     # One entry per key, so a key reachable twice on one instant cannot pass the crossing above.
     assert len(carried) == len(set(carried))
 
@@ -178,6 +181,14 @@ def test_the_corpus_reaches_an_instant_holding_more_than_one_key() -> None:
         "spring_forward_gap": [2],
         "skipped_date_gap": [2],
         "crowded_instant": [3],
+        # And every body this suite adds on purpose: one occurrence named in two legal forms, whose
+        # instant holds exactly the own-wall key and the foreign-zone key.
+        "one_occurrence_in_both_forms": [2],
+        "one_occurrence_in_both_forms_reversed": [2],
+        "cancelled_across_the_forms": [2],
+        "cancelled_across_the_forms_reversed": [2],
+        "cancelled_in_the_own_form": [2],
+        "cancelled_in_the_own_form_reversed": [2],
     }
 
 
@@ -307,3 +318,56 @@ def test_the_skipped_date_body_places_nothing_under_the_corpus_horizon() -> None
     assert outcome.rejected == ()
     assert _counts(outcome) == (3, 0, 0, 0)
     assert outcome.unplaced == 3
+
+
+# --------------------------------------------------------------------------------
+# One precedence implementation, read out of the source rather than trusted
+# --------------------------------------------------------------------------------
+
+# The functions that MATCH a replacement to an occurrence, and the ones that RESOLVE which
+# replacement stands. The rule lives only in the second set.
+_MATCHING_FUNCTIONS = ("expand", "_named_by")
+_RESOLVING_FUNCTIONS = ("_compete", "_resolve", "_across_forms")
+
+
+def _module_functions() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    tree = ast.parse(Path(ics_series_module.__file__).read_text(encoding="utf-8"))
+    return {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def test_precedence_is_decided_once_and_not_again_at_match_time() -> None:
+    # Which replacement stands is settled where the keys compete, before any occurrence is matched.
+    # A SECOND copy of the SEQUENCE comparison or the cancellation check pasted into the matching
+    # path would still answer the corpus right -- the winners are already in place -- while quietly
+    # re-deciding what resolution decided, so no behavioural input bites on it. What does bite is
+    # reading the source: matching must be a lookup, and both resolution sites must drive the one
+    # shared rule.
+    functions = _module_functions()
+
+    # A renamed function would silence every claim below, so the census names what it inspected.
+    for name in (*_MATCHING_FUNCTIONS, *_RESOLVING_FUNCTIONS):
+        assert name in functions, name
+
+    for name in _MATCHING_FUNCTIONS:
+        for node in ast.walk(functions[name]):
+            if isinstance(node, ast.Compare):
+                operands = [node.left, *node.comparators]
+                assert not any(
+                    isinstance(side, ast.Attribute) and side.attr == "sequence"
+                    for compared in operands
+                    for side in ast.walk(compared)
+                ), f"{name} compares SEQUENCE at match time"
+            if isinstance(node, ast.Attribute) and node.attr == "cancelled":
+                raise AssertionError(f"{name} reads a cancellation at match time")
+
+    for name in ("_resolve", "_across_forms"):
+        called = {
+            node.id
+            for node in ast.walk(functions[name])
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+        assert "_compete" in called, f"{name} runs its own precedence rule"

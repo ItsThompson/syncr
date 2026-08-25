@@ -34,8 +34,12 @@ from syncr_domain.zones import TravelOverride, ZoneProfile
 from tests.hostile_ics import (
     ALL_FEEDS,
     ASSESSMENTS_FEED,
+    CANCELLED_ACROSS_THE_FORMS,
+    CANCELLED_ACROSS_THE_FORMS_REVERSED,
     CANCELLED_DUPLICATE_MASTER,
     CANCELLED_DUPLICATE_MASTER_REVERSED,
+    CANCELLED_IN_THE_OWN_FORM,
+    CANCELLED_IN_THE_OWN_FORM_REVERSED,
     CANCELLED_NEWER_REVISION,
     CANCELLED_ORPHAN,
     DUPLICATE_ORPHANS,
@@ -45,6 +49,8 @@ from tests.hostile_ics import (
     EMPTY_FEED,
     HOLIDAY_FEED,
     MOVED_AND_CANCELLED,
+    ONE_OCCURRENCE_IN_BOTH_FORMS,
+    ONE_OCCURRENCE_IN_BOTH_FORMS_REVERSED,
     OVERRUNNING_RECURRENCE,
     PUBLISHED_OUTLOOK,
     RUNAWAY_RECURRENCE,
@@ -629,6 +635,74 @@ def test_the_surviving_replacement_does_not_depend_on_declaration_order() -> Non
         event.title for event in reversed_order.events
     }
     assert reversed_order.duplicates_discarded == 1
+
+
+@pytest.mark.parametrize(
+    "body", [ONE_OCCURRENCE_IN_BOTH_FORMS, ONE_OCCURRENCE_IN_BOTH_FORMS_REVERSED]
+)
+def test_one_occurrence_declared_in_both_forms_resolves_by_sequence(body: str) -> None:
+    # RFC 5545 lets a publisher spell one occurrence's RECURRENCE-ID as its own wall time or as the
+    # same moment in UTC or any named zone, so an export assembled from two windows can carry one
+    # edit twice under two spellings. The two components name ONE occurrence, so the SEQUENCE rule
+    # that settles same-form duplicates settles these too, and the answer cannot depend on which
+    # spelling was declared first.
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    titles = {event.title for event in outcome.events}
+    assert titles == {"Weekly", "Moved to 16:00"}
+    moved = next(event for event in outcome.events if event.title == "Moved to 16:00")
+    assert moved.interval.start == datetime(2026, 2, 17, 16, 0, tzinfo=UTC)
+    # The winner stands on the occurrence it replaced: the identity the series gives that hour.
+    assert moved.uid == "conflict@example.org#20260217T100000"
+    # Three components in, every one accounted for, read off the events and not the counters alone.
+    assert outcome.events_read == 3
+    assert outcome.placed + outcome.overrides_applied + outcome.duplicates_discarded == 3
+    assert outcome.overrides_applied == 1
+    assert outcome.duplicates_discarded == 1
+    assert outcome.cancelled_discarded == 0
+    assert outcome.unplaced == 0
+
+
+@pytest.mark.parametrize("body", [CANCELLED_ACROSS_THE_FORMS, CANCELLED_ACROSS_THE_FORMS_REVERSED])
+def test_a_cancellation_in_a_foreign_form_suppresses_a_live_override_in_the_own_form(
+    body: str,
+) -> None:
+    # The cancellation is spelled in Asia/Tokyo and the override it displaces in the occurrence's
+    # own wall time. Matching by key alone reads them as two different occurrences: the hour lands
+    # in the plan hard after the feed cancelled it. Precedence has to see both spellings together,
+    # where cancellation wins outright as it does within one form.
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert {event.title for event in outcome.events} == {"Weekly"}
+    on_the_17th = [event for event in outcome.events if event.interval.start.day == 17]
+    assert on_the_17th == []
+    assert outcome.events_read == 3
+    assert outcome.placed + outcome.overrides_applied + outcome.cancelled_discarded == 3
+    assert outcome.overrides_applied == 1
+    assert outcome.cancelled_discarded == 1
+    assert outcome.duplicates_discarded == 0
+    assert outcome.unplaced == 0
+
+
+@pytest.mark.parametrize("body", [CANCELLED_IN_THE_OWN_FORM, CANCELLED_IN_THE_OWN_FORM_REVERSED])
+def test_a_cancellation_in_the_own_form_suppresses_a_live_override_in_a_foreign_form(
+    body: str,
+) -> None:
+    # The mirror of the body above, and the direction key-matching gets silently wrong in the
+    # accounting rather than in placement: the tombstone matches exactly, so the hour is kept clear,
+    # but the displaced override is then indistinguishable from one no occurrence claimed. Counting
+    # it "read and placed nothing" would hide that the feed DID mean something by it: it was beaten
+    # by a cancellation.
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+
+    assert {event.title for event in outcome.events} == {"Weekly"}
+    assert "Moved to 16:00" not in {event.title for event in outcome.events}
+    assert outcome.events_read == 3
+    assert outcome.placed + outcome.overrides_applied + outcome.cancelled_discarded == 3
+    assert outcome.overrides_applied == 1
+    assert outcome.cancelled_discarded == 1
+    assert outcome.duplicates_discarded == 0
+    assert outcome.unplaced == 0
 
 
 def test_a_repeated_cancellation_of_one_occurrence_is_counted() -> None:

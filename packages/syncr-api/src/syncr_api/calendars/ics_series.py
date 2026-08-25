@@ -33,7 +33,7 @@ found a master".
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Final
 
 from syncr_api.calendars.events import RawEvent
@@ -82,14 +82,19 @@ class Series:
 
     ``cancelled`` counts every component a cancellation discarded, whichever form it took: a
     cancelled master, a tombstone whose series is absent, a replacement of a series the feed
-    cancelled, and an override a tombstone on the same occurrence displaced. Each places nothing,
-    and each needs counting or it vanishes from the arithmetic. :func:`parse_feed` adds one more
-    form to the reported total, a tombstone no occurrence claimed, so a caller's field holds five.
+    cancelled, and an override a tombstone on the same occurrence displaced -- in either spelling of
+    that occurrence, since a body may name one occurrence in more than one legal ``RECURRENCE-ID``
+    form. Each places nothing, and each needs counting or it vanishes from the arithmetic.
+    :func:`parse_feed` adds one more form to the reported total, a tombstone no occurrence claimed,
+    so a caller's field holds five.
     """
 
     masters: tuple[EventComponent, ...] = ()
     overrides: Mapping[OccurrenceKey, EventComponent] = field(default_factory=dict)
-    tombstones: frozenset[OccurrenceKey] = frozenset()
+    # A key per cancelled occurrence, mapped to the component that cancelled it. The component is
+    # kept so precedence between the two legal spellings of one occurrence can be settled after
+    # sorting, where a tombstone competes with a live override it was sorted beside.
+    tombstones: Mapping[OccurrenceKey, EventComponent] = field(default_factory=dict)
     same_instant: Mapping[InstantKey, tuple[OccurrenceKey, ...]] = field(default_factory=dict)
     orphans: tuple[EventComponent, ...] = ()
     duplicates: int = 0
@@ -102,10 +107,19 @@ class Placement:
 
     ``applied`` is what lets a replacement's fate be decided by expansion rather than by the
     partition: a key nothing consumed named an occurrence the rule never produces.
+
+    ``duplicates``, ``cancelled``, and ``resolved_away`` carry what cross-form precedence discarded
+    while deciding which spelling of an occurrence stands. The losers are gone from the series' own
+    registers by the time the partition compares what was registered against what expansion
+    consumed, so each count travels with the placement that produced it instead of being guessed at
+    afterwards.
     """
 
     events: tuple[RawEvent, ...] = ()
     applied: frozenset[OccurrenceKey] = frozenset()
+    duplicates: int = 0
+    cancelled: int = 0
+    resolved_away: frozenset[OccurrenceKey] = frozenset()
 
 
 def sort_components(readable: list[EventComponent]) -> Series:
@@ -183,7 +197,7 @@ def sort_components(readable: list[EventComponent]) -> Series:
     return Series(
         masters=tuple(live.values()),
         overrides=held_by_a_series.overrides,
-        tombstones=frozenset(held_by_a_series.tombstones),
+        tombstones=held_by_a_series.tombstones,
         same_instant=held_by_a_series.same_instant,
         orphans=tuple(orphaned.overrides.values()),
         duplicates=duplicates,
@@ -196,7 +210,7 @@ class _Resolved:
     """Replacements of one group, resolved to at most one per occurrence."""
 
     overrides: dict[OccurrenceKey, EventComponent]
-    tombstones: set[OccurrenceKey]
+    tombstones: dict[OccurrenceKey, EventComponent]
     same_instant: dict[InstantKey, tuple[OccurrenceKey, ...]]
     duplicates: int
     cancelled: int
@@ -205,8 +219,8 @@ class _Resolved:
 def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     """One replacement per occurrence, and a count of everything that lost.
 
-    Three rules, and they hold whether or not the series these replace is present, which is why this
-    is one function rather than two branches that drifted apart:
+    The rules hold whether or not the series these replace is present, which is why this is one
+    function rather than two branches that drifted apart:
 
     - Two live replacements of one occurrence resolve by ``SEQUENCE``, tie to the first declared,
       and the loser is counted. An overlapping export repeats an override as readily as a master.
@@ -226,13 +240,9 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
     find a replacement written in the other legal form. It is an INDEX and not the key, because
     several keys can share one instant: see :func:`_by_instant`.
     """
-    overrides: dict[OccurrenceKey, EventComponent] = {}
-    tombstones: set[OccurrenceKey] = set()
+    ordered = list(replacements)
     instants: dict[OccurrenceKey, datetime] = {}
-    duplicates = 0
-    cancelled = 0
-    for replacement in replacements:
-        key = replaced_key(replacement)
+    for replacement in ordered:
         # `replaces_at` is optional on the component because most components have no RECURRENCE-ID,
         # but anything sorted as a replacement carries one, so this cannot be None here and the
         # check is the type's rather than the value's. Falling back to `key[1]` would be worse than
@@ -240,12 +250,47 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
         # match it.
         if replacement.replaces_at is None:  # pragma: no cover - only replacements reach here
             raise MalformedValue(_NOT_A_REPLACEMENT)
-        instants[key] = replacement.replaces_at
+        instants[replaced_key(replacement)] = replacement.replaces_at
+    overrides, tombstones, duplicates, cancelled = _compete(
+        (replaced_key(replacement), replacement) for replacement in ordered
+    )
+    return _Resolved(
+        overrides=overrides,
+        tombstones=tombstones,
+        same_instant=_by_instant(instants),
+        duplicates=duplicates,
+        cancelled=cancelled,
+    )
+
+
+def _compete(
+    entries: Iterable[tuple[OccurrenceKey, EventComponent]],
+) -> tuple[dict[OccurrenceKey, EventComponent], dict[OccurrenceKey, EventComponent], int, int]:
+    """The ONE precedence rule, applied to whatever components compete for occurrences.
+
+    Entries are ``(key, component)`` pairs; components naming different keys never interact, so a
+    caller may hand replacements of several occurrences at once. Returns the live survivors, the
+    tombstones with the components that cancelled them, and the two discard counts the losers cost:
+
+    - Two live replacements of one key resolve by ``SEQUENCE``, tie to the first declared.
+    - A repeated cancellation is counted rather than absorbed by the set of keys held.
+    - A cancellation beats a live replacement outright, and the override it displaces is counted.
+      See :func:`_resolve` for why outright rather than on ``SEQUENCE``.
+
+    Both resolution sites -- :func:`_resolve` at sorting time and :func:`_across_forms` where the
+    produced walls have reached precedence -- drive THIS loop, so the rule cannot drift between the
+    spelling a body declares an occurrence in and the one it does not.
+    """
+    overrides: dict[OccurrenceKey, EventComponent] = {}
+    tombstones: dict[OccurrenceKey, EventComponent] = {}
+    duplicates = 0
+    cancelled = 0
+    for key, replacement in entries:
         if replacement.cancelled:
             if key in tombstones:
                 duplicates += 1
                 continue
-            tombstones.add(key)
+            tombstones[key] = replacement
             continue
         held = overrides.get(key)
         if held is None:
@@ -255,16 +300,10 @@ def _resolve(replacements: Iterable[EventComponent]) -> _Resolved:
         if replacement.sequence > held.sequence:
             overrides[key] = replacement
 
-    for key in tombstones & overrides.keys():
+    for key in tombstones.keys() & overrides.keys():
         del overrides[key]
         cancelled += 1
-    return _Resolved(
-        overrides=overrides,
-        tombstones=tombstones,
-        same_instant=_by_instant(instants),
-        duplicates=duplicates,
-        cancelled=cancelled,
-    )
+    return overrides, tombstones, duplicates, cancelled
 
 
 def _by_instant(
@@ -296,6 +335,85 @@ def _wall_of(key: OccurrenceKey) -> datetime:
     return key[1]
 
 
+def _across_forms(
+    series: Series, master: EventComponent, produced: Iterable[datetime], *, profile: ZoneProfile
+) -> tuple[Series, int, int, frozenset[OccurrenceKey]]:
+    """Settle replacements of ONE occurrence that a body named in more than one legal form.
+
+    RFC 5545 permits a ``RECURRENCE-ID`` as the occurrence's own wall time, as UTC, or in any named
+    zone, so one edit can arrive twice under two spellings. Sorting resolves each spelling against
+    its own key, which answers two bodies wrongly: two live spellings of one occurrence both
+    survive, and the one matching the occurrence's wall wins whatever ``SEQUENCE`` says; a
+    cancellation in the other form never meets the override it cancels. The keys have to compete.
+
+    **The produced walls are what make the competition safe.** Two DISTINCT occurrences can share
+    an instant -- a wall inside a spring-forward gap resolves onto the same instant as the real wall
+    an hour later, and a skipped date folds a whole day forward -- so keys sharing an instant cannot
+    simply be merged. What discriminates is how many of THIS series' own walls resolve onto the
+    instant: one means every key here names THE occurrence, so they compete; two or more mean two
+    occurrences share it and which spelling names which is the claiming question, answered at match
+    time by :func:`_named_by` exactly as before.
+
+    Runs per master rather than once per feed because the walls are a master's, and the answer for
+    one series never touches another. The losers are dropped from the registers and returned as
+    ``resolved_away`` keys, so the partition's comparison of registered against consumed cannot
+    count them a second time; their discard counts travel back for the same reason.
+
+    A feed with no cross-form index pays nothing: the early return is the ordinary body's path.
+    """
+    if not series.same_instant:
+        return series, 0, 0, frozenset()
+    instants = [resolve(master.start, profile, wall=wall) for wall in produced]
+    overrides = dict(series.overrides)
+    tombstones = dict(series.tombstones)
+    duplicates = 0
+    cancelled = 0
+    resolved_away: set[OccurrenceKey] = set()
+    for (uid, instant), keys in series.same_instant.items():
+        if uid != master.uid or sum(1 for at in instants if at == instant) != 1:
+            continue
+        # Every spelling here names THE one occurrence this series produces on this instant, so the
+        # group competes for a single slot. The entries are re-keyed onto that occurrence's own
+        # wall before the rule runs: the rule compares what names one occurrence, and the survivor,
+        # whichever spelling won, is held against the key matching will hit first.
+        own_wall = next(wall for wall, at in zip(produced, instants, strict=True) if at == instant)
+        own_key = (uid, own_wall)
+        lives, tombs, group_duplicates, group_cancelled = _compete(
+            (
+                own_key,
+                held if (held := overrides.get(key)) is not None else tombstones[key],
+            )
+            for key in keys
+        )
+        duplicates += group_duplicates
+        cancelled += group_cancelled
+        for key in keys:
+            resolved_away.add(key)
+        resolved_away.discard(own_key)
+        for key, component in {**lives, **tombs}.items():
+            if component.cancelled:
+                tombstones[key] = component
+            else:
+                overrides[key] = component
+    if not resolved_away:
+        return series, duplicates, cancelled, frozenset()
+    return (
+        replace(
+            series,
+            overrides={key: item for key, item in overrides.items() if key not in resolved_away},
+            tombstones={key: item for key, item in tombstones.items() if key not in resolved_away},
+            same_instant={
+                at: tuple(key for key in keys if key not in resolved_away)
+                for at, keys in series.same_instant.items()
+                if any(key not in resolved_away for key in keys)
+            },
+        ),
+        duplicates,
+        cancelled,
+        frozenset(resolved_away),
+    )
+
+
 def expand(
     master: EventComponent, series: Series, *, horizon: Interval, profile: ZoneProfile
 ) -> Placement:
@@ -319,17 +437,23 @@ def expand(
     recurring = master.recurrence.recurring
     built: list[RawEvent] = []
     applied: set[OccurrenceKey] = set()
-    produced = occurrences(master.start, master.recurrence, window=window, profile=profile)
+    # Tuple rather than the expander's own iterator: the walls are walked twice, once into the set
+    # a cross-form lookup reads and once by the loop that places each one.
+    produced = tuple(occurrences(master.start, master.recurrence, window=window, profile=profile))
     # Every wall this master yields, so a cross-form lookup can tell a replacement that belongs to
     # ANOTHER occurrence of this same series from one that belongs to this occurrence written
-    # differently.
+    # differently. The same walls are what let precedence across the two legal RECURRENCE-ID forms
+    # run before matching: see :func:`_across_forms`.
     walls = frozenset(produced)
+    effective, merged_duplicates, merged_cancelled, resolved_away = _across_forms(
+        series, master, produced, profile=profile
+    )
     for wall in produced:
-        key = _named_by(series, master, wall, applied=applied, walls=walls, profile=profile)
-        if key in series.tombstones:
+        key = _named_by(effective, master, wall, applied=applied, walls=walls, profile=profile)
+        if key in effective.tombstones:
             applied.add(key)
             continue
-        replacement = series.overrides.get(key)
+        replacement = effective.overrides.get(key)
         if replacement is not None:
             applied.add(key)
         source = replacement or master
@@ -348,7 +472,13 @@ def expand(
                 transparent=source.transparent,
             )
         )
-    return Placement(events=tuple(built), applied=frozenset(applied))
+    return Placement(
+        events=tuple(built),
+        applied=frozenset(applied),
+        duplicates=merged_duplicates,
+        cancelled=merged_cancelled,
+        resolved_away=resolved_away,
+    )
 
 
 def _named_by(
@@ -496,7 +626,7 @@ def stranded(
             reachable.append(replacement)
             continue
         superseded += 1
-    return tuple(reachable), superseded, len(series.tombstones - applied)
+    return tuple(reachable), superseded, len(series.tombstones.keys() - applied)
 
 
 def _never_offered(

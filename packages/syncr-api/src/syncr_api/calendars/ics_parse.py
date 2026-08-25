@@ -31,7 +31,7 @@ horizon.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from time import monotonic
 from typing import TYPE_CHECKING
@@ -94,6 +94,12 @@ class _Collected:
     placed: int = 0
     unplaced: int = 0
     remaining: int = MAX_EVENTS_PER_FEED
+    # What cross-form precedence discarded while each master expanded. The losers are gone from the
+    # series' registers by the time `stranded` compares registered against consumed, so both the
+    # counts and the keys travel here rather than being inferred afterwards.
+    cross_form_duplicates: int = 0
+    cross_form_cancelled: int = 0
+    resolved_away: set[OccurrenceKey] = field(default_factory=set)
 
     def take(self, source: EventComponent, produce: Callable[[], Placement]) -> None:
         """Run one component's placement, or report why it produced nothing."""
@@ -114,6 +120,12 @@ class _Collected:
             self.unplaced += 1
         self.events.extend(placed.events)
         self.applied |= placed.applied
+        # Recorded only on success: a component refused whole contributes nothing, and its
+        # cross-form resolutions stay unmade so its replacements read as never offered, exactly as
+        # they do for a master whose expansion was refused.
+        self.cross_form_duplicates += placed.duplicates
+        self.cross_form_cancelled += placed.cancelled
+        self.resolved_away |= placed.resolved_away
         self.remaining -= len(placed.events)
 
 
@@ -161,6 +173,24 @@ def parse_feed(
             master, _produce(master, series, horizon=horizon, profile=profile, bound=bound)
         )
 
+    # Keys precedence across the two RECURRENCE-ID forms resolved away are already counted by the
+    # placement that resolved them. Dropping them from the registers keeps `stranded`, which reads
+    # what sorting registered, from counting any of them a second time.
+    if collected.resolved_away:
+        series = replace(
+            series,
+            overrides={
+                key: item
+                for key, item in series.overrides.items()
+                if key not in collected.resolved_away
+            },
+            tombstones={
+                key: item
+                for key, item in series.tombstones.items()
+                if key not in collected.resolved_away
+            },
+        )
+
     # Which replacements found an occurrence is only known once every master has expanded, so the
     # ones that found none are accounted for after that rather than guessed at during the partition.
     reachable, superseded, unclaimed = stranded(
@@ -181,8 +211,8 @@ def parse_feed(
         events=tuple(collected.events),
         rejections=collected.rejections.tally(),
         events_read=len(components),
-        duplicates_discarded=series.duplicates,
-        cancelled_discarded=series.cancelled + unclaimed,
+        duplicates_discarded=series.duplicates + collected.cross_form_duplicates,
+        cancelled_discarded=series.cancelled + collected.cross_form_cancelled + unclaimed,
         placed=collected.placed,
         overrides_applied=len(collected.applied),
         # A replacement no occurrence claimed is counted here rather than as a duplicate. Sometimes

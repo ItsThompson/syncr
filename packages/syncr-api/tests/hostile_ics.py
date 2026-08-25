@@ -764,6 +764,90 @@ CANCELLED_DUPLICATE_MASTER_REVERSED: Final = (
     + "END:VCALENDAR\r\n"
 )
 
+
+def _foreign_replacement(*lines: str) -> str:
+    """A replacement of the second occurrence, named in a zone the series does not use."""
+    body = "\r\n".join(lines)
+    return (
+        "BEGIN:VEVENT\r\nUID:conflict@example.org\r\n"
+        "RECURRENCE-ID;TZID=Asia/Tokyo:20260217T190000\r\n" + body + "\r\nEND:VEVENT\r\n"
+    )
+
+
+# One occurrence declared in BOTH legal RECURRENCE-ID forms: the occurrence's own instant written
+# as UTC and written in Asia/Tokyo (both name 2026-02-17T10:00Z). An export assembled from two
+# windows carries the same edit twice under different spellings, and the higher SEQUENCE has to
+# win whichever way round the publisher declares them.
+_LOW_IN_THE_OWN_FORM: Final = _replacement(
+    "SEQUENCE:1",
+    "SUMMARY:Moved to 14:00",
+    "DTSTART:20260217T140000Z",
+    "DTEND:20260217T150000Z",
+)
+_HIGH_IN_A_FOREIGN_FORM: Final = _foreign_replacement(
+    "SEQUENCE:3",
+    "SUMMARY:Moved to 16:00",
+    "DTSTART:20260217T160000Z",
+    "DTEND:20260217T170000Z",
+)
+ONE_OCCURRENCE_IN_BOTH_FORMS: Final = _series_with(
+    _LOW_IN_THE_OWN_FORM,
+    _HIGH_IN_A_FOREIGN_FORM,
+)
+ONE_OCCURRENCE_IN_BOTH_FORMS_REVERSED: Final = _series_with(
+    _HIGH_IN_A_FOREIGN_FORM,
+    _LOW_IN_THE_OWN_FORM,
+)
+
+# A cancellation in the foreign form against a live replacement in the occurrence's own form.
+# The feed's latest word is that the hour does not happen, so the override it displaces is counted
+# and nothing places on the 17th, however the two are ordered.
+_LIVE_IN_THE_OWN_FORM: Final = _replacement(
+    "SEQUENCE:5",
+    "SUMMARY:Moved to 14:00",
+    "DTSTART:20260217T140000Z",
+    "DTEND:20260217T150000Z",
+)
+_CANCELLED_IN_A_FOREIGN_FORM: Final = _foreign_replacement(
+    "STATUS:CANCELLED",
+    "SUMMARY:Cancelled from Tokyo",
+    "DTSTART:20260217T100000Z",
+    "DTEND:20260217T110000Z",
+)
+CANCELLED_ACROSS_THE_FORMS: Final = _series_with(
+    _LIVE_IN_THE_OWN_FORM,
+    _CANCELLED_IN_A_FOREIGN_FORM,
+)
+CANCELLED_ACROSS_THE_FORMS_REVERSED: Final = _series_with(
+    _CANCELLED_IN_A_FOREIGN_FORM,
+    _LIVE_IN_THE_OWN_FORM,
+)
+
+# The mirror: the cancellation in the occurrence's own form, the live override in the foreign one.
+# The displaced override cannot be told from a stale one by its key alone, so the displacement has
+# to be seen where the two forms meet.
+_CANCELLED_IN_THE_OWN_FORM: Final = _replacement(
+    "STATUS:CANCELLED",
+    "SUMMARY:Cancelled",
+    "DTSTART:20260217T100000Z",
+    "DTEND:20260217T110000Z",
+)
+_LIVE_IN_A_FOREIGN_FORM: Final = _foreign_replacement(
+    "SEQUENCE:9",
+    "SUMMARY:Moved to 16:00",
+    "DTSTART:20260217T160000Z",
+    "DTEND:20260217T170000Z",
+)
+CANCELLED_IN_THE_OWN_FORM: Final = _series_with(
+    _CANCELLED_IN_THE_OWN_FORM,
+    _LIVE_IN_A_FOREIGN_FORM,
+)
+CANCELLED_IN_THE_OWN_FORM_REVERSED: Final = _series_with(
+    _LIVE_IN_A_FOREIGN_FORM,
+    _CANCELLED_IN_THE_OWN_FORM,
+)
+
+
 # Every body above, so a test can assert a property over the whole corpus.
 ALL_FEEDS: Final = {
     "university_timetable": UNIVERSITY_TIMETABLE,
@@ -781,6 +865,12 @@ ALL_FEEDS: Final = {
     "cancelled_duplicate_master_reversed": CANCELLED_DUPLICATE_MASTER_REVERSED,
     "duplicate_tombstones": DUPLICATE_TOMBSTONES,
     "shifted_by_a_duplicate_master": SHIFTED_BY_A_DUPLICATE_MASTER,
+    "one_occurrence_in_both_forms": ONE_OCCURRENCE_IN_BOTH_FORMS,
+    "one_occurrence_in_both_forms_reversed": ONE_OCCURRENCE_IN_BOTH_FORMS_REVERSED,
+    "cancelled_across_the_forms": CANCELLED_ACROSS_THE_FORMS,
+    "cancelled_across_the_forms_reversed": CANCELLED_ACROSS_THE_FORMS_REVERSED,
+    "cancelled_in_the_own_form": CANCELLED_IN_THE_OWN_FORM,
+    "cancelled_in_the_own_form_reversed": CANCELLED_IN_THE_OWN_FORM_REVERSED,
     "duplicate_orphans": DUPLICATE_ORPHANS,
     "cancelled_orphan": CANCELLED_ORPHAN,
     "cancelled_newer_revision": CANCELLED_NEWER_REVISION,
