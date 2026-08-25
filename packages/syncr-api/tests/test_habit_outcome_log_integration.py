@@ -102,6 +102,10 @@ A_REASON = ReasonRecord((Bound(BindingSource.ROTATION, "Gym · rotation"),))
 GYM_SPLIT = ["Push", "Pull", "Legs"]
 THREE_A_WEEK: dict[str, Any] = {"kind": "times_per_week", "timesPerWeek": 3}
 
+# A block id is a 64-hex digest, so this one names no real block: the row exists only to spell a
+# pre-mark binding, and nothing reads it back by block.
+UNMARKED_BLOCK_ID = "e" * 64
+
 # One skip more than the declared cap can hold, so the clamp is observable rather than assumed. The
 # cap is a product of the habit's own two figures, so it is derived here from the cadence every
 # habit below is declared with and the periods a habit that states none is created with.
@@ -409,7 +413,7 @@ def test_the_projection_reads_the_mark_the_write_path_stored_and_defaults_the_ro
                     BlockOutcome(
                         id=uuid4(),
                         tenant_id=owner.tenant_id,
-                        block_id="e" * 64,
+                        block_id=UNMARKED_BLOCK_ID,
                         binding={
                             KIND: BindingKind.HABIT.value,
                             ENTITY_ID: str(habit_id),
