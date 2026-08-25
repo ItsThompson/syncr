@@ -2082,7 +2082,8 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
     a deployed host `syncr` is the live stack. So the recipe whose own comment calls a compose route
     reaching the wrong database "the most expensive hazard in this repository" WAS that route, and
     nothing refused: `just drill-seed` on a host writes invented tenants, weeks and outcomes
-    into real plan history. `drill-local` seeds through the product's write paths now.
+    into real plan history. `drill-local` seeds through the product's write paths now, and
+    `drill-pitr-local` still invokes this one for its evidence.
 
     THE RULE IS STATED OVER A DERIVED SET RATHER THAN OVER A LIST, because the defect a list cannot
     catch is a forgotten member: a second seeding recipe added beside the two that exist.
@@ -2106,9 +2107,10 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
         """The derived set, stated whole so a member that stops being derived is visible.
 
         A parametrization derived from this set SHRINKS silently: rewiring `drill-local` onto
-        the write-path seeder dropped its case here rather than reddening it.
+        the write-path seeder dropped its case here rather than reddening it. SR-DEPLOY-18's
+        rehearsal reaches the seed too, which is how it has evidence to lose.
         """
-        assert _recipes_reaching_seed_data() == {"drill-seed"}
+        assert _recipes_reaching_seed_data() == {"drill-seed", "drill-pitr-local"}
 
     @pytest.mark.parametrize("recipe", sorted(_recipes_reaching_seed_data()))
     def test_it_refuses_before_any_other_dependency(self, recipe: str) -> None:
