@@ -44,6 +44,7 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.habits.config import HABITS_PREFIX
+from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.preferences.models import PreferenceRow
 from syncr_api.tasks.config import TASKS_PREFIX
@@ -762,6 +763,100 @@ def test_an_unknown_field_is_refused(
 
 
 # --------------------------------------------------------------------------------
+# The idempotency guard
+# --------------------------------------------------------------------------------
+
+
+def keyed(headers: dict[str, str], key: str) -> dict[str, str]:
+    """The caller's headers with one idempotency key added."""
+    return {**headers, IDEMPOTENCY_KEY_HEADER: key}
+
+
+@pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
+def test_one_idempotency_key_replaying_a_replacement_answers_the_stored_body(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+    kind: str,
+) -> None:
+    key = uuid4().hex
+    sent = keyed(signed_in, key)
+
+    first = http.put(owned.path(kind), json=GYM_WINDOWS, headers=sent)
+    second = http.put(owned.path(kind), json=GYM_WINDOWS, headers=sent)
+
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert first.json() == second.json()
+    assert len(preference_rows(live_database_url, owner.tenant_id)) == 1
+
+
+def test_a_repeat_under_one_key_replays_the_stored_answer_rather_than_re_executing(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owned: Owned,
+    live_database_url: str,
+    owner: UserRecord,
+) -> None:
+    # The convergence a repeat would reach by executing again is not the guarantee. Between the
+    # first request and its retry the preference is removed, so a re-execution would store windows
+    # again and leave a row; the replay answers the stored body and leaves the removal standing.
+    # The row set is the witness: identical response bodies alone cannot tell the two apart.
+    key = uuid4().hex
+    sent = keyed(signed_in, key)
+
+    stored = http.put(owned.area, json=GYM_WINDOWS, headers=sent)
+    assert stored.status_code == HTTPStatus.OK, stored.text
+
+    assert http.delete(owned.area, headers=signed_in).status_code == HTTPStatus.OK
+    assert preference_rows(live_database_url, owner.tenant_id) == []
+
+    retried = http.put(owned.area, json=GYM_WINDOWS, headers=sent)
+
+    assert retried.status_code == HTTPStatus.OK, retried.text
+    assert retried.json() == stored.json()
+    assert preference_rows(live_database_url, owner.tenant_id) == []
+
+
+@pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
+def test_one_idempotency_key_replaying_a_removal_answers_the_stored_claim(
+    http: TestClient, signed_in: dict[str, str], owned: Owned, kind: str
+) -> None:
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+    sent = keyed(signed_in, uuid4().hex)
+
+    first = http.delete(owned.path(kind), headers=sent)
+    second = http.delete(owned.path(kind), headers=sent)
+
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert first.json() == second.json()
+
+
+def test_a_retried_removal_under_one_key_does_not_remove_what_came_after_it(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    # The same distinction on the delete side, where a client retrying is the case that actually
+    # happens. The retry must answer the claim the first removal stored, not run again: an
+    # override declared after the first removal survives it.
+    put(http, signed_in, owned.habit, windows=[EVENING], strength="soft")
+    sent = keyed(signed_in, uuid4().hex)
+
+    first = http.delete(owned.habit, headers=sent)
+    assert first.status_code == HTTPStatus.OK, first.text
+    assert first.json()["declared"] is None
+
+    put(http, signed_in, owned.habit, windows=[EARLY], strength="strong")
+
+    retried = http.delete(owned.habit, headers=sent)
+
+    assert retried.status_code == HTTPStatus.OK, retried.text
+    assert retried.json() == first.json()
+    read_back = http.get(owned.habit, headers=signed_in).json()
+    assert read_back["declared"]["windows"] == [{"start": "05:30:00", "end": "07:00:00"}]
+
+
+# --------------------------------------------------------------------------------
 # Replacement and removal
 # --------------------------------------------------------------------------------
 
@@ -784,11 +879,11 @@ def test_a_replacement_leaves_one_row_and_the_last_body_wins(
     assert body["declared"]["windows"] == [{"start": "19:00:00", "end": "21:00:00"}]
 
 
-def test_a_repeated_replacement_answers_the_same_body(
+def test_a_repeated_replacement_without_a_key_answers_the_same_body(
     http: TestClient, signed_in: dict[str, str], owned: Owned
 ) -> None:
-    # Which is why these routes take no idempotency guard: a repeat is indistinguishable from the
-    # first call, so there is nothing for a guard to protect.
+    # The guard is offered, not demanded: a caller that sends no key gets the plain convergence
+    # these operations have always had, and the guarantee under a key is tested below.
     first = put(http, signed_in, owned.area, **GYM_WINDOWS)
     second = put(http, signed_in, owned.area, **GYM_WINDOWS)
 

@@ -45,13 +45,18 @@ from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.credentials import AUTHORIZATION_HEADER
 from syncr_api.core.db import create_database, create_db_lifespan
-from syncr_api.core.errors import Forbidden, Unauthorized
+from syncr_api.core.errors import Forbidden, NotFound, Unauthorized
 from syncr_api.core.scopes import Scope
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.oauth.config import build_oauth_config
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
+from syncr_api.preferences.config import (
+    AREA_PREFERENCE_PATH,
+    HABIT_PREFERENCE_PATH,
+    TASK_PREFERENCE_PATH,
+)
 from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.templates.config import DAY_TYPES_PREFIX
@@ -93,6 +98,20 @@ ROUTINES_ROUTE = ROUTINES_PREFIX
 GUARDED_AND_BROWSER_ONLY = {
     "day_type": (DAY_TYPES_ROUTE, {"name": "Weekday"}),
     "routine": (ROUTINES_ROUTE, {"title": "Sleep", "targetTime": "23:00", "durationMinutes": 480}),
+}
+
+# The six guarded preference operations, a PUT and a DELETE per owner kind. The identifiers are
+# fabricated because the perimeter answers before any owner lookup: what is under test is which
+# credential gets past it, not what the handler answers afterwards.
+PREFERENCE_BODY = {"windows": [], "strength": "soft"}
+
+PREFERENCE_OPERATIONS = {
+    "put-area": ("PUT", AREA_PREFERENCE_PATH.format(area_id=uuid4()), PREFERENCE_BODY),
+    "put-habit": ("PUT", HABIT_PREFERENCE_PATH.format(habit_id=uuid4()), PREFERENCE_BODY),
+    "put-task": ("PUT", TASK_PREFERENCE_PATH.format(task_id=uuid4()), PREFERENCE_BODY),
+    "delete-area": ("DELETE", AREA_PREFERENCE_PATH.format(area_id=uuid4()), None),
+    "delete-habit": ("DELETE", HABIT_PREFERENCE_PATH.format(habit_id=uuid4()), None),
+    "delete-task": ("DELETE", TASK_PREFERENCE_PATH.format(task_id=uuid4()), None),
 }
 
 # A hostile page's origin: not in the deployment's allowed set, and the shape a forged cross-origin
@@ -304,6 +323,33 @@ def test_a_guarded_route_outside_the_catalog_refuses_a_token_and_serves_the_cook
     assert refused.status_code == Unauthorized.status, refused.text
     assert refused.json()["type"] == Unauthorized.type
     assert browser.status_code == 201, browser.text
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"), PREFERENCE_OPERATIONS.values(), ids=PREFERENCE_OPERATIONS.keys()
+)
+def test_a_guarded_preference_route_refuses_a_token_and_serves_the_cookie(
+    http: TestClient,
+    owner: UserRecord,
+    method: str,
+    path: str,
+    body: dict[str, object] | None,
+) -> None:
+    # The six preference routes take the idempotency guard, whose dependency resolves the
+    # either-credential perimeter for itself; each route's own `PrincipalDep` is what keeps the
+    # token out. The answer discriminates: a token getting past would reach the owner lookup and
+    # answer 404, or a scope check with 403, never this 401.
+    token = cli_bearer_header(http, owner.email)
+    cookie = _signed_in(http, owner.email)
+
+    refused = http.request(
+        method, path, json=body, headers={**token, IDEMPOTENCY_KEY_HEADER: f"cli-{method}-{path}"}
+    )
+    browser = http.request(method, path, json=body, headers={**cookie, "Origin": BROWSER_ORIGIN})
+
+    assert refused.status_code == Unauthorized.status, refused.text
+    assert refused.json()["type"] == Unauthorized.type
+    assert browser.status_code == NotFound.status, browser.text
 
 
 def test_every_route_in_the_catalog_gets_past_the_perimeter_with_a_token(
