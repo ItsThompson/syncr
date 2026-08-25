@@ -7,9 +7,8 @@
  * wedge, an ink one under a texture one, which doubles the geometry and gives a rounding error somewhere to
  * show through.
  *
- * ONE PATTERN PER PIGMENT, NOT PER WEDGE. Two wedges holding the same step of the ramp hold the same texture:
- * that is what the ramp repeating past twelve Areas means, and minting a second identical pattern would hide it
- * rather than state it. */
+ * ONE PATTERN PER PIGMENT, NOT PER WEDGE. A texture belongs to a step of the ramp rather than to a wedge, and
+ * no two Areas hold one step, so a composition needs at most one tile per step it draws. */
 
 import { HATCH_GEOMETRY, hatchFor, patternRotation, distinctPigments } from "./hatch";
 import { chartPaint } from "./paint";

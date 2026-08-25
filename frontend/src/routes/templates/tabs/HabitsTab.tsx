@@ -1,9 +1,8 @@
 /* Habits: the table, the two derivations, and the editor.
  *
- * THE RAMP READING TRAVELS WITH THE AREAS AND IS RENDERED WHERE THE CHIPS ARE. Past twelve Areas the pigment
- * repeats, so two chips in this table can be the same ink; the api states that in a sentence and this panel's
- * footer carries it. Hiding it would leave a reader trusting a chip that no longer identifies anything, and the
- * frontend cannot fix it on its own: the wire carries the ramp step, not the position in the deal.
+ * THE RAMP READING TRAVELS WITH THE AREAS AND IS RENDERED WHERE THE CHIPS ARE. It reports how many of the
+ * sealed ramp's twelve steps this tenant's Areas hold, and no two of those steps are shared: the deal skips
+ * the steps already held, and both a declaration past twelve and a patch onto a held one are refused.
  *
  * THE EDITOR IS KEYED BY THE SELECTED HABIT, so choosing another habit mounts a fresh draft. Without the key a
  * reader would see one habit's title under another's name until they touched the field. */
@@ -67,9 +66,6 @@ export function HabitsTab({ habits, areas, selectedId, onSelect, write }: Habits
         <Panel
           title="Habits"
           headerEnd={<span className="text-eyebrow">rules on cadence, never on a template</span>}
-          /* Null until two Areas hold one step, and `undefined` is what draws no footer at all: `Panel`
-           * renders the element for any defined value, so a null would leave an empty band under the table. */
-          footer={areaReading.ramp.statement ?? undefined}
         >
           <HabitTable
             habits={habitList}

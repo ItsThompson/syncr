@@ -85,9 +85,11 @@ export const AREA_HATCHES: Readonly<Record<AreaPigment, HatchName>> = {
 /**
  * The hatch a category takes, or null for the vacancy, which takes none.
  *
- * PAST TWELVE AREAS THE PAIR REPEATS. A thirteenth Area is dealt the first step again, and the wire carries the
- * step rather than the deal, so a chart cannot tell the two apart and the hatch repeats with the pigment. The
- * Area's NAME is what separates them, which is why every wedge is labelled and every legend row names its Area.
+ * NO TWO CATEGORIES ON A CHART HOLD ONE STEP. The deal skips the steps already held, a declaration past twelve
+ * is refused, and a re-pick onto a held step is refused too, so the pair cannot repeat: every fill is
+ * redundant about a step no other Area carries. The Area's NAME stays required regardless, because ink has
+ * never been the whole of what identifies anything, which is why every wedge is labelled and every legend row
+ * names its Area.
  */
 export function hatchFor(pigment: ChartPigment): HatchName | null {
   return pigment === UNALLOCATED ? null : AREA_HATCHES[pigment];
@@ -110,9 +112,10 @@ export function patternRotation(angle: number): number {
 /**
  * The pigments a set of categories draws, each once, in the order they first appear.
  *
- * A pie declares one pattern per pigment rather than one per wedge, because two wedges holding the same step
- * hold the same texture: that is what the ramp repeating past twelve Areas MEANS, and minting a second
- * identical pattern would hide it.
+ * A pie declares one pattern per pigment rather than one per wedge, because a pattern belongs to a step of the
+ * ramp rather than to a wedge: every wedge holding that step draws the identical tile. No two Areas hold one
+ * step any more, so one declaration per drawn step is exact, and minting a second identical pattern would
+ * state nothing.
  */
 export function distinctPigments(pigments: readonly ChartPigment[]): ChartPigment[] {
   return [...new Set(pigments)];

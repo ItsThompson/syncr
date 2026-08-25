@@ -4,9 +4,9 @@
  * function returning markup declared inside a component is a component declared during a render: it would be a
  * new type on every draw and React would remount every cell in the table. Built here, they are declared once.
  *
- * THE AREA CELL DRAWS A CHIP AND ITS NAME. A chip alone stops identifying anything past twelve Areas, where the
- * sealed ramp repeats, so the kit refuses a chip without a name at the typecheck. A row whose Area the read has
- * no entry for draws the empty reading rather than a chip with no pigment.
+ * THE AREA CELL DRAWS A CHIP AND ITS NAME. Ink is never the whole of what identifies an Area, so the kit
+ * refuses a chip without a name at the typecheck. A row whose Area the read has no entry for draws the empty
+ * reading rather than a chip with no pigment.
  *
  * THE STANDING IS NOT A COLUMN. Overdue and at risk are states on the row, one channel each, which is why they
  * are absent from this file: `Table` reserves the mark cell and draws them. */

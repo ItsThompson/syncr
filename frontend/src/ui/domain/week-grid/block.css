@@ -71,8 +71,8 @@
 /* THE TWELVE STEPS OF THE SEALED RAMP, one class each, which is the only thing an Area's pigment does to a
    block: it sets the ink its top rule is drawn in and touches nothing else. Twelve rules rather than one
    interpolated class, because a class list a scan cannot read is a class list four design rules go silent on.
-   Past twelve Areas the deal wraps, so two Areas take one of these and the Area's NAME is what separates
-   them. */
+   Each step is dealt to one Area and never shared -- the deal skips the steps already held and refuses a
+   declaration past twelve -- so two blocks never draw one rule ink for two different Areas. */
 .week-block--area-01 {
   --ai: var(--area-01);
 }

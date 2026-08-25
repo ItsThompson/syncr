@@ -3,9 +3,8 @@
  * The kit knows what a Block is and does not know what a response is, so the narrowing happens here, at the
  * boundary, once. Three fields need a lookup rather than a copy.
  *
- * THE AREA IS RESOLVED TO A RAMP STEP AND A NAME, and both travel. Past twelve Areas the ramp repeats, and the
- * wire carries the STEP rather than the deal, so two Areas can hold one pigment and a chip alone stops
- * identifying anything. The name is what separates them, which is why no block reaches the grid with a pigment
+ * THE AREA IS RESOLVED TO A RAMP STEP AND A NAME, and both travel. No two Areas hold one step of the ramp,
+ * but ink has never been the whole of what identifies anything, so no block reaches the grid with a pigment
  * and no name.
  *
  * A BLOCK WITH NO AREA IS THE FRAME AND THE IMPORTED ANCHOR. One defines how much time exists and the other is

@@ -6,8 +6,8 @@
  *
  * THE TITLE IS AVAILABLE AT EVERY TIER, so the sliver tier is never a dead end. Below the label tiers the visible
  * title is not rendered at all, and the block's accessible name still carries it, along with the Area's name
- * where it has one: the ramp repeats past twelve Areas and forced-colors mode drops the pigment entirely, so the
- * name is what identity actually rests on.
+ * where it has one: forced-colors mode drops the pigment entirely, and ink has never been the whole of what
+ * identifies an Area, so the name carries identity wherever the ink cannot.
  *
  * THE VISIBLE TITLE IS NOT RENDERED RATHER THAN HIDDEN. A rule setting `display: none` under the tier attribute
  * would spend a property no state channel names, and the component already holds the tier: it is what computed

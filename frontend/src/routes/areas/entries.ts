@@ -17,8 +17,7 @@
  * names arrive from two reads, so declaring an Area leaves one redraw in which the review has a row the list
  * has no name for. Such a row takes a ramp step from its position and its identifier's short form as a label:
  * it is a real Area holding a real step, and painting it with the vacancy's ink would say the opposite of what
- * is true. A step it shares with another Area is already legal past twelve, where the name is what separates
- * them.
+ * is true. The step it holds is dealt to it alone, because no two Areas are ever dealt one step.
  *
  * A WEDGE LABEL IS BOUNDED AND A LEGEND ROW IS NOT, because they sit in different boxes. The pie draws its
  * labels in a fixed gutter beside the circle; a legend row is a table cell that wraps. Measured in Chrome: the

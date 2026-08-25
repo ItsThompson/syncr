@@ -12,10 +12,10 @@
  * THE DEVIATION CELL IS A SIGNED FIGURE, NEVER A HUE. `+` or U+2212, with the same ink either way: being five
  * hours under on Research is neither a status nor a severity, and a signal pigment is sealed to those.
  *
- * PAST TWELVE AREAS TWO CHIPS ARE THE SAME INK. The deal wraps at twelve and the wire carries the step rather
- * than the deal, so a thirteenth Area's chip is the first Area's; the name beside it is the whole of what
- * separates them, which is why `AreaChip` requires one. Ticket 1201 carries the decision, and the Declare-an-Area
- * panel renders the api's statement saying so. */
+ * EVERY CHIP'S INK BELONGS TO ONE AREA. The deal skips the steps already held, a declaration past twelve is
+ * refused, and a re-pick onto a step another Area holds is refused too, so two rows in this table never show
+ * one ink for two Areas. The name beside the chip stays required, because ink is never the whole of what
+ * identifies an Area, which is why `AreaChip` requires one. */
 
 import { AreaChip, MINUS_SIGN, Table, areaPigment, type TableColumn } from "../../../ui/domain";
 import { PreferenceCell } from "./PreferenceCell";

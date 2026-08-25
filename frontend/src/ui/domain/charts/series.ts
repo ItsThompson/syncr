@@ -27,8 +27,8 @@ export type ChartPigment = AreaPigment | typeof UNALLOCATED;
  * One category's quantity, which a wedge or a stacked segment is sized from.
  *
  * `label` is not optional and is not decoration. Colour is never the only encoding of anything, three of the
- * twelve pigments sit on the sealed signal hues by construction, and past twelve Areas the ramp repeats: the
- * name is what identifies a wedge in every one of those cases.
+ * twelve pigments sit on the sealed signal hues by construction, and forced-colors mode drops fills entirely:
+ * the name is what identifies a wedge whenever the ink cannot.
  */
 export interface AreaQuantity {
   readonly id: string;

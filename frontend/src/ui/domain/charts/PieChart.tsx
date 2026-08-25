@@ -8,8 +8,8 @@
  * pairs its pigment with a texture in a lighter step of its own ink, always on.
  *
  * LABELS SIT OUTSIDE THE WEDGES. A wedge fill only has to clear 3:1 as an indicator and text on a fill would
- * need 4.5:1, so no label is drawn on one. The label is the category's NAME rather than its figure: the name is
- * what identifies a wedge when a pigment repeats, and the figures are the legend's column.
+ * need 4.5:1, so no label is drawn on one. The label is the category's NAME rather than its figure: the name
+ * identifies a wedge wherever its ink cannot, and the figures are the legend's column.
  *
  * NO SIZE COMES FROM CSS. One user unit is one CSS pixel, which is what holds the hatch at the pitch the token
  * layer declares. */
