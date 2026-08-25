@@ -38,7 +38,10 @@ from syncr_api.core.principal import Principal
 from syncr_api.core.races import answered_once, refused_index
 from syncr_api.core.scopes import Scope
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
+from syncr_api.habits.repository import HabitRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.routines.repository import RoutineRepository
+from syncr_api.templates.bindings import TemplateBindings
 from syncr_api.templates.config import (
     DAY_TYPES_PREFIX,
     ONE_DAY_TYPE_PER_NAME_INDEX,
@@ -165,6 +168,10 @@ def a_template_service(
         templates=templates or TemplateRepository(session, owner.tenant_id),
         day_types=DayTypeRepository(session, owner.tenant_id),
         areas=AreaRepository(session, owner.tenant_id),
+        bindings=TemplateBindings(
+            routines=RoutineRepository(session, owner.tenant_id),
+            habits=HabitRepository(session, owner.tenant_id),
+        ),
         weeks=FutureWeeks(
             patterns=WeekPatternRepository(session, owner.tenant_id),
             bump=BacklogWideBump(
