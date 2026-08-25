@@ -23,7 +23,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import CheckConstraint, text
+from sqlalchemy import CheckConstraint, Table, text
 
 from syncr_api.core.db import create_db_engine
 from syncr_api.core.migrations import ALEMBIC_DIR
@@ -141,9 +141,11 @@ def test_the_models_declare_what_the_revision_creates() -> None:
     # The revision and the models state the grid twice, so this is what makes an edit to either a
     # deliberate change in both places rather than a silent divergence in one.
     revision = ScriptDirectory(str(ALEMBIC_DIR)).get_revision(GRID_REVISION).module
+    table = RoutineRow.__table__
+    assert isinstance(table, Table)
     declared = {
         str(constraint.name): " ".join(str(constraint.sqltext).split())
-        for constraint in RoutineRow.__table__.constraints
+        for constraint in table.constraints
         if isinstance(constraint, CheckConstraint)
     }
 
