@@ -251,6 +251,8 @@ async def test_the_twelfth_area_is_accepted_and_takes_the_last_unused_step(
 
     assert twelfth.area.pigment_index == PIGMENT_DEAL_ORDER[-1]
     assert twelfth.ramp.pigments_in_use == PIGMENT_COUNT
+    assert twelfth.ramp.areas_sharing_a_pigment == 0
+    assert twelfth.ramp.statement is None
 
 
 async def test_a_tenant_holding_more_areas_than_the_ramp_is_refused_as_well(
@@ -357,7 +359,8 @@ async def test_at_the_bound_new_work_still_fits_inside_an_area_as_a_project(
 async def test_a_full_ramp_is_reported_before_it_is_exhausted(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # The control at the other end of the boundary: twelve Areas hold twelve distinct steps.
+    # The control at the other end of the boundary: twelve Areas hold twelve distinct steps, so
+    # nothing is shared and no statement is made.
     service, _ = build_areas(principal, versions)
     for index in range(PIGMENT_COUNT):
         await declare(service, principal, f"Area {index}")
@@ -365,6 +368,8 @@ async def test_a_full_ramp_is_reported_before_it_is_exhausted(
     view = await service.list_all(principal)
 
     assert view.ramp.pigments_in_use == PIGMENT_COUNT
+    assert view.ramp.areas_sharing_a_pigment == 0
+    assert view.ramp.statement is None
 
 
 async def test_the_reading_counts_distinct_steps_when_rows_share_one(
@@ -425,10 +430,10 @@ async def test_a_name_another_area_holds_is_refused(
     with pytest.raises(Conflict) as refused:
         await declare(service, principal, "Fitness")
 
-    # Refused rather than stored: a duplicate name would leave two Areas that every
-    # name-labeled surface renders as one.
+    # Refused rather than stored: a duplicate name would leave a wedge with nothing to
+    # identify it once the ramp repeats.
     assert len(areas.rows) == 1
-    assert "two Areas cannot share one" in str(refused.value.detail)
+    assert "hatch" in str(refused.value.detail)
 
 
 async def test_renaming_an_area_to_its_own_name_is_not_a_conflict(
