@@ -39,8 +39,8 @@ budget and the assembly is why".
 
 **Both figures were set against eleven repository reads, and eleven was never counted.**
 `plans/assembler.py` counts what the assembly actually does: `RESOLUTION_COUNT` is **18** resolutions
-over `REPOSITORY_READ_COUNT` **19** repository reads, and the api suite crosses both constants against
-the method itself. Neither the 100 ms budget nor this threshold has been re-derived against 19, so read
+over `REPOSITORY_READ_COUNT` **20** repository reads, and the api suite crosses both constants against
+the method itself. Neither the 100 ms budget nor this threshold has been re-derived against 20, so read
 the threshold as the point where the interaction is over budget and not as a figure today's read count
 justifies.
 
@@ -76,7 +76,7 @@ process, so read it per `instance`.
 
 ## What the assembly reads, in order
 
-Nineteen reads over eighteen collaborators, in the order one assembly performs them. Each row is the
+Twenty reads over eighteen collaborators, in the order one assembly performs them. Each row is the
 series the read histogram registers, so a row of the panel above is a row of this table.
 
 | # | Series | What it resolves |
@@ -94,12 +94,13 @@ series the read histogram registers, so a row of the panel above is a row of thi
 | 11 | `TemplateRepository.list_all` | the template entries those day types materialize |
 | 12 | `WeightSetRepository.active` | the duration multipliers, gated by maturity |
 | 13 | `HabitOutcomeLog.read` | the habit outcome log, from which each rotation cursor and the outstanding debt derive |
-| 14 | `AnchorTypeRepository.list_all` | the anchor types, read before the anchors they widen the span for |
-| 15 | `AnchorRepository.overlapping` | the anchors of that widened span, and what each casts into the week |
-| 16 | `TaskRepository.list_all` | the eligible tasks, and the demand per deadline |
-| 17 | `PreferenceRepository.list_all` | the per-Area daily caps, and the preference chain resolved after the fold |
-| 18 | `AreaRepository.list_all` | the Areas whose floor minutes, reservations and gross targets are computed |
-| 19 | `WeekAdjustmentRepository.for_week` | this week's approved concessions, folded as a post-pass |
+| 14 | `HabitOutcomeLog.latest` | when each habit last recorded an occurrence, from a read bounded to the longest declared interval |
+| 15 | `AnchorTypeRepository.list_all` | the anchor types, read before the anchors they widen the span for |
+| 16 | `AnchorRepository.overlapping` | the anchors of that widened span, and what each casts into the week |
+| 17 | `TaskRepository.list_all` | the eligible tasks, and the demand per deadline |
+| 18 | `PreferenceRepository.list_all` | the per-Area daily caps, and the preference chain resolved after the fold |
+| 19 | `AreaRepository.list_all` | the Areas whose floor minutes, reservations and gross targets are computed |
+| 20 | `WeekAdjustmentRepository.for_week` | this week's approved concessions, folded as a post-pass |
 
 **Three things the rows do not say on their own.**
 
@@ -111,6 +112,9 @@ series the read histogram registers, so a row of the panel above is a row of thi
   hold, because outstanding debt accumulates over the whole log, so its rows grow with the tenant's
   history while its statement count stays at one. It is the same read the habit routes perform, and
   a tenant with no habits reaches it without a statement.
+- **Row 14 asks one question and reads recent history only.** The interval cadence's due rule needs
+  when each habit last occurred, which no occurrence older than the longest declared interval can
+  answer, so the read carries an `occurred_at` window beside the habits predicate row 13 states.
 - **`WeekAdjustmentRepository.for_week` is read twice**, at rows 8 and 19, because each week's
   concessions have to be resolved as that week resolves them or the two weeks disagree about how long
   one night was.
@@ -131,6 +135,6 @@ moved, look at what the request does that the maintainer does not.
 
 - A decomposition of the assembly into its stages. Today it is one histogram, so a regression is
   visible but not attributable without going to the per-read timings and inferring.
-- Which of the nineteen reads are avoidable. The order is above; nothing yet says which of them could
+- Which of the twenty reads are avoidable. The order is above; nothing yet says which of them could
   be composed into fewer statements.
 - A load-shedding or caching answer, if the cost turns out to be inherent rather than a regression.
