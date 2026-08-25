@@ -1033,6 +1033,29 @@ async def test_reopening_a_completed_task_is_a_conflict_naming_capture_and_chang
     assert versions.bumped == []
 
 
+async def test_reopening_a_dropped_task_with_no_work_left_bumps_nothing(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The bump gate is eligibility on BOTH sides: a dropped task whose recorded time had caught
+    # up with its estimate is not collected by the assembler either way, so the reopen changes no
+    # solve input and invalidates nothing, even though the status moved.
+    area = an_area(principal.tenant_id)
+    stored = a_task(
+        principal.tenant_id,
+        area.id,
+        status=TaskStatus.DROPPED,
+        recorded_minutes=AN_HOUR,
+    )
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored], now=LATER)
+
+    reopened = await service.reopen(principal, stored.id)
+
+    assert reopened.status is TaskStatus.OPEN
+    assert reopened.is_eligible_for_solving() is False
+    assert tasks.writes == 1
+    assert versions.bumped == []
+
+
 # --------------------------------------------------------------------------------
 # The list, and the count its header states
 # --------------------------------------------------------------------------------

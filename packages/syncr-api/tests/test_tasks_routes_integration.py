@@ -882,7 +882,7 @@ def test_reopening_a_completed_task_is_a_409_naming_capture_as_the_remedy(
     problem = response.json()
     assert problem["type"] == Conflict.type
     assert "already completed" in problem["detail"]
-    assert "apture" in problem["detail"]
+    assert "Capture a new task instead" in problem["detail"]
     [row] = task_rows(live_database_url, owner.tenant_id)
     assert row.status is TaskStatus.COMPLETED
 
@@ -936,6 +936,12 @@ def test_every_unsafe_method_accepts_an_idempotency_key(
 ) -> None:
     created = capture(http, signed_in, areaId=area, title="Leetcode")
     headers = {**signed_in, IDEMPOTENCY_KEY_HEADER: uuid4().hex}
+
+    def send_reopen() -> Any:
+        # Reopen only reaches a dropped task, so the drop is sent first, without the key.
+        http.delete(f"{TASKS}/{created['id']}", headers=signed_in)
+        return http.post(f"{TASKS}/{created['id']}/reopen", headers=headers)
+
     requests = {
         "post": lambda: http.post(
             TASKS, json={"areaId": area, "title": "another"}, headers=headers
@@ -945,10 +951,7 @@ def test_every_unsafe_method_accepts_an_idempotency_key(
         ),
         "delete": lambda: http.delete(f"{TASKS}/{created['id']}", headers=headers),
         "complete": lambda: http.post(f"{TASKS}/{created['id']}/complete", headers=headers),
-        "reopen": lambda: (
-            http.delete(f"{TASKS}/{created['id']}", headers=signed_in),
-            http.post(f"{TASKS}/{created['id']}/reopen", headers=headers),
-        )[1],
+        "reopen": send_reopen,
     }
 
     response = requests[method]()
