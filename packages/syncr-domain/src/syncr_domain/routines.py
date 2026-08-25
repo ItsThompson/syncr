@@ -27,7 +27,7 @@ resizes a routine: a span arrives at the solver already resolved, and the frame 
 the search space rather than competing inside it. The effective duration of one
 occurrence, and its clamp to the minimum, are the week assembler's.
 
-## A target time is wall time, at minute resolution
+## A target time is wall time, at minute resolution, on the grid
 
 The target names a time of day and nothing else. A value carrying an offset is refused, and
 so is one carrying seconds: an offset would be dropped by any store whose column has no
@@ -36,6 +36,19 @@ count of minutes, so a span starting mid-minute could not be one of them. Which 
 are is :func:`syncr_domain.snap.not_a_wall_time`'s to say, so a target time here and a template
 entry's are refused on the same values. The rule is on the span rather than only at an HTTP
 boundary, so it holds for every writer.
+
+The target also owes the grid every placement lands on, read through
+:func:`syncr_domain.snap.is_wall_time_on_snap_grid` like a template entry's is: ``Wake 05:07``
+names a start no block can hold, and the refusal happens where the user can still fix it
+rather than at solve time, where the frame is already fixed by derivation.
+
+## A duration owes the grid, and both of its bounds do
+
+A start on the grid plus a duration that is a multiple of the step gives an end on the grid,
+so ``is_a_snap_multiple`` is read on the target duration AND on the elastic floor: a floor
+between two of the grid's lines would resolve an occurrence no placement could occupy. The
+floor rises to one grid step with the same stroke, because a span shorter than one step could
+not both start and end on the grid.
 
 ## A duration is elapsed minutes, so a transition does not change it
 
@@ -71,14 +84,21 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.errors import DomainError
 from syncr_domain.intervals import Interval
-from syncr_domain.snap import NotAWallTime, not_a_wall_time
+from syncr_domain.snap import (
+    SNAP_MINUTES,
+    NotAWallTime,
+    is_a_snap_multiple,
+    is_wall_time_on_snap_grid,
+    not_a_wall_time,
+)
 from syncr_domain.zones import to_instant
 
 if TYPE_CHECKING:
     from syncr_domain.zones import Date, LocalTime, ZoneId
 
-# A routine is a span, so its shortest legal duration is one minute of it.
-MIN_DURATION_MINUTES: Final = 1
+# A routine is a span that owes the grid, so its shortest legal duration is one whole step: a
+# span shorter than that could not both start and end on the grid.
+MIN_DURATION_MINUTES: Final = SNAP_MINUTES
 # A routine names a time of day, so its span is capped at the day it names. The cap does NOT
 # keep an occurrence clear of its own next one: a spring-forward local day is 23 hours, so on
 # `Europe/London` 2026-03-28 a 1440-minute span overlaps the next date's occurrence by an hour
@@ -144,6 +164,13 @@ class RoutineSpan:
                 "duration here is a count of minutes, so a span starting mid-minute could "
                 "not be one of them",
             )
+        if not is_wall_time_on_snap_grid(self.target_time):
+            raise RoutineError(
+                SpanField.TARGET_TIME,
+                f"a target time lands on a quarter hour, got {self.target_time.isoformat()}. "
+                "Every placement lands on the grid, so a frame off it names a start no block "
+                "could hold",
+            )
         if not MIN_DURATION_MINUTES <= self.duration_minutes <= MAX_DURATION_MINUTES:
             raise RoutineError(
                 SpanField.DURATION,
@@ -152,11 +179,25 @@ class RoutineSpan:
                 "without a duration there is nothing to subtract from the day, so "
                 "discretionary time cannot be computed",
             )
+        if not is_a_snap_multiple(self.duration_minutes):
+            raise RoutineError(
+                SpanField.DURATION,
+                f"a duration is a whole number of {SNAP_MINUTES}-minute steps, got "
+                f"{self.duration_minutes}. A start on the grid plus this duration would end "
+                "between two of the grid's lines",
+            )
         if not 0 < self.min_duration_minutes <= self.duration_minutes:
             raise RoutineError(
                 SpanField.MINIMUM,
                 f"a routine's minimum is above 0 and at most its target duration of "
                 f"{self.duration_minutes} minutes, got {self.min_duration_minutes}",
+            )
+        if not is_a_snap_multiple(self.min_duration_minutes):
+            raise RoutineError(
+                SpanField.MINIMUM,
+                f"a minimum is a whole number of {SNAP_MINUTES}-minute steps, got "
+                f"{self.min_duration_minutes}. An occurrence resolved to the floor would end "
+                "between two of the grid's lines",
             )
         if not 0 <= self.flex_band_minutes <= MAX_FLEX_BAND_MINUTES:
             raise RoutineError(

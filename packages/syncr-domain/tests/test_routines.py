@@ -36,6 +36,7 @@ from syncr_domain.routines import (
     RoutineSpan,
     SpanField,
 )
+from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.zones import ZoneError, resolve_zone
 
 if TYPE_CHECKING:
@@ -99,11 +100,13 @@ def test_a_routine_longer_than_a_day_is_refused() -> None:
     assert refused.value.field is SpanField.DURATION
 
 
-def test_the_shortest_legal_routine_is_a_minute_of_span() -> None:
+def test_the_shortest_legal_routine_is_one_step_of_the_grid() -> None:
+    # A span shorter than one step could not both start and end on the grid, so the floor is
+    # the step rather than a bare minute.
     span = RoutineSpan(SLEEP_TARGET, MIN_DURATION_MINUTES, MIN_DURATION_MINUTES, 0)
 
-    assert span.duration_minutes == 1
-    assert span.occurrence_on(date(2026, 2, 10), LONDON).total_minutes() == 1
+    assert span.duration_minutes == SNAP_MINUTES
+    assert span.occurrence_on(date(2026, 2, 10), LONDON).total_minutes() == SNAP_MINUTES
 
 
 def test_a_routine_carries_no_area() -> None:
@@ -144,10 +147,10 @@ def test_a_minimum_outside_its_target_is_refused(minimum: int) -> None:
     assert refused.value.field is SpanField.MINIMUM
 
 
-def test_a_floor_of_one_minute_below_the_target_is_elastic() -> None:
-    # The boundary of the predicate, on the tight side: elasticity is a strict comparison,
-    # so one minute of give is give.
-    assert sleep(minimum=SLEEP_MINUTES - 1).is_elastic is True
+def test_a_floor_one_step_below_the_target_is_elastic() -> None:
+    # The boundary of the predicate, on the tight side: elasticity is a strict comparison, so
+    # one whole grid step of give is give.
+    assert sleep(minimum=SLEEP_MINUTES - SNAP_MINUTES).is_elastic is True
 
 
 # --------------------------------------------------------------------------------
@@ -236,10 +239,24 @@ def test_a_target_time_below_minute_resolution_is_refused(target: time) -> None:
     assert refused.value.field is SpanField.TARGET_TIME
 
 
-def test_a_target_time_on_any_whole_minute_is_accepted() -> None:
+def test_a_target_time_on_any_quarter_hour_is_accepted() -> None:
     # The control for both refusals: they must distinguish rather than refuse a time.
-    for target in (time(0, 0), time(5, 7), time(23, 59)):
+    for target in (time(0, 0), time(5, 0), time(23, 45)):
         assert RoutineSpan(target, 30, 30, 0).target_time == target
+
+
+@pytest.mark.parametrize(
+    "target",
+    [time(5, 7), time(12, 1), time(23, 59)],
+    ids=["wake at five past", "lunch at one past", "late at fifty-nine"],
+)
+def test_a_target_time_off_the_grid_is_refused(target: time) -> None:
+    # Every placement lands on the quarter-hour grid, so ``Wake 05:07`` names a start no block
+    # could hold. Refused where the user can still fix it rather than at solve time.
+    with pytest.raises(RoutineError, match="lands on a quarter hour") as refused:
+        RoutineSpan(target, 30, 30, 0)
+
+    assert refused.value.field is SpanField.TARGET_TIME
 
 
 def test_a_datetime_is_not_a_date_to_resolve_against() -> None:
@@ -268,7 +285,9 @@ def test_the_sunday_night_frame_is_the_span_the_fixture_records(week: DstWeek) -
     # Asserted against literals written for the interval and grid layers before this module
     # existed, so the frame and everything else that reads a transition week agree by
     # construction rather than by two authors reaching the same number.
-    span = RoutineSpan(week.frame_target_time, week.frame_duration_minutes, 1, 0)
+    span = RoutineSpan(
+        week.frame_target_time, week.frame_duration_minutes, week.frame_duration_minutes, 0
+    )
 
     assert span.occurrence_on(week.transition_date, week.zone) == week.sunday_night_frame
 
@@ -299,30 +318,30 @@ def test_a_night_containing_a_fall_back_keeps_its_eight_hours() -> None:
 
 def test_the_duration_cap_does_not_keep_an_occurrence_clear_of_its_own_next_one() -> None:
     # The cap is a cap on the day a routine names, and nothing more. A spring-forward local day
-    # is 23 hours, so the longest legal span overlaps the next date's occurrence, and no smaller
+    # is 23 hours, so a span near the cap overlaps the next date's occurrence, and no smaller
     # positive cap fixes it: a date the zone skips gives two dates one interval at any duration.
     # Frame overlap belongs to the layout stage rather than to a bound here, and these are the
-    # figures it has to answer for.
+    # figures it has to answer for. Durations are whole steps of the grid now, so the boundary
+    # between abutting and overlapping is measured in steps: the last step under the local day
+    # abuts, the first past it overlaps.
     eve = date(2026, 3, 28)
     tomorrow = eve + timedelta(days=1)
 
-    longest = RoutineSpan(SLEEP_TARGET, MAX_DURATION_MINUTES, 1, 0)
+    longest = RoutineSpan(SLEEP_TARGET, MAX_DURATION_MINUTES, MIN_DURATION_MINUTES, 0)
     assert longest.occurrence_on(eve, LONDON).overlaps(longest.occurrence_on(tomorrow, LONDON))
     assert longest.occurrence_on(eve, LONDON).end - longest.occurrence_on(
         tomorrow, LONDON
     ).start == timedelta(hours=1)
 
-    # One minute over the local day is enough, and one minute under is not: 23 hours is the
-    # boundary, not 24.
-    over = RoutineSpan(SLEEP_TARGET, 23 * 60 + 1, 1, 0)
-    abutting = RoutineSpan(SLEEP_TARGET, 23 * 60, 1, 0)
+    over = RoutineSpan(SLEEP_TARGET, 23 * 60 + SNAP_MINUTES, MIN_DURATION_MINUTES, 0)
+    abutting = RoutineSpan(SLEEP_TARGET, 23 * 60, MIN_DURATION_MINUTES, 0)
     assert over.occurrence_on(eve, LONDON).overlaps(over.occurrence_on(tomorrow, LONDON))
     assert not abutting.occurrence_on(eve, LONDON).overlaps(
         abutting.occurrence_on(tomorrow, LONDON)
     )
 
     # And on the date Samoa skipped, the two dates are one interval however short the routine is.
-    minimal = RoutineSpan(time(5, 0), MIN_DURATION_MINUTES, 1, 0)
+    minimal = RoutineSpan(time(5, 0), MIN_DURATION_MINUTES, MIN_DURATION_MINUTES, 0)
     assert minimal.occurrence_on(date(2011, 12, 30), APIA) == minimal.occurrence_on(
         date(2011, 12, 31), APIA
     )
@@ -411,14 +430,38 @@ def test_a_date_the_zone_skips_carries_its_occurrence_to_the_next_date() -> None
 # --------------------------------------------------------------------------------
 
 
-def test_the_accepted_range_is_one_minute_to_a_whole_nominal_day() -> None:
+def test_the_accepted_range_is_one_grid_step_to_a_whole_nominal_day() -> None:
     # Both ends by their literal values. Narrowing either end to keep an occurrence clear of its
     # own next one would be a bound wearing the cap's name, and it goes red here rather than only
     # wherever an occurrence is measured.
-    assert (MIN_DURATION_MINUTES, MAX_DURATION_MINUTES) == (1, 24 * 60)
+    assert (MIN_DURATION_MINUTES, MAX_DURATION_MINUTES) == (SNAP_MINUTES, 24 * 60)
 
 
-@given(duration=st.integers(min_value=MIN_DURATION_MINUTES, max_value=MAX_DURATION_MINUTES))
+@pytest.mark.parametrize("minutes", [50, 137, 1439], ids=["fifty", "a prime", "one under"])
+def test_a_duration_off_the_grid_is_refused(minutes: int) -> None:
+    # A start on the grid plus an off-step duration ends between two of the grid's lines, so
+    # ``Sleep 23:00 + 50m`` is refused where the user can still fix it.
+    with pytest.raises(RoutineError, match="whole number of") as refused:
+        RoutineSpan(SLEEP_TARGET, minutes, minutes, 0)
+
+    assert refused.value.field is SpanField.DURATION
+
+
+@pytest.mark.parametrize("minimum", [10, 20], ids=["ten", "twenty"])
+def test_a_minimum_off_the_grid_is_refused(minimum: int) -> None:
+    # An occurrence resolved to the floor must end on the grid too, so the floor owes the same
+    # multiples its target does.
+    with pytest.raises(RoutineError, match="whole number of") as refused:
+        sleep(minimum=minimum)
+
+    assert refused.value.field is SpanField.MINIMUM
+
+
+@given(
+    duration=st.integers(min_value=1, max_value=MAX_DURATION_MINUTES // SNAP_MINUTES).map(
+        lambda steps: steps * SNAP_MINUTES
+    )
+)
 def test_no_duration_the_span_accepts_is_clear_of_its_own_next_occurrence(duration: int) -> None:
     # Over the WHOLE accepted range rather than at sampled durations, which is what makes this the
     # absence of a bound rather than three cases that happen to pass: a refusal added at any
