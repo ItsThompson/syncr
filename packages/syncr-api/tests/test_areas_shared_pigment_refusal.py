@@ -178,12 +178,14 @@ async def test_no_patch_target_leaves_two_areas_on_one_step(
             await service.update(principal, mover.id, a_change(original))
 
 
+@pytest.mark.parametrize("seed", [20260802, 20260803], ids=["walk a", "walk b"])
 async def test_no_sequence_of_creates_and_patches_puts_two_areas_on_one_step(
-    principal: Principal, versions: RecordingWeekInputVersions
+    principal: Principal, versions: RecordingWeekInputVersions, seed: int
 ) -> None:
     # A walk over mixed creates and patches through the real service. Every refusal is left
-    # refused and every acceptance applied; whatever the order, no step ends up shared.
-    rng = Random(20260802)  # noqa: S311 - a fixed walk of operations, not a secret
+    # refused and every acceptance applied; whatever the order, no step ends up shared. Two
+    # seeds, because one walk is one path through the space of orders, not the space itself.
+    rng = Random(seed)  # noqa: S311 - fixed walks of operations, not secrets
     service, areas = build_areas(principal, versions)
 
     for step in range(400):

@@ -27,9 +27,9 @@ pair is separated by carrying different hatches and different Area names, and by
 been respaced. How tight the tightest pair is, is a token-layer figure and is pinned there rather
 than restated here, for the reason above.
 
-**Past twelve Areas the ramp repeats**: a thirteenth Area is dealt the first step again. A
-shared step is refused rather than allowed, because a thirteenth Area is a legitimate thing
-to declare and a thirteenth ink is not a legitimate thing to invent.
+**Past twelve Areas nothing more can be declared**: a thirteenth Area would be dealt a step
+another Area already holds, and a shared step is refused rather than allowed, because a
+thirteenth ink is not a legitimate thing to invent.
 """
 
 from __future__ import annotations
