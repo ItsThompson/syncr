@@ -1199,6 +1199,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen a dropped task. Recorded time is left intact
+         * @description Return a dropped task to open. A completed one is refused: its completion was counted.
+         */
+        post: operations["reopen_task_api_v1_tasks__task_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/templates": {
         parameters: {
             query?: never;
@@ -1809,13 +1829,9 @@ export interface components {
          * @description Add an anchor source. No OAuth is required for an ICS source.
          */
         AddCalendarSourceRequest: {
-            /** Displayname */
-            displayName: string;
-            /**
-             * Externalid
-             * @description A feed address for an ICS source: ics, webcal, http, or https, normalized on the way in. A calendarId for a Google source, taken as the provider states it.
-             */
-            externalId: string;
+            displayName: components["schemas"]["WireText"];
+            /** @description A feed address for an ICS source: ics, webcal, http, or https, normalized on the way in. A calendarId for a Google source, taken as the provider states it. */
+            externalId: components["schemas"]["WireText"];
             provider: components["schemas"]["CalendarProvider"];
         };
         /**
@@ -1963,10 +1979,8 @@ export interface components {
             forbiddenAreaIds?: string[];
             /** Matchsourceid */
             matchSourceId?: string | null;
-            /** Matchtitlecontains */
-            matchTitleContains?: string | null;
-            /** Name */
-            name: string;
+            matchTitleContains?: components["schemas"]["WireText"] | null;
+            name: components["schemas"]["WireText"];
             /**
              * Postbufferminutes
              * @default 0
@@ -2028,10 +2042,8 @@ export interface components {
             forbiddenAreaIds?: string[] | null;
             /** Matchsourceid */
             matchSourceId?: string | null;
-            /** Matchtitlecontains */
-            matchTitleContains?: string | null;
-            /** Name */
-            name?: string | null;
+            matchTitleContains?: components["schemas"]["WireText"] | null;
+            name?: components["schemas"]["WireText"] | null;
             /** Postbufferminutes */
             postBufferMinutes?: number | null;
             /** @description The recovery window's scope, read as "forbids after: nothing / everything / these Areas". `areas` requires a non-empty forbiddenAreaIds and the other two require an empty one, so the three-way choice is explicit rather than encoded in whether a list happens to be empty. */
@@ -2220,11 +2232,8 @@ export interface components {
             budgetPercent?: components["schemas"]["WireDecimal"] | null;
             /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
             floorHours?: components["schemas"]["WireDecimal"] | null;
-            /**
-             * Name
-             * @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.
-             */
-            name: string;
+            /** @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name. */
+            name: components["schemas"]["WireText"];
             /**
              * Parentid
              * @description The Area this one nests under, or null for a top-level Area. Declared once: a child's time rolls up into its parent in reports, so moving it would rewrite reported history.
@@ -2247,11 +2256,8 @@ export interface components {
             budgetPercent?: components["schemas"]["WireDecimal"] | null;
             /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
             floorHours?: components["schemas"]["WireDecimal"] | null;
-            /**
-             * Name
-             * @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.
-             */
-            name?: string | null;
+            /** @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name. */
+            name?: components["schemas"]["WireText"] | null;
             /**
              * Pigmentindex
              * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.
@@ -2356,7 +2362,7 @@ export interface components {
          * @description One task as the BACKLOG lists it: everything above, plus whether it is at risk.
          *
          *     A shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the
-         *     week's verdict rather than about the row. The five routes that answer about one task would have
+         *     week's verdict rather than about the row. The six routes that answer about one task would have
          *     to assemble a week to state it truthfully, and a mutation that computed a verdict would owe a
          *     recorded transition; answering false there instead would be a claim none of them checked. So the
          *     marking is on the read that has the figure beside it, and nowhere else.
@@ -2864,8 +2870,7 @@ export interface components {
          * @description Include or exclude a source, and optionally rename it. An omitted field is left alone.
          */
         CalendarSourcePatchRequest: {
-            /** Displayname */
-            displayName?: string | null;
+            displayName?: components["schemas"]["WireText"] | null;
             /** Included */
             included?: boolean | null;
         };
@@ -3182,8 +3187,7 @@ export interface components {
          * @description A kind of day to declare. A name is the whole declaration.
          */
         DayTypeCreateRequest: {
-            /** Name */
-            name: string;
+            name: components["schemas"]["WireText"];
         };
         /**
          * DayTypeResponse
@@ -3767,8 +3771,7 @@ export interface components {
          * @description Credentials presented to establish a session.
          */
         LoginRequest: {
-            /** Email */
-            email: string;
+            email: components["schemas"]["WireText"];
             /** Password */
             password: string;
         };
@@ -3859,11 +3862,8 @@ export interface components {
              * @default false
              */
             keepFrame: boolean;
-            /**
-             * Label
-             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
-             */
-            label?: string | null;
+            /** @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said. */
+            label?: components["schemas"]["WireText"] | null;
             /** @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary. */
             start: components["schemas"]["WireInstant"];
         };
@@ -3882,11 +3882,8 @@ export interface components {
              * @description Whether routines still materialize inside the span. False, the default, means no routine materializes inside it: the frame goes with everything else, which is the holiday-abroad reading. True means routines materialize and nothing else does, which is the quiet-week-at-home reading. Editable after the period is declared.
              */
             keepFrame?: boolean | null;
-            /**
-             * Label
-             * @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.
-             */
-            label?: string | null;
+            /** @description What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said. */
+            label?: components["schemas"]["WireText"] | null;
             /** @description When the period begins, as an instant. Inside the period, and on a 15-minute boundary. */
             start?: components["schemas"]["WireInstant"] | null;
         };
@@ -4197,11 +4194,8 @@ export interface components {
          * @description One drag, one keyboard move, or the ``p`` toggle.
          */
         PinCreateRequest: {
-            /**
-             * Blockid
-             * @description The block being pinned, as the week view spells its id.
-             */
-            blockId: string;
+            /** @description The block being pinned, as the week view spells its id. */
+            blockId: components["schemas"]["WireText"];
             /** @description Where the block now begins. Its length is unchanged, because a drag moves and does not resize, so the pinned span is this instant plus the block's own duration. */
             start: components["schemas"]["WireInstant"];
         };
@@ -4390,8 +4384,7 @@ export interface components {
              */
             areaId: string;
             deadline?: components["schemas"]["WireInstant"] | null;
-            /** Name */
-            name: string;
+            name: components["schemas"]["WireText"];
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
         };
@@ -4406,8 +4399,7 @@ export interface components {
          */
         ProjectPatchRequest: {
             deadline?: components["schemas"]["WireInstant"] | null;
-            /** Name */
-            name?: string | null;
+            name?: components["schemas"]["WireText"] | null;
             status?: components["schemas"]["ProjectStatus"] | null;
         };
         /**
@@ -4716,11 +4708,8 @@ export interface components {
          * @description One proposed move the user refuses.
          */
         RejectBlockRequest: {
-            /**
-             * Blockid
-             * @description The block the pending proposal would move. Rejecting the move pins the block at the placement the plan of record already holds it at.
-             */
-            blockId: string;
+            /** @description The block the pending proposal would move. Rejecting the move pins the block at the placement the plan of record already holds it at. */
+            blockId: components["schemas"]["WireText"];
         };
         /**
          * RejectedEventResponse
@@ -4910,11 +4899,8 @@ export interface components {
             minDurationMinutes?: number | null;
             /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
             targetTime: components["schemas"]["WallTime"];
-            /**
-             * Title
-             * @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.
-             */
-            title: string;
+            /** @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real. */
+            title: components["schemas"]["WireText"];
         };
         /**
          * RoutinePatchRequest
@@ -4945,11 +4931,8 @@ export interface components {
             minDurationMinutes?: number | null;
             /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
             targetTime?: components["schemas"]["WallTime"] | null;
-            /**
-             * Title
-             * @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.
-             */
-            title?: string | null;
+            /** @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real. */
+            title?: components["schemas"]["WireText"] | null;
         };
         /**
          * RoutineResponse
@@ -5089,11 +5072,8 @@ export interface components {
             dayEnd?: components["schemas"]["DayBound"] | null;
             /** @description Wall time, no zone. Sets the DEFAULT extent of the Week grid's axis, never a crop: the axis expands to contain every block in the visible week, because a block hidden by the axis is a scheduling error the reader cannot see. An offset is refused rather than dropped, and so is a value below minute resolution: send '07:00', not '07:00+05:00' or '07:00:30'. Any whole minute is accepted, because these bounds draw the axis rather than a block. */
             dayStart?: components["schemas"]["DayBound"] | null;
-            /**
-             * Homezone
-             * @description An IANA zone identifier, such as 'Europe/London'.
-             */
-            homeZone?: string | null;
+            /** @description An IANA zone identifier, such as 'Europe/London'. */
+            homeZone?: components["schemas"]["WireText"] | null;
             reviewCadence?: components["schemas"]["ReviewCadence"] | null;
             /**
              * Visiblehours
@@ -5326,11 +5306,8 @@ export interface components {
              * @default true
              */
             splittable: boolean;
-            /**
-             * Title
-             * @description What the work is, in the user's own words. Required on capture.
-             */
-            title: string;
+            /** @description What the work is, in the user's own words. Required on capture. */
+            title: components["schemas"]["WireText"];
         };
         /**
          * TaskPatchRequest
@@ -5369,11 +5346,8 @@ export interface components {
              * @description Whether the solver may divide this task across several placements. Defaults to true; false means atomic, so it is placed as one block of the whole estimate or not placed.
              */
             splittable?: boolean | null;
-            /**
-             * Title
-             * @description What the work is, in the user's own words. Required on capture.
-             */
-            title?: string | null;
+            /** @description What the work is, in the user's own words. Required on capture. */
+            title?: components["schemas"]["WireText"] | null;
         };
         /**
          * TaskResponse
@@ -5441,7 +5415,7 @@ export interface components {
         };
         /**
          * TaskStatus
-         * @description Where a task is. Two of the three are endings, and nothing here returns a task to open.
+         * @description Where a task is. Two of the three are endings, and only a dropped one comes back.
          * @enum {string}
          */
         TaskStatus: "open" | "completed" | "dropped";
@@ -5473,8 +5447,7 @@ export interface components {
              * @description The kind of day this shape describes. One shape per day type: materializing a date resolves its weekday to a day type and the day type to one shape.
              */
             dayTypeId: string;
-            /** Name */
-            name: string;
+            name: components["schemas"]["WireText"];
         };
         /**
          * TemplateEntryKind
@@ -5547,8 +5520,7 @@ export interface components {
          *     moving it is indistinguishable from declaring a shape for the other day type.
          */
         TemplatePatchRequest: {
-            /** Name */
-            name?: string | null;
+            name?: components["schemas"]["WireText"] | null;
         };
         /**
          * TemplateResponse
@@ -5706,11 +5678,8 @@ export interface components {
              * Format: date
              */
             startDate: string;
-            /**
-             * Zone
-             * @description An IANA zone identifier, such as 'Europe/London'.
-             */
-            zone: string;
+            /** @description An IANA zone identifier, such as 'Europe/London'. */
+            zone: components["schemas"]["WireText"];
         };
         /**
          * TravelOverrideResponse
@@ -6213,6 +6182,7 @@ export interface components {
             /** @description When the span begins. Inside it. */
             start: components["schemas"]["WireInstant"];
         };
+        WireText: string;
         /**
          * WriteTargetResponse
          * @description What the one calendar syncr writes to is, and what syncr does to it.
@@ -6245,8 +6215,8 @@ export interface components {
         };
         _DebtCap: number;
         _Duration: number;
-        _Title: string;
-        _Variants: string[];
+        _Title: components["schemas"]["WireText"];
+        _Variants: components["schemas"]["WireText"][];
     };
     responses: never;
     parameters: never;
@@ -12291,6 +12261,84 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reopen_task_api_v1_tasks__task_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Insufficient scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict with the current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -34,17 +34,15 @@
         "description": "Add an anchor source. No OAuth is required for an ICS source.",
         "properties": {
           "displayName": {
+            "$ref": "#/components/schemas/WireText",
             "maxLength": 200,
-            "minLength": 1,
-            "title": "Displayname",
-            "type": "string"
+            "minLength": 1
           },
           "externalId": {
+            "$ref": "#/components/schemas/WireText",
             "description": "A feed address for an ICS source: ics, webcal, http, or https, normalized on the way in. A calendarId for a Google source, taken as the provider states it.",
             "maxLength": 2048,
-            "minLength": 1,
-            "title": "Externalid",
-            "type": "string"
+            "minLength": 1
           },
           "provider": {
             "$ref": "#/components/schemas/CalendarProvider"
@@ -286,21 +284,19 @@
           "matchTitleContains": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Matchtitlecontains"
+            ]
           },
           "name": {
+            "$ref": "#/components/schemas/WireText",
             "maxLength": 60,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
+            "minLength": 1
           },
           "postBufferMinutes": {
             "default": 0,
@@ -425,28 +421,26 @@
           "matchTitleContains": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Matchtitlecontains"
+            ]
           },
           "name": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 60,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Name"
+            ]
           },
           "postBufferMinutes": {
             "anyOf": [
@@ -851,11 +845,10 @@
             "description": "An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor."
           },
           "name": {
+            "$ref": "#/components/schemas/WireText",
             "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
             "maxLength": 60,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
+            "minLength": 1
           },
           "parentId": {
             "anyOf": [
@@ -906,16 +899,15 @@
           "name": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 60,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
-            "title": "Name"
+            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name."
           },
           "pigmentIndex": {
             "anyOf": [
@@ -1113,7 +1105,7 @@
         "type": "object"
       },
       "BacklogTaskResponse": {
-        "description": "One task as the BACKLOG lists it: everything above, plus whether it is at risk.\n\nA shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the\nweek's verdict rather than about the row. The five routes that answer about one task would have\nto assemble a week to state it truthfully, and a mutation that computed a verdict would owe a\nrecorded transition; answering false there instead would be a claim none of them checked. So the\nmarking is on the read that has the figure beside it, and nowhere else.",
+        "description": "One task as the BACKLOG lists it: everything above, plus whether it is at risk.\n\nA shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the\nweek's verdict rather than about the row. The six routes that answer about one task would have\nto assemble a week to state it truthfully, and a mutation that computed a verdict would owe a\nrecorded transition; answering false there instead would be a claim none of them checked. So the\nmarking is on the read that has the figure beside it, and nowhere else.",
         "properties": {
           "areaId": {
             "description": "The one Area this task's time counts toward. Required on capture, and declared once: the hours already recorded against a task were attributed to this Area, so moving it would rewrite reported history.",
@@ -2083,15 +2075,14 @@
           "displayName": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Displayname"
+            ]
           },
           "included": {
             "anyOf": [
@@ -2696,10 +2687,9 @@
         "description": "A kind of day to declare. A name is the whole declaration.",
         "properties": {
           "name": {
+            "$ref": "#/components/schemas/WireText",
             "maxLength": 60,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
+            "minLength": 1
           }
         },
         "required": [
@@ -3770,10 +3760,9 @@
         "description": "Credentials presented to establish a session.",
         "properties": {
           "email": {
+            "$ref": "#/components/schemas/WireText",
             "maxLength": 320,
-            "minLength": 3,
-            "title": "Email",
-            "type": "string"
+            "minLength": 3
           },
           "password": {
             "maxLength": 1024,
@@ -3995,16 +3984,15 @@
           "label": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 60,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "description": "What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.",
-            "title": "Label"
+            "description": "What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said."
           },
           "start": {
             "$ref": "#/components/schemas/WireInstant",
@@ -4048,16 +4036,15 @@
           "label": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 60,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "description": "What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said.",
-            "title": "Label"
+            "description": "What to call the span, rendered in the gutter beside it. Null when it carries no name; an empty string is refused, because null is how a span with no name is said."
           },
           "start": {
             "anyOf": [
@@ -4671,10 +4658,9 @@
         "description": "One drag, one keyboard move, or the ``p`` toggle.",
         "properties": {
           "blockId": {
+            "$ref": "#/components/schemas/WireText",
             "description": "The block being pinned, as the week view spells its id.",
-            "minLength": 1,
-            "title": "Blockid",
-            "type": "string"
+            "minLength": 1
           },
           "start": {
             "$ref": "#/components/schemas/WireInstant",
@@ -5049,10 +5035,9 @@
             ]
           },
           "name": {
+            "$ref": "#/components/schemas/WireText",
             "maxLength": 120,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
+            "minLength": 1
           },
           "status": {
             "$ref": "#/components/schemas/ProjectStatus",
@@ -5083,15 +5068,14 @@
           "name": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 120,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Name"
+            ]
           },
           "status": {
             "anyOf": [
@@ -5557,10 +5541,9 @@
         "description": "One proposed move the user refuses.",
         "properties": {
           "blockId": {
+            "$ref": "#/components/schemas/WireText",
             "description": "The block the pending proposal would move. Rejecting the move pins the block at the placement the plan of record already holds it at.",
-            "minLength": 1,
-            "title": "Blockid",
-            "type": "string"
+            "minLength": 1
           }
         },
         "required": [
@@ -5893,11 +5876,10 @@
             "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused."
           },
           "title": {
+            "$ref": "#/components/schemas/WireText",
             "description": "What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.",
             "maxLength": 60,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
+            "minLength": 1
           }
         },
         "required": [
@@ -5968,16 +5950,15 @@
           "title": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 60,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "description": "What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real.",
-            "title": "Title"
+            "description": "What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real."
           }
         },
         "title": "RoutinePatchRequest",
@@ -6195,16 +6176,15 @@
           "homeZone": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 64,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "description": "An IANA zone identifier, such as 'Europe/London'.",
-            "title": "Homezone"
+            "description": "An IANA zone identifier, such as 'Europe/London'."
           },
           "reviewCadence": {
             "anyOf": [
@@ -6594,11 +6574,10 @@
             "type": "boolean"
           },
           "title": {
+            "$ref": "#/components/schemas/WireText",
             "description": "What the work is, in the user's own words. Required on capture.",
             "maxLength": 120,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
+            "minLength": 1
           }
         },
         "required": [
@@ -6690,16 +6669,15 @@
           "title": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 120,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "description": "What the work is, in the user's own words. Required on capture.",
-            "title": "Title"
+            "description": "What the work is, in the user's own words. Required on capture."
           }
         },
         "title": "TaskPatchRequest",
@@ -6817,7 +6795,7 @@
         "type": "object"
       },
       "TaskStatus": {
-        "description": "Where a task is. Two of the three are endings, and nothing here returns a task to open.",
+        "description": "Where a task is. Two of the three are endings, and only a dropped one comes back.",
         "enum": [
           "open",
           "completed",
@@ -6858,10 +6836,9 @@
             "type": "string"
           },
           "name": {
+            "$ref": "#/components/schemas/WireText",
             "maxLength": 60,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
+            "minLength": 1
           }
         },
         "required": [
@@ -6989,15 +6966,14 @@
           "name": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/WireText",
                 "maxLength": 60,
-                "minLength": 1,
-                "type": "string"
+                "minLength": 1
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Name"
+            ]
           }
         },
         "title": "TemplatePatchRequest",
@@ -7245,11 +7221,10 @@
             "type": "string"
           },
           "zone": {
+            "$ref": "#/components/schemas/WireText",
             "description": "An IANA zone identifier, such as 'Europe/London'.",
             "maxLength": 64,
-            "minLength": 1,
-            "title": "Zone",
-            "type": "string"
+            "minLength": 1
           }
         },
         "required": [
@@ -8089,6 +8064,9 @@
         "title": "WireSpan",
         "type": "object"
       },
+      "WireText": {
+        "type": "string"
+      },
       "WriteTargetResponse": {
         "description": "What the one calendar syncr writes to is, and what syncr does to it.\n\nPresent only on the source holding the role. It exists so the destructive behaviour is part of\nthe READ MODEL rather than copy on one screen: whatever renders the write target renders this,\nand a second surface cannot forget to say it.",
         "properties": {
@@ -8133,15 +8111,15 @@
         "type": "integer"
       },
       "_Title": {
+        "$ref": "#/components/schemas/WireText",
         "maxLength": 60,
-        "minLength": 1,
-        "type": "string"
+        "minLength": 1
       },
       "_Variants": {
         "items": {
+          "$ref": "#/components/schemas/WireText",
           "maxLength": 60,
-          "minLength": 1,
-          "type": "string"
+          "minLength": 1
         },
         "maxItems": 24,
         "type": "array"
@@ -16056,6 +16034,116 @@
         "summary": "Replace a task's preference whole. It replaces its Area's",
         "tags": [
           "preferences"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/reopen": {
+      "post": {
+        "description": "Return a dropped task to open. A completed one is refused: its completion was counted.",
+        "operationId": "reopen_task_api_v1_tasks__task_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Reopen a dropped task. Recorded time is left intact",
+        "tags": [
+          "tasks"
         ]
       }
     },
