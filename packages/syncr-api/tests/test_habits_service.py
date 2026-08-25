@@ -179,8 +179,18 @@ class RecordedOutcomes:
         self.reads.append(tuple(habit_ids))
         return self.log
 
-    async def latest(self, habit_ids: Sequence[HabitId], *, since: datetime) -> dict[HabitId, None]:
-        return {}
+    async def latest(
+        self, habit_ids: Sequence[HabitId], *, since: datetime
+    ) -> dict[HabitId, datetime | None]:
+        # The same reduction the production reader performs, so a future long-interval case here
+        # reads as overdue rather than as never recorded.
+        latest_seen: dict[HabitId, datetime | None] = dict.fromkeys(habit_ids)
+        for row in self.log:
+            if row.habit_id in latest_seen and row.occurred_at >= since:
+                seen = latest_seen[row.habit_id]
+                if seen is None or row.occurred_at > seen:
+                    latest_seen[row.habit_id] = row.occurred_at
+        return latest_seen
 
 
 def outcome(
