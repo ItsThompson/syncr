@@ -17,13 +17,11 @@ from typing import Any
 
 import syncr_api
 
+# The runner is resolved from the installed package; the dashboard is resolved from THIS FILE's
+# location in the source tree, because an installed package cannot see deployments/.
 RUNNER = Path(syncr_api.__file__).resolve().parent / "observability" / "product_runner.py"
 DASHBOARD = (
-    Path(syncr_api.__file__).resolve().parents[4]
-    / "deployments"
-    / "grafana"
-    / "dashboards"
-    / "product.json"
+    Path(__file__).resolve().parents[3] / "deployments" / "grafana" / "dashboards" / "product.json"
 )
 
 # Phrases that assert the closed cause: no sender, a structurally zero figure, or the ticket that
@@ -39,6 +37,7 @@ CLAIMS_OF_THE_CLOSED_CAUSE = (
 def runner_docstring() -> str:
     """The runner's module docstring, read from source so the pin holds on the file as written."""
     text = RUNNER.read_text()
+    # The module opens and closes its docstring with triple double quotes.
     return text.partition('"""')[2].partition('"""')[0]
 
 
@@ -85,5 +84,6 @@ class TestTheSessionModeFiguresDescribePresentBehavior:
         docstring = runner_docstring().lower()
 
         assert "session_mode_active" in docstring
-        assert "client states" in docstring or "a client" in docstring
+        # The provenance statement, keyed on a phrase only the corrected text contains.
+        assert "client states" in docstring
         assert "no session flag" in docstring
