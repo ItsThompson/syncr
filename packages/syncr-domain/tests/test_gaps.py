@@ -34,7 +34,8 @@ from syncr_domain.gaps import (
     SlotContext,
     gutter_label,
 )
-from tests.plan_values import CAREER, a_slot, a_window
+from syncr_domain.off_plan import OffPlanPeriod
+from tests.plan_values import CAREER, a_slot, a_window, between
 
 STUDY = uuid4()
 FITNESS = uuid4()
@@ -288,3 +289,72 @@ class TestTheGutterLabels:
 
     def test_the_area_named_in_a_label_is_the_slots_own(self) -> None:
         assert a_slot().gutter_label(SlotContext("Study")) == "no eligible Study content"
+
+
+def a_period(start_hour: float, end_hour: float, *, label: str | None = None) -> OffPlanPeriod:
+    return OffPlanPeriod(interval=between(start_hour, end_hour), label=label)
+
+
+class TestWhenTwoPeriodsCoverOneSlot:
+    """The case the substitution leaves open, decided where the substitution is carried.
+
+    Declared periods never overlap, but they abut, and one slot can straddle the join: the
+    morning half lies in one period and the afternoon half in the next. Both are declared,
+    both may have names, and no single one of them covers the slot.
+    """
+
+    def test_one_declared_period_covers_the_slot_and_names_itself(self) -> None:
+        context = SlotContext.of_covering_periods("Career", [a_period(0, 48, label="Italy")])
+
+        assert gutter_label(EmptySlotReason.OFF_PLAN, context) == "off plan · Italy"
+
+    def test_two_declared_periods_covering_one_slot_name_neither(self) -> None:
+        """Naming either would state a choice nobody made, so the wording stays bare."""
+        context = SlotContext.of_covering_periods(
+            "Career", [a_period(0, 24, label="Italy"), a_period(24, 48, label="Rome")]
+        )
+
+        assert gutter_label(EmptySlotReason.OFF_PLAN, context) == "off plan"
+
+    def test_two_covering_periods_name_neither_even_when_only_one_has_a_name(self) -> None:
+        """The rule counts the periods covering the slot, not the names among them."""
+        context = SlotContext.of_covering_periods(
+            "Career", [a_period(0, 24), a_period(24, 48, label="Italy")]
+        )
+
+        assert gutter_label(EmptySlotReason.OFF_PLAN, context) == "off plan"
+
+    def test_one_unnamed_period_covers_the_slot_and_still_explains_the_gap(self) -> None:
+        """A span needs no name to suspend scheduling, so the substitution cannot require one."""
+        context = SlotContext.of_covering_periods("Career", [a_period(0, 48)])
+
+        assert gutter_label(EmptySlotReason.OFF_PLAN, context) == "off plan"
+
+    def test_the_periods_are_read_as_they_arrive_not_as_a_sorted_set(self) -> None:
+        """Characterization, deliberately.
+
+        The caller owns which spans cover the slot; this decision consumes them. Reordering or
+        de-duplicating here would be a second statement of a coverage rule whose home is the
+        reader that answered the question.
+        """
+        context = SlotContext.of_covering_periods(
+            "Career", [a_period(24, 48, label="Rome"), a_period(0, 24, label="Italy")]
+        )
+
+        assert gutter_label(EmptySlotReason.OFF_PLAN, context) == "off plan"
+
+    def test_an_interval_straddling_the_join_is_what_makes_two_cover_one_slot(
+        self,
+    ) -> None:
+        """The seam itself: disjoint periods, one slot lying across both."""
+        slot = between(6, 30)
+        covering = [
+            period
+            for period in (a_period(0, 24, label="Italy"), a_period(24, 48, label="Rome"))
+            if period.interval.overlaps(slot)
+        ]
+
+        assert len(covering) == 2
+        context = SlotContext.of_covering_periods("Career", covering)
+
+        assert gutter_label(EmptySlotReason.OFF_PLAN, context) == "off plan"
