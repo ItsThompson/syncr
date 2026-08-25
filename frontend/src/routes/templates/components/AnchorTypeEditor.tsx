@@ -206,21 +206,24 @@ export function AnchorTypeEditor({ type, areas, write }: AnchorTypeEditorProps) 
         }
       />
 
-      {/* The three-way choice is rendered as well as announced, because the words ARE the control: a reader
-       * deciding what a recovery window forbids has to see the question. The kit's radio group takes its name
-       * as a string, so a screen reader hears it twice, which ticket 1240 closes. */}
-      <p className="text-label tracking-label uppercase text-text-muted">{POST_SCOPE_QUESTION}</p>
-      <Radio
-        label={POST_SCOPE_QUESTION}
-        value={draft.postScope}
-        onValueChange={(value) =>
-          setDraft((previous) => ({
-            ...previous,
-            postScope: SCOPES.find((scope) => scope === value) ?? "none",
-          }))
-        }
-        options={SCOPE_OPTIONS}
-      />
+      {/* The three-way choice is rendered as well as announced: the row draws the question and the group's
+       * name is a reference to it, so a reader deciding what a recovery window forbids sees the words and
+       * a screen reader hears them once. */}
+      <FormRow label={POST_SCOPE_QUESTION} isGroup>
+        {(field) => (
+          <Radio
+            labelledBy={field.labelledBy}
+            value={draft.postScope}
+            onValueChange={(value) =>
+              setDraft((previous) => ({
+                ...previous,
+                postScope: SCOPES.find((scope) => scope === value) ?? "none",
+              }))
+            }
+            options={SCOPE_OPTIONS}
+          />
+        )}
+      </FormRow>
 
       {draft.postScope !== "areas" ? null : (
         <FormRow

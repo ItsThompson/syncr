@@ -74,24 +74,26 @@ export function EntryEditor({ areas, routines, habits, write }: EntryEditorProps
         />
       )}
 
-      {/* The question is rendered as well as announced. The kit's radio group takes its name as a string, so
-       * a sighted reader gets no heading unless the words are also drawn; a screen reader hears them twice,
-       * which is the cost of a group that cannot be pointed at an existing label. Ticket 1240 closes it. */}
-      <p className="text-label tracking-label uppercase text-text-muted">Kind</p>
-      <Radio
-        label="Kind"
-        value={draft.kind}
-        onValueChange={(kind) =>
-          setDraft((previous) => ({
-            ...previous,
-            kind: kind === "slot" ? "slot" : "concrete",
-          }))
-        }
-        options={[
-          { value: "concrete", label: "concrete \u00B7 a routine or a habit, by name" },
-          { value: "slot", label: "slot \u00B7 an Area and a duration, bound at plan time" },
-        ]}
-      />
+      {/* The question is rendered as well as announced: the row draws it and the group's name is a reference
+       * to the drawn words, so a sighted reader gets a heading and a screen reader hears them once. */}
+      <FormRow label="Kind" isGroup>
+        {(field) => (
+          <Radio
+            labelledBy={field.labelledBy}
+            value={draft.kind}
+            onValueChange={(kind) =>
+              setDraft((previous) => ({
+                ...previous,
+                kind: kind === "slot" ? "slot" : "concrete",
+              }))
+            }
+            options={[
+              { value: "concrete", label: "concrete \u00B7 a routine or a habit, by name" },
+              { value: "slot", label: "slot \u00B7 an Area and a duration, bound at plan time" },
+            ]}
+          />
+        )}
+      </FormRow>
 
       {draft.kind === "concrete" ? (
         <FormRow
