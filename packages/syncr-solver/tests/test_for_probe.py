@@ -108,6 +108,8 @@ PROJECTED_FROM = {
 #                            occupancy for the same reason this week's own occurrences are
 #   shadow_blocks            allocated to an Area rather than removed from the week, so it reaches
 #                            the probe through `placed` once a plan holds it
+#   dropped_legs             the same reading from the other side: a dropped journey allocates
+#                            nothing, so its span stays discretionary and needs no projection
 #   template_entries         content the solver places, not occupancy the probe subtracts
 #   habit_occurrences        the same
 #   eligible_tasks           the SOLVER's remaining-work figure. The probe reads its own demand
@@ -121,6 +123,7 @@ NOT_PROJECTED = frozenset(
         "zone_by_date",
         "frame_overhang",
         "shadow_blocks",
+        "dropped_legs",
         "template_entries",
         "habit_occurrences",
         "eligible_tasks",

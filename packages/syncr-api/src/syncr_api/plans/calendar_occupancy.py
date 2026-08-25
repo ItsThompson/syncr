@@ -52,6 +52,7 @@ from typing import TYPE_CHECKING
 from syncr_api.anchors.shadow_products import ShadowSet
 from syncr_api.anchors.shadows import TypedAnchor, regenerate
 from syncr_common.logging import get_logger
+from syncr_domain.gaps import EmptySlot, EmptySlotReason, ForbiddenWindow
 from syncr_domain.intervals import IntervalSet
 from syncr_solver.inputs import Anchor, ShadowBlock
 
@@ -61,7 +62,6 @@ if TYPE_CHECKING:
     from syncr_api.anchors.records import AnchorRecord, AnchorTypeId, AnchorTypeRecord
     from syncr_api.anchors.shadow_products import ShadowBlock as CastBlock
     from syncr_api.plans.materialization import OffPlanSuppression
-    from syncr_domain.gaps import ForbiddenWindow
     from syncr_domain.intervals import Interval
 
 _log = get_logger("syncr.plans")
@@ -79,6 +79,10 @@ class CalendarOccupancy:
     anchors: tuple[Anchor, ...] = ()
     shadow_blocks: tuple[ShadowBlock, ...] = ()
     forbidden_windows: tuple[ForbiddenWindow, ...] = ()
+    # The journeys a collision dropped whole inside the span, as the empty slots that explain
+    # them. An absence explains nothing on its own, so the cause travels in the same reason
+    # vocabulary every other explained gap uses rather than as a blank the reader guesses at.
+    dropped_legs: tuple[EmptySlot, ...] = ()
 
     def anchor_spans(self) -> IntervalSet:
         """The time the commitments themselves occupy, unioned.
@@ -164,7 +168,24 @@ def calendar_occupancy(
             for window in cast.forbidden
             if (inside := window.interval.clipped_to(span)) is not None
         ),
+        dropped_legs=tuple(
+            _as_explained_gap(dropped, inside)
+            for dropped in cast.dropped_legs
+            if (inside := dropped.interval.clipped_to(span)) is not None
+            and not off_plan.suppresses_content(inside)
+        ),
     )
+
+
+def _as_explained_gap(leg: CastBlock, interval: Interval) -> EmptySlot:
+    """One dropped journey, at the span this week holds of it, as an explained gap.
+
+    The reason is a member of the one vocabulary every empty surface reads, so the grid states
+    the cause instead of drawing nothing where a declared journey would have been. Charged to
+    the leg's own Area, which every contested leg has: a buffer whose type named no Area became
+    a forbidden window at generation and was never a block a collision could drop.
+    """
+    return EmptySlot(interval=interval, area_id=leg.area_id, reason=EmptySlotReason.DROPPED_LEG)
 
 
 def _as_solve_input(block: CastBlock, interval: Interval) -> ShadowBlock:

@@ -59,6 +59,7 @@ from syncr_api.solving.stored_inputs import (
 )
 from syncr_domain.errors import DomainError
 from syncr_domain.feasibility import DeadlineDemand
+from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.habits import BindingSource, Duration
 from syncr_domain.identity import (
     BindingKind,
@@ -159,6 +160,9 @@ def a_week_holding_one_of_everything(**overrides: Any) -> SolveInputs:
             ),
         ),
         "forbidden_windows": (a_window(),),
+        "dropped_legs": (
+            a_slot(reason=EmptySlotReason.DROPPED_LEG, interval=between(16, 16.5, day=2)),
+        ),
         "off_plan": (
             OffPlanPeriod(interval=between(9, 17, day=5), keep_frame=True, label="Amsterdam"),
         ),
@@ -662,6 +666,10 @@ def _a_scope_that_names_no_areas(stored: JsonObject) -> None:
     stored["forbidden_windows"][0]["forbidden_area_ids"] = []
 
 
+def _a_dropped_leg_reason_nothing_produces(stored: JsonObject) -> None:
+    stored["dropped_legs"][0]["reason"] = "vanished"
+
+
 def _a_forbidden_kind_nothing_produces(stored: JsonObject) -> None:
     stored["forbidden_windows"][0]["kind"] = "errand"
 
@@ -798,6 +806,12 @@ REFUSALS = [
         "forbidden_windows[0].kind",
         "not one of",
         id="a forbidden kind nothing produces",
+    ),
+    pytest.param(
+        _a_dropped_leg_reason_nothing_produces,
+        "dropped_legs[0].reason",
+        "not one of",
+        id="a dropped-leg reason nothing produces",
     ),
     pytest.param(_an_off_plan_bound_off_the_grid, "off_plan[0]", "grid", id="an off-plan bound"),
     pytest.param(

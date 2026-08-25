@@ -22,7 +22,7 @@ from uuid import UUID
 
 import pytest
 
-from syncr_domain.gaps import EmptySlotReason, ForbiddenScope, SlotContext, gutter_label
+from syncr_domain.gaps import EmptySlot, EmptySlotReason, ForbiddenScope, SlotContext, gutter_label
 from syncr_domain.identity import BindingKind, BindingRef, Origin, TransitLeg, block_id
 from syncr_domain.reasons import Bound, DerivationSource
 from syncr_solver import materialize
@@ -329,6 +329,22 @@ def test_a_slot_is_emitted_even_where_a_commitment_already_holds_the_time() -> N
 
     assert len(document.empty_slots) == 1
     assert document.empty_slots[0].reason is EmptySlotReason.NOT_SOLVED
+
+
+def test_a_dropped_leg_travels_into_the_document_as_the_gap_the_assembler_stated() -> None:
+    # The cause is the collision rule's, not the solver's: the assembler resolved which journey
+    # lost and shaped the gap, so materialize carries it verbatim beside the template slots and
+    # decides nothing about it. Dropping or re-reasoning it here would red.
+    explained = EmptySlot(
+        interval=between(9.5, 10), area_id=CAREER, reason=EmptySlotReason.DROPPED_LEG
+    )
+
+    document = materialize(a_week(dropped_legs=(explained,)), cause=MaterializeCause.PHASE1)
+
+    assert [(slot.reason, slot.interval) for slot in document.empty_slots] == [
+        (EmptySlotReason.NOT_SOLVED, a_slot().interval),
+        (EmptySlotReason.DROPPED_LEG, explained.interval),
+    ]
 
 
 # --------------------------------------------------------------------------------

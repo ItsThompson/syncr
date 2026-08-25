@@ -125,7 +125,7 @@ def derive(inputs: SolveInputs, *, cause: MaterializeCause) -> Materialization:
         oversubscription_minutes=figures.oversubscription_minutes,
         blocks=blocks,
         forbidden_windows=space.forbidden_windows,
-        empty_slots=_slots(inputs.template_entries),
+        empty_slots=(*_slots(inputs.template_entries), *inputs.dropped_legs),
         adjustments=tuple(adjustment.adjustment_id for adjustment in inputs.adjustments),
     )
     MATERIALIZE_TOTAL.labels(cause=cause.value).inc()

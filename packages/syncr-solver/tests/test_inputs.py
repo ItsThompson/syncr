@@ -95,6 +95,7 @@ def test_the_struct_carries_every_field_a_solve_and_a_probe_read() -> None:
         "frame_overhang",
         "anchors",
         "shadow_blocks",
+        "dropped_legs",
         "forbidden_windows",
         "off_plan",
         "template_entries",

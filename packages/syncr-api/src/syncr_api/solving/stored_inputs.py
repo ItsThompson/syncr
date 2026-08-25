@@ -54,7 +54,13 @@ from syncr_api.plans.stored_values import (
 )
 from syncr_api.solving.snapshots import FORM, INPUTS, SNAPSHOT_FORM
 from syncr_domain.feasibility import DeadlineDemand
-from syncr_domain.gaps import ForbiddenKind, ForbiddenScope, ForbiddenWindow
+from syncr_domain.gaps import (
+    EmptySlot,
+    EmptySlotReason,
+    ForbiddenKind,
+    ForbiddenScope,
+    ForbiddenWindow,
+)
 from syncr_domain.habits import BindingSource, Duration
 from syncr_domain.off_plan import OffPlanPeriod
 from syncr_domain.plan import AdjustmentKind
@@ -240,6 +246,15 @@ def _read_shadow_block(value: object, *, field: str) -> ShadowBlock:
         interval=held("interval", read_interval),
         area_id=held("area_id", read_id),
         title=held("title", read_text),
+    )
+
+
+def _read_dropped_leg(value: object, *, field: str) -> EmptySlot:
+    held = _fields_of(value, field=field)
+    return EmptySlot(
+        interval=held("interval", read_interval),
+        area_id=held("area_id", read_id),
+        reason=held("reason", partial(read_member, EmptySlotReason)),
     )
 
 
@@ -443,6 +458,7 @@ FORMS: Final[tuple[tuple[str, _Read], ...]] = (
     ("anchors", _every(_read_anchor)),
     ("shadow_blocks", _every(_read_shadow_block)),
     ("forbidden_windows", _every(_read_forbidden_window)),
+    ("dropped_legs", _every(_read_dropped_leg)),
     ("off_plan", _every(_read_off_plan_period)),
     ("template_entries", _every(_read_template_entry)),
     ("habit_occurrences", _every(_read_habit_occurrence)),

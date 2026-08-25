@@ -71,7 +71,7 @@ from typing import TYPE_CHECKING
 # re-export form: an implicit one is invisible to a strict type checker.
 from syncr_domain.feasibility import DeadlineDemand as DeadlineDemand
 from syncr_domain.feasibility import FloorReservation, ProbeInputs, ScopedWindow
-from syncr_domain.gaps import ForbiddenScope
+from syncr_domain.gaps import EmptySlot, ForbiddenScope
 
 # Re-exported for the same reason ``DeadlineDemand`` is: a reader of ``HabitOccurrence``'s
 # fields finds the vocabulary its binding source speaks next to them. The redundant alias is the
@@ -544,6 +544,10 @@ class SolveInputs:
     # scope happens in `for_probe()` and NOWHERE else, which is what stops the solver's
     # and the probe's readings of one window drifting apart again.
     forbidden_windows: tuple[ForbiddenWindow, ...] = ()
+    # Journeys a collision dropped whole inside the span, already shaped as the empty slots that
+    # explain them. The cause is the assembler's to state, because only it resolved the collision;
+    # materialize carries them into the document verbatim and decides nothing about them.
+    dropped_legs: tuple[EmptySlot, ...] = ()
     off_plan: tuple[OffPlanPeriod, ...] = ()
 
     template_entries: tuple[MaterializedEntry, ...] = ()
