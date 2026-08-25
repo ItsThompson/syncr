@@ -87,6 +87,11 @@ class WeekReadingsResponse(WireModel):
         "again."
     )
     block_count: int = Field(description="How many blocks the plan holds.")
+    dropped_legs: int = Field(
+        description="How many declared journeys a collision dropped whole in this week. Reported "
+        "rather than counted by the client, and rendered per leg on the grid as a gap whose "
+        "gutter names the cause."
+    )
     plan_currency: PlanCurrency = Field(
         description="Whether the block count is current, being recomputed, or the last one that "
         "worked. Derived from the week's own operation state, so this and the operation resource "
@@ -103,6 +108,7 @@ class WeekReadingsResponse(WireModel):
             unconfirmed_days=readings.unconfirmed_days,
             off_plan_minutes=readings.off_plan_minutes,
             block_count=readings.block_count,
+            dropped_legs=readings.dropped_legs,
             plan_currency=readings.plan_currency,
         )
 

@@ -300,6 +300,32 @@ def test_the_block_count_is_the_documents_own_and_the_currency_is_carried_throug
     assert readings.off_plan_minutes == WEEK_SPAN.total_minutes()
 
 
+def test_the_dropped_leg_count_is_the_documents_own_rather_than_a_clients_count() -> None:
+    """The figure is computed once, beside the block count it is a sibling of.
+
+    A client counting bands out of the payload would be a second statement of what the week
+    holds, and the two would disagree the first time a surface rendered the gap differently.
+    """
+    dropped = a_slot(reason=EmptySlotReason.DROPPED_LEG, interval=between(9.5, 10))
+    document = a_document(
+        blocks=(a_block(),),
+        empty_slots=(dropped, a_slot(area_id=CAREER, interval=between(19, 20))),
+    )
+
+    readings = week_readings(
+        document,
+        span=WEEK_SPAN,
+        report=AN_EMPTY_REPORT,
+        off_plan=off_plan_reading(WEEK_SPAN, IntervalSet()),
+        confirmed=(),
+        now=MONDAY,
+        currency=CURRENT,
+    )
+
+    assert readings.dropped_legs == 1
+    assert readings.block_count == 1
+
+
 # --------------------------------------------------------------------------------
 # plan_currency
 # --------------------------------------------------------------------------------
@@ -724,6 +750,7 @@ SECTION_13_READINGS = frozenset(
         "unconfirmedDays",
         "offPlanMinutes",
         "blockCount",
+        "droppedLegs",
         "planCurrency",
     }
 )

@@ -1,4 +1,4 @@
-"""The eight figures the summary strip and the review both read, computed once on the server.
+"""The nine figures the summary strip and the review both read, computed once on the server.
 
 The strip shows three of them plus the verdict, and the pie review divides the same denominator.
 Computing them in a client from the document would risk a figure on the strip disagreeing with the
@@ -14,9 +14,11 @@ Reading the report is therefore what makes the strip and the review agree by con
 than by a test, and it is why the wire document does not carry the stored three at all.
 
 ``scheduled``, ``block_count`` and ``unconfirmed_days`` are the document's, because no other shape
-can answer them: they are facts about what the week holds.
+can answer them: they are facts about what the week holds. ``dropped_legs`` is the document's
+for the same reason, and a figure rather than something a client counts out of the payload:
+an absence explained on the grid is still one fact about the week.
 
-## Three of the eight are worth stating exactly
+## Three of the nine are worth stating exactly
 
 ``scheduled_minutes`` is a COVERAGE figure, unioned and clipped to the week. Unioned because a
 minute the user deliberately double-booked is one scheduled minute rather than two, and clipped
@@ -35,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.intervals import IntervalSet
 from syncr_domain.weeks import local_days
 
@@ -61,6 +64,7 @@ class WeekReadings:
     unconfirmed_days: int
     off_plan_minutes: int
     block_count: int
+    dropped_legs: int
     plan_currency: PlanCurrency
 
 
@@ -83,6 +87,9 @@ def week_readings(
         unconfirmed_days=unconfirmed_days(document, span=span, confirmed=confirmed, now=now),
         off_plan_minutes=off_plan.minutes,
         block_count=len(document.blocks),
+        dropped_legs=sum(
+            1 for slot in document.empty_slots if slot.reason is EmptySlotReason.DROPPED_LEG
+        ),
         plan_currency=currency,
     )
 
