@@ -529,6 +529,17 @@ class FakeOutcomes:
         self.asked_for.extend(habit_ids)
         return tuple(row for row in self._stored if row.habit_id in set(habit_ids))
 
+    async def latest(
+        self, habit_ids: Sequence[HabitId], *, since: datetime
+    ) -> dict[HabitId, datetime | None]:
+        latest_seen: dict[HabitId, datetime | None] = dict.fromkeys(habit_ids)
+        for row in self._stored:
+            if row.habit_id in latest_seen and row.occurred_at >= since:
+                seen = latest_seen[row.habit_id]
+                if seen is None or row.occurred_at > seen:
+                    latest_seen[row.habit_id] = row.occurred_at
+        return latest_seen
+
 
 class FakeTasks(TaskRepository):
     def __init__(self, stored: Sequence[TaskRecord] = ()) -> None:

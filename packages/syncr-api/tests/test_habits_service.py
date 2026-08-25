@@ -179,6 +179,9 @@ class RecordedOutcomes:
         self.reads.append(tuple(habit_ids))
         return self.log
 
+    async def latest(self, habit_ids: Sequence[HabitId], *, since: datetime) -> dict[HabitId, None]:
+        return {}
+
 
 def outcome(
     habit_id: HabitId,

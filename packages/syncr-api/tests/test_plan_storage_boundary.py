@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -463,6 +464,16 @@ def test_the_habit_projection_states_both_keys_the_index_leads_with() -> None:
 
     assert sql.count(f"({BLOCK_OUTCOMES_TABLE}.{BINDING} ->> ") == 2
     assert f"{BLOCK_OUTCOMES_TABLE}.{TENANT_ID_COLUMN} = " in sql
+
+
+def test_the_last_occurrence_read_bounds_the_scan_to_its_window() -> None:
+    # The bounded half of the projection. The due rule needs only rows as far back as one declared
+    # interval, so the read carries the window predicate beside the two keys above and narrows the
+    # range the index serves instead of walking the tenant's whole history.
+    since = datetime(2026, 2, 1, tzinfo=UTC)
+    sql = str(HabitOutcomeLog(AsyncSession(), uuid4()).recent_statement([uuid4()], since=since))
+
+    assert f"{BLOCK_OUTCOMES_TABLE}.occurred_at >=" in sql
 
 
 async def test_the_habit_projection_answers_an_empty_request_without_a_read() -> None:

@@ -23,7 +23,7 @@ import inspect
 from collections import Counter
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -35,10 +35,11 @@ from syncr_api.plans.assembler import (
     AssemblyCaller,
     WeekAssembler,
 )
-from syncr_api.plans.cadence import occurrences_in_a_week
+from syncr_api.plans.cadence import log_window, occurrences_in_a_week
 from syncr_domain.fixtures.dst_weeks import DST_WEEKS, FALL_BACK, LONDON, SPRING_FORWARD
 from syncr_domain.habits import (
     BindingSource,
+    CadenceKind,
     Daily,
     EveryApproxDays,
     MissPolicy,
@@ -51,6 +52,7 @@ from syncr_domain.templates import BindingTarget, TemplateEntryKind
 from syncr_domain.weeks import IsoWeek
 from tests.assembly_fakes import (
     MONDAY,
+    MONDAY_MIDNIGHT,
     NOW,
     WEEK,
     FakeAreas,
@@ -82,8 +84,10 @@ if TYPE_CHECKING:
 
     from prometheus_client.samples import Sample
 
+    from syncr_api.habits.records import HabitRecord
     from syncr_domain.fixtures.dst_weeks import DstWeek
     from syncr_domain.habits import Cadence
+    from syncr_solver.inputs import SolveInputs
 
 BERLIN = "Europe/Berlin"
 APIA = "Pacific/Apia"
@@ -99,7 +103,7 @@ BUCKET_BOUND_LABEL = "le"
 # once. The concession table is read per week: the week being assembled has its own approved
 # concessions, and so does the week whose boundary-crossing occurrences this one inherits, which
 # have to be folded in or the two weeks disagree about how long one night was.
-READS_PER_ASSEMBLY: Final[Mapping[str, int]] = {"_adjustments": 2}
+READS_PER_ASSEMBLY: Final[Mapping[str, int]] = {"_adjustments": 2, "_outcomes": 2}
 ONE_READ: Final = 1
 
 
@@ -554,10 +558,184 @@ async def test_a_day_type_with_no_declared_shape_materializes_nothing_for_its_da
     ],
 )
 def test_how_many_occurrences_a_cadence_puts_in_one_week(cadence: Cadence, expected: int) -> None:
-    # An interval longer than a week rounds UP to one, which over-schedules a monthly habit to
-    # fifty-two a year: deciding it is not due needs a reading of when it last occurred, and no
-    # reader supplies one. Over-scheduling is visible to the user and under-scheduling is not.
+    # The rate the cadence declares, rounded up per week. For an interval longer than the week this
+    # is only the ceiling a due week reaches: expansions_in_a_week gates it by when the habit last
+    # occurred, which a rate alone cannot answer.
     assert occurrences_in_a_week(cadence) == expected
+
+
+# Thirty days before noon on Jan 12 is a due instant of Feb 11, which sits inside WEEK (Feb 9 to
+# 16) and in no week beside it.
+LAST_RECORDED = datetime(2026, 1, 12, 12, 0, tzinfo=UTC)
+
+
+def an_interval_outcome(habit_id: UUID, *, occurred_at: datetime) -> HabitOutcome:
+    """One recorded completion of an interval habit's single occurrence per expansion."""
+    return HabitOutcome(
+        habit_id=habit_id,
+        occurrence_key=index_occurrence_key(0),
+        state=OutcomeState.COMPLETED,
+        occurred_at=occurred_at,
+        confirmed_at=occurred_at,
+    )
+
+
+def an_interval_habit(area_id: UUID, *, approx_days: int) -> HabitRecord:
+    return a_habit(
+        area_id=area_id,
+        cadence_kind=CadenceKind.EVERY_APPROX_DAYS,
+        times_per_week=None,
+        approx_days=approx_days,
+    )
+
+
+async def test_an_interval_longer_than_a_week_expands_once_in_the_week_it_comes_due() -> None:
+    # Driven across three consecutive assemblies of one log, because a rate that holds less than
+    # one occurrence a week is not observable inside one: the due week expands once and the weeks
+    # either side of it expand nothing at all.
+    area = an_area()
+    habit = an_interval_habit(area.id, approx_days=30)
+    assembler = an_assembler(
+        areas=FakeAreas([area]),
+        habits=FakeHabits([habit]),
+        outcomes=FakeOutcomes([an_interval_outcome(habit.id, occurred_at=LAST_RECORDED)]),
+    )
+
+    due_week = await assembler.assemble(WEEK, NOW)
+    following = await assembler.assemble(WEEK.following(), NOW)
+    preceding = await assembler.assemble(WEEK.preceding(), NOW)
+
+    assert [occurrence.binding.entity_id for occurrence in due_week.habit_occurrences] == [habit.id]
+    assert following.habit_occurrences == ()
+    assert preceding.habit_occurrences == ()
+
+
+async def test_the_due_instant_is_read_half_open_like_every_span() -> None:
+    # An occurrence due exactly at Monday's midnight is due THIS week; one due at the following
+    # Monday's midnight belongs to that week and not this one, which is the half-open rule every
+    # span in the product reads.
+    area = an_area()
+    due_at_the_start = an_interval_habit(area.id, approx_days=30)
+    due_at_the_end = an_interval_habit(area.id, approx_days=30)
+    log = [
+        an_interval_outcome(due_at_the_start.id, occurred_at=MONDAY_MIDNIGHT - timedelta(days=30)),
+        an_interval_outcome(
+            due_at_the_end.id,
+            occurred_at=MONDAY_MIDNIGHT + timedelta(days=7) - timedelta(days=30),
+        ),
+    ]
+    assembler = an_assembler(
+        areas=FakeAreas([area]),
+        habits=FakeHabits([due_at_the_start, due_at_the_end]),
+        outcomes=FakeOutcomes(log),
+    )
+
+    this_week = await assembler.assemble(WEEK, NOW)
+    next_week = await assembler.assemble(WEEK.following(), NOW)
+
+    def counts_of(week: SolveInputs) -> Counter:
+        return Counter(occurrence.binding.entity_id for occurrence in week.habit_occurrences)
+
+    assert counts_of(this_week) == Counter({due_at_the_start.id: 1})
+    assert counts_of(next_week) == Counter({due_at_the_end.id: 1})
+
+
+async def test_an_interval_habit_with_no_recorded_occurrence_is_due_immediately() -> None:
+    # A habit nothing has ever been recorded against has no last occurrence to wait for, so its
+    # first week is its due week rather than a silence no user asked for.
+    area = an_area()
+    habit = an_interval_habit(area.id, approx_days=30)
+
+    inputs = await an_assembler(areas=FakeAreas([area]), habits=FakeHabits([habit])).assemble(
+        WEEK, NOW
+    )
+
+    assert [occurrence.binding.entity_id for occurrence in inputs.habit_occurrences] == [habit.id]
+
+
+@pytest.mark.parametrize(
+    ("approx_days", "expected"),
+    [(2, 4), (3, 3), (5, 2), (7, 1)],
+)
+async def test_an_interval_of_a_week_or_less_expands_every_week_whatever_the_log_holds(
+    approx_days: int, expected: int
+) -> None:
+    # The declared rate of an interval the week can hold repeats inside that week, so no reading of
+    # when it last occurred gates it: even a log left forty days behind expands exactly as before.
+    area = an_area()
+    habit = an_interval_habit(area.id, approx_days=approx_days)
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        habits=FakeHabits([habit]),
+        outcomes=FakeOutcomes(
+            [an_interval_outcome(habit.id, occurred_at=MONDAY_MIDNIGHT - timedelta(days=40))]
+        ),
+    ).assemble(WEEK, NOW)
+
+    assert len(inputs.habit_occurrences) == expected
+
+
+async def test_the_derivations_still_read_misses_and_completions_older_than_the_window() -> None:
+    # The bounded read serves the due rule alone. Debt accumulates over the whole log and the
+    # cursor counts every completion, so a skip ninety days back still owes its occurrence and a
+    # completion ninety days back still advances its rotation, though neither is recent enough to
+    # make any interval due.
+    area = an_area()
+    owing = a_habit(area_id=area.id, times_per_week=1, miss_policy=MissPolicy.DEBT, title="Anki")
+    rotating = a_habit(
+        area_id=area.id,
+        times_per_week=1,
+        binding_source=BindingSource.ROTATION,
+        variants=("Push", "Pull"),
+    )
+    long_ago = MONDAY_MIDNIGHT - timedelta(days=90)
+    log = [
+        HabitOutcome(
+            habit_id=owing.id,
+            occurrence_key=index_occurrence_key(0),
+            state=OutcomeState.SKIPPED,
+            occurred_at=long_ago,
+            confirmed_at=long_ago,
+        ),
+        an_interval_outcome(rotating.id, occurred_at=long_ago),
+    ]
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        habits=FakeHabits([owing, rotating]),
+        outcomes=FakeOutcomes(log),
+    ).assemble(WEEK, NOW)
+
+    owed = [
+        occurrence.is_debt
+        for occurrence in inputs.habit_occurrences
+        if occurrence.binding.entity_id == owing.id
+    ]
+    placed = {occurrence.binding.entity_id: occurrence for occurrence in inputs.habit_occurrences}
+    assert owed == [False, True]
+    assert placed[rotating.id].variant == "Pull"
+
+
+def test_the_last_occurrence_read_is_bounded_to_the_longest_declared_interval_plus_one() -> None:
+    # One day past the longest interval any declared cadence carries, measured from the week's own
+    # start: strictly further back than any occurrence that could make this week due.
+    records = [
+        an_interval_habit(an_area().id, approx_days=30),
+        an_interval_habit(an_area().id, approx_days=90),
+        a_habit(area_id=an_area().id, times_per_week=3),
+    ]
+
+    window = log_window(records, span=between(0, 7 * MINUTES_PER_HOUR))
+
+    assert window == MONDAY_MIDNIGHT - timedelta(days=91)
+
+    # No declared interval reaches past the week itself, so the bound is the slack alone.
+    without_intervals = log_window(
+        [a_habit(area_id=an_area().id)], span=between(0, 7 * MINUTES_PER_HOUR)
+    )
+
+    assert without_intervals == MONDAY_MIDNIGHT - timedelta(days=1)
 
 
 async def test_occurrences_are_keyed_by_zero_padded_index_in_expansion_order() -> None:
