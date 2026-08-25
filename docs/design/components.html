@@ -418,8 +418,10 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
 .blk.h{background-color:var(--state-hover)}
 .blk.f{outline:var(--state-focus-ring);z-index:6}
 .now{position:absolute;left:0;right:0;height:0;border-top:var(--now-rule) solid var(--ink-bright);z-index:5}
+/* The band paints its hatch through color: --hatch-ink is substituted where it is declared (:root), so an
+   element-level write cannot reach the gradient. The span re-declares color so the label stays legible. */
 .forbid{position:absolute;left:0;right:0;pointer-events:none;z-index:0;
-  --hatch-ink:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
+  color:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
   border-top:var(--hairline) dotted var(--rule);border-bottom:var(--hairline) dotted var(--rule)}
 .forbid span{position:absolute;left:4px;top:1px;font-size:8px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--text-muted);background:var(--paper-raised);padding:0 2px}
@@ -450,8 +452,11 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
 .legend b{font-weight:400;color:var(--ink-deep)}
 .legend .m{margin-left:auto;color:var(--text-muted);font-size:var(--fs-eyebrow);
   font-variant-numeric:tabular-nums}
+/* The swatch paints the hatch, so it carries the ink on its own color: a gradient in the token layer draws in
+   --hatch-ink, which is currentColor substituted at :root, and the row keeps its text ink off this channel. */
 .legend .sw{width:26px;height:11px;flex:0 0 auto;background-color:var(--ai);
-  background-image:var(--hx);background-size:var(--hxs,auto)}
+  background-image:var(--hx);background-size:var(--hxs,auto);
+  color:color-mix(in srgb,var(--ai) var(--hatch-mix),var(--paper-raised))}
 
 /* ---------- 14 DeviationBar. COBALT ONLY. ----------
    Area ink encodes identity; cobalt encodes magnitude and direction. Giving the bar its
@@ -485,10 +490,12 @@ table.dat tfoot td{border-bottom:0;height:auto;padding:6px 9px;white-space:norma
    The circle is wedge geometry, not a border radius: the 50% allowlist stays closed. */
 .pie{position:relative;width:196px;height:196px;flex:0 0 auto}
 .pie .w{position:absolute;inset:0;background-color:var(--ai);background-image:var(--hx);
-  background-size:var(--hxs,auto);clip-path:polygon(var(--pts))}
+  background-size:var(--hxs,auto);clip-path:polygon(var(--pts));
+  color:color-mix(in srgb,var(--ai) var(--hatch-mix),var(--paper-raised))}
 .sbar{display:flex;height:26px;border:var(--hairline) solid var(--rule-strong)}
 .sbar>span{background-color:var(--ai);background-image:var(--hx);background-size:var(--hxs,auto);
-  border-right:var(--hairline) solid var(--paper-raised)}
+  border-right:var(--hairline) solid var(--paper-raised);
+  color:color-mix(in srgb,var(--ai) var(--hatch-mix),var(--paper-raised))}
 .sbar>span:last-child{border-right:0}
 .sbarlab{display:flex;justify-content:space-between;font-size:var(--fs-eyebrow);
   color:var(--text-muted);padding-top:3px}
@@ -1176,11 +1183,11 @@ const AREAS = [
 const AREA_TOK = {};
 for(const a of AREAS) AREA_TOK[a.name] = a.tok;
 /* The hatch is a lighter step of the wedge's OWN ink, so it reads as texture rather than as
-   a second color. Always on: color is never the only encoding. */
+   a second color. Always on: color is never the only encoding. The ink itself rides the painter's own
+   color (see the sheet rules): --hx resolves against :root, so an element-level --hatch-ink is dead. */
 const fillStyle = a => {
   const [hv, hs] = HATCH[a.hatch];
-  return `--ai:var(${a.tok});--hx:var(${hv})` + (hs ? `;--hxs:var(${hs})` : '')
-    + `;--hatch-ink:color-mix(in srgb, var(${a.tok}) var(--hatch-mix), var(--paper-raised))`;
+  return `--ai:var(${a.tok});--hx:var(${hv})` + (hs ? `;--hxs:var(${hs})` : '');
 };
 const ord = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
 const h1 = n => n.toFixed(1) + 'h';

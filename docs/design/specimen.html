@@ -249,9 +249,14 @@ svg.ic{width:var(--icon);height:var(--icon);flex:0 0 auto;stroke:currentColor;fi
   border-right:var(--hairline) solid var(--rule);border-bottom:var(--hairline) solid var(--rule);min-width:0}
 .ramp .sw{width:38px;flex:0 0 auto}
 .ramp .chip{width:10px;height:10px;border-radius:50%;display:inline-block}
-/* Carrier 3 of 3: a wedge or bar fill, always hatched in a lighter step of its own ink. */
+/* Carrier 3 of 3: a wedge or bar fill, always hatched in a lighter step of its own ink.
+   The texture draws in --hatch-ink, which is currentColor: a custom property containing a var() is
+   substituted where it is DECLARED, so an element-level --hatch-ink cannot reach a gradient declared at
+   :root and color is the one value CSS resolves per element. The ink therefore arrives through color here,
+   on the element that paints, and never as a write on the row, whose text keeps its own ink. */
 .ramp .fill{height:22px;margin-top:4px;background-color:var(--ai);background-image:var(--hx);
-  background-size:var(--hxs,auto)}
+  background-size:var(--hxs,auto);
+  color:color-mix(in srgb,var(--ai) var(--hatch-mix),var(--paper-raised))}
 .ramp b{display:block;font-weight:400;color:var(--ink-deep)}
 .ramp .hex{color:var(--ink);font-variant-numeric:tabular-nums;font-size:9.5px}
 .ramp .use{display:block;color:var(--text-muted);font-size:9.5px;line-height:1.5;margin-top:2px}
@@ -260,7 +265,8 @@ svg.ic{width:var(--icon);height:var(--icon);flex:0 0 auto;stroke:currentColor;fi
 .carrier h4{font-size:9px;letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--ink-deep);margin-bottom:9px}
 .carrier p{margin:9px 0 0;font-size:var(--fs-eyebrow);line-height:1.55;color:var(--text-muted)}
 .stack{display:flex;height:26px;width:100%}
-.stack>span{background-color:var(--ai);background-image:var(--hx);background-size:var(--hxs,auto)}
+.stack>span{background-color:var(--ai);background-image:var(--hx);background-size:var(--hxs,auto);
+  color:color-mix(in srgb,var(--ai) var(--hatch-mix),var(--paper-raised))}
 .legend{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:9px;font-size:var(--fs-eyebrow);color:var(--ink)}
 .legend span{display:flex;align-items:center;gap:6px}
 .legend i{font-style:normal;color:var(--text-muted);font-variant-numeric:tabular-nums}
@@ -758,11 +764,13 @@ const AREAS = [
 const areaTok = a => '--area-' + a.n;
 const AREA_BY_NAME = {};
 for(const a of AREAS) AREA_BY_NAME[a.name] = a;
+/* hatchInk stays for the SVG pie patterns, which set stroke and fill directly because a pattern does not
+   inherit from the element that paints it. The CSS hatches take their ink from the painter's own color:
+   --hatch-ink is substituted where it is declared (:root), so writing it on an element is dead. */
 const hatchInk = tok => 'color-mix(in srgb, var(' + tok + ') var(--hatch-mix), var(--paper-raised))';
 const hatchStyle = a => {
   const [hv, hs] = HATCH[a.hatch];
-  return '--ai:var(' + areaTok(a) + ');--hatch-ink:' + hatchInk(areaTok(a))
-    + ';--hx:var(' + hv + ')' + (hs ? ';--hxs:var(' + hs + ')' : '');
+  return '--ai:var(' + areaTok(a) + ');--hx:var(' + hv + ')' + (hs ? ';--hxs:var(' + hs + ')' : '');
 };
 
 /* ---------- 1.1 and 1.2, swatches ---------- */
