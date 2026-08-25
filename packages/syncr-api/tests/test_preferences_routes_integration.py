@@ -773,7 +773,7 @@ def keyed(headers: dict[str, str], key: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
-def test_one_idempotency_key_replaying_a_replacement_answers_the_stored_body(
+def test_a_replacement_repeated_under_one_key_answers_the_same_body(
     http: TestClient,
     signed_in: dict[str, str],
     owned: Owned,
@@ -820,7 +820,7 @@ def test_a_repeat_under_one_key_replays_the_stored_answer_rather_than_re_executi
 
 
 @pytest.mark.parametrize("kind", ["area", "habit", "task"], ids=["area", "habit", "task"])
-def test_one_idempotency_key_replaying_a_removal_answers_the_stored_claim(
+def test_a_removal_repeated_under_one_key_answers_the_same_claim(
     http: TestClient, signed_in: dict[str, str], owned: Owned, kind: str
 ) -> None:
     put(http, signed_in, owned.area, **GYM_WINDOWS)

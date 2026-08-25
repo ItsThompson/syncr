@@ -343,7 +343,7 @@ def test_a_guarded_preference_route_refuses_a_token_and_serves_the_cookie(
     cookie = _signed_in(http, owner.email)
 
     refused = http.request(
-        method, path, json=body, headers={**token, IDEMPOTENCY_KEY_HEADER: f"cli-{method}-{path}"}
+        method, path, json=body, headers={**token, IDEMPOTENCY_KEY_HEADER: "cli-preference-check"}
     )
     browser = http.request(method, path, json=body, headers={**cookie, "Origin": BROWSER_ORIGIN})
 
