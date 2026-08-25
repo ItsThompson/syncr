@@ -5,8 +5,8 @@ has two readings: nothing was planned, or nothing was meant to be. The first is 
 the second is a holiday, so the report states which. That is the whole reason this module
 exists: without it the honest answer and the alarming one render identically.
 
-``statement`` is non-null exactly when the week is covered end to end, which is the same
-convention ``RampReading.statement`` follows. A partially off-plan week needs no statement:
+``statement`` is non-null exactly when the week is covered end to end. A partially off-plan
+week needs no statement:
 its denominator is smaller and its deviations are still meaningful, so the minute count alone
 says what happened.
 

@@ -61,8 +61,8 @@ _PARENT_DESCRIPTION = (
     "time rolls up into its parent in reports, so moving it would rewrite reported history."
 )
 _AREA_NAME_DESCRIPTION = (
-    "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the "
-    "hatch and this name."
+    "Unique within the tenant. Every surface that labels an Area labels it by this name, so "
+    "two Areas cannot share one."
 )
 
 
@@ -86,9 +86,7 @@ class AreaResponse(WireModel):
 class RampReading(WireModel):
     """How much of the sealed ramp this tenant's Areas are using.
 
-    Reported on the list and on every mutation, because both change it. ``statement`` is
-    non-null exactly when two Areas hold one step, which is what a thirteenth Area produces:
-    the ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.
+    Reported on the list and on every mutation, because both change it.
     """
 
     pigment_count: int = Field(
@@ -96,13 +94,6 @@ class RampReading(WireModel):
     )
     pigments_in_use: int = Field(
         description="How many distinct steps of the ramp this tenant's Areas hold."
-    )
-    areas_sharing_a_pigment: int = Field(
-        description="How many Areas hold a step another Area also holds. Zero until the "
-        "ramp is full."
-    )
-    statement: str | None = Field(
-        default=None, description="What identity now rests on, stated when a step is shared."
     )
 
 

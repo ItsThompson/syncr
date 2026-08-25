@@ -1,7 +1,7 @@
 """What the review says in words, in one table rather than a formatting decision per row.
 
 A statement is non-null exactly when it says something the figures beside it do not, which is the
-convention ``RampReading.statement`` and ``off_plan_statement`` already follow. A period with a
+convention ``off_plan_statement`` already follows. A period with a
 denominator, confirmed days and a proposal carries none of these: its figures speak for themselves,
 and a sentence restating them would be noise on every read.
 

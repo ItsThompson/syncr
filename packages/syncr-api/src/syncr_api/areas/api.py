@@ -67,8 +67,6 @@ def _as_ramp(state: RampState) -> RampReading:
     return RampReading(
         pigment_count=state.pigment_count,
         pigments_in_use=state.pigments_in_use,
-        areas_sharing_a_pigment=state.areas_sharing_a_pigment,
-        statement=state.statement,
     )
 
 

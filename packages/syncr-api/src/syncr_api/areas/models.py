@@ -12,9 +12,9 @@ inherits its parent Area's allocation, so a time-boxed push is expressible witho
 new wedge out of the pie, and completing one leaves its historical time attribution intact
 because the attribution was always to the Area.
 
-The unique index on ``(tenant_id, name)`` is load-bearing rather than tidy. Past twelve Areas
-the pigment ramp repeats and identity rests on the hatch and the Area's name, so two Areas
-holding one name would leave nothing to tell them apart.
+The unique index on ``(tenant_id, name)`` is load-bearing rather than tidy. Every surface
+that labels an Area labels it by name, so two Areas holding one name would leave nothing to
+tell them apart.
 
 An Area holds no preference identifier. A preference names its own owner, so the ``preferences``
 table is where that relation lives, and an Area's preference is addressed by the Area itself
@@ -96,8 +96,8 @@ class AreaRow(Base, TenantScoped):
             name="floor_hours_could_be_met",
         ),
         CheckConstraint("parent_id IS NULL OR parent_id <> id", name="parent_is_another_area"),
-        # Identity past twelve Areas rests on the hatch and the name, so the name has to be
-        # unique for that to be true.
+        # An Area is labeled by its name everywhere it renders, so the name has to be
+        # unique for that to hold.
         Index(f"uq_{AREAS_TABLE}_{TENANT_ID_COLUMN}_name", TENANT_ID_COLUMN, "name", unique=True),
         # Every list read is "this tenant's Areas, in the order they were declared", which is
         # also the order the ramp dealt their pigments.
