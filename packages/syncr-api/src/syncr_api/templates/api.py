@@ -104,7 +104,7 @@ def _as_day_type(record: DayTypeRecord) -> DayTypeResponse:
 
 
 def _as_template(
-    record: TemplateRecord, held: Mapping[BindingTarget, frozenset[UUID]]
+    record: TemplateRecord, held: Mapping[BindingTarget, frozenset[UUID]] | None
 ) -> TemplateResponse:
     """One shape as the wire states it, with each entry's binding resolved against ``held``.
 
@@ -168,10 +168,9 @@ async def declare_template(
     declaration = TemplateDeclaration(day_type_id=body.day_type_id, name=body.name)
 
     async def declare() -> TemplateResponse:
-        created = await service.create(principal, declaration)
-        # A declared shape holds no entries yet, so there is nothing to resolve and the empty
-        # answer is exact rather than a skipped read.
-        return _as_template(created, {})
+        # A declared shape holds no entries yet, so there is nothing to resolve: None leaves the
+        # answer unstated rather than claiming an assessment that read nothing.
+        return _as_template(await service.create(principal, declaration), None)
 
     return await guard.once(DECLARE_TEMPLATE_ROUTE, TemplateResponse, declare)
 
