@@ -93,7 +93,6 @@ from syncr_api.plans.errors import ClassificationRejected
 from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
 from syncr_api.plans.production import NoWeightSetInForce, WeekProducer
 from syncr_api.plans.proposals import PendingProposalRepository
-from syncr_api.plans.recording import NO_SESSION_IS_OPEN
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_verdicts import stored_verdict
 from syncr_api.plans.surfaces import VerdictSurface
@@ -314,8 +313,9 @@ class SolveDispatch:
             # The transition commits with the solve that computed it, and the guard is what makes
             # that meaningful: a solve whose version moved returns above without writing, so a
             # superseded solve records no transition. This row is the second of a diagnostic pair:
-            # the probe's warning, confirmed by an attempted placement.
-            await self._recorder(session).record(week, solved.verdict, caused_by=op.id)
+            # the probe's warning, confirmed by an attempted placement. What the row says about
+            # the weekly session is what the requesting caller stated, carried on the operation.
+            await self._recorder(session, op).record(week, solved.verdict, caused_by=op.id)
             if adopted.changed_the_live_plan():
                 # The live plan IS a solve input, so the version moves with it, and the projection
                 # is enqueued for the same reason and under the same condition: a replaced proposal
@@ -499,19 +499,23 @@ class SolveDispatch:
     def _lifecycle(self, session: AsyncSession) -> OperationLifecycle:
         return OperationLifecycle(OperationRepository(session, self._tenant_id), self._clock)
 
-    def _recorder(self, session: AsyncSession) -> VerdictRecorder:
-        """The transition writer for this path, bound to the surface and to no open session.
+    def _recorder(self, session: AsyncSession, op: OperationRecord) -> VerdictRecorder:
+        """The transition writer for this path, bound to the surface and to the operation's answer.
 
-        The worker cannot know whether the user's weekly session is open, so it reports false.
-        ``18-observability.md`` states that plainly and the episode definition depends on it: the
-        FIRST row of an episode decides whether the infeasibility was caught early, so a confirming
-        row that claimed a session was open would report a miss as a catch.
+        The statement about the weekly session travels on the operation itself: the routes that
+        schedule a solve resolve it through ``SessionModeDep``, the coordinator carries it on the
+        row across coalescing and supersession, and this recorder reads it back when the flip is
+        written. An episode is defined by its FIRST row, and on every path that schedules a solve
+        that row is this one, so a literal here would report a catch as a miss.
+
+        The maintainer's recorder keeps the ``NO_SESSION_IS_OPEN`` literal, because time passing
+        is not a request and there is no caller to ask.
         """
         return build_verdict_recorder(
             session,
             self._tenant_id,
             surface=VerdictSurface.SOLVE,
-            session_mode_active=NO_SESSION_IS_OPEN,
+            session_mode_active=op.session_mode_active,
         )
 
     def _producer(self, session: AsyncSession, revisions: PlanRepository) -> WeekProducer:

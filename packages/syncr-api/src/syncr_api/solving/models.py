@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from syncr_api.core.columns import ISO_WEEK_LENGTH, NULLABLE_JSONB, JsonObject, values_in
@@ -69,6 +69,12 @@ class Operation(Base, TenantScoped):
     # channel from the request to the worker, because requesting a tradeoff persists
     # nothing.
     candidate_adjustment: Mapped[JsonObject | None] = mapped_column(NULLABLE_JSONB, nullable=True)
+    # Whether the caller that asked for this operation stated the weekly session was open. The
+    # statement travels on the row because the operation is the only object that crosses from
+    # a request to the worker, and the worker's recorder reads it: an episode's first row is
+    # written by the solve, so the request's answer has to arrive with it. A request joining
+    # an operation already in flight flags it rather than leaving its own answer behind.
+    session_mode_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -6,19 +6,23 @@ write is what notices. Nothing is cancelled for correctness, nothing is queued i
 nothing is rebased.
 
 ```
-request_solve(week, at_version, immediate, candidate)
+request_solve(week, at_version, immediate, candidate, session_mode_active)
   │
   ├── candidate is not None                 A TRADEOFF REQUEST
   │     └──▶ supersede whatever is in flight, PENDING or RUNNING, and create a new one carrying
-  │          the candidate, due now. It may never join an existing operation: coalescing into one
-  │          created by a pin made two seconds earlier would answer with a proposal that does not
-  │          contain the concession, and the tradeoff would appear to have been ignored
+  │          the candidate and THIS request's session statement, due now. It may never join an
+  │          existing operation: coalescing into one created by a pin made two seconds earlier
+  │          would answer with a proposal that does not contain the concession, and the tradeoff
+  │          would appear to have been ignored
   ├── no operation exists
-  │     └──▶ create one, due at now + (0 if immediate else the debounce window)
+  │     └──▶ create one, carrying the request's session statement, due at now + (0 if immediate
+  │          else the debounce window)
   ├── one is PENDING
   │     ├── it carries a candidate ──▶ leave it. An ordinary mutation does not displace a pending
   │     │                              tradeoff; its own version bump supersedes the tradeoff after
   │     │                              it runs, and the candidate carries forward
+  │     ├── stated session open   ──▶ flag the row: several requests share the one solve, so the
+  │     │                              statement widens to true if ANY of them said it was open
   │     ├── immediate              ──▶ pull its due instant forward to now
   │     └── otherwise              ──▶ leave it. THE COALESCING STEP
   └── one is RUNNING
@@ -149,6 +153,7 @@ class SolveCoordinator:
         *,
         immediate: bool = False,
         candidate: JsonDocument | None = None,
+        session_mode_active: bool,
     ) -> OperationRecord:
         """Ask for a solve of ``week``, and answer with the operation the caller should track.
 
@@ -162,13 +167,35 @@ class SolveCoordinator:
 
         A request carrying a candidate supersedes whatever is in flight, running included, so it
         always answers with an operation of its own.
+
+        ``session_mode_active`` has no default. It is what the requesting caller stated about the
+        weekly session, and the solve's recorder reads it off the operation when the flip is
+        written: an episode's first row is the solve's, so the answer has to ride the row the way
+        a candidate does. A caller that has no session concept states false explicitly.
         """
         in_flight = await self._operations.in_flight(week, kind=SOLVE)
         if candidate is not None:
-            return await self._for_a_candidate(week, in_flight, candidate, at_version=at_version)
+            return await self._for_a_candidate(
+                week,
+                in_flight,
+                candidate,
+                at_version=at_version,
+                session_mode_active=session_mode_active,
+            )
         if in_flight is None:
-            return await self._scheduled(week, immediate=immediate, at_version=at_version)
-        return await self._joined(week, in_flight, immediate=immediate, at_version=at_version)
+            return await self._scheduled(
+                week,
+                immediate=immediate,
+                at_version=at_version,
+                session_mode_active=session_mode_active,
+            )
+        return await self._joined(
+            week,
+            in_flight,
+            immediate=immediate,
+            at_version=at_version,
+            session_mode_active=session_mode_active,
+        )
 
     @measured("solve_coordinator")
     async def claim_next(self) -> OperationRecord | None:
@@ -217,6 +244,10 @@ class SolveCoordinator:
             due_at=self._clock(),
             candidate=closed.candidate_adjustment,
             at_version=closed.input_version,
+            # The follow-up answers the same question the discarded solve was asked, so it
+            # carries forward what that solve's requesting callers said about the session,
+            # the way it carries the candidate forward.
+            session_mode_active=closed.session_mode_active,
         )
         return await self._named(closed, follow_up)
 
@@ -253,16 +284,23 @@ class SolveCoordinator:
         candidate: JsonDocument,
         *,
         at_version: int,
+        session_mode_active: bool,
     ) -> OperationRecord:
         """A tradeoff's own solve, which never joins one that already exists.
 
         Whatever is in flight is closed and this request's operation takes its place, so the
         supersession names this one rather than a follow-up: the replacement is the tradeoff, and
         enqueueing a follow-up as well would be a second non-terminal solve the index refuses.
+        The replacement carries THIS request's statement about the session, not the displaced
+        operation's: it answers the question this caller asked.
         """
         closed = None if in_flight is None else await self._closed(in_flight)
         created = await self._enqueued(
-            week, due_at=self._clock(), candidate=candidate, at_version=at_version
+            week,
+            due_at=self._clock(),
+            candidate=candidate,
+            at_version=at_version,
+            session_mode_active=session_mode_active,
         )
         if closed is not None:
             await self._named(closed, created)
@@ -296,7 +334,12 @@ class SolveCoordinator:
         return op.iso_week
 
     async def _scheduled(
-        self, week: IsoWeek, *, immediate: bool, at_version: int
+        self,
+        week: IsoWeek,
+        *,
+        immediate: bool,
+        at_version: int,
+        session_mode_active: bool,
     ) -> OperationRecord:
         """The first solve for this week: due now, or at the end of the debounce window."""
         now = self._clock()
@@ -305,17 +348,34 @@ class SolveCoordinator:
             due_at=now if immediate else now + self._debounce,
             candidate=None,
             at_version=at_version,
+            session_mode_active=session_mode_active,
         )
 
     async def _joined(
-        self, week: IsoWeek, in_flight: OperationRecord, *, immediate: bool, at_version: int
+        self,
+        week: IsoWeek,
+        in_flight: OperationRecord,
+        *,
+        immediate: bool,
+        at_version: int,
+        session_mode_active: bool,
     ) -> OperationRecord:
         """The operation already in flight, its due instant pulled forward if this is immediate.
 
         A pending tradeoff is left alone by an ordinary mutation, candidate and due instant both:
         the version bump this mutation already made will supersede it once it runs, and the
         follow-up carries the concession forward.
+
+        This request's statement about the session is ABSORBED rather than dropped: several
+        requests share the one solve, so the flag widens to true when any of them stated the
+        session was open, and never narrows back.
         """
+        if session_mode_active and not in_flight.session_mode_active:
+            absorbed = await self._operations.flag_stated_session(in_flight.id)
+            if absorbed is not None:
+                in_flight = absorbed
+            # An unanswered write means the row moved past non-terminal between the read above
+            # and this one; its terminal state keeps whatever flag it finished with.
         carries_a_candidate = in_flight.candidate_adjustment is not None
         may_move = in_flight.status == PENDING and not carries_a_candidate
         if immediate and may_move:
@@ -340,10 +400,15 @@ class SolveCoordinator:
         due_at: datetime,
         candidate: JsonDocument | None,
         at_version: int | None,
+        session_mode_active: bool,
     ) -> OperationRecord:
         """One new pending solve for this week, and the line that says why it was created."""
         created = await self._lifecycle.enqueue(
-            kind=SOLVE, iso_week=week, due_at=due_at, candidate_adjustment=candidate
+            kind=SOLVE,
+            iso_week=week,
+            due_at=due_at,
+            candidate_adjustment=candidate,
+            session_mode_active=session_mode_active,
         )
         _log.info(
             "solving.solve.scheduled",

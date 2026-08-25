@@ -146,6 +146,14 @@ class TimeDrivenVerdicts:
         )
 
     def _recorder(self) -> VerdictRecorder:
+        """The maintainer's transition writer, bound to the literal no request could replace.
+
+        This pass is time-driven: there is no requesting caller, so there is nothing to carry an
+        answer about the weekly session, and the honest statement is that none was open. The
+        solve's recorder is the one that reads a caller's answer now, off the operation the
+        request scheduled; this one keeps ``NO_SESSION_IS_OPEN`` because time passing is not a
+        request.
+        """
         return build_verdict_recorder(
             self._session,
             self._tenant_id,

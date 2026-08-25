@@ -42,3 +42,7 @@ class OperationRecord:
     attempt: int
     error_code: str | None
     error_message: str | None
+    # Whether the caller that asked for this operation stated the weekly session was open.
+    # Defaulted because every construction site but the repository's answers for a caller
+    # that could not state anything: the worker's reads, and the tests' fakes.
+    session_mode_active: bool = False

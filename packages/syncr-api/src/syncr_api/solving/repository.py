@@ -64,12 +64,17 @@ class OperationRepository(TenantScopedRepository):
         iso_week: IsoWeek | None = None,
         source_id: UUID | None = None,
         candidate_adjustment: JsonDocument | None = None,
+        session_mode_active: bool = False,
     ) -> OperationRecord:
         """Create one pending operation for a week or for a calendar source.
 
         The row is rejected when a solve for this week is already in flight, by the partial
         unique index. A caller that wants to coalesce reads :meth:`in_flight` first; the
         index is what makes the read a check rather than the whole guarantee.
+
+        ``session_mode_active`` records what the caller stated about the weekly session, for
+        the worker's recorder to read. The default of false is the honest value for every
+        caller that has no session concept at all: the maintainer, a calendar poll, a retry.
         """
         operation = Operation(
             id=uuid4(),
@@ -82,6 +87,7 @@ class OperationRepository(TenantScopedRepository):
             candidate_adjustment=(
                 None if candidate_adjustment is None else dict(candidate_adjustment)
             ),
+            session_mode_active=session_mode_active,
             scheduled_for=scheduled_for,
             attempt=FIRST_ATTEMPT,
         )
@@ -316,6 +322,21 @@ class OperationRepository(TenantScopedRepository):
             .values(superseded_by=superseded_by),
         )
 
+    async def flag_stated_session(self, operation_id: OperationId) -> OperationRecord | None:
+        """Flag one in-flight operation as asked for during an open weekly session.
+
+        A request that joined an operation already in flight states its own answer, and the
+        row must not lose it: several requests share the one solve, so the flag reads true if
+        ANY of them stated the session was open. Writing only the widening direction makes
+        this idempotent under concurrent joins, which the single-flight index invites.
+        """
+        return await self._stepped(
+            operation_id,
+            self.scoped_update(Operation)
+            .where(Operation.id == operation_id, Operation.session_mode_active.is_(False))
+            .values(session_mode_active=True),
+        )
+
     async def stamp_input_version(
         self, operation_id: OperationId, *, input_version: int
     ) -> OperationRecord | None:
@@ -370,6 +391,7 @@ def as_record(operation: Operation) -> OperationRecord:
         source_id=operation.source_id,
         input_version=operation.input_version,
         candidate_adjustment=deepcopy(operation.candidate_adjustment),
+        session_mode_active=operation.session_mode_active,
         scheduled_for=operation.scheduled_for,
         started_at=operation.started_at,
         finished_at=operation.finished_at,
