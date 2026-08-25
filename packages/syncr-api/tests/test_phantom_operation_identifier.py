@@ -848,7 +848,7 @@ async def test_a_resolved_conflict_answers_with_its_solve_already_readable(
     onlooker: async_sessionmaker[AsyncSession],
     owner: UserRecord,
 ) -> None:
-    """The operation answering a conflict carries reads back when the answer does.
+    """The operation the answer to a conflict carries reads back when the answer does.
 
     A resolution that moves the block enqueues the solve that will read the freed week, so the
     answer carries that operation under `operation`, exactly as a pin's answer does, and it is
