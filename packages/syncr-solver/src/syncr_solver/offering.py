@@ -120,6 +120,7 @@ def offer_at(candidate: Candidate, interval: Interval, *, attempt: Attempt) -> O
         reason=ReasonRecord((candidate.bound,)),
         area_id=candidate.area_id,
         split_count=count,
+        make_up=candidate.make_up,
     )
     return Offer(candidate=candidate, placed=Placed.of(block, sizing=candidate.sizing, chosen=True))
 

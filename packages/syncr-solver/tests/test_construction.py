@@ -30,6 +30,7 @@ from tests.materialized_weeks import (
     FITNESS,
     NOW,
     a_frame_entry,
+    a_pin,
     a_slot,
     an_area_budget,
     an_off_plan_period,
@@ -115,6 +116,39 @@ def test_a_queue_occurrence_names_the_backlog_item_it_drew_and_the_habit_it_is()
     assert bound[0].title == "Leetcode session · Trees"
     assert bound[0].reason.clauses[0].source is BindingSource.QUEUE  # type: ignore[union-attr]
     assert bound[0].reason.clauses[0].selected == "Trees"  # type: ignore[union-attr]
+
+
+def test_the_make_up_mark_an_occurrence_carries_reaches_the_block_it_becomes() -> None:
+    """The mark rides the candidate so the block states it, and the outcome can store the fact.
+
+    Read off a solve rather than off ``offer_at`` alone, so the assertion covers the path a real
+    week takes and cannot pass on a block built by hand.
+    """
+    week = a_week(
+        habit_occurrences=(an_occurrence(index=0), an_occurrence(index=1, is_debt=True)),
+        areas=(an_area_budget(target_minutes=600),),
+    )
+
+    blocks = sorted(
+        blocks_titled(solved(week).document, "Gym"), key=lambda b: b.binding.occurrence_key
+    )
+
+    assert [block.make_up for block in blocks] == [False, True]
+
+
+def test_a_pinned_made_up_occurrence_keeps_its_mark_when_the_user_moves_it() -> None:
+    """A pin re-places the block from its candidate, and the re-placement restates what it was."""
+    debt = an_occurrence(index=1, is_debt=True)
+    week = a_week(
+        habit_occurrences=(debt,),
+        areas=(an_area_budget(target_minutes=300),),
+        pins=(a_pin(binding=debt.binding, interval=between(13, 14, day=4)),),
+    )
+
+    (placed,) = blocks_titled(solved(week).document, "Gym")
+
+    assert placed.make_up
+    assert placed.interval == between(13, 14, day=4)
 
 
 def a_career_week_drawing_its_backlog(*, source: BindingSource) -> SolveInputs:

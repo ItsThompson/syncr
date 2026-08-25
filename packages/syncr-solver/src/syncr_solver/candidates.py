@@ -102,6 +102,9 @@ class Candidate:
     # Minutes of this demand the week owed before this expansion: a made-up occurrence, which is
     # exactly a cadence item that has fallen behind. The ordering's third term.
     stale_minutes: int
+    # Whether this candidate is one of those made-up occurrences. Carried so the block it becomes
+    # states it, which is what lets the outcome recorded against the block store the fact.
+    make_up: bool = False
     # The unmet floor of this candidate's Area, as it stands in the round this candidate was built
     # for. The ordering's first term.
     floor_shortfall_minutes: int
@@ -233,6 +236,7 @@ def _occurrence_candidates(
                 remaining_minutes=occurrence.duration.min_minutes,
                 deadline=None,
                 stale_minutes=occurrence.duration.min_minutes if occurrence.is_debt else 0,
+                make_up=occurrence.is_debt,
                 floor_shortfall_minutes=floor_shortfalls.get(occurrence.area_id, 0),
                 bound=bound,
             )

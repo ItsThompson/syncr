@@ -186,6 +186,7 @@ def _block_for(candidate: Candidate, interval: Interval, inputs: SolveInputs) ->
         title=candidate.title,
         reason=ReasonRecord((candidate.bound,)),
         area_id=candidate.area_id,
+        make_up=candidate.make_up,
     )
 
 
