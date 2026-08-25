@@ -286,6 +286,14 @@ jobs:
       - name: Set up just
         uses: extractions/setup-just@v2
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync the workspace, so the host holds the syncr console script the suite drives
+        run: uv sync --all-packages --frozen
+
       - name: Install the suite's locked dependency tree and the browser it drives
         run: just e2e-setup
 
