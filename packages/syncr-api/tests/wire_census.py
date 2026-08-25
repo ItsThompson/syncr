@@ -33,14 +33,14 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAliasType, get_args
+from typing import TYPE_CHECKING, TypeAliasType, get_args, get_origin
 
 from fastapi.openapi.utils import get_fields_from_routes
 from pydantic import BaseModel, TypeAdapter
 from pydantic.errors import PydanticSchemaGenerationError
 
 import syncr_api
-from syncr_api.core.schemas import WireInstant, WireModel
+from syncr_api.core.schemas import WireInstant, WireModel, WireText
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -152,6 +152,122 @@ def instant_fields_rendered_by_a_serializer(
         covered |= set(decorators.model_serializers)
         found.extend(f"{field.where} rendered by {name}" for name in sorted(covered))
     return tuple(sorted(found))
+
+
+@dataclass(frozen=True, slots=True)
+class TextField:
+    """One field whose value is user-authored text under a length bound."""
+
+    model: type[BaseModel]
+    name: str
+    annotation: object
+    repeated: bool = False
+
+    @property
+    def where(self) -> str:
+        return f"{qualified(self.model)}.{self.name}"
+
+    @property
+    def adapter(self) -> TypeAdapter[object]:
+        """A validator over this field alone, so one field's reading is one assertion."""
+        return TypeAdapter(self.annotation)
+
+    def accept(self, value: str) -> object:
+        """Validate one probe string the way the field would receive it."""
+        probe: object = [value] if self.repeated else value
+        return self.adapter.validate_python(probe)
+
+    @property
+    def bounds(self) -> tuple[int | None, int | None]:
+        """The tightest (min, max) length bound any part of the value carries.
+
+        A list field carries the item bounds and the list's own bound; the item is what a
+        probe string is measured against, so the item's min is the larger min and the item's
+        max is the smaller max.
+        """
+        minimums: list[int] = []
+        maximums: list[int] = []
+        for low, high in _length_bounds(self.annotation):
+            if low is not None:
+                minimums.append(low)
+            if high is not None:
+                maximums.append(high)
+        return (
+            max(minimums) if minimums else None,
+            min(maximums) if maximums else None,
+        )
+
+
+def text_fields(models: tuple[type[BaseModel], ...]) -> tuple[TextField, ...]:
+    """Every field of ``models`` whose value is a length-bounded string, in a stable order.
+
+    The seam is a string that satisfies a length bound: a bare ``str`` anywhere in the
+    annotation and a length constraint on some part of it. That reaches both spellings -- a
+    field already on the shared user-text type AND a field still declared with its own
+    ``Field(min_length=...)`` -- which is what lets an adoption test cover the whole surface
+    rather than the fields someone remembered.
+    """
+    found: list[TextField] = []
+    for model in models:
+        for name, field in model.model_fields.items():
+            annotation = field.rebuild_annotation()
+            if _carries_a_bare_str(annotation) and _carries_a_length_bound(annotation):
+                found.append(
+                    TextField(
+                        model=model,
+                        name=name,
+                        annotation=annotation,
+                        repeated=_is_a_list_of_strings(annotation),
+                    )
+                )
+    return tuple(found)
+
+
+def names_the_shared_text(annotation: object) -> bool:
+    """Whether ``annotation`` reaches its string through the shared user-text type.
+
+    Aliases are followed one level at a time rather than resolved wholesale, so a field
+    declared through a module-local alias of the shared type counts while a second spelling
+    of the same reading does not: one name is the claim.
+    """
+    if annotation is WireText:
+        return True
+    if isinstance(annotation, TypeAliasType):
+        return names_the_shared_text(annotation.__value__)
+    return any(names_the_shared_text(argument) for argument in get_args(annotation))
+
+
+def _carries_a_bare_str(annotation: object) -> bool:
+    return any(part is str for part in _parts(annotation))
+
+
+def _carries_a_length_bound(annotation: object) -> bool:
+    return any(bound != (None, None) for bound in _length_bounds(annotation))
+
+
+def _length_bounds(annotation: object) -> Iterator[tuple[int | None, int | None]]:
+    """Every (min, max) length pair declared on any part of ``annotation``.
+
+    A bound declared through ``Field(...)`` sits on the field info; one declared through a
+    module-local alias is normalized by pydantic into ``MinLen``/``MaxLen`` markers one level
+    down, so the metadata is descended into rather than read off one object.
+    """
+    for part in _parts(annotation):
+        if isinstance(part, type | TypeAliasType):
+            continue
+        low = getattr(part, "min_length", None)
+        high = getattr(part, "max_length", None)
+        if low is not None or high is not None:
+            yield (low, high)
+        for marker in getattr(part, "metadata", ()) or ():
+            yield from _length_bounds(marker)
+
+
+def _is_a_list_of_strings(annotation: object) -> bool:
+    """Whether the field's own value is a list of such strings, rather than one."""
+    return any(
+        get_origin(part) is list and _carries_a_bare_str(part) for part in _parts(annotation)
+    )
 
 
 def carries_an_instant(annotation: object) -> bool:
