@@ -1374,7 +1374,10 @@ drill-pitr-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     # empty evidence tables is the most convincing false pass there is. The five names are crossed
     # against `ops.config.EVIDENCE_TABLES` by a test, so the two cannot drift apart silently.
     for table in public.plan_revisions public.block_outcomes public.pins public.week_adjustments public.edit_events; do
-      count="$(psql_live -tAc "select count(*) from $table")"
+      # A FAILED READ is not an EMPTY TABLE: refuse by name rather than letting the empty answer
+      # pose as a zero and name the wrong refusal.
+      count="$(psql_live -tAc "select count(*) from $table")" \
+        || { echo "could not read the row count of $table" >&2; exit 1; }
       if [ "${count:-0}" -eq 0 ]; then
         echo "$table held no rows before the base backup, so this rehearsal proves nothing" >&2
         echo "about it. Seed the database and re-run." >&2
@@ -1473,6 +1476,15 @@ drill-pitr-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     pitr up -d --force-recreate --no-deps postgres-recovery || exit 1
     await_promotion || exit 1
     found_at_dump_instant="$(marker)"
+    # A COUNT THAT IS NOT A NUMBER means the query above failed, not that the row is absent:
+    # refuse by name here rather than letting ops.pitr answer with its usage text.
+    for counted in "$found_at_target" "$found_at_dump_instant"; do
+      case "$counted" in '' | *[!0-9]*)
+        echo "the rehearsal could not read one of its own marker counts" >&2
+        exit 1
+        ;;
+      esac
+    done
 
     echo "--- 8/8 the ninth claim"
     pitr run --rm --no-deps ops python3 -m ops.pitr \

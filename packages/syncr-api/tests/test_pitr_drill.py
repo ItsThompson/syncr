@@ -187,8 +187,8 @@ class TestTheRecoveryInstance:
     ) -> None:
         """Unlike the drill's scratch instance, a physical recovery holds its data BEFORE starting.
 
-        The volume is the one `teardown` removes by name, never with `down -v`: scoped to the
-        project, this project holds the live database's volume on a host.
+        The volume is the one `teardown` removes by name, never by a project-scoped teardown:
+        this project holds the live database's volume on a host.
         """
         mounts = services(drill)[RECOVERY_SERVICE]["volumes"]
         data = [m for m in mounts if str(m["target"]).startswith("/var/lib/postgresql")]
@@ -243,10 +243,11 @@ class TestTheRehearsalRefusesWhatItMust:
 
     def test_nothing_is_on_ci_and_the_reason_is_stated_in_the_recipe(self) -> None:
         """An omission explained nowhere reads as an oversight; this one is a decision."""
-        ci = (repo_root() / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         justfile = (repo_root() / "justfile").read_text(encoding="utf-8")
 
-        assert "drill-pitr" not in ci
+        for name in ("ci.yml", "cd.yml", "healthcheck.yml"):
+            workflow = (repo_root() / ".github" / "workflows" / name).read_text(encoding="utf-8")
+            assert "drill-pitr" not in workflow, f"{name} must not run the rehearsal"
         assert "WHY NOTHING HERE IS ON CI" in justfile, (
             "the recipe states why the run itself is rehearsed by hand"
         )
