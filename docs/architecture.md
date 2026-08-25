@@ -43,7 +43,7 @@ sequenceDiagram
     participant S as syncr-solver
     participant P as Postgres
 
-    C->>A: POST /weeks/{iso}/solve
+    C->>A: POST /api/v1/weeks/{iso_week}/solve
     A->>P: coordinate (coalesce / create operation)
     W->>P: claim due operation
     W->>P: load SolveInputs, stamp input version
@@ -65,7 +65,7 @@ Everything deploys from one base compose file plus overlays. An overlay carries 
 |---|---|---|
 | Base | `docker-compose.yml` | Never alone. Declares the networks (including the internal `data-net` around Postgres), memory limits, restart policy, the one-image-two-entrypoints split for api and worker, and third-party images pinned to exact tags. |
 | Dev | base + `docker-compose.dev.yml` via `just dev` | Local development. Adds bind mounts, autoreload, and the host ports production must not have, under its own project name so volumes stay separate. |
-| Monitoring | dev + `docker-compose.monitoring.yml` via `just monitoring` | Local inspection of metrics and alerts. Six services joined to `app-net`, no host ports. |
+| Monitoring | dev + `docker-compose.monitoring.yml` via `just monitoring` | Local inspection of metrics and alerts. The overlay's services join `app-net`, which the base file declares, and publish no host ports; `docker compose config --services` over the pair names the current set. |
 | Deployed | base + monitoring + deploy + tunnel via the deploy recipes | Production on one host. The deploy overlay repins images by digest; the tunnel overlay adds the only ingress. |
 | Restore drill | base + restore (+ deploy for digest pins) via `just restore-drill` | Recovery verification. Boots a scratch Postgres, an api against it, and the manifest fingerprint reader, deliberately without the tunnel. |
 
