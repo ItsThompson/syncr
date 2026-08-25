@@ -18,12 +18,23 @@ export interface PatternTableProps {
   readonly dayTypes: readonly DayType[];
 }
 
+/* THE DAY TYPE COLUMN ABSORBS THE SURPLUS. The weekday names are seven known words plus one longest cell, so the
+ * weekday column holds the one width that clears them and the day type's own name takes what is left: a long day
+ * type spends its own row's height instead of moving a weekday column beside it. */
+const WEEKDAY_W = "88px";
+
 export function PatternTable({ pattern, dayTypes }: PatternTableProps) {
   const columns: readonly TableColumn<Weekday>[] = [
-    { key: "weekday", header: "Weekday", cell: (weekday) => weekdayLabel(weekday) },
+    {
+      key: "weekday",
+      header: "Weekday",
+      width: WEEKDAY_W,
+      cell: (weekday) => weekdayLabel(weekday),
+    },
     {
       key: "dayType",
       header: "Day type",
+      width: { weight: 1 },
       cell: (weekday) => {
         if (pattern === null) return "not declared";
         const dayTypeId = pattern[weekday];

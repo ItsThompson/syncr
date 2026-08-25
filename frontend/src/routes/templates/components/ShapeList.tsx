@@ -19,6 +19,14 @@ export interface ShapeListProps {
   readonly onSelect: (templateId: string) => void;
 }
 
+/* THE SHAPE COLUMN ABSORBS THE SURPLUS. A name at the api's cap wrapped this table's rows past its pitch under
+ * every layout; what the declarations buy is that the row height stops depending on the neighbours: the two
+ * figure-holding columns hold the widths they declare and the shape's own column takes what is left, whatever a
+ * day type beside it is called. The lengths clear their headers on one line, so adopting the policy does not
+ * spend the header row's pitch to do it. */
+const DAY_TYPE_W = "72px";
+const ENTRIES_W = "72px";
+
 /* The columns are built outside the component, which is not a style choice: a cell is a function the table
  * CALLS per row rather than an element it mounts, so it is not a component, and defining one inside a component
  * reads to a linter as a nested component whose subtree would remount. Built here, the shape of a row is a pure
@@ -32,6 +40,7 @@ function columnsFor({
     {
       key: "name",
       header: "Shape",
+      width: { weight: 1 },
       cell: (shape) => (
         <Button
           rank={shape.id === selectedId ? "secondary" : "quiet"}
@@ -45,6 +54,7 @@ function columnsFor({
     {
       key: "dayType",
       header: "Day type",
+      width: DAY_TYPE_W,
       cell: (shape) =>
         dayTypes.find((dayType) => dayType.id === shape.dayTypeId)?.name ??
         "a day type you no longer have",
@@ -52,6 +62,7 @@ function columnsFor({
     {
       key: "entryCount",
       header: "Entries",
+      width: ENTRIES_W,
       measure: "figure",
       cell: (shape) => shape.entryCount,
     },

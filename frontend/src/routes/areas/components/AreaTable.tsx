@@ -33,6 +33,17 @@ import type { Write } from "../../../api/hooks/useWrite";
 /** U+2014, which is the width of the column's own dash rather than a hyphen standing in for one. */
 const NOTHING = "\u2014";
 
+/* THE AREA COLUMN ABSORBS THE SURPLUS. Every other column holds a figure, a parent's name or one control, and
+ * each takes the width that clears its own widest ordinary content; what is left is the Area's, so a long Area
+ * name spends its own row's height rather than reshaping the figures a reader compares down their columns. The
+ * lengths clear their headers on one line, which keeps the header row at the pitch the adopting tables share. */
+const PARENT_W = "96px";
+const FLOOR_W = "56px";
+const SHARE_W = "88px";
+const THIS_WEEK_W = "64px";
+const DEVIATION_W = "72px";
+const PREFERENCE_W = "240px";
+
 export interface AreaTableProps {
   readonly areas: readonly Area[];
   readonly review: BudgetReview;
@@ -74,40 +85,47 @@ function columnsFor({
     {
       key: "area",
       header: "Area",
+      width: { weight: 1 },
       cell: (area) => <AreaChip pigment={areaPigment(area.pigmentIndex)} name={area.name} />,
     },
     {
       key: "parent",
       header: "Parent",
+      width: PARENT_W,
       cell: (area) => (area.parentId === null ? NOTHING : (nameOf.get(area.parentId) ?? NOTHING)),
     },
     {
       key: "floor",
       header: "Floor / wk",
+      width: FLOOR_W,
       measure: "figure",
       cell: (area) => asFloor(area.floorHours),
     },
     {
       key: "share",
       header: "Share of remainder",
+      width: SHARE_W,
       measure: "figure",
       cell: (area) => (area.budgetPercent === null ? NOTHING : asWholePercent(area.budgetPercent)),
     },
     {
       key: "this-week",
       header: "This week",
+      width: THIS_WEEK_W,
       measure: "figure",
       cell: (area) => hoursOf(byArea.get(area.id)),
     },
     {
       key: "deviation",
       header: "Deviation",
+      width: DEVIATION_W,
       measure: "figure",
       cell: (area) => deviationText(byArea.get(area.id), review.discretionaryMinutes),
     },
     {
       key: "preference",
       header: "Preference",
+      width: PREFERENCE_W,
       cell: (area) => (
         <PreferenceCell
           areaId={area.id}
