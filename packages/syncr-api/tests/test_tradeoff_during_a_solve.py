@@ -259,7 +259,7 @@ async def requested(
 ) -> OperationRecord:
     async with sessions() as session, session.begin():
         return await a_coordinator(session, owner, clock).request_solve(
-            WEEK, 1, immediate=True, **overrides
+            WEEK, 1, immediate=True, session_mode_active=False, **overrides
         )
 
 
@@ -514,7 +514,7 @@ class TestTheWorkerCommitsFirst:
             assert in_flight.status == RUNNING
             landed = await written(dispatch, claim, loaded, solved)
             replacement = await requesting._for_a_candidate(
-                WEEK, in_flight, A_CANDIDATE, at_version=1
+                WEEK, in_flight, A_CANDIDATE, at_version=1, session_mode_active=False
             )
 
         assert landed.status == SUCCEEDED

@@ -390,6 +390,7 @@ class RecordingCoordinator(SolveCoordinator):
         *,
         immediate: bool = False,
         candidate: JsonDocument | None = None,
+        session_mode_active: bool = False,
     ) -> OperationRecord:
         self._log.append(SOLVE_REQUESTED)
         self.requested.append(at_version)

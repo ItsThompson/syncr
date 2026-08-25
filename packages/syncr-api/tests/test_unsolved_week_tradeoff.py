@@ -206,6 +206,7 @@ def a_candidate_carrying_solve(
                     await _tracked_version(session, tenant_id),
                     immediate=True,
                     candidate=candidate,
+                    session_mode_active=False,
                 )
         finally:
             await database.engine.dispose()

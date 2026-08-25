@@ -227,7 +227,7 @@ async def requested(
             owner.tenant_id,
             clock=clock,
             debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
-        ).request_solve(WEEK, 1, immediate=True)
+        ).request_solve(WEEK, 1, immediate=True, session_mode_active=False)
 
 
 async def claimed(

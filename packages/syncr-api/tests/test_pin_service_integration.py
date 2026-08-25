@@ -1079,7 +1079,7 @@ class TestStoredPinRelease:
 
         request = Request({"type": "http", "app": app})
         async with sessions() as session, session.begin():
-            service = get_conflict_service(request, _principal(owner), session)
+            service = get_conflict_service(request, _principal(owner), session, session_mode=False)
             resolved = await service.resolve(
                 _principal(owner),
                 conflict.id,

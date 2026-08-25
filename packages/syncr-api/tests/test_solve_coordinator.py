@@ -141,7 +141,12 @@ async def requested(
 ) -> OperationRecord:
     """One request, committed, so the next one reads a real row."""
     async with sessions() as session, session.begin():
-        return await coordinator(session).request_solve(WEEK, AT_VERSION, **overrides)  # type: ignore[arg-type]
+        overrides.setdefault("session_mode_active", False)
+        return await coordinator(session).request_solve(
+            WEEK,
+            AT_VERSION,
+            **overrides,  # type: ignore[arg-type]
+        )
 
 
 async def solves(
@@ -287,11 +292,16 @@ class TestATradeoffNeverJoins:
         # would come back without it, which reads as syncr having ignored the request.
         pin = await requested(sessions, coordinator)
 
-        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=True
+        )
 
         assert tradeoff.id != pin.id
         assert tradeoff.candidate_adjustment == A_CANDIDATE
         assert tradeoff.scheduled_for == NOW
+        # The replacement answers the TRADEOFF's question, so it carries THIS request's statement,
+        # not the displaced operation's.
+        assert tradeoff.session_mode_active is True
         displaced = await read(sessions, owner, pin)
         assert displaced.status == SUPERSEDED
         assert displaced.superseded_by == tradeoff.id
@@ -372,7 +382,7 @@ class TestATradeoffNeverJoins:
                     OperationRepository(worker, owner.tenant_id), clock
                 ).finish(running.id, Succeeded())
             tradeoff = await requesting._for_a_candidate(
-                WEEK, in_flight, A_CANDIDATE, at_version=AT_VERSION
+                WEEK, in_flight, A_CANDIDATE, at_version=AT_VERSION, session_mode_active=True
             )
 
         assert tradeoff.candidate_adjustment == A_CANDIDATE
@@ -412,6 +422,82 @@ class TestATradeoffNeverJoins:
 
         assert second.candidate_adjustment == ANOTHER_CANDIDATE
         assert (await read(sessions, owner, first)).status == SUPERSEDED
+
+
+class TestTheOperationCarriesTheRequestsSessionStatement:
+    async def test_a_request_states_whether_the_weekly_session_was_open(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+    ) -> None:
+        """The statement is recorded at creation, for the worker's recorder to read."""
+        await requested(sessions, coordinator, session_mode_active=True)
+
+        held = await solves(sessions, owner)
+        assert [one.session_mode_active for one in held] == [True]
+
+    async def test_a_request_that_states_nothing_records_false(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+    ) -> None:
+        """False is a stated answer, not an absence: the caller said no session was open."""
+        await requested(sessions, coordinator, session_mode_active=False)
+
+        held = await solves(sessions, owner)
+        assert [one.session_mode_active for one in held] == [False]
+
+    async def test_a_joining_request_flags_one_asked_outside_a_session(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+    ) -> None:
+        """Several requests share the one solve, so ANY of them stating the session was open
+        flags it: the row the worker reads must not lose an answer an earlier request gave."""
+        first = await requested(sessions, coordinator, session_mode_active=False)
+        second = await requested(sessions, coordinator, session_mode_active=True)
+
+        assert second.id == first.id, "the second request was meant to join, not supersede"
+        held = await solves(sessions, owner)
+        assert [one.session_mode_active for one in held] == [True]
+
+    async def test_a_join_does_not_narrow_a_flag_already_set(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+    ) -> None:
+        await requested(sessions, coordinator, session_mode_active=True)
+        await requested(sessions, coordinator, session_mode_active=False)
+
+        held = await solves(sessions, owner)
+        assert [one.session_mode_active for one in held] == [True]
+
+    async def test_the_follow_up_carries_the_statement_forward(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        coordinator: Build,
+        owner: UserRecord,
+        clock: Ticking,
+    ) -> None:
+        """A superseded solve's follow-up answers the same question the discarded one was asked,
+        so it carries what that solve's requesting callers said about the session."""
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, immediate=True, session_mode_active=True
+        )
+        async with sessions() as session, session.begin():
+            running = await OperationLifecycle(
+                OperationRepository(session, owner.tenant_id), clock
+            ).claim(tradeoff.id)
+
+        async with sessions() as session, session.begin():
+            await coordinator(session).finish(running, Superseded())
+
+        pending = [one for one in await solves(sessions, owner) if one.status == PENDING]
+        assert [one.session_mode_active for one in pending] == [True]
 
 
 class TestSupersessionEnqueuesExactlyOneFollowUp:
