@@ -34,7 +34,7 @@ pytestmark = pytest.mark.integration
 # The revision under test and its parent: the scan and the constraint run at the child, and the
 # off-grid chunk is seeded at the parent, where no grid rule exists yet.
 PREVIOUS_REVISION = "sr_intent_03_routine_grid"
-GRID_REVISION = "sr_intent_04_task_grid"
+GRID_REVISION = "sr_intent_04_task_grid_floor"
 
 ADMIN_URL = "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr"
 
