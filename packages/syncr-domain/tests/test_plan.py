@@ -468,6 +468,23 @@ class TestWhatAChunkStates:
         assert block.split_index == block.split_count - 1
 
 
+class TestWhatAMakeUpMarkStates:
+    def test_a_habit_occurrence_may_be_a_made_up_one(self) -> None:
+        block = a_block(make_up=True)
+
+        assert block.make_up
+
+    def test_a_block_defaults_to_a_fresh_occurrence(self) -> None:
+        assert not a_block().make_up
+
+    @pytest.mark.parametrize(
+        "origin", [one for one in Origin if one is not Origin.HABIT], ids=lambda o: o.value
+    )
+    def test_no_other_origin_names_an_occurrence_that_can_be_made_up(self, origin: Origin) -> None:
+        with pytest.raises(PlanError, match="only a habit occurrence"):
+            a_block_of(origin, make_up=True)
+
+
 class TestWhatADocumentHolds:
     def test_a_week_with_one_block_of_each_kind_is_a_document(self) -> None:
         document = a_document(

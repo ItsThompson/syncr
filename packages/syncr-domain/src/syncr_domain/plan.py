@@ -148,6 +148,12 @@ class Block:
     derivation -- the frame, a concrete template entry, an anchor, a prep or transit buffer --
     is not pinned, carries no pin glyph, and is not a training label, even though the solver
     may not move it either.
+
+    ``make_up`` says this occurrence was expanded to make an earlier miss good rather than by
+    the habit's own cadence. It travels on the block so the outcome recorded against it stores
+    the fact, which is what lets a later week's debt derivation tell the discharge from an
+    ordinary completion without re-deriving which indexes were debt under a cadence that may
+    since have changed.
     """
 
     iso_week: IsoWeek
@@ -160,6 +166,7 @@ class Block:
     superseded_placement: Interval | None = None
     objective_delta: float | None = None
     split_count: int | None = None
+    make_up: bool = False
 
     def __post_init__(self) -> None:
         if not self.title:
@@ -173,6 +180,7 @@ class Block:
             self.pinned, self.superseded_placement, self.objective_delta
         )
         _require_a_chunk_count_matching_the_chunk(self.split_index, self.split_count)
+        _require_a_mark_only_a_habit_occurrence_carries(self.origin, self.make_up)
 
     @property
     def id(self) -> BlockId:
@@ -323,6 +331,20 @@ def _require_a_chunk_count_matching_the_chunk(
         raise PlanError(
             f"chunk {split_index} of {split_count} does not exist: chunks are numbered from "
             "zero, so the last one is one below the count"
+        )
+
+
+def _require_a_mark_only_a_habit_occurrence_carries(origin: Origin, make_up: bool) -> None:
+    """A make-up mark states something about a habit's expansion, and about nothing else.
+
+    Every other origin has no expansion to fall behind on, so a mark on one is a row no
+    assembler wrote and a figure downstream would read as debt that never existed.
+    """
+    if make_up and origin is not Origin.HABIT:
+        raise PlanError(
+            f"only a habit occurrence can be a made-up one, and this block is a {origin.value}: "
+            "the mark names an occurrence the week's expansion added for an earlier miss, and "
+            "no other kind of block is expanded"
         )
 
 
