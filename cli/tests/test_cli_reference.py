@@ -9,15 +9,31 @@ say otherwise.
 
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
 
 import pytest
 
 from syncr_cli.exit_codes import ExitCode
-from tests.catalog import catalog
+from syncr_cli.parser import build_parser
+from tests.catalog import catalog, subparsers
 
 REFERENCE_PATH = Path(__file__).resolve().parents[2] / "docs" / "cli.md"
+
+# The option strings the reference documents once, in its shared-flags table, because the parser
+# attaches them to every command: per-command rows state only what the command adds.
+SHARED_OPTIONS = frozenset(
+    {
+        "--api-url",
+        "--week",
+        "--output",
+        "--json",
+        "--poll-interval",
+        "--timeout",
+        "--idempotency-key",
+    }
+)
 
 
 def reference() -> str:
@@ -56,3 +72,61 @@ def test_every_command_is_named_in_the_reference(noun_verb: tuple[str, str]) -> 
     assert f"`syncr {noun_verb[0]} {noun_verb[1]}" in reference(), (
         f"{noun_verb[0]} {noun_verb[1]} is missing from {REFERENCE_PATH.name}"
     )
+
+
+@pytest.mark.parametrize("noun_verb", sorted(catalog()))
+def test_every_command_row_states_the_flags_the_parser_declares(
+    noun_verb: tuple[str, str],
+) -> None:
+    parser = command_parsers()[noun_verb]
+    row = command_rows()[noun_verb]
+    for flag in declared_options(parser):
+        # The closing backtick is left open: a row writes the flag with its value spelled out,
+        # as `--area AREA_ID` does.
+        assert f"`{flag}" in row, f"{noun_verb[0]} {noun_verb[1]} omits {flag}"
+    for argument in declared_positionals(parser):
+        assert argument in row, f"{noun_verb[0]} {noun_verb[1]} omits its {argument} argument"
+
+
+def command_parsers() -> dict[tuple[str, str], argparse.ArgumentParser]:
+    """Every command's own parser, keyed by its ``(noun, verb)`` pair."""
+    found = {}
+    for noun, noun_parser in subparsers(build_parser()).items():
+        for verb, verb_parser in subparsers(noun_parser).items():
+            # add_subparsers builds children with the parent's own class, so each is a Parser.
+            assert isinstance(verb_parser, argparse.ArgumentParser)
+            found[(noun, verb)] = verb_parser
+    return found
+
+
+def command_rows() -> dict[tuple[str, str], str]:
+    """The one catalog line naming each command, where that command's flags are stated."""
+    lines = reference().splitlines()
+    return {
+        (noun, verb): next(
+            line
+            for line in lines
+            if line.startswith((f"| `syncr {noun} {verb}`", f"| `syncr {noun} {verb} "))
+        )
+        for noun, verb in catalog()
+    }
+
+
+def declared_options(parser: argparse.ArgumentParser) -> list[str]:
+    """The options a command adds beyond the shared set, long spelling only."""
+    return [
+        option
+        for action in parser._actions
+        if not set(action.option_strings) & SHARED_OPTIONS
+        for option in action.option_strings
+        if option not in {"-h", "--help"}
+    ]
+
+
+def declared_positionals(parser: argparse.ArgumentParser) -> list[str]:
+    """The positional arguments a command takes, named as the reference spells them."""
+    return [
+        getattr(action, "metavar", None) or action.dest.upper()
+        for action in parser._actions
+        if not action.option_strings and action.nargs != 0
+    ]
