@@ -1,15 +1,19 @@
-"""When a route answers an operation identifier, and when that identifier becomes readable.
+"""When a route answers an operation identifier, that identifier is already readable.
 
-`GET /api/v1/operations/{id}` has answered 404 for identifiers the api had just handed back, twice
-under a loaded suite and never in 450 isolated create-then-read pairs. The hypothesis under
-investigation was a race: a concurrent maintainer tick colliding with the api on the partial unique
-index that makes at most one non-terminal solve per week an invariant.
+`GET /api/v1/operations/{id}` answered 404 for identifiers the api had just handed back, twice under
+a loaded suite and never in 450 isolated create-then-read pairs. The measurement this module once
+took found the cause, and it was not a race: `get_transaction` commits when its `session.begin()`
+block exits, which is dependency teardown, and FastAPI has run the teardown of a `yield` dependency
+AFTER the response was sent since 0.106. At the instant a client held the identifier, no other
+connection could read the row, idle process or contended one.
 
-**These tests measure the ordering the hypothesis assumes, and the ordering is not a race.**
-`get_transaction` commits when its `session.begin()` block exits, which is dependency teardown, and
-FastAPI runs the teardown of a `yield` dependency AFTER the response has been sent. So at the
-instant a client holds the identifier, no other connection can read the row. That is true of an idle
-process and of a contended one: adding a maintainer tick to the picture changes nothing about it.
+**The routes that answer such an identifier therefore commit before they answer.** Each handler
+whose response carries an operation issues ``await transaction.commit()`` after its work and before
+the response is built: the immediate solve (`plans.api`), the forced calendar-source sync
+(`calendars.api`), the tradeoff request (`concessions.api`), and the two pin answers whose response
+carries the debounced solve the edit scheduled (`pins.api`). These tests assert the fixed ordering
+at all of the sites the defect was reached from, on a second connection, at the instant the response
+is handed over. Why the rule stops there is stated where the change lives, in `core.db`.
 
 ## What the probe is, and why it is inside the response rather than after it
 
@@ -19,17 +23,22 @@ own task, so the teardown coroutine cannot have resumed and the commit cannot ha
 however long the probe takes. Nothing here depends on timing, and no test in this module sleeps.
 
 That instant is also the earliest a client could possibly read: a real client pays a round trip
-first. So a row invisible here is a lower bound on the defect and not an artefact of the instrument.
+first. So a row unreadable here would be a live defect and not an artefact of the instrument.
 
-## The three cases, and what each is for
+## The cases, and what each is for
 
-1. Uncontended, which establishes the ordering and separates a LATE commit from a LOST one: the row
-   is unreadable at the response and readable once the request has finished.
-2. With a real horizon-maintainer transaction open across the request, which is the race the
-   hypothesis names. The answer is the same, which is the finding.
-3. With an uncommitted rival solve holding the index key, which is the only interleaving in which
-   that index can refuse the api's write. It answers 500 rather than a readable-later identifier, so
-   this shape produces a stated fault and not a phantom.
+1. The immediate solve, uncontended: the operation is readable at the response and stays readable.
+2. The same solve with a real horizon-maintainer transaction open across the request: contention on
+   the week changes nothing about the ordering.
+3. An uncommitted rival solve holding the single-flight index key: the api's write is refused and
+   the route answers a fault, never an identifier.
+4. The forced calendar-source sync: the same readability, on the route whose operation both creates
+   and completes itself.
+5. The tradeoff request: the operation that carries the candidate, asked for against a short week.
+6. A pin: the response carries the debounced solve the edit schedules, so that operation is held to
+   the same rule even though the route's own answer is a pin, a verdict, and an operation.
+7. A commit that fails mid-handler: a fault status and no identifier, never a 200 naming a row
+   nobody can read.
 """
 
 from __future__ import annotations
@@ -37,39 +46,58 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from unittest.mock import patch
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, update
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX
+from syncr_api.areas.models import AreaRow
+from syncr_api.areas.repository import AreaRepository
+from syncr_api.calendars.config import CALENDAR_SOURCES_PREFIX
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
+from syncr_api.offplan.config import OFF_PLAN_PREFIX
 from syncr_api.plans.repository import PlanRepository
+from syncr_api.plans.stored_documents import stored_document
+from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.plans.week_config import SOLVE_PATH
 from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.solving.config import SOLVE
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.queue import OperationQueue
 from syncr_api.solving.repository import OperationRepository
+from syncr_api.tasks.models import TaskRow
+from syncr_api.tasks.repository import TaskRepository
 from syncr_api.templates.config import DAY_TYPES_PREFIX, WEEK_PATTERN_PREFIX
+from syncr_api.user_settings.config import SETTINGS_PREFIX
+from syncr_domain.habits import BindingSource
+from syncr_domain.identity import BindingKind, BindingRef, Origin, block_id, is_placed_by_the_solver
+from syncr_domain.intervals import Interval
+from syncr_domain.plan import AdjustmentKind, Block, PlanDocument
+from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
+from tests.plan_documents import a_block, a_document
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
 
     from fastapi import FastAPI
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker
     from starlette.types import ASGIApp, Receive, Scope, Send
 
     from syncr_api.accounts.records import UserRecord
@@ -97,10 +125,25 @@ WINDOW = 10.0
 # How often the wait below asks Postgres whether a backend has reached a lock.
 POLL_SECONDS = 0.02
 
+# The pin case runs against a far-future week, so no placement on it can ever be in the past under
+# the real clock, and the plan it pins against is seeded rather than solved. Its clock instant and
+# its zone match the seeded plan's own.
+PINNED_WEEK = IsoWeek(2030, 7)
+PINNED_NOW = datetime(2030, 2, 11, 9, 0, tzinfo=UTC)
+PINNED_ZONE = "Europe/London"
+PIN_TASK_ID = uuid4()
+PIN_AREA_ID = uuid4()
+PIN_BINDING = BindingRef(kind=BindingKind.TASK, entity_id=PIN_TASK_ID, occurrence_key="00")
+PIN_BLOCK_ID = block_id(PINNED_WEEK, PIN_BINDING)
+
 
 def solve_route(iso_week: IsoWeek, *, immediate: bool) -> str:
     path = WEEKS_PREFIX + SOLVE_PATH.format(iso_week=iso_week)
     return f"{path}?immediate=true" if immediate else path
+
+
+def pin_route() -> str:
+    return f"{WEEKS_PREFIX}/{PINNED_WEEK}/pins"
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +201,14 @@ def the_operation_identifier(payload: dict[str, Any]) -> str | None:
     """The identifier an ``OperationResponse`` names, or ``None`` for any other body.
 
     Recognised by the fields that shape belongs to rather than by ``id`` alone, because several
-    other responses on the way to the route under test also carry an ``id``.
+    other responses on the way to the route under test also carry an ``id``. One level of nesting
+    is followed, because a pin's answer carries its scheduled solve under ``operation``.
     """
     names_an_operation = {"id", "kind", "status", "attempt"} <= payload.keys()
-    return payload["id"] if names_an_operation else None
+    if names_an_operation:
+        return payload["id"]
+    carried = payload.get("operation")
+    return the_operation_identifier(carried) if isinstance(carried, dict) else None
 
 
 # ---------------------------------------------------------------------------
@@ -291,19 +338,20 @@ async def watched(
 
 
 # ---------------------------------------------------------------------------
-# 1. The ordering, uncontended: late rather than lost
+# 1. The immediate solve: readable at the answer
 # ---------------------------------------------------------------------------
 
 
-async def test_a_solve_request_names_a_row_no_other_connection_can_yet_read(
+async def test_an_immediate_solve_names_a_row_readable_the_moment_it_answers(
     watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
     onlooker: async_sessionmaker[AsyncSession],
     owner: UserRecord,
 ) -> None:
-    """The identifier is unreadable at the response and readable once the request has finished.
+    """The operation is readable on another connection when the response is sent.
 
-    Both halves in one case on purpose: the first alone cannot tell a commit that has not happened
-    yet from one that failed, and those two are different defects with different fixes.
+    The route commits before it answers, so the identifier a client holds names a row that is
+    already there. Readability after the request has finished is asserted beside it, so a commit
+    that never ran cannot hide behind one that merely moved.
     """
     client, headers, seen = watched
 
@@ -311,13 +359,11 @@ async def test_a_solve_request_names_a_row_no_other_connection_can_yet_read(
 
     assert answered.status_code == HTTPStatus.ACCEPTED, answered.text
     assert seen.identifier == answered.json()["id"]
-    assert seen.visible_when_sent is False, (
-        "the row the response names was already readable on another connection when the response "
-        "was sent, so this route commits before it answers"
+    assert seen.visible_when_sent is True, (
+        "the row the response names was still unreadable when the response was sent, so this "
+        "route left its commit to teardown, which FastAPI runs only after the response"
     )
-    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True, (
-        "the row never arrived, so the commit did not merely run late: it did not happen"
-    )
+    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True
 
 
 # ---------------------------------------------------------------------------
@@ -356,13 +402,13 @@ async def a_plan_of_record_exists(
         return await PlanRepository(session, tenant_id).latest(WEEK) is not None
 
 
-async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_yet_read(
+async def test_a_solve_request_racing_a_maintainer_tick_answers_a_readable_row(
     watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
     sessions: async_sessionmaker[AsyncSession],
     onlooker: async_sessionmaker[AsyncSession],
     owner: UserRecord,
 ) -> None:
-    """The maintainer's open transaction changes nothing about when the identifier becomes readable.
+    """The maintainer's open transaction changes nothing about when the identifier is readable.
 
     Which is the measurement: the window is the route's own ordering, so contention on the week the
     tick is planning neither opens it nor widens it.
@@ -387,7 +433,7 @@ async def test_a_solve_request_racing_a_maintainer_tick_names_a_row_nobody_can_y
         answered = await client.post(solve_route(WEEK, immediate=True), headers=headers)
 
         assert answered.status_code == HTTPStatus.ACCEPTED, answered.text
-        assert seen.visible_when_sent is False
+        assert seen.visible_when_sent is True
     finally:
         release.set()
         await tick
@@ -507,3 +553,267 @@ async def test_a_solve_request_colliding_on_the_single_flight_index_is_refused(
         "the refused write left a second non-terminal solve behind, which is what the index exists "
         "to make impossible"
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. The forced calendar-source sync
+# ---------------------------------------------------------------------------
+
+
+async def test_a_forced_source_sync_answers_a_readable_operation(
+    watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
+    onlooker: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+) -> None:
+    """The sync route's operation is readable when its answer is sent.
+
+    The feed behind the source is never read successfully: the address resolves nowhere, the sync
+    records an unreachable feed and completes its operation all the same. That is enough here,
+    because what this case reads back is the operation row, whatever the sync itself found.
+    """
+    client, headers, seen = watched
+
+    added = await client.post(
+        CALENDAR_SOURCES_PREFIX,
+        json={
+            "provider": "ics",
+            "displayName": "University",
+            "externalId": "https://feeds.invalid/timetable.ics",
+        },
+        headers=headers,
+    )
+    assert added.status_code == HTTPStatus.CREATED, added.text
+
+    answered = await client.post(
+        f"{CALENDAR_SOURCES_PREFIX}/{added.json()['id']}/sync", headers=headers
+    )
+
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    assert seen.identifier == answered.json()["id"]
+    assert seen.visible_when_sent is True
+    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True
+
+
+# ---------------------------------------------------------------------------
+# 5. The tradeoff request
+# ---------------------------------------------------------------------------
+
+
+# Six hours of the week left on plan and a seven-hour floor against it: short by exactly the hour
+# the breach-floor concession below is offered for, built the way the concession suite builds one.
+TRADEOFF_WEEK = IsoWeek.containing(datetime.now(UTC).date() + timedelta(days=60))
+ON_PLAN_HOURS = 6
+FLOOR_HOURS = 7
+
+
+def tradeoffs_route() -> str:
+    return f"{WEEKS_PREFIX}/{TRADEOFF_WEEK}/tradeoffs"
+
+
+def week_instant(*, days: int = 0, hours: int = 0) -> datetime:
+    monday = TRADEOFF_WEEK.monday()
+    return datetime(monday.year, monday.month, monday.day, tzinfo=UTC) + timedelta(
+        days=days, hours=hours
+    )
+
+
+async def test_a_tradeoff_request_answers_a_readable_operation(
+    watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
+    sessions: async_sessionmaker[AsyncSession],
+    onlooker: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+) -> None:
+    """The operation a concession request answers with reads back the instant its answer lands.
+
+    The week is made short the way a user makes one short: an off-plan declaration and an Area
+    floor, so the offer the request names is one the product computed rather than one seeded at
+    it. The plan of record carries one block a solve placed, because a week holding none is
+    refused before any operation exists to answer with.
+    """
+    client, headers, seen = watched
+
+    declared = await client.post(
+        OFF_PLAN_PREFIX,
+        json={
+            "start": week_instant(hours=ON_PLAN_HOURS).isoformat().replace("+00:00", "Z"),
+            "end": week_instant(days=7).isoformat().replace("+00:00", "Z"),
+            "keepFrame": False,
+        },
+        headers=headers,
+    )
+    assert declared.status_code == HTTPStatus.CREATED, declared.text
+    fitness = await client.post(
+        AREAS_PREFIX, json={"name": "Fitness", "floorHours": FLOOR_HOURS}, headers=headers
+    )
+    assert fitness.status_code == HTTPStatus.CREATED, fitness.text
+    area_id = UUID(fitness.json()["area"]["id"])
+
+    # A second Area holds the placed block so it takes no capacity the Fitness floor competes for.
+    elsewhere = await client.post(AREAS_PREFIX, json={"name": "Career2"}, headers=headers)
+    assert elsewhere.status_code == HTTPStatus.CREATED, elsewhere.text
+    placed = a_block(
+        Origin.HABIT,
+        week=TRADEOFF_WEEK,
+        interval=Interval(week_instant(days=3, hours=10), week_instant(days=3, hours=11)),
+        area_id=UUID(elsewhere.json()["area"]["id"]),
+    )
+    assert is_placed_by_the_solver(placed.origin)
+    async with sessions() as session, session.begin():
+        await PlanRepository(session, owner.tenant_id).append(
+            document=stored_document(a_document(week=TRADEOFF_WEEK, blocks=(placed,))),
+            objective_breakdown={},
+            status="applied",
+            reason="auto_applied_fill",
+            weight_set_version=1,
+            input_version=1,
+            created_at=datetime.now(UTC),
+        )
+
+    answered = await client.post(
+        tradeoffs_route(),
+        json={"kind": AdjustmentKind.BREACH_FLOOR.value, "targetId": str(area_id)},
+        headers=headers,
+    )
+
+    assert answered.status_code == HTTPStatus.ACCEPTED, answered.text
+    assert seen.identifier == answered.json()["id"]
+    assert seen.visible_when_sent is True
+    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True
+
+
+# ---------------------------------------------------------------------------
+# 6. The debounced solve a pin schedules
+# ---------------------------------------------------------------------------
+
+
+async def seed_a_pinnable_week(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> None:
+    """An Area, a task, and an applied plan holding one block of that task, for ``PINNED_WEEK``.
+
+    The weight set the pin's pricing needs is already in force: ``declare_the_minimum`` seeds it
+    for every case in this module. The plan is appended rather than solved, because what the pin
+    path reads from it is the document, and the solve pipeline would add nothing to this case.
+    """
+    block = Block(
+        iso_week=PINNED_WEEK,
+        interval=Interval(
+            datetime(2030, 2, 13, 14, 0, tzinfo=UTC),
+            datetime(2030, 2, 13, 15, 0, tzinfo=UTC),
+        ),
+        binding=PIN_BINDING,
+        title="Gym",
+        reason=ReasonRecord((Bound(source=BindingSource.QUEUE, selected="picked"),)),
+        area_id=PIN_AREA_ID,
+    )
+    plan = PlanDocument(
+        iso_week=PINNED_WEEK,
+        zone_by_date=dict.fromkeys(PINNED_WEEK.dates(), PINNED_ZONE),
+        discretionary_minutes=5880,
+        unallocated_minutes=5820,
+        oversubscription_minutes=0,
+        blocks=(block,),
+    )
+    async with sessions() as session, session.begin():
+        area = await AreaRepository(session, tenant_id).create(
+            parent_id=None,
+            name="Fitness",
+            pigment_index=1,
+            budget_percent=Decimal(50),
+            floor_hours=Decimal(1),
+            created_at=PINNED_NOW,
+        )
+        # The plan's document names these rows by fixed identifiers, so each seeded row takes the
+        # identifier the document already carries before anything references it.
+        await session.execute(update(AreaRow).where(AreaRow.id == area.id).values(id=PIN_AREA_ID))
+    async with sessions() as session, session.begin():
+        task = await TaskRepository(session, tenant_id).create(
+            area_id=PIN_AREA_ID,
+            project_id=None,
+            title="Gym",
+            estimate_minutes=60,
+            deadline=None,
+            priority="normal",  # type: ignore[arg-type]
+            min_chunk_minutes=15,
+            splittable=False,
+            created_at=PINNED_NOW,
+        )
+        await session.execute(update(TaskRow).where(TaskRow.id == task.id).values(id=PIN_TASK_ID))
+    async with sessions() as session, session.begin():
+        await PlanRepository(session, tenant_id).append(
+            document=stored_document(plan),
+            objective_breakdown={
+                "deadline_risk": 0.0,
+                "budget_deviation": 0.0,
+                "time_of_day_misfit": 0.0,
+                "fragmentation": 0.0,
+                "context_switch": 0.0,
+                "staleness": 0.0,
+            },
+            status="applied",
+            reason="auto_applied_fill",
+            weight_set_version=1,
+            input_version=1,
+            created_at=PINNED_NOW,
+        )
+        await WeekInputVersionRepository(session, tenant_id).bump(PINNED_WEEK, at=PINNED_NOW)
+
+
+async def test_a_pin_answers_with_its_scheduled_solve_already_readable(
+    watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
+    sessions: async_sessionmaker[AsyncSession],
+    onlooker: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+) -> None:
+    """A pin's answer carries the debounced solve it scheduled, and that operation reads back.
+
+    The pin's own rows are held to the same rule as an operation answer: whatever identifier the
+    response carries, the client can read it the instant it holds it. The week is far future, so
+    no placement on it can be refused as past under the real clock.
+    """
+    client, headers, seen = watched
+
+    zoned = await client.patch(SETTINGS_PREFIX, json={"homeZone": PINNED_ZONE}, headers=headers)
+    assert zoned.status_code == HTTPStatus.OK, zoned.text
+    await seed_a_pinnable_week(sessions, owner.tenant_id)
+
+    answered = await client.post(
+        pin_route(),
+        json={"blockId": PIN_BLOCK_ID, "start": "2030-02-13T10:00:00Z"},
+        headers=headers,
+    )
+
+    assert answered.status_code == HTTPStatus.CREATED, answered.text
+    assert seen.identifier == answered.json()["operation"]["id"]
+    assert seen.visible_when_sent is True
+    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True
+
+
+# ---------------------------------------------------------------------------
+# 7. A commit that fails answers a fault, not an identifier
+# ---------------------------------------------------------------------------
+
+
+async def test_a_failing_commit_is_a_fault_rather_than_an_answer(
+    watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
+    onlooker: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+) -> None:
+    """When the route's own commit raises, the client gets a fault status and no identifier.
+
+    The commit runs inside the handler now, so its failure surfaces through the api's catch-all
+    before any body is sent. Under teardown ordering this was exactly the shape that could answer
+    200 first and fail afterwards, which is why the failure is injected at the commit itself
+    rather than arranged through database state.
+    """
+    client, headers, seen = watched
+
+    async def refusing(self: AsyncSession) -> None:
+        raise OperationalError("COMMIT", None, Exception("commit refused"))
+
+    with patch.object(AsyncSession, "commit", refusing):
+        answered = await client.post(solve_route(WEEK, immediate=True), headers=headers)
+
+    assert answered.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, answered.text
+    assert "id" not in answered.json(), "a failed commit must not answer an operation identifier"
+    assert seen.identifier is None
