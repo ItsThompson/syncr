@@ -37,7 +37,9 @@ first. So a row unreadable here would be a live defect and not an artefact of th
 5. The tradeoff request: the operation that carries the candidate, asked for against a short week.
 6. A pin: the response carries the debounced solve the edit schedules, so that operation is held to
    the same rule even though the route's own answer is a pin, a verdict, and an operation.
-7. A commit that fails mid-handler: a fault status and no identifier, never a 200 naming a row
+7. A resolved conflict whose answer moved the block: the solve the answer names rides under
+   `operation`, and is held to the same rule.
+8. A commit that fails mid-handler: a fault status and no identifier, never a 200 naming a row
    nobody can read.
 """
 
@@ -65,12 +67,16 @@ from syncr_api.areas.models import AreaRow
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import CALENDAR_SOURCES_PREFIX
 from syncr_api.concessions.config import WEEKS_PREFIX
+from syncr_api.conflicts.config import CONFLICTS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.config import OFF_PLAN_PREFIX
+from syncr_api.plans.config import MOVED_RESOLUTION
+from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
+from syncr_api.plans.overlaps import DetectedConflict
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -91,7 +97,15 @@ from syncr_domain.plan import AdjustmentKind, Block, PlanDocument
 from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
-from tests.plan_documents import a_block, a_document
+from tests.plan_documents import (
+    WEEK as CONFLICTED_WEEK,
+)
+from tests.plan_documents import (
+    a_block,
+    a_block_holding,
+    a_document,
+    between,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
@@ -790,7 +804,73 @@ async def test_a_pin_answers_with_its_scheduled_solve_already_readable(
 
 
 # ---------------------------------------------------------------------------
-# 7. A commit that fails answers a fault, not an identifier
+# 7. The solve a resolved conflict asks for
+# ---------------------------------------------------------------------------
+
+
+async def seed_an_answerable_conflict(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> str:
+    """A live plan holding one block and one open overlap against its binding.
+
+    The overlap is the second half of the block's own span, so the pair is one the detector could
+    really have produced. ``moved`` is the answer the case gives, because it is the one that
+    answers with a solve; ``kept-both`` asks for none and names no operation.
+    """
+    held = a_block_holding(BindingRef.for_habit(uuid4(), index=0), between(9, 10))
+    detected = DetectedConflict(
+        anchor_id=uuid4(),
+        iso_week=CONFLICTED_WEEK,
+        binding=held.binding,
+        overlap=Interval(held.interval.start + held.interval.duration / 2, held.interval.end),
+    )
+    async with sessions() as session, session.begin():
+        await PlanRepository(session, tenant_id).append(
+            document=stored_document(a_document(blocks=(held,))),
+            objective_breakdown={"budget_deviation": 1.0},
+            status="applied",
+            reason="auto_applied_fill",
+            weight_set_version=1,
+            input_version=1,
+            created_at=datetime.now(UTC),
+        )
+        (raised,) = await PlanConflictRepository(session, tenant_id).raise_all(
+            (detected,),
+            at=datetime.now(UTC),
+            commitments={detected.anchor_id: Commitment(series_uid=None, title="Standup")},
+        )
+    return str(raised.id)
+
+
+async def test_a_resolved_conflict_answers_with_its_solve_already_readable(
+    watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
+    sessions: async_sessionmaker[AsyncSession],
+    onlooker: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+) -> None:
+    """The operation answering a conflict carries reads back when the answer does.
+
+    A resolution that moves the block enqueues the solve that will read the freed week, so the
+    answer carries that operation under `operation`, exactly as a pin's answer does, and it is
+    held to the same rule.
+    """
+    client, headers, seen = watched
+
+    conflict_id = await seed_an_answerable_conflict(sessions, owner.tenant_id)
+    answered = await client.post(
+        f"{CONFLICTS_PREFIX}/{conflict_id}/resolve",
+        json={"resolution": MOVED_RESOLUTION},
+        headers=headers,
+    )
+
+    assert answered.status_code == HTTPStatus.OK, answered.text
+    assert seen.identifier == answered.json()["operation"]["id"]
+    assert seen.visible_when_sent is True
+    assert await visibility_of(onlooker, owner.tenant_id)(UUID(seen.identifier)) is True
+
+
+# ---------------------------------------------------------------------------
+# 8. A commit that fails answers a fault, not an identifier
 # ---------------------------------------------------------------------------
 
 

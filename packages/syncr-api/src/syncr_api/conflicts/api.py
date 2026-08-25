@@ -19,7 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Path, Query
 
-from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.accounts.injection import PrincipalDep, TransactionDep
 from syncr_api.conflicts.config import CONFLICTS_PATH, RESOLVE_PATH, RESOLVED_PARAMETER
 from syncr_api.conflicts.declarations import ChosenResolution
 from syncr_api.conflicts.injection import ConflictServiceDep
@@ -60,6 +60,7 @@ async def resolve_conflict(
     principal: PrincipalDep,
     guard: IdempotencyGuardDep,
     service: ConflictServiceDep,
+    transaction: TransactionDep,
 ) -> ResolvedConflictResponse:
     """Record the answer, free what it frees, and answer with the solve that will read it."""
     chosen = ChosenResolution(
@@ -70,4 +71,9 @@ async def resolve_conflict(
     async def resolve() -> ResolvedConflictResponse:
         return ResolvedConflictResponse.of(await service.resolve(principal, conflict_id, chosen))
 
-    return await guard.once(RESOLVE_ROUTE, ResolvedConflictResponse, resolve)
+    answered = await guard.once(RESOLVE_ROUTE, ResolvedConflictResponse, resolve)
+    # The answer carries the solve the resolution asked for, so that row must be readable the
+    # instant the client holds its identifier. See `get_transaction` for why this commit is here
+    # rather than on teardown.
+    await transaction.commit()
+    return answered
