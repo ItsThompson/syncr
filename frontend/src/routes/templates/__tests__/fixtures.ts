@@ -91,6 +91,8 @@ export function buildEntry(overrides: Partial<TemplateEntry> = {}): TemplateEntr
     areaId: null,
     bindingTarget: "routine",
     bindingRef: ROUTINE_WAKE,
+    /* Held by default: the default binding names ROUTINE_WAKE, which the default routines list carries. */
+    contentResolves: true,
     ...overrides,
   };
 }
@@ -111,6 +113,7 @@ export function buildShape(overrides: Partial<DayShape> = {}): DayShape {
         areaId: AREA_CAREER,
         bindingTarget: null,
         bindingRef: null,
+        contentResolves: null,
       }),
     ],
     ...overrides,

@@ -1,10 +1,8 @@
 /* Turning an identifier into the name a reader recognises.
  *
- * NOTHING HERE INVENTS A NAME. A binding whose routine or habit is no longer declared answers null, and the
- * cell says so, because the api does not check that a concrete entry's binding names a row that exists: the
- * routines and habits tables did not exist when the entry shape was declared, and validating it is still
- * open. An entry naming a removed routine is therefore reachable, and rendering its bare identifier or an
- * empty cell would both read as a rendering fault rather than as the missing row it is.
+ * NOTHING HERE INVENTS A NAME. Whether a binding still resolves is the shape read's own answer (`contentResolves`);
+ * this module only supplies the NAME behind a binding that does, so one lookup serves both the entry column and
+ * the editor's select. An entry whose row is gone is rendered from the report, not from a null here.
  *
  * Pure: no React, no client, no DOM. */
 

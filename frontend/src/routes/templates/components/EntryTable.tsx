@@ -7,7 +7,11 @@
  * makes the calendar say which topic matters this week rather than repeating one title.
  *
  * A CONCRETE ENTRY WITH NO AREA READS AS `frame`, because a routine carries no Area at all: the frame defines
- * how much time exists rather than consuming a budget. */
+ * how much time exists rather than consuming a budget.
+ *
+ * DANGLING CONTENT IS THE SHAPE READ'S ANSWER, not a lookup this table performs: `contentResolves: false` is
+ * what the api reports for an entry whose routine or habit is gone, and the row says so rather than leaving
+ * the cell to guess from lists that may themselves be stale. */
 
 import { AreaChip, Table, areaPigment, type TableColumn } from "../../../ui/domain";
 import { flexLabel, minutesLabel } from "../labels";
@@ -40,7 +44,8 @@ function columnsFor({
       header: "Entry",
       cell: (entry) => {
         if (entry.kind === "slot") return "bound at plan time";
-        return bindingNameOf(entry, routines, habits) ?? "content you no longer have";
+        if (entry.contentResolves === false) return "content you no longer have";
+        return bindingNameOf(entry, routines, habits);
       },
     },
     {

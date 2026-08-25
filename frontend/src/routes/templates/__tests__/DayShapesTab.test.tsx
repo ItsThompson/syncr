@@ -142,14 +142,22 @@ describe("the selected shape's entries", () => {
     expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent("frame");
   });
 
-  /* The api does not check that a binding names a row that exists, so this cell is reachable. An identifier or
-   * an empty cell would both read as a rendering fault rather than as the missing row it is. */
-  it("says so when an entry binds content this tenant no longer has", () => {
-    renderTab({ routines: { status: "ready", data: [] } });
+  /* The shape read itself answers whether a binding still resolves (`contentResolves`), so the row renders the
+   * dangling state from the report even while the routine and habit lists still hold other rows. */
+  it("says so when the shape read reports an entry's content no longer resolves", () => {
+    const shape = buildShape({ entries: [buildEntry({ contentResolves: false })] });
+    renderTab({ shape: { status: "ready", data: shape } });
 
     expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent(
       "content you no longer have",
     );
+  });
+
+  it("names the content of an entry whose binding the shape read reports as held", () => {
+    const shape = buildShape({ entries: [buildEntry({ contentResolves: true })] });
+    renderTab({ shape: { status: "ready", data: shape } });
+
+    expect(screen.getByRole("table", { name: /entries/ })).toHaveTextContent("Wake Up");
   });
 
   it("renders a flex band under one step as no shift, because it permits none", () => {
