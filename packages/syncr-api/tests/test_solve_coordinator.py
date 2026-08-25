@@ -137,14 +137,22 @@ def coordinator(owner: UserRecord, clock: Ticking) -> Build:
 
 
 async def requested(
-    sessions: async_sessionmaker[AsyncSession], coordinator: Build, **overrides: object
+    sessions: async_sessionmaker[AsyncSession],
+    coordinator: Build,
+    *,
+    session_mode_active: bool,
+    **overrides: object,
 ) -> OperationRecord:
-    """One request, committed, so the next one reads a real row."""
+    """One request, committed, so the next one reads a real row.
+
+    The statement is a required keyword here exactly as it is in production: a case that
+    omits it is a case that has not decided what its caller said about the session.
+    """
     async with sessions() as session, session.begin():
-        overrides.setdefault("session_mode_active", False)
         return await coordinator(session).request_solve(
             WEEK,
             AT_VERSION,
+            session_mode_active=session_mode_active,
             **overrides,  # type: ignore[arg-type]
         )
 
@@ -182,7 +190,7 @@ class TestIdempotencePerWeek:
     async def test_a_request_against_nothing_schedules_one_solve_at_the_end_of_the_window(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, owner: UserRecord
     ) -> None:
-        created = await requested(sessions, coordinator)
+        created = await requested(sessions, coordinator, session_mode_active=False)
 
         assert created.status == PENDING
         assert created.scheduled_for == NOW + debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
@@ -191,16 +199,16 @@ class TestIdempotencePerWeek:
     async def test_an_immediate_request_against_nothing_is_due_now(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build
     ) -> None:
-        created = await requested(sessions, coordinator, immediate=True)
+        created = await requested(sessions, coordinator, immediate=True, session_mode_active=False)
 
         assert created.scheduled_for == NOW
 
     async def test_a_second_ordinary_request_joins_the_pending_one(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, owner: UserRecord
     ) -> None:
-        first = await requested(sessions, coordinator)
+        first = await requested(sessions, coordinator, session_mode_active=False)
 
-        joined = await requested(sessions, coordinator)
+        joined = await requested(sessions, coordinator, session_mode_active=False)
 
         assert joined.id == first.id
         assert len(await solves(sessions, owner)) == 1
@@ -213,20 +221,20 @@ class TestIdempotencePerWeek:
     ) -> None:
         # The whole reason the window is fixed from the first mutation: slid forward per edit, a
         # user editing continuously would never get a solve at all.
-        first = await requested(sessions, coordinator)
+        first = await requested(sessions, coordinator, session_mode_active=False)
         clock.advance(timedelta(milliseconds=900))
 
-        joined = await requested(sessions, coordinator)
+        joined = await requested(sessions, coordinator, session_mode_active=False)
 
         assert joined.scheduled_for == first.scheduled_for
 
     async def test_an_immediate_request_pulls_a_pending_window_forward(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, clock: Ticking
     ) -> None:
-        await requested(sessions, coordinator)
+        await requested(sessions, coordinator, session_mode_active=False)
         clock.advance(timedelta(milliseconds=200))
 
-        pulled = await requested(sessions, coordinator, immediate=True)
+        pulled = await requested(sessions, coordinator, immediate=True, session_mode_active=False)
 
         assert pulled.scheduled_for == clock.at
 
@@ -241,7 +249,7 @@ class TestIdempotencePerWeek:
         # conditional write is what notices. No flag and no second operation are needed.
         running = await claimed(sessions, coordinator, owner, clock)
 
-        joined = await requested(sessions, coordinator)
+        joined = await requested(sessions, coordinator, session_mode_active=False)
 
         assert joined.id == running.id
         assert joined.status == RUNNING
@@ -265,7 +273,7 @@ class TestABurstWastesAtMostOneSolve:
         there is only ever one solve to discard.
         """
         for _ in range(edits):
-            await requested(sessions, coordinator)
+            await requested(sessions, coordinator, session_mode_active=False)
             clock.advance(timedelta(milliseconds=5))
 
         assert len(await solves(sessions, owner)) == 1
@@ -276,10 +284,10 @@ class TestABurstWastesAtMostOneSolve:
         window = debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
         opened = clock.at
 
-        first = await requested(sessions, coordinator)
+        first = await requested(sessions, coordinator, session_mode_active=False)
         for _ in range(20):
             clock.advance(timedelta(milliseconds=50))
-            await requested(sessions, coordinator)
+            await requested(sessions, coordinator, session_mode_active=False)
 
         assert first.scheduled_for == opened + window
 
@@ -290,7 +298,7 @@ class TestATradeoffNeverJoins:
     ) -> None:
         # A pin made two seconds earlier would otherwise absorb the concession, and the proposal
         # would come back without it, which reads as syncr having ignored the request.
-        pin = await requested(sessions, coordinator)
+        pin = await requested(sessions, coordinator, session_mode_active=False)
 
         tradeoff = await requested(
             sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=True
@@ -318,7 +326,9 @@ class TestATradeoffNeverJoins:
         # which is the invariant this component holds, so the running row is closed instead.
         running = await claimed(sessions, coordinator, owner, clock)
 
-        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=False
+        )
 
         assert tradeoff.id != running.id
         assert tradeoff.candidate_adjustment == A_CANDIDATE
@@ -344,7 +354,9 @@ class TestATradeoffNeverJoins:
                 running.id, Succeeded()
             )
 
-        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=False
+        )
 
         assert tradeoff.candidate_adjustment == A_CANDIDATE
         landed = await read(sessions, owner, running)
@@ -396,9 +408,11 @@ class TestATradeoffNeverJoins:
     ) -> None:
         # Its own version bump supersedes the tradeoff after it runs, and the follow-up carries the
         # candidate forward, so the concession survives without being displaced here.
-        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=False
+        )
 
-        joined = await requested(sessions, coordinator)
+        joined = await requested(sessions, coordinator, session_mode_active=False)
 
         assert joined.id == tradeoff.id
         assert joined.candidate_adjustment == A_CANDIDATE
@@ -406,19 +420,25 @@ class TestATradeoffNeverJoins:
     async def test_an_immediate_mutation_does_not_pull_a_pending_tradeoff_forward_either(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, clock: Ticking
     ) -> None:
-        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=False
+        )
         clock.advance(timedelta(seconds=5))
 
-        joined = await requested(sessions, coordinator, immediate=True)
+        joined = await requested(sessions, coordinator, immediate=True, session_mode_active=False)
 
         assert joined.scheduled_for == tradeoff.scheduled_for
 
     async def test_a_second_tradeoff_supersedes_the_first(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, owner: UserRecord
     ) -> None:
-        first = await requested(sessions, coordinator, candidate=A_CANDIDATE)
+        first = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, session_mode_active=False
+        )
 
-        second = await requested(sessions, coordinator, candidate=ANOTHER_CANDIDATE)
+        second = await requested(
+            sessions, coordinator, candidate=ANOTHER_CANDIDATE, session_mode_active=False
+        )
 
         assert second.candidate_adjustment == ANOTHER_CANDIDATE
         assert (await read(sessions, owner, first)).status == SUPERSEDED
@@ -526,7 +546,9 @@ class TestSupersessionEnqueuesExactlyOneFollowUp:
         clock: Ticking,
     ) -> None:
         # Otherwise a pin landing mid-solve discards the concession the user asked for.
-        tradeoff = await requested(sessions, coordinator, candidate=A_CANDIDATE, immediate=True)
+        tradeoff = await requested(
+            sessions, coordinator, candidate=A_CANDIDATE, immediate=True, session_mode_active=False
+        )
         async with sessions() as session, session.begin():
             running = await OperationLifecycle(
                 OperationRepository(session, owner.tenant_id), clock
@@ -565,7 +587,7 @@ class TestTheClaimScan:
     async def test_nothing_due_claims_nothing(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build
     ) -> None:
-        await requested(sessions, coordinator)
+        await requested(sessions, coordinator, session_mode_active=False)
 
         async with sessions() as session, session.begin():
             assert await coordinator(session).claim_next() is None
@@ -573,7 +595,7 @@ class TestTheClaimScan:
     async def test_a_due_solve_is_claimed_atomically(
         self, sessions: async_sessionmaker[AsyncSession], coordinator: Build, clock: Ticking
     ) -> None:
-        created = await requested(sessions, coordinator)
+        created = await requested(sessions, coordinator, session_mode_active=False)
         clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
 
         async with sessions() as session, session.begin():
@@ -597,7 +619,7 @@ class TestTheClaimScan:
         read. So the queue is the seam, standing for a row that moved in that window, and what is
         driven is the branch the real race reaches: the claim matching no row, counted and skipped.
         """
-        created = await requested(sessions, coordinator)
+        created = await requested(sessions, coordinator, session_mode_active=False)
         async with sessions() as session, session.begin():
             await OperationLifecycle(OperationRepository(session, owner.tenant_id), clock).finish(
                 created.id, Superseded()
@@ -619,13 +641,13 @@ class TestTheClaimScan:
     ) -> None:
         # The control for the skip: losing one claim must not stop the pass, or a tenant whose
         # oldest row keeps moving would never have a later one claimed.
-        gone = await requested(sessions, coordinator)
+        gone = await requested(sessions, coordinator, session_mode_active=False)
         async with sessions() as session, session.begin():
             await OperationLifecycle(OperationRepository(session, owner.tenant_id), clock).finish(
                 gone.id, Superseded()
             )
         clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
-        live = await requested(sessions, coordinator, immediate=True)
+        live = await requested(sessions, coordinator, immediate=True, session_mode_active=False)
 
         async with sessions() as session, session.begin():
             claimed_row = await self._scanning(
@@ -672,7 +694,7 @@ async def claimed(
     clock: Ticking,
 ) -> OperationRecord:
     """One solve of the week, requested and claimed, so a test can drive the running case."""
-    created = await requested(sessions, coordinator, immediate=True)
+    created = await requested(sessions, coordinator, immediate=True, session_mode_active=False)
     async with sessions() as session, session.begin():
         return await OperationLifecycle(OperationRepository(session, owner.tenant_id), clock).claim(
             created.id

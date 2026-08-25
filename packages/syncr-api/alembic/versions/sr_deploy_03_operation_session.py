@@ -18,7 +18,7 @@ from the workspace's live code would describe the schema as it is now instead.
 
 Revision ID: sr_deploy_03_operation_session
 Revises: drop_areas_default_preference
-Create Date: 2026-08-10
+Create Date: 2026-08-26
 
 """
 
