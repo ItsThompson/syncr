@@ -85,12 +85,24 @@ describe("the day shapes list", () => {
     );
   });
 
-  /* A NAME AT THE API'S CAP IS RENDERED WHOLE, and this pins that rather than approving of it. The list sits in a
-   * 236px column and the api caps a name at 60 characters, so the cell wraps and the row grows past the table's
-   * 28px pitch: measured in Chrome at 79px for a shape name and 167px for a day type name. Nothing here
-   * truncates, because a truncated name is the one thing a reader picking a shape cannot read, and the kit's
-   * table has no width or clamp vocabulary to say it better. Ticket 1242 owns that decision; what this test
-   * refuses is a silent ellipsis appearing before it is made. */
+  /* THE LIST DECLARES ITS COLUMNS, and the shape column is the one that absorbs the surplus: the other two
+   * hold the widths they declare whatever any name beside them says, so a long name spends its own row's
+   * height instead of moving its neighbours. The widths are read from the style ATTRIBUTE because jsdom's
+   * style object drops a value its parser does not understand, and `calc()` over mixed units is exactly
+   * such a value. */
+  it("declares the shape column as the one that absorbs the surplus", () => {
+    const { container } = renderTab();
+
+    const widths = [...container.querySelectorAll("col")].map((col) => col.getAttribute("style"));
+
+    expect(widths).toEqual(["width: calc(100% - (72px + 72px));", "width: 72px;", "width: 72px;"]);
+  });
+
+  /* A NAME AT THE API'S CAP IS RENDERED WHOLE, and this pins the refusal rather than the geometry. The list
+   * declares its columns now, so a long name spends its own row's height inside the width its column was given,
+   * and the row still grows past the table's 28px pitch: the height is what wrapping costs, not something to
+   * hold down. Nothing truncates, because a truncated name is the one thing a reader picking a shape cannot
+   * read; what this test refuses is a silent ellipsis ever appearing in place of that decision. */
   it("renders a name at the api's cap in full, rather than truncating it", () => {
     const name = "Weekday with lectures, a placement interview and a gym slot";
     renderTab({ shapes: { status: "ready", data: [buildShapeSummary({ name })] } });

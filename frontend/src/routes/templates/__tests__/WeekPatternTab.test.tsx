@@ -82,6 +82,19 @@ describe("the declared pattern", () => {
 
     expect(patternTable()).toHaveTextContent("a day type you no longer have");
   });
+
+  /* THE WEEKDAY COLUMN TAKES the width that clears its seven known names, and the day type column absorbs
+   * what is left, so a long day type spends its own row's height instead of moving a weekday beside it. Read
+   * from the style ATTRIBUTE: jsdom's style object drops a `calc()` it cannot parse. */
+  it("declares the day type column as the one that absorbs the surplus", () => {
+    renderTab();
+
+    const widths = [...patternTable().querySelectorAll("col")].map((col) =>
+      col.getAttribute("style"),
+    );
+
+    expect(widths).toEqual(["width: 88px;", "width: calc(100% - (88px));"]);
+  });
 });
 
 describe("declaring the pattern", () => {
