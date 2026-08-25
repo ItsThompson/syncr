@@ -33,10 +33,11 @@ from syncr_domain.discretionary import OccupancyKind
 from syncr_domain.errors import DomainError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
     from syncr_domain.identifiers import AnchorId, AreaId
     from syncr_domain.intervals import Interval
+    from syncr_domain.off_plan import OffPlanPeriod
 
 
 class GapError(DomainError):
@@ -99,10 +100,31 @@ class SlotContext:
     The Area is always available, because an empty slot has one. The period's label is the
     user's own word for a span they declared off, and it is optional because a span needs no
     name to suspend scheduling.
+
+    ``off_plan_label`` carries the substitution itself, and the rule for when it is carried is
+    stated here rather than left to each caller to re-derive: exactly one declared period
+    covers the slot and its name is substituted; more than one declared period can cover one
+    slot without covering one instant, because periods never overlap but they abut and a slot
+    can straddle the join, so no single one of them answers for the slot and neither is named.
+    :meth:`of_covering_periods` is the one place that turns the declared periods covering a
+    slot into this context.
     """
 
     area_name: str
     off_plan_label: str | None = None
+
+    @classmethod
+    def of_covering_periods(cls, area_name: str, covering: Iterable[OffPlanPeriod]) -> SlotContext:
+        """The context for a slot the given declared periods cover.
+
+        The caller owns which spans cover the slot; this consumes them as they arrive. One
+        covering period lends its name, whatever it is called; two or more lend nothing, even
+        when only one of them has a name, because the count that decides is the count of
+        periods rather than of names.
+        """
+        periods = tuple(covering)
+        sole = periods[0] if len(periods) == 1 else None
+        return cls(area_name=area_name, off_plan_label=None if sole is None else sole.label)
 
 
 def _no_eligible_content(context: SlotContext) -> str:
