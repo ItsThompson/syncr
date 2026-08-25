@@ -19,14 +19,14 @@ The current week is excluded. A ratio over a week two days old moves every hour 
 so a panel trended by week would show a sawtooth rather than a trend, and the acceptance figure
 would read lowest on Monday every week for no reason anyone can act on.
 
-## What this job cannot yet measure, and where that is recorded
+## Where the session statement comes from, and the one limit that remains
 
-The engagement streak needs to know whether a weekly session ran. The only substrate for that is
-``VerdictEvent.session_mode_active``, which the client sets through a request header, and no client
-sends it yet: ticket 1431 carries that and is blocked on the weekly-session slice. So the streak is
-structurally zero in production today, and the same is true of the early-catch ratio's numerator.
-Both are computed correctly here and both are exercised against rows that carry the flag, so the
-instrument moves the day the header arrives. Ticket 1542 records the gap.
+The engagement streak and the early-catch numerator both read ``VerdictEvent.session_mode_active``.
+A client states whether a weekly session is open through a request header, each solve-scheduling
+operation carries the statement its request made, and the solve's recorder writes it onto every
+verdict row it emits, so both figures follow what callers actually stated rather than assuming
+silence. One attribution limit remains: an episode opened by an act carrying no session flag counts
+as a late discovery, because the ratio can only credit what the caller stated.
 """
 
 from __future__ import annotations

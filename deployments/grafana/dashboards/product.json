@@ -42,7 +42,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Overcommitment caught early",
-      "description": "Episodes whose FIRST verdict row was recorded during a weekly session, over every episode that began in the period. Target: 80% or more caught at planning time. COUNTED BY EPISODE AND NOT BY ROW: one infeasibility deliberately emits two to three rows, so a row-counting formula tops out near 0.5 under perfect behaviour. An episode runs from a transition to feasible = false until the next transition to feasible = true; provenance-only rows are excluded. NOTE: the numerator is structurally zero until a client sends the weekly-session header, which ticket 1431 carries.",
+      "description": "Episodes whose FIRST verdict row was recorded during a weekly session, over every episode that began in the period. Target: 80% or more caught at planning time. COUNTED BY EPISODE AND NOT BY ROW: one infeasibility deliberately emits two to three rows, so a row-counting formula tops out near 0.5 under perfect behaviour. An episode runs from a transition to feasible = false until the next transition to feasible = true; provenance-only rows are excluded. A client sends the weekly-session header with its scheduling acts, and each act's verdict rows carry that statement, so an episode caught during a session counts in the numerator. CAVEAT: an episode whose opening act carried no session flag is attributed as a late discovery.",
       "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
       "targets": [
@@ -118,7 +118,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Health canary: engagement streak",
-      "description": "Consecutive weeks with a weekly session run AND five or more days confirmed. NOT a success target: a scheduler the user stopped opening has failed regardless of the other three. A week that is MAJORITY OFF-PLAN IS SKIPPED, not counted as a failure, because the off-plan feature exists so the user can stop for a week and this metric must not punish it. NOTE: this reads zero until a client sends the weekly-session header, which ticket 1431 carries.",
+      "description": "Consecutive weeks with a weekly session run AND five or more days confirmed. NOT a success target: a scheduler the user stopped opening has failed regardless of the other three. A week that is MAJORITY OFF-PLAN IS SKIPPED, not counted as a failure, because the off-plan feature exists so the user can stop for a week and this metric must not punish it. The session half reads from the weekly-session header a client sends with its scheduling acts, so a week used through the app counts as soon as its acts state the session.",
       "datasource": { "type": "prometheus", "uid": "syncr-prometheus" },
       "gridPos": { "h": 9, "w": 6, "x": 18, "y": 9 },
       "targets": [
