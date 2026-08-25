@@ -1,6 +1,6 @@
 """What a day-shape declaration has to satisfy before it is stored, and how it is refused.
 
-Three of these rules are stated over rows the tenant already holds, which is why they live here
+Several of these rules are stated over rows the tenant already holds, which is why they live here
 rather than in a request schema: a schema sees one request, and none of these is about one
 request.
 
@@ -9,9 +9,10 @@ span's own spelling, and the wire spells that field in camelCase. Deriving the w
 the domain name means a renamed field cannot leave the two disagreeing, and the caller gets a
 422 that points at the control to fix rather than at the request as a whole.
 
-Nothing here checks that a concrete entry names a routine or a habit that exists. Those tables
-are created by later revisions, so at this point a binding is an identifier this package cannot
-resolve. The entry's ``binding_target`` records which table will answer for it.
+A concrete entry's binding is resolved HERE, at the boundary, rather than discovered missing at
+assembly: :func:`require_a_held_binding` reads the answering table through the one mapping in
+``bindings.py``, so an entry naming content this tenant does not hold is refused where it is
+written and names ``bindingRef`` as the field to fix.
 """
 
 from __future__ import annotations
@@ -25,12 +26,14 @@ from syncr_api.areas.config import AREA_RESOURCE
 from syncr_api.areas.rules import unknown_area
 from syncr_api.core.errors import Conflict, FieldError, ValidationFailed
 from syncr_api.templates.config import DAY_TYPE_RESOURCE
-from syncr_domain.templates import TemplateEntryError, WeekPatternIncomplete
+from syncr_domain.templates import BindingTarget, TemplateEntryError, WeekPatternIncomplete
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
+    from uuid import UUID
 
     from syncr_api.areas.records import AreaRecord
+    from syncr_api.templates.bindings import TemplateBindings
     from syncr_api.templates.records import DayTypeRecord, TemplateEntryRecord, TemplateRecord
     from syncr_domain.identifiers import DayTypeId, TemplateEntryId
 
@@ -110,6 +113,31 @@ def require_a_declared_area(area: AreaRecord | None) -> None:
             "was changed. Declare the Area first: a slot is a duration OF one, which is what "
             "lets the solver choose the content.",
             errors=unknown_area("areaId"),
+        )
+
+
+async def require_a_held_binding(
+    bindings: TemplateBindings, target: BindingTarget, ref: UUID
+) -> None:
+    """Refuse a concrete entry naming a routine or habit this tenant does not hold.
+
+    The read goes through the mapping keyed by target, so an entry whose ``binding_target``
+    names one table cannot be answered by the other table's identifier in either direction. A
+    scoped repository answers another tenant's row as absent, so the two refusals are the same
+    sentence and the response discloses nothing about which it refused.
+    """
+    if not await bindings.holds(target, ref):
+        raise ValidationFailed(
+            f"No {target.value} matches that identifier, so an entry cannot bind to it. Nothing "
+            f"was changed. Declare the {target.value} first: a concrete entry names content that "
+            "exists, which is what lets the week materialize it. If it does exist, check that "
+            "bindingTarget names the table that holds it.",
+            errors=[
+                FieldError(
+                    field="bindingRef",
+                    message=f"No {target.value} matches that identifier.",
+                )
+            ],
         )
 
 

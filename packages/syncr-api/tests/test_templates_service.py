@@ -27,6 +27,11 @@ from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFaile
 from syncr_api.core.patches import ABSENT
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
+from syncr_api.habits.records import HabitRecord
+from syncr_api.habits.repository import HabitRepository
+from syncr_api.routines.records import RoutineRecord
+from syncr_api.routines.repository import RoutineRepository
+from syncr_api.templates.bindings import TemplateBindings
 from syncr_api.templates.declarations import (
     ConcreteEntry,
     DayTypeDeclaration,
@@ -47,6 +52,7 @@ from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
+from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.templates import BindingTarget, EntrySpan, TemplateEntryKind, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
 
@@ -58,6 +64,8 @@ if TYPE_CHECKING:
     from syncr_domain.identifiers import (
         AreaId,
         DayTypeId,
+        HabitId,
+        RoutineId,
         TemplateEntryId,
         TemplateId,
         TenantId,
@@ -211,6 +219,36 @@ class FakeAreaRepository(AreaRepository):
         )
 
 
+class FakeRoutineRepository(RoutineRepository):
+    """The routines one tenant holds in memory, scoped the way the real read is."""
+
+    def __init__(self, tenant_id: TenantId) -> None:
+        self._tenant_id = tenant_id
+        self.rows: list[RoutineRecord] = []
+
+    async def find(self, routine_id: RoutineId) -> RoutineRecord | None:
+        # Scoped on the tenant like the real read, so another tenant's row reads as absent:
+        # that scoping is what makes one refusal sentence truthful for both cases.
+        return next(
+            (row for row in self.rows if row.id == routine_id and row.tenant_id == self._tenant_id),
+            None,
+        )
+
+
+class FakeHabitRepository(HabitRepository):
+    """The habits one tenant holds in memory, scoped the way the real read is."""
+
+    def __init__(self, tenant_id: TenantId) -> None:
+        self._tenant_id = tenant_id
+        self.rows: list[HabitRecord] = []
+
+    async def find(self, habit_id: object) -> HabitRecord | None:
+        return next(
+            (row for row in self.rows if row.id == habit_id and row.tenant_id == self._tenant_id),
+            None,
+        )
+
+
 class FakeSettingsRepository(SettingsRepository):
     """One settings row, for the home zone the bump's floor is resolved in."""
 
@@ -296,6 +334,17 @@ class Wiring:
         self.templates = FakeTemplateRepository(principal.tenant_id)
         self.patterns = FakeWeekPatternRepository(principal.tenant_id)
         self.areas = FakeAreaRepository(principal.tenant_id)
+        self.routines = FakeRoutineRepository(principal.tenant_id)
+        self.habits = FakeHabitRepository(principal.tenant_id)
+        # One routine and one habit this tenant holds, so a valid concrete entry has something
+        # to name. The identifiers are stable per wiring, which is what makes a refusal naming
+        # one of them assertable.
+        routine = _a_routine_record(principal.tenant_id)
+        self.routine_id = routine.id
+        self.habit_id = uuid4()
+        self.routines.rows.append(routine)
+        self.habits.rows.append(_a_habit_record(principal.tenant_id, self.habit_id))
+        self.bindings = TemplateBindings(routines=self.routines, habits=self.habits)
         self.versions = versions
         weeks = FutureWeeks(
             patterns=self.patterns,
@@ -314,6 +363,7 @@ class Wiring:
             templates=self.templates,
             day_types=self.day_types,
             areas=self.areas,
+            bindings=self.bindings,
             weeks=weeks,
             clock=lambda: NOW,
             savepoint=nullcontext,
@@ -345,12 +395,45 @@ def a_slot(area_id: AreaId, span: EntrySpan = A_SPAN) -> SlotEntry:
     return SlotEntry(span=span, area_id=area_id)
 
 
-def a_concrete_entry(span: EntrySpan = A_SPAN) -> ConcreteEntry:
+def a_concrete_entry(wiring: Wiring, span: EntrySpan = A_SPAN) -> ConcreteEntry:
+    """A concrete entry naming the routine this wiring's tenant holds."""
     return ConcreteEntry(
         span=span,
         binding_target=BindingTarget.ROUTINE,
-        binding_ref=uuid4(),
+        binding_ref=wiring.routine_id,
         area_id=None,
+    )
+
+
+def _a_routine_record(tenant_id: TenantId, routine_id: RoutineId | None = None) -> RoutineRecord:
+    return RoutineRecord(
+        id=routine_id or uuid4(),
+        tenant_id=tenant_id,
+        title="Wake",
+        target_time=time(6, 0),
+        duration_minutes=30,
+        min_duration_minutes=30,
+        flex_band_minutes=0,
+        created_at=NOW,
+    )
+
+
+def _a_habit_record(tenant_id: TenantId, habit_id: HabitId) -> HabitRecord:
+    return HabitRecord(
+        id=habit_id,
+        tenant_id=tenant_id,
+        area_id=uuid4(),
+        title="Stretch",
+        cadence_kind=CadenceKind.DAILY,
+        cadence_times_per_week=None,
+        cadence_approx_days=None,
+        duration_min_minutes=15,
+        duration_max_minutes=15,
+        miss_policy=MissPolicy.FORGIVE,
+        binding_source=BindingSource.FIXED,
+        variants=(),
+        debt_cap_periods=2,
+        created_at=NOW,
     )
 
 
@@ -475,7 +558,7 @@ async def test_renaming_a_shape_leaves_its_day_type_and_entries_alone(
 ) -> None:
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
-    await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry())
+    await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
 
     renamed = await wiring.template_service.update(
         principal, shape.id, TemplateChange(name="Weekdays")
@@ -491,7 +574,7 @@ async def test_removing_a_shape_takes_its_entries_with_it(
 ) -> None:
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
-    await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry())
+    await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
 
     await wiring.template_service.remove(principal, shape.id)
 
@@ -510,7 +593,7 @@ async def test_a_concrete_entry_stores_its_binding_and_no_area(
 ) -> None:
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
-    declaration = a_concrete_entry()
+    declaration = a_concrete_entry(wiring)
 
     added = await wiring.template_service.add_entry(principal, shape.id, declaration)
 
@@ -544,7 +627,7 @@ async def test_an_entry_naming_an_area_this_tenant_does_not_have_is_refused(
     shape = await wiring.a_shape(principal, day_type)
     unknown = uuid4()
     declaration = (
-        a_slot(unknown) if kind == "slot" else replace(a_concrete_entry(), area_id=unknown)
+        a_slot(unknown) if kind == "slot" else replace(a_concrete_entry(wiring), area_id=unknown)
     )
 
     with pytest.raises(ValidationFailed) as refused:
@@ -555,6 +638,129 @@ async def test_an_entry_naming_an_area_this_tenant_does_not_have_is_refused(
     assert wiring.templates.rows[0].entries == ()
 
 
+async def test_the_binding_vocabulary_has_a_reader_for_every_member(wiring: Wiring) -> None:
+    # Removing a BindingTarget member shrinks the vocabulary and this stays green. Adding one
+    # without a reader reddens here, rather than resolving against whichever table a reader
+    # looked in first.
+    assert wiring.bindings.targets == frozenset(BindingTarget)
+
+
+@pytest.mark.parametrize("target", list(BindingTarget), ids=["routine", "habit"])
+async def test_a_valid_concrete_entry_naming_held_content_is_stored(
+    principal: Principal, wiring: Wiring, target: BindingTarget
+) -> None:
+    day_type = await wiring.a_day_type(principal)
+    shape = await wiring.a_shape(principal, day_type)
+    ref = wiring.routine_id if target is BindingTarget.ROUTINE else wiring.habit_id
+    declaration = ConcreteEntry(span=A_SPAN, binding_target=target, binding_ref=ref, area_id=None)
+
+    added = await wiring.template_service.add_entry(principal, shape.id, declaration)
+
+    assert added.binding_target is target
+    assert added.binding_ref == ref
+
+
+async def test_a_concrete_entry_naming_content_this_tenant_does_not_have_is_refused(
+    principal: Principal, wiring: Wiring
+) -> None:
+    day_type = await wiring.a_day_type(principal)
+    shape = await wiring.a_shape(principal, day_type)
+    declaration = ConcreteEntry(
+        span=A_SPAN,
+        binding_target=BindingTarget.ROUTINE,
+        binding_ref=uuid4(),
+        area_id=None,
+    )
+
+    with pytest.raises(ValidationFailed) as refused:
+        await wiring.template_service.add_entry(principal, shape.id, declaration)
+
+    assert refused.value.errors is not None
+    assert [error.field for error in refused.value.errors] == ["bindingRef"]
+    assert wiring.templates.rows[0].entries == ()
+
+
+async def test_an_unknown_identifier_and_another_tenants_are_refused_identically(
+    principal: Principal, wiring: Wiring
+) -> None:
+    # One sentence covers both, so the response discloses nothing about which it refused: an
+    # identifier nobody holds and one another tenant's routine answers are the same refusal.
+    day_type = await wiring.a_day_type(principal)
+    shape = await wiring.a_shape(principal, day_type)
+    strangers = _a_routine_record(uuid4())
+    wiring.routines.rows.append(strangers)
+
+    def a_declaration(ref: RoutineId) -> ConcreteEntry:
+        return ConcreteEntry(
+            span=A_SPAN, binding_target=BindingTarget.ROUTINE, binding_ref=ref, area_id=None
+        )
+
+    with pytest.raises(ValidationFailed) as unknown:
+        await wiring.template_service.add_entry(principal, shape.id, a_declaration(uuid4()))
+    with pytest.raises(ValidationFailed) as foreign:
+        await wiring.template_service.add_entry(principal, shape.id, a_declaration(strangers.id))
+
+    assert str(unknown.value.detail) == str(foreign.value.detail)
+    assert unknown.value.errors == foreign.value.errors
+    assert wiring.templates.rows[0].entries == ()
+
+
+@pytest.mark.parametrize(
+    ("target", "held_elsewhere"),
+    [
+        (BindingTarget.ROUTINE, "habit_id"),
+        (BindingTarget.HABIT, "routine_id"),
+    ],
+    ids=["a routine target naming a habit", "a habit target naming a routine"],
+)
+async def test_a_binding_cannot_name_the_other_tables_identifier(
+    principal: Principal,
+    wiring: Wiring,
+    target: BindingTarget,
+    held_elsewhere: str,
+) -> None:
+    # The identifier exists in THIS tenant, but in the other table: only the mapping keyed by
+    # target stands between the two, which is why both directions are tested.
+    day_type = await wiring.a_day_type(principal)
+    shape = await wiring.a_shape(principal, day_type)
+    declaration = ConcreteEntry(
+        span=A_SPAN,
+        binding_target=target,
+        binding_ref=getattr(wiring, held_elsewhere),
+        area_id=None,
+    )
+
+    with pytest.raises(ValidationFailed) as refused:
+        await wiring.template_service.add_entry(principal, shape.id, declaration)
+
+    assert refused.value.errors is not None
+    assert [error.field for error in refused.value.errors] == ["bindingRef"]
+    assert wiring.templates.rows[0].entries == ()
+
+
+async def test_a_patch_applies_the_same_resolution_as_the_post(
+    principal: Principal, wiring: Wiring
+) -> None:
+    # A patch carries no binding, so the resolution runs over the stored one: an entry whose
+    # content has since gone missing cannot be edited into a row nothing will materialize.
+    day_type = await wiring.a_day_type(principal)
+    shape = await wiring.a_shape(principal, day_type)
+    entry = await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
+    wiring.routines.rows.clear()
+
+    with pytest.raises(ValidationFailed) as refused:
+        await wiring.template_service.change_entry(
+            principal,
+            shape.id,
+            entry.id,
+            EntryChange(target_time=time(6, 30), duration_minutes=ABSENT, flex_band_minutes=ABSENT),
+        )
+
+    assert refused.value.errors is not None
+    assert [error.field for error in refused.value.errors] == ["bindingRef"]
+    assert wiring.templates.rows[0].entries[0].span == A_SPAN
+
+
 async def test_an_entry_of_another_shape_is_not_addressable_through_this_one(
     principal: Principal, wiring: Wiring
 ) -> None:
@@ -562,7 +768,9 @@ async def test_an_entry_of_another_shape_is_not_addressable_through_this_one(
     weekend = await wiring.a_day_type(principal, "Weekend")
     weekday_shape = await wiring.a_shape(principal, weekday, "Weekday shape")
     weekend_shape = await wiring.a_shape(principal, weekend, "Weekend shape")
-    entry = await wiring.template_service.add_entry(principal, weekday_shape.id, a_concrete_entry())
+    entry = await wiring.template_service.add_entry(
+        principal, weekday_shape.id, a_concrete_entry(wiring)
+    )
 
     with pytest.raises(NotFound):
         await wiring.template_service.remove_entry(principal, weekend_shape.id, entry.id)
@@ -575,7 +783,7 @@ async def test_a_patch_moves_an_entry_and_leaves_its_content_alone(
 ) -> None:
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
-    declaration = a_concrete_entry()
+    declaration = a_concrete_entry(wiring)
     entry = await wiring.template_service.add_entry(principal, shape.id, declaration)
 
     moved = await wiring.template_service.change_entry(
@@ -597,7 +805,7 @@ async def test_a_patch_that_would_leave_an_entry_off_the_grid_is_refused(
     # names one field and the rule is about the pair.
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
-    entry = await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry())
+    entry = await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
 
     with pytest.raises(ValidationFailed) as refused:
         await wiring.template_service.change_entry(
@@ -621,12 +829,12 @@ async def test_every_entry_mutation_invalidates_the_mapped_future_weeks(
 ) -> None:
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
-    entry = await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry())
+    entry = await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
     wiring.map_every_weekday_to(day_type)
     wiring.versions.bumped.clear()
 
     if mutate == "add":
-        await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry())
+        await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
     elif mutate == "change":
         await wiring.template_service.change_entry(
             principal,

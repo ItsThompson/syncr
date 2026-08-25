@@ -43,6 +43,7 @@ from syncr_api.templates.rules import (
     find_entry,
     require_a_declared_area,
     require_a_declared_day_type,
+    require_a_held_binding,
     require_an_unshaped_day_type,
     require_an_unused_day_type_name,
     stated_rejection,
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.core.races import Savepoint
+    from syncr_api.templates.bindings import TemplateBindings
     from syncr_api.templates.declarations import (
         DayTypeDeclaration,
         EntryChange,
@@ -131,6 +133,7 @@ class TemplateService:
         templates: TemplateRepository,
         day_types: DayTypeRepository,
         areas: AreaRepository,
+        bindings: TemplateBindings,
         weeks: FutureWeeks,
         clock: Clock,
         savepoint: Savepoint,
@@ -138,6 +141,7 @@ class TemplateService:
         self._templates = templates
         self._day_types = day_types
         self._areas = areas
+        self._bindings = bindings
         self._weeks = weeks
         self._clock = clock
         self._savepoint = savepoint
@@ -230,16 +234,23 @@ class TemplateService:
     async def add_entry(
         self, principal: Principal, template_id: TemplateId, declaration: EntryDeclaration
     ) -> TemplateEntryRecord:
-        """Add one entry to a shape, after checking whatever Area it names.
+        """Add one entry to a shape, after checking whatever it names.
 
         The span arrived already checked against the grid, because it is a domain shape: a
-        request naming an off-grid time was refused before this method was reached.
+        request naming an off-grid time was refused before this method was reached. A concrete
+        entry's binding is resolved here rather than at assembly, so an entry naming a routine or
+        habit this tenant does not hold is refused where it is written and names ``bindingRef``
+        as the field to fix.
         """
         require_scope(principal, Scope.ADMIN)
         shape = await self._require_template(principal, template_id)
         content = declaration.content()
         if content.area_id is not None:
             require_a_declared_area(await self._areas.find(content.area_id))
+        if content.binding_target is not None and content.binding_ref is not None:
+            await require_a_held_binding(
+                self._bindings, content.binding_target, content.binding_ref
+            )
         created = await self._templates.create_entry(
             template_id=template_id, span=declaration.span, content=content
         )
@@ -266,10 +277,17 @@ class TemplateService:
 
         The merge is where a patched span is first expressible, so it is where the grid rule can
         refuse one: a patch moving an entry to 07:05 is a 422 naming the field, not a stored row.
+        A patch carries no binding, so the same resolution POST applied runs over the stored one:
+        an entry whose binding has since gone dangling is refused here too rather than edited into
+        a row nothing will ever materialize.
         """
         require_scope(principal, Scope.ADMIN)
         shape = await self._require_template(principal, template_id)
         current = self._require_entry(entry_id, shape)
+        if current.binding_target is not None and current.binding_ref is not None:
+            await require_a_held_binding(
+                self._bindings, current.binding_target, current.binding_ref
+            )
         with stated_rejection():
             merged = change.applied_to(current.span)
         await self._templates.write_entry(entry_id, span=merged)

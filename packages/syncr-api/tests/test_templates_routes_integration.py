@@ -36,12 +36,14 @@ from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.config import APPROVED
 from syncr_api.plans.facts import Pin
 from syncr_api.plans.models import PlanRevision, WeekInputVersion
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.routines.config import ROUTINES_PREFIX
 from syncr_api.templates.config import (
     DAY_TYPES_PREFIX,
     TEMPLATES_PREFIX,
@@ -70,6 +72,8 @@ BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 DAY_TYPES = DAY_TYPES_PREFIX
 TEMPLATES = TEMPLATES_PREFIX
 WEEK_PATTERN = WEEK_PATTERN_PREFIX
+ROUTINES = ROUTINES_PREFIX
+HABITS = HABITS_PREFIX
 
 NOW = datetime.now(UTC)
 # Two weeks either side of the current one, so neither is near a week boundary the local date
@@ -77,6 +81,9 @@ NOW = datetime.now(UTC)
 PAST_WEEK = IsoWeek.containing(NOW.date() - timedelta(days=14))
 FUTURE_WEEK = IsoWeek.containing(NOW.date() + timedelta(days=14))
 
+# The placeholder ``bindingRef`` names nothing any tenant holds. A test posting this body whole
+# expects a refusal before or at the binding resolution; one that expects the entry STORED builds
+# its body through :func:`concrete_entry` with a routine or habit the tenant really declared.
 A_CONCRETE_ENTRY: dict[str, Any] = {
     "kind": "concrete",
     "targetTime": "07:00:00",
@@ -85,6 +92,11 @@ A_CONCRETE_ENTRY: dict[str, Any] = {
     "bindingTarget": "routine",
     "bindingRef": str(uuid4()),
 }
+
+
+def concrete_entry(binding_ref: str) -> dict[str, Any]:
+    """A concrete entry naming content the tenant holds."""
+    return {**A_CONCRETE_ENTRY, "bindingRef": binding_ref}
 
 
 @pytest.fixture
@@ -108,6 +120,12 @@ def http(live_database_url: str, settings: ServiceSettings) -> Iterator[TestClie
 def signed_in(http: TestClient, owner: UserRecord) -> dict[str, str]:
     """The headers a signed-in browser sends: the session cookie and its origin."""
     return _sign_in(http, owner.email)
+
+
+@pytest.fixture
+def routine(http: TestClient, signed_in: dict[str, str]) -> str:
+    """A routine this tenant holds, for a valid concrete entry to name."""
+    return declare_routine(http, signed_in)
 
 
 def entry_rows(database_url: str, tenant_id: TenantId) -> list[TemplateEntryRow]:
@@ -254,6 +272,33 @@ def declare_area(http: TestClient, headers: dict[str, str], name: str) -> str:
     return identifier
 
 
+def declare_routine(http: TestClient, headers: dict[str, str], title: str = "Wake") -> str:
+    response = http.post(
+        ROUTINES,
+        json={"title": title, "targetTime": "06:00:00", "durationMinutes": 30},
+        headers=headers,
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    identifier: str = response.json()["id"]
+    return identifier
+
+
+def declare_habit(http: TestClient, headers: dict[str, str], area_id: str) -> str:
+    response = http.post(
+        HABITS,
+        json={
+            "areaId": area_id,
+            "title": "Stretch",
+            "cadence": {"kind": "daily"},
+            "minDurationMinutes": 15,
+        },
+        headers=headers,
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    identifier: str = response.json()["id"]
+    return identifier
+
+
 def a_mapping(day_type_id: str, **overrides: str) -> dict[str, str]:
     """All seven weekdays on one day type, with any weekday overridden by name."""
     return {weekday.value: day_type_id for weekday in Weekday} | overrides
@@ -305,14 +350,14 @@ def test_a_duplicate_day_type_name_answers_409_and_stores_nothing(
 
 
 def test_the_template_list_states_each_shapes_entry_count(
-    http: TestClient, signed_in: dict[str, str]
+    http: TestClient, signed_in: dict[str, str], routine: str
 ) -> None:
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     for minute in ("07:00:00", "07:30:00"):
         added = http.post(
             f"{TEMPLATES}/{shape}/entries",
-            json={**A_CONCRETE_ENTRY, "targetTime": minute, "bindingRef": str(uuid4())},
+            json={**concrete_entry(routine), "targetTime": minute},
             headers=signed_in,
         )
         assert added.status_code == HTTPStatus.CREATED, added.text
@@ -325,14 +370,14 @@ def test_the_template_list_states_each_shapes_entry_count(
 
 
 def test_entries_read_back_in_the_order_the_day_runs(
-    http: TestClient, signed_in: dict[str, str]
+    http: TestClient, signed_in: dict[str, str], routine: str
 ) -> None:
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     for at_time in ("21:00:00", "06:15:00", "12:30:00"):
         http.post(
             f"{TEMPLATES}/{shape}/entries",
-            json={**A_CONCRETE_ENTRY, "targetTime": at_time, "bindingRef": str(uuid4())},
+            json={**concrete_entry(routine), "targetTime": at_time},
             headers=signed_in,
         )
 
@@ -411,6 +456,127 @@ def test_a_slot_naming_another_tenants_area_answers_422_and_stores_nothing(
         assert entry_rows(live_database_url, owner.tenant_id) == []
     finally:
         remove_tenant(live_database_url, stranger.tenant_id)
+
+
+@pytest.mark.parametrize("target", ["routine", "habit"], ids=["routine", "habit"])
+def test_an_entry_naming_content_this_tenant_does_not_have_answers_422_and_stores_nothing(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    target: str,
+) -> None:
+    # The binding is resolved where it is authored, not discovered missing at assembly.
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+
+    refused = http.post(
+        f"{TEMPLATES}/{shape}/entries",
+        json={**A_CONCRETE_ENTRY, "bindingTarget": target},
+        headers=signed_in,
+    )
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["bindingRef"]
+    assert entry_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_an_unknown_identifier_and_another_tenants_answer_identically(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # The scoped read answers another tenant's row as absent, so the two refusals are one
+    # sentence and the response discloses nothing about which it refused.
+    stranger = provision_owner(live_database_url)
+    try:
+        foreign_routine = declare_routine(http, _sign_in(http, stranger.email))
+        day_type = declare_day_type(http, signed_in, "Weekday")
+        shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+
+        unknown = http.post(
+            f"{TEMPLATES}/{shape}/entries",
+            json={**A_CONCRETE_ENTRY, "bindingRef": str(uuid4())},
+            headers=signed_in,
+        )
+        foreign = http.post(
+            f"{TEMPLATES}/{shape}/entries",
+            json={**A_CONCRETE_ENTRY, "bindingRef": foreign_routine},
+            headers=signed_in,
+        )
+
+        assert unknown.status_code == ValidationFailed.status, unknown.text
+        assert foreign.status_code == ValidationFailed.status, foreign.text
+        # ``instance`` names the request that failed, so it differs by construction; everything
+        # else, including the detail sentence and the field errors, is the same refusal.
+        assert {k: v for k, v in foreign.json().items() if k != "instance"} == {
+            k: v for k, v in unknown.json().items() if k != "instance"
+        }
+        assert entry_rows(live_database_url, owner.tenant_id) == []
+    finally:
+        remove_tenant(live_database_url, stranger.tenant_id)
+
+
+@pytest.mark.parametrize(
+    ("target", "other_target"),
+    [
+        ("routine", "habit"),
+        ("habit", "routine"),
+    ],
+    ids=["a routine target naming a habit", "a habit target naming a routine"],
+)
+def test_a_binding_cannot_name_the_other_tables_identifier(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    target: str,
+    other_target: str,
+) -> None:
+    # The identifier exists in THIS tenant, but in the other table: only the mapping keyed by
+    # target stands between the two, so both directions are tested against real rows.
+    routine = declare_routine(http, signed_in)
+    area = declare_area(http, signed_in, "Learning")
+    habit = declare_habit(http, signed_in, area)
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    named = routine if other_target == "routine" else habit
+
+    refused = http.post(
+        f"{TEMPLATES}/{shape}/entries",
+        json={**A_CONCRETE_ENTRY, "bindingTarget": target, "bindingRef": named},
+        headers=signed_in,
+    )
+
+    assert refused.status_code == ValidationFailed.status, refused.text
+    assert [error["field"] for error in refused.json()["errors"]] == ["bindingRef"]
+    assert entry_rows(live_database_url, owner.tenant_id) == []
+
+
+def test_a_patch_applies_the_same_resolution_as_the_post(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    # A patch carries no binding, so the resolution runs over the stored one: once the bound
+    # content is gone, the entry cannot be edited into a row nothing will materialize.
+    routine = declare_routine(http, signed_in)
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    entry = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
+    ).json()
+    removed = http.delete(f"{ROUTINES}/{routine}", headers=signed_in)
+    assert removed.status_code == HTTPStatus.NO_CONTENT, removed.text
+
+    moved = http.patch(
+        f"{TEMPLATES}/{shape}/entries/{entry['id']}",
+        json={"targetTime": "06:45:00"},
+        headers=signed_in,
+    )
+
+    assert moved.status_code == ValidationFailed.status, moved.text
+    assert [error["field"] for error in moved.json()["errors"]] == ["bindingRef"]
+    # Read on the row rather than through the read route, which carries its own statement about a
+    # dangling entry: what this PATCH owes is leaving the stored span exactly as it was.
+    stored = entry_rows(live_database_url, owner.tenant_id)
+    assert [row.target_time for row in stored] == [time(7, 0)]
 
 
 @pytest.mark.parametrize(
@@ -502,13 +668,15 @@ def test_neither_kind_of_entry_can_carry_a_cadence(
     assert http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"] == []
 
 
-def test_a_patch_cannot_rebind_an_entry(http: TestClient, signed_in: dict[str, str]) -> None:
+def test_a_patch_cannot_rebind_an_entry(
+    http: TestClient, signed_in: dict[str, str], routine: str
+) -> None:
     # An entry's content is declared once: a materialized entry's identity is the entry keyed by
     # the local date, so rebinding one in place would re-point stored outcomes and pins.
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     entry = http.post(
-        f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
     ).json()
 
     for body in ({"bindingRef": str(uuid4())}, {"kind": "slot"}, {"areaId": str(uuid4())}):
@@ -554,7 +722,11 @@ def test_a_span_off_the_grid_is_refused_and_names_its_field(
 
 
 def test_declaring_an_entry_that_names_a_routine_is_answered_with_the_frame(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     # The declaration is accepted and stored, and nothing will ever place it: the frame places that
     # routine at its own target time. So the response says so through the real route rather than
@@ -562,7 +734,9 @@ def test_declaring_an_entry_that_names_a_routine_is_answered_with_the_frame(
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
 
-    declared = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    declared = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
+    )
     moved = http.patch(
         f"{TEMPLATES}/{shape}/entries/{declared.json()['id']}",
         json={"targetTime": "06:45:00"},
@@ -583,12 +757,14 @@ def test_declaring_an_entry_that_names_a_habit_is_answered_with_nothing_to_say(
 ) -> None:
     # The control on the other edge, through the same route: a habit-bound entry materializes at the
     # time it declares, so there is nothing for the boundary to correct.
+    area = declare_area(http, signed_in, "Learning")
+    habit = declare_habit(http, signed_in, area)
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
 
     declared = http.post(
         f"{TEMPLATES}/{shape}/entries",
-        json={**A_CONCRETE_ENTRY, "bindingTarget": "habit"},
+        json={**concrete_entry(habit), "bindingTarget": "habit"},
         headers=signed_in,
     )
 
@@ -603,12 +779,12 @@ def test_declaring_an_entry_that_names_a_habit_is_answered_with_nothing_to_say(
 
 
 def test_an_entry_moves_and_keeps_what_it_holds(
-    http: TestClient, signed_in: dict[str, str]
+    http: TestClient, signed_in: dict[str, str], routine: str
 ) -> None:
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     entry = http.post(
-        f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
     ).json()
 
     moved = http.patch(
@@ -619,20 +795,20 @@ def test_an_entry_moves_and_keeps_what_it_holds(
 
     assert moved.status_code == HTTPStatus.OK, moved.text
     assert moved.json()["targetTime"] == "06:45:00"
-    assert moved.json()["bindingRef"] == A_CONCRETE_ENTRY["bindingRef"]
+    assert moved.json()["bindingRef"] == routine
     assert moved.json()["durationMinutes"] == A_CONCRETE_ENTRY["durationMinutes"]
 
 
 @pytest.mark.parametrize("field", ["targetTime", "durationMinutes", "flexBandMinutes"])
 def test_an_explicit_null_on_an_entry_patch_is_refused_rather_than_read_as_no_change(
-    http: TestClient, signed_in: dict[str, str], field: str
+    http: TestClient, signed_in: dict[str, str], routine: str, field: str
 ) -> None:
     # Nothing in a span is nullable, so null and an omitted field would otherwise be the same
     # request: a caller who meant to clear something has to be told it cannot be cleared.
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     entry = http.post(
-        f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
     ).json()
 
     refused = http.patch(
@@ -672,14 +848,18 @@ def test_a_null_shape_name_is_refused_rather_than_read_as_no_change(
     ],
 )
 def test_a_patch_that_would_leave_a_span_unstorable_is_refused(
-    http: TestClient, signed_in: dict[str, str], body: dict[str, Any], field: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    body: dict[str, Any],
+    field: str,
+    routine: str,
 ) -> None:
     # The second write path. The merge rebuilds the span, so the same guard answers for a PATCH
     # as for a POST, and the stored row is the assertion that it answered before the write.
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     entry = http.post(
-        f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
     ).json()
 
     refused = http.patch(f"{TEMPLATES}/{shape}/entries/{entry['id']}", json=body, headers=signed_in)
@@ -692,11 +872,15 @@ def test_a_patch_that_would_leave_a_span_unstorable_is_refused(
 
 
 def test_removing_a_shape_removes_its_entries(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
-    http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    http.post(f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in)
 
     removed = http.delete(f"{TEMPLATES}/{shape}", headers=signed_in)
 
@@ -707,14 +891,20 @@ def test_removing_a_shape_removes_its_entries(
 
 
 def test_a_declared_shape_creates_no_pin_row(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     # A template entry is fixed by DERIVATION rather than pinned. Both are hard constraints on
     # the solver and they differ in everything else: a pin is a user act with a superseded
     # placement and a training label, and an entry is a structural fact.
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
-    added = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    added = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
+    )
 
     assert added.status_code == HTTPStatus.CREATED, added.text
     assert pin_count(live_database_url, owner.tenant_id) == 0
@@ -879,21 +1069,29 @@ def test_a_pattern_edit_leaves_an_approved_past_week_untouched(
 
 
 def test_an_entry_added_to_a_mapped_shape_bumps_the_future_week(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     declare_pattern(http, signed_in, a_mapping(day_type))
     before = track_weeks(live_database_url, owner.tenant_id, FUTURE_WEEK)
 
-    http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    http.post(f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in)
 
     after = week_versions(live_database_url, owner.tenant_id)
     assert after[str(FUTURE_WEEK)] == before[str(FUTURE_WEEK)] + 1
 
 
 def test_a_shape_no_weekday_maps_bumps_nothing(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     # The control. A shape whose day type the pattern does not use changes no week, so a solve
     # running against that week's inputs is still reading current ones.
@@ -903,7 +1101,7 @@ def test_a_shape_no_weekday_maps_bumps_nothing(
     shape = declare_shape(http, signed_in, unmapped, "Holiday shape")
     before = track_weeks(live_database_url, owner.tenant_id, FUTURE_WEEK)
 
-    http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    http.post(f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in)
 
     assert week_versions(live_database_url, owner.tenant_id) == before
 
@@ -945,15 +1143,21 @@ def a_mapped_shape(http: TestClient, signed_in: dict[str, str], name: str = "Wee
     return declare_shape(http, signed_in, day_type, f"{name} shape")
 
 
-def add_an_entry(http: TestClient, signed_in: dict[str, str], shape: str) -> str:
-    response = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+def add_an_entry(http: TestClient, signed_in: dict[str, str], shape: str, binding_ref: str) -> str:
+    response = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(binding_ref), headers=signed_in
+    )
     assert response.status_code == HTTPStatus.CREATED, response.text
     identifier: str = response.json()["id"]
     return identifier
 
 
 def test_a_repeated_entry_post_under_one_key_adds_one_entry(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     """The retry this module exists to state: nothing else refuses a second identical entry.
 
@@ -965,8 +1169,8 @@ def test_a_repeated_entry_post_under_one_key_adds_one_entry(
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
     once = one_key(signed_in)
 
-    first = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=once)
-    replayed = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=once)
+    first = http.post(f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=once)
+    replayed = http.post(f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=once)
 
     assert first.status_code == HTTPStatus.CREATED, first.text
     assert replayed.status_code == HTTPStatus.CREATED, replayed.text
@@ -978,7 +1182,11 @@ def test_a_repeated_entry_post_under_one_key_adds_one_entry(
 
 
 def test_a_repeated_entry_post_without_a_key_still_adds_a_second_entry(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     """The header is offered rather than demanded, so a caller sending none gets no guarantee.
 
@@ -988,8 +1196,12 @@ def test_a_repeated_entry_post_without_a_key_still_adds_a_second_entry(
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
 
-    first = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
-    again = http.post(f"{TEMPLATES}/{shape}/entries", json=A_CONCRETE_ENTRY, headers=signed_in)
+    first = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
+    )
+    again = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
+    )
 
     assert first.status_code == HTTPStatus.CREATED, first.text
     assert again.status_code == HTTPStatus.CREATED, again.text
@@ -1060,10 +1272,14 @@ def test_a_repeated_shape_removal_under_one_key_answers_no_content_rather_than_4
 
 
 def test_a_repeated_entry_patch_under_one_key_bumps_the_week_once(
-    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
 ) -> None:
     shape = a_mapped_shape(http, signed_in)
-    entry = add_an_entry(http, signed_in, shape)
+    entry = add_an_entry(http, signed_in, shape, routine)
     before = track_weeks(live_database_url, owner.tenant_id, FUTURE_WEEK)
     once = one_key(signed_in)
     moved = {"targetTime": "07:30:00"}
@@ -1078,11 +1294,11 @@ def test_a_repeated_entry_patch_under_one_key_bumps_the_week_once(
 
 
 def test_a_repeated_entry_removal_under_one_key_answers_no_content_rather_than_404(
-    http: TestClient, signed_in: dict[str, str]
+    http: TestClient, signed_in: dict[str, str], routine: str
 ) -> None:
     day_type = declare_day_type(http, signed_in, "Weekday")
     shape = declare_shape(http, signed_in, day_type, "Weekday shape")
-    entry = add_an_entry(http, signed_in, shape)
+    entry = add_an_entry(http, signed_in, shape, routine)
     once = one_key(signed_in)
 
     first = http.delete(f"{TEMPLATES}/{shape}/entries/{entry}", headers=once)

@@ -42,6 +42,7 @@ from syncr_api.core.errors import Forbidden
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.plans.declarations import PinToHold
 from syncr_api.plans.pins import PinRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -195,7 +196,18 @@ def declare_a_day_shape(http: TestClient, headers: dict[str, str], *, mapped: bo
 def declare_an_entry(
     http: TestClient, headers: dict[str, str], template_id: str, *, area_id: UUID
 ) -> str:
-    """One concrete entry of the shape, bound to a habit, at the declared time."""
+    """One concrete entry of the shape, bound to a habit the tenant holds."""
+    habit = http.post(
+        HABITS_PREFIX,
+        json={
+            "areaId": str(area_id),
+            "title": "Stretch",
+            "cadence": {"kind": "daily"},
+            "minDurationMinutes": 60,
+        },
+        headers=headers,
+    )
+    assert habit.status_code == HTTPStatus.CREATED, habit.text
     answered = http.post(
         f"{TEMPLATES_PREFIX}/{template_id}/entries",
         json={
@@ -204,7 +216,7 @@ def declare_an_entry(
             "durationMinutes": 60,
             "flexBandMinutes": 15,
             "bindingTarget": "habit",
-            "bindingRef": str(uuid4()),
+            "bindingRef": habit.json()["id"],
             "areaId": str(area_id),
         },
         headers=headers,

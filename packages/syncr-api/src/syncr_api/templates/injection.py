@@ -5,9 +5,11 @@ is available and before a service exists. That is what makes the scope structura
 code path that builds one of these repositories without a tenant, so no statement they compose
 can reach another tenant's rows.
 
-Three collaborators come from other feature modules, and each is deliberate rather than
+Four collaborators come from other feature modules, and each is deliberate rather than
 convenient. The Areas repository is read because a slot names an Area and the Area has to be this
-tenant's. ``BacklogWideBump`` carries plan storage's version counter and the settings read the home
+tenant's. The routines and habits repositories are read because a concrete entry's binding names a
+row of one of them, and only a scoped read answers another tenant's identifier as absent.
+``BacklogWideBump`` carries plan storage's version counter and the settings read the home
 zone: a day shape is a solve input with no end date, so it needs the same four steps every such
 mutation needs, and there is one implementation of them.
 
@@ -28,7 +30,10 @@ from fastapi import Depends
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.habits.repository import HabitRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.routines.repository import RoutineRepository
+from syncr_api.templates.bindings import TemplateBindings
 from syncr_api.templates.invalidation import FutureWeeks
 from syncr_api.templates.repository import (
     DayTypeRepository,
@@ -69,6 +74,10 @@ def get_template_service(principal: PrincipalDep, transaction: TransactionDep) -
         templates=TemplateRepository(transaction, principal.tenant_id),
         day_types=DayTypeRepository(transaction, principal.tenant_id),
         areas=AreaRepository(transaction, principal.tenant_id),
+        bindings=TemplateBindings(
+            routines=RoutineRepository(transaction, principal.tenant_id),
+            habits=HabitRepository(transaction, principal.tenant_id),
+        ),
         weeks=_future_weeks(principal, transaction),
         clock=utc_now,
         savepoint=transaction.begin_nested,
