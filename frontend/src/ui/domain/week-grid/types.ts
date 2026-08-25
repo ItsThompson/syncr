@@ -57,7 +57,7 @@ export interface GridBlock {
   readonly origin: BlockOrigin;
   /** The Area's ramp step, or null for the frame and for an imported anchor, which hold no Area. */
   readonly pigment: AreaPigment | null;
-  /** The Area's name, which is what identifies it once the ramp repeats past twelve Areas. */
+  /** The Area's name, which is what identifies it wherever the step's ink cannot. */
   readonly areaName: string | null;
   /** The user's own edit. A block fixed by derivation is not pinned. */
   readonly isPinned: boolean;
