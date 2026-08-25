@@ -2394,7 +2394,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -4894,7 +4894,7 @@ export interface components {
         RoutineCreateRequest: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
+             * @description How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
              */
             durationMinutes: number;
             /**
@@ -4930,7 +4930,7 @@ export interface components {
         RoutinePatchRequest: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.
+             * @description How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.
              */
             durationMinutes?: number | null;
             /**
@@ -4960,7 +4960,7 @@ export interface components {
         RoutineResponse: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
+             * @description How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
              */
             durationMinutes: number;
             /**
@@ -5307,7 +5307,7 @@ export interface components {
             estimateMinutes: number;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /**
@@ -5354,7 +5354,7 @@ export interface components {
             estimateMinutes?: number | null;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -5407,7 +5407,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */

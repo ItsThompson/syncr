@@ -1164,7 +1164,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
@@ -5860,9 +5860,9 @@
         "description": "A routine to declare.\n\n``minDurationMinutes`` may be left out, in which case it equals the target duration and the\nroutine is inelastic. ``flexBandMinutes`` may be left out, in which case the routine is\npinned to its target time.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "maximum": 1440.0,
-            "minimum": 1.0,
+            "minimum": 15.0,
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -5878,7 +5878,7 @@
             "anyOf": [
               {
                 "maximum": 1440.0,
-                "minimum": 1.0,
+                "minimum": 15.0,
                 "type": "integer"
               },
               {
@@ -5916,14 +5916,14 @@
             "anyOf": [
               {
                 "maximum": 1440.0,
-                "minimum": 1.0,
+                "minimum": 15.0,
                 "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
             "title": "Durationminutes"
           },
           "flexBandMinutes": {
@@ -5944,7 +5944,7 @@
             "anyOf": [
               {
                 "maximum": 1440.0,
-                "minimum": 1.0,
+                "minimum": 15.0,
                 "type": "integer"
               },
               {
@@ -5987,7 +5987,7 @@
         "description": "One routine: where it targets, how long it runs, and how far it may give.\n\nNo Area and no pigment, and the absence is the contract rather than an omission.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 1 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -6559,14 +6559,14 @@
             "anyOf": [
               {
                 "maximum": 10080.0,
-                "minimum": 1.0,
+                "minimum": 15.0,
                 "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -6641,14 +6641,14 @@
             "anyOf": [
               {
                 "maximum": 10080.0,
-                "minimum": 1.0,
+                "minimum": 15.0,
                 "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -6752,7 +6752,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 1 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
