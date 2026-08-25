@@ -369,11 +369,12 @@ def preference_in_effect(*chain: Preference | None) -> Preference | None:
 
     The non-shadowing property the guard asserts is positional, because the function sees the
     chain and not the hierarchy behind it: no Area link may stand ahead of an override link.
-    Every Area link therefore trails every override, so among the Area links the nearest
-    ancestor necessarily stands before its own ancestors and wins over them. A caller that put
-    an Area's preference ahead of an override would make that override inert, and every window
-    the user authored on it would silently stop being read, so a chain built in the wrong order
-    is refused rather than resolved.
+    Among the Area links themselves it asserts nothing -- it sees positions and owner ids, not
+    the hierarchy -- so nearest-before-own-ancestors is a property the chain builder guarantees
+    by walking nearest first, not a check here. A caller that put an Area's preference ahead of
+    an override would make that override inert, and every window the user authored on it would
+    silently stop being read, so a chain built in the wrong order is refused rather than
+    resolved.
     """
     first_area_position: int | None = None
     for position, candidate in enumerate(chain):

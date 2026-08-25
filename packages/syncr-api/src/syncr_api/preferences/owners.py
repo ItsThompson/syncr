@@ -36,9 +36,10 @@ if TYPE_CHECKING:
     from syncr_api.tasks.repository import TaskRepository
     from syncr_domain.identifiers import AreaId, TenantId
 
-# How deep an Area ancestry the walk will follow. A depth past this cannot come from a request:
-# it names either a cycle the visited set did not reach or a hierarchy no screen authors, and
-# both are stored-data faults refused where they are read.
+# How deep an Area ancestry the walk will follow. The visited set already catches every
+# reachable cycle; this cap exists for what a cycle never produces, an acyclic chain past any
+# depth a screen could author. Either way the row is stored data written around the application,
+# refused where it is read.
 MAX_AREA_DEPTH: Final = 16
 
 

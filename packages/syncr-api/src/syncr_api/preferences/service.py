@@ -227,7 +227,9 @@ class PreferenceService:
         Both tables behind the chain are read once: the Areas through the ancestry walk, the
         preferences through one listing filtered to the owners this chain names. Rows outside the
         chain are left unparsed, so a row this service cannot read stays invisible unless it is
-        one this read would have parsed anyway.
+        one this read would have parsed anyway. The listing's cost scales with every preference
+        the tenant has stored rather than with this owner's depth, which is the price of the one
+        statement; revisit only if stored volume grows past what a read can scan.
         """
         ancestors = await self._owners.ancestry(resolved.area_id)
         wanted = {resolved.owner} | {
