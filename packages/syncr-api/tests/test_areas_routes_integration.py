@@ -191,12 +191,10 @@ def test_a_thirteenth_area_is_refused_and_the_body_states_the_cap(
     for index in range(PIGMENT_COUNT):
         created = declare_area(http, signed_in, name=f"Area {index}")
         # Every step the ramp has is dealt to a declaration that is accepted, so nothing is
-        # shared and nothing is stated. The twelfth is admitted here, not refused.
+        # shared. The twelfth is admitted here, not refused.
         assert created["ramp"] == {
             "pigmentCount": PIGMENT_COUNT,
             "pigmentsInUse": index + 1,
-            "areasSharingAPigment": 0,
-            "statement": None,
         }
 
     refused = http.post(AREAS, json={"name": "Thirteenth"}, headers=signed_in)
@@ -244,7 +242,7 @@ def test_a_duplicate_name_answers_409_and_stores_nothing(
     assert duplicate.status_code == Conflict.status
     problem = duplicate.json()
     assert problem["type"] == Conflict.type
-    assert "hatch" in problem["detail"]
+    assert "two Areas cannot share one" in problem["detail"]
     assert "Nothing was changed" in problem["detail"]
     assert len(area_rows(live_database_url, owner.tenant_id)) == 1
 
