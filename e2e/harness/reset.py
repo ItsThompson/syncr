@@ -11,6 +11,12 @@ one the migrations produce, and re-running them per fixture would make every see
 fifty-one revisions. Truncating leaves ``alembic_version`` alone, so ``/readyz`` still compares
 the same head it did before.
 
+TWO TABLES ARE LEFT ALONE, and both are configuration rather than domain data.
+``alembic_version`` is the migration marker. ``oauth_clients`` is the deployment's client
+registry, seeded once by migration 0005: no route registers a client and no seed script inserts
+one, so a reset that emptied it would leave every later authorization-code login refused as an
+unknown client until the database was rebuilt.
+
 IT REFUSES A DATABASE THAT IS NOT THIS STACK'S. The e2e stack keeps Postgres on an internal
 network with no published port precisely because a host-local Postgres shadows a compose route,
 and this script is the one that would empty whatever it reached. So it reads the host out of the
@@ -34,6 +40,7 @@ from syncr_api.core.settings import EnvSettings
 IN_NETWORK_HOST: Final = "@postgres:"
 
 VERSION_TABLE: Final = "alembic_version"
+CLIENT_REGISTRY_TABLE: Final = "oauth_clients"
 
 EXIT_OK: Final = 0
 EXIT_REFUSED: Final = 1
@@ -54,10 +61,10 @@ async def run(database_url: str) -> int:
         async with database.engine.begin() as connection:
             rows = await connection.execute(
                 text(
-                    "SELECT tablename FROM pg_tables "
-                    "WHERE schemaname = 'public' AND tablename <> :version"
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                    "AND tablename <> :version AND tablename <> :client_registry"
                 ),
-                {"version": VERSION_TABLE},
+                {"version": VERSION_TABLE, "client_registry": CLIENT_REGISTRY_TABLE},
             )
             tables = sorted(row[0] for row in rows)
             if not tables:
