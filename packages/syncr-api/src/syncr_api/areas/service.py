@@ -3,9 +3,9 @@
 Four rules live here rather than anywhere else.
 
 **A pigment is dealt, never chosen.** The step a new Area takes comes from
-``syncr_domain.pigments``, derived from how many Areas already hold one, so there is no cursor
-to drift from the rows. The ramp has no thirteenth step, so a declaration that would need one
-is refused rather than dealt a step another Area already holds.
+``syncr_domain.pigments``, read in deal order over the steps the Areas already hold, so there is no
+cursor to drift from the rows. The ramp holds twelve steps, so a declaration past twelve is
+refused, and no Area is ever dealt a step another Area already holds.
 
 **A share that does not fit is reported, never rejected.** Percentages summing past 100 are a
 legitimate declaration. What answers for them is ``oversubscription`` on the budget report, so
@@ -50,6 +50,7 @@ from syncr_api.areas.ramp import ramp_reading
 from syncr_api.areas.rules import (
     find_area,
     require_a_declared_parent,
+    require_an_unheld_pigment,
     require_an_unused_name,
     require_room_on_the_ramp,
     unknown_area,
@@ -59,7 +60,7 @@ from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
-from syncr_domain.pigments import next_pigment_index
+from syncr_domain.pigments import next_unheld_step
 
 if TYPE_CHECKING:
     from syncr_api.areas.declarations import (
@@ -149,7 +150,7 @@ class AreaService:
         created = await self._areas.create(
             parent_id=declaration.parent_id,
             name=declaration.name,
-            pigment_index=next_pigment_index(len(existing)),
+            pigment_index=next_unheld_step(len(existing), (row.pigment_index for row in existing)),
             budget_percent=declaration.budget_percent,
             floor_hours=declaration.floor_hours,
             created_at=now,
@@ -183,6 +184,9 @@ class AreaService:
 
         merged = change.applied_to(current)
         require_an_unused_name(merged.name, existing, apart_from=area_id)
+        # Stated over the same locked set the name rule reads: a concurrent declaration cannot
+        # land between reading it and writing, so a step freed or taken mid-flight is seen.
+        require_an_unheld_pigment(merged.pigment_index, existing, apart_from=area_id)
         await self._areas.write(
             area_id,
             name=merged.name,

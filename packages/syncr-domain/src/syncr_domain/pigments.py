@@ -27,18 +27,21 @@ pair is separated by carrying different hatches and different Area names, and by
 been respaced. How tight the tightest pair is, is a token-layer figure and is pinned there rather
 than restated here, for the reason above.
 
-**Past twelve Areas the ramp repeats**, and identity then rests on the hatch and the Area
-name. That is stated to the user rather than prevented, because a thirteenth Area is a
-legitimate thing to declare and a thirteenth ink is not a legitimate thing to invent.
+**Past twelve Areas the ramp repeats**: a thirteenth Area is dealt the first step again. A
+shared step is refused rather than allowed, because a thirteenth Area is a legitimate thing
+to declare and a thirteenth ink is not a legitimate thing to invent.
 """
 
 from __future__ import annotations
 
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from syncr_domain.errors import DomainError
 
 type PigmentIndex = int
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # The ramp is sealed at twelve. Adding a step is a change to the design language, not to
 # this constant.
@@ -77,6 +80,23 @@ def next_pigment_index(assigned_count: int) -> PigmentIndex:
     rather than tracking a cursor means the answer follows from the rows that exist.
     """
     return PIGMENT_DEAL_ORDER[_require_a_count(assigned_count) % PIGMENT_COUNT]
+
+
+def next_unheld_step(assigned_count: int, held: Iterable[PigmentIndex]) -> PigmentIndex:
+    """The first step in deal order, counting from ``assigned_count``, that no Area holds.
+
+    Wraps once through the order. The rows are read rather than assumed to match the deal:
+    a re-pick both takes a step the deal would have dealt later and vacates one it dealt
+    earlier, so the count alone can point at a step somebody holds. Scanning on from the
+    count keeps the deal's order while following the rows.
+    """
+    taken = set(held)
+    start = _require_a_count(assigned_count)
+    for offset in range(PIGMENT_COUNT):
+        step = PIGMENT_DEAL_ORDER[(start + offset) % PIGMENT_COUNT]
+        if step not in taken:
+            return step
+    raise PigmentError("every step of the ramp is already held, so there is no step left to deal")
 
 
 def is_ramp_exhausted(assigned_count: int) -> bool:

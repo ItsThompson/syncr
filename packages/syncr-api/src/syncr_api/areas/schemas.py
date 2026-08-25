@@ -42,8 +42,8 @@ from syncr_domain.projects import ProjectStatus
 
 _PIGMENT_DESCRIPTION = (
     f"A step of the sealed ramp, 0 to {PIGMENT_COUNT - 1}. Assigned on creation from the "
-    "deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, "
-    "not a value."
+    "deal, and re-pickable onto any step no other Area holds. There is no colour picker: a "
+    "pigment is a step, not a value."
 )
 _BUDGET_PERCENT_DESCRIPTION = (
     "The share of discretionary time REMAINING after every Area's floor is honored, as a "

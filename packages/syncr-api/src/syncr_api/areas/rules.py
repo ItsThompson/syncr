@@ -66,6 +66,32 @@ def require_an_unused_name(
         )
 
 
+def require_an_unheld_pigment(
+    pigment_index: int, existing: Sequence[AreaRecord], *, apart_from: AreaId | None = None
+) -> None:
+    """Refuse a step of the ramp another Area already holds.
+
+    Stated over the rows for the same reason the name rule is: which steps are held is a fact
+    about the tenant's Areas rather than about one request. The cap on the count is what keeps
+    a declaration off a shared step; this is what keeps a re-pick off one, so the collision is
+    not reachable in two ``PATCH`` requests either.
+    """
+    holder = next(
+        (
+            area
+            for area in existing
+            if area.pigment_index == pigment_index and area.id != apart_from
+        ),
+        None,
+    )
+    if holder is not None:
+        raise Conflict(
+            f"Another Area already holds that step of the ramp: {holder.name}. Nothing was "
+            "changed. This Area still holds the step it had, and every step no other Area "
+            "holds is still available to it."
+        )
+
+
 def require_a_declared_parent(parent_id: AreaId, existing: Sequence[AreaRecord]) -> None:
     """Refuse a parent this tenant has not declared.
 
