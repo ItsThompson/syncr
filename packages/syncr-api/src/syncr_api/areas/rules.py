@@ -55,14 +55,13 @@ def require_an_unused_name(
 ) -> None:
     """Refuse a name another Area already holds.
 
-    Not a nicety. Past twelve Areas the pigment ramp repeats and identity rests on the hatch
-    and the name, so two Areas sharing a name would leave a wedge with nothing to identify it.
+    Every surface that labels an Area labels it by name, so two Areas sharing one would be
+    indistinguishable wherever they render side by side.
     """
     if any(area.name == name and area.id != apart_from for area in existing):
         raise Conflict(
-            "Another Area already carries that name. Nothing was changed. Past twelve Areas "
-            "the pigment ramp repeats and identity rests on the hatch and the name, so two "
-            "Areas cannot share one. Every other Area still reads as it did."
+            "Another Area already carries that name, and two Areas cannot share one. Nothing "
+            "was changed. Every other Area still reads as it did."
         )
 
 
