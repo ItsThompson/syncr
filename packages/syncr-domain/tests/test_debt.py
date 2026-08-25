@@ -721,6 +721,78 @@ def test_the_three_policies_answer_one_log_differently() -> None:
 
 
 # --------------------------------------------------------------------------------
+# Only a confirmed skip is a miss, pinned at the figures a consumer reads
+# --------------------------------------------------------------------------------
+
+
+def test_an_unconfirmed_skip_leaves_a_debt_habit_owing_zero_and_unraised() -> None:
+    """The narrowing read where a consumer reads it: the figures, not the predicate.
+
+    ``_misses`` holds the guard, but nothing outside this module reads ``_misses``, so the pin is
+    what the reading reports: an unconfirmed skipped occurrence charges no debt and raises nothing.
+    """
+    target = habit()
+
+    assert outstanding_debt(target, misses(target, 3, confirmed=False), LATER) == 0
+    owed = reading(target, misses(target, 3, confirmed=False))
+
+    assert owed.outstanding == 0
+    assert not owed.raised_in_weekly_session
+    assert owed.statement == "Nothing owed."
+
+
+def test_an_escalate_habit_with_an_unconfirmed_skip_is_not_raised() -> None:
+    """The policy that exists to chase the user goes quiet for the user who disengaged."""
+    target = habit(miss_policy=MissPolicy.ESCALATE)
+    escalated = reading(target, misses(target, 1, confirmed=False))
+
+    assert not escalated.raised_in_weekly_session
+    assert escalated.misses == 0
+
+
+def test_confirming_the_skipped_day_later_produces_the_charge() -> None:
+    """The narrowing defers rather than loses: settling the day settles it as a miss.
+
+    The same three occurrences, unconfirmed and then confirmed weeks afterwards. The charge appears
+    only once the user has said the day was missed, which is what makes holding it back safe.
+    """
+    target = habit()
+    while_disengaged = misses(target, 3, confirmed=False)
+    settled_late = [
+        outcome(
+            target.id,
+            row.state,
+            index=index,
+            at=row.occurred_at,
+            confirmed_at=MONDAY + timedelta(days=30),
+        )
+        for index, row in enumerate(while_disengaged)
+    ]
+    settled = settled_late[0].confirmed_at
+    assert settled is not None
+    assert all(row.confirmed_at == settled for row in settled_late), (
+        "the log must differ from the disengaged one only in that the days were confirmed"
+    )
+
+    assert outstanding_debt(target, while_disengaged, LATER) == 0
+    assert outstanding_debt(target, settled_late, LATER) == 3
+
+
+def test_the_module_states_the_narrowing_and_its_product_consequence() -> None:
+    """The ratified rule travels with the code that narrows, stated in ``debt.py`` itself.
+
+    The sentence and its consequence are cited from the module's own docstring, which is inside the
+    tree, so the check moves with the rule rather than pointing at anything external.
+    """
+    stated = debt.__doc__ or ""
+
+    assert "Only a CONFIRMED skip is a miss" in stated
+    assert "accrues no debt" in stated
+    # The consequence sentence wraps mid-phrase in the source, so the citation stops at the break.
+    assert "Confirming the day later" in stated
+
+
+# --------------------------------------------------------------------------------
 # `as_of`: the one instant this module reads
 # --------------------------------------------------------------------------------
 
