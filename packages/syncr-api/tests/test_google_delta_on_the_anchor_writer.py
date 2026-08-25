@@ -129,7 +129,9 @@ class RecordingSources:
 
 @dataclass
 class SilentCollisions:
-    async def detect(self, *, now: datetime) -> tuple[()]:
+    """Satisfies the ``CollisionDetection`` protocol without reading a plan."""
+
+    async def detect(self, *, now: datetime) -> object:
         del now
         return ()
 
@@ -201,7 +203,8 @@ async def run_a_poll(
         )
         syncer = SourceSyncer(
             sources=sources,
-            operations=None,  # type: ignore[arg-type]  # a scheduled pass enqueues no operation
+            # A scheduled pass enqueues no operation; the lifecycle's other callers are the routes.
+            operations=None,  # type: ignore[arg-type]
             adapters={GOOGLE: an_adapter(answers)},
             anchors=AnchorReconciler(
                 AnchorRepository(session, tenant_id),
@@ -209,7 +212,9 @@ async def run_a_poll(
                 versions=versions,
                 home_zone=HOME_ZONE,
             ),
-            collisions=SilentCollisions(),  # type: ignore[arg-type]
+            collisions=SilentCollisions(),
+            # A concrete collaborator rather than a protocol, so a structural fake cannot satisfy
+            # it; the routing suite carries the same ignore for the same reason.
             solves=SilentSolves(),  # type: ignore[arg-type]
             clock=lambda: NOW,
         )

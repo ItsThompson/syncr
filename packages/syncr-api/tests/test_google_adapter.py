@@ -489,6 +489,10 @@ async def test_an_unreadable_delta_entry_is_still_a_change_whose_rejection_is_re
     # An entry that produced neither an event nor a removal is still a change: something moved, and
     # answering "unchanged" would leave whatever moved unread until something else happened. The
     # rejection rides the successful attempt, because the read itself succeeded.
+    # Deliberately conservative afterwards: the reconcile path clears staleness only off the anchors
+    # it touches, so flags an earlier failure left stay set when a delta names nothing to touch.
+    # The provider did answer, so confirm's global clear would also be defensible; revisit if a
+    # source can sit stale behind repeated unreadable deltas.
     google, transport = adapter(
         [ok(events_page(event("unreadable", start="2026-02-10T09:00:00", end=None)))]
     )

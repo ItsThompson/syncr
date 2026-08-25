@@ -180,6 +180,10 @@ class GoogleAdapter:
     ) -> GoogleFetch:
         """What changed on ``source`` since ``since``, as a delta rather than as the calendar.
 
+        Public, unlike its siblings: it is the seam a cursor-driven caller can drive directly (the
+        tests do), and the seam later sync work builds on, without going through whichever source
+        happens to hold the cursor.
+
         The same two values ``fetch`` answers with, so an attempt is recorded whatever it found, and
         it does not raise for the same reason nothing here does. Four answers: the token is no
         longer accepted, which is a full read; the read failed, which is a recorded attempt; a
