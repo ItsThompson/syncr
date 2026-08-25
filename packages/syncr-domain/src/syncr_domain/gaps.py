@@ -77,6 +77,11 @@ class EmptySlotReason(StrEnum):
     ``elapsed`` is the one the clock decides rather than the backlog. The week had already
     reached the slot when the solve ran, so no content could be placed into it and none will
     be: whether the Area had any is a question the span never got to ask.
+
+    ``dropped_leg`` is the one a collision decides rather than the solver. The anchor type
+    declared the journey and another commitment's buffer took the time first, so the leg was
+    dropped whole: the span stays empty and the emptiness has a stated cause instead of reading
+    as time nothing ever claimed.
     """
 
     NO_ELIGIBLE_CONTENT = "no_eligible_content"
@@ -84,6 +89,7 @@ class EmptySlotReason(StrEnum):
     BLOCKED_BY_CONSTRAINT = "blocked_by_constraint"
     NOT_SOLVED = "not_solved"
     ELAPSED = "elapsed"
+    DROPPED_LEG = "dropped_leg"
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +127,10 @@ def _already_begun(_: SlotContext) -> str:
     return "already begun"
 
 
+def _journey_dropped(_: SlotContext) -> str:
+    return "journey dropped"
+
+
 # One label per reason. The conditional half of the off-plan wording lives inside that
 # member's own renderer rather than in a branch every reason passes through, so adding a
 # reason cannot change what another one renders.
@@ -130,6 +140,7 @@ _LABEL_BY_REASON: Final[Mapping[EmptySlotReason, Callable[[SlotContext], str]]] 
     EmptySlotReason.BLOCKED_BY_CONSTRAINT: _no_legal_window,
     EmptySlotReason.NOT_SOLVED: _content_not_yet_chosen,
     EmptySlotReason.ELAPSED: _already_begun,
+    EmptySlotReason.DROPPED_LEG: _journey_dropped,
 }
 
 

@@ -78,6 +78,7 @@ class TestTheVocabularies:
             "blocked_by_constraint",
             "not_solved",
             "elapsed",
+            "dropped_leg",
         ]
 
     def test_the_reason_vocabulary_counts_its_own_members_nowhere(self) -> None:
@@ -209,6 +210,7 @@ class TestTheGutterLabels:
             (EmptySlotReason.BLOCKED_BY_CONSTRAINT, "no legal window"),
             (EmptySlotReason.NOT_SOLVED, "content not yet chosen"),
             (EmptySlotReason.ELAPSED, "already begun"),
+            (EmptySlotReason.DROPPED_LEG, "journey dropped"),
         ],
         # Enum order, so a case's id names the member it runs. Written in another order the ids,
         # which are generated from the enum, label each case with a different member's name.
@@ -267,6 +269,17 @@ class TestTheGutterLabels:
 
         assert elapsed != gutter_label(EmptySlotReason.NOT_SOLVED, context)
         assert elapsed != gutter_label(EmptySlotReason.NO_ELIGIBLE_CONTENT, context)
+
+    def test_a_dropped_leg_borrows_no_neighbouring_wording(self) -> None:
+        """A collision emptied this span, so a wording about content or about the clock would
+        state something no phase computed. The cause is the collision rule's, and the one fact
+        it adds is that the journey was declared at all.
+        """
+        context = SlotContext("Career")
+        dropped = gutter_label(EmptySlotReason.DROPPED_LEG, context)
+
+        assert dropped != gutter_label(EmptySlotReason.NO_ELIGIBLE_CONTENT, context)
+        assert dropped != gutter_label(EmptySlotReason.ELAPSED, context)
 
     def test_a_slot_renders_its_own_reason(self) -> None:
         slot = a_slot(reason=EmptySlotReason.BLOCKED_BY_CONSTRAINT)
