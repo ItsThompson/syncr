@@ -316,11 +316,10 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
     await nextPaint(page);
     aim = await readMarker(page);
   }
-  const backInOrigin = { markers: [aim] };
+  const marker = aim!;
 
   // THE SNAP, AS GEOMETRY RATHER THAN WORDS: the marker sits where its reading falls. The distance down to
   // the hour line below it is the reading's own minutes within that hour, at the scale the grid draws at.
-  const marker = backInOrigin.markers[0]!;
   expect(marker.at, "the marker did not name a quarter hour").toMatch(/^\d{2}:(00|15|30|45)$/);
   expect(marker.at, "the marker did not state the instant one hour above the block").toBe(
     expectedReading,
