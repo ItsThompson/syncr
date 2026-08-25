@@ -106,7 +106,7 @@ class ExpansionBound:
 
     One instance serves any number of feeds and callers: workers are checked out of an idle set
     and returned to it, so concurrent parses share the pool up to its size. A worker lost to a
-    timeout or a fault is replaced automatically, and :attr:`replacements` counts the losses,
+    timeout or to death is replaced automatically, and :attr:`replacements` counts the losses,
     which is how a test sees that a reclaim happened.
     """
 
@@ -120,12 +120,13 @@ class ExpansionBound:
         self._context = multiprocessing.get_context(_CONTEXT)
         self._idle: queue.Queue[_Worker] = queue.Queue()
         self._replacement_count = 0
+        self._count_lock = threading.Lock()
         for _ in range(max(size, 1)):
             self._idle.put(self._start())
 
     @property
     def replacements(self) -> int:
-        """How many workers were terminated and replaced, by timeout or by fault."""
+        """How many workers were terminated and replaced, by timeout or by a lost worker."""
         return self._replacement_count
 
     def expand(
@@ -141,6 +142,11 @@ class ExpansionBound:
         Raises :class:`UnparseableRecurrence`, quoting the rule text, if the expansion does not
         finish within the deadline. The text comes from the master itself, which the parent
         holds, so the rejection does not depend on the hung child reporting anything.
+
+        The checkout below has no timeout because every path through this class hands its
+        worker back or replaces it: a caller therefore waits at most one deadline for a busy
+        pool, never forever. That invariant is what makes an unbounded ``get`` safe here; if a
+        path ever stops returning workers, this is the line that turns it into a hang.
         """
         worker = self._idle.get()
         try:
@@ -151,7 +157,8 @@ class ExpansionBound:
             else:
                 # Terminated for exceeding the deadline, or dead on the pipe: either way the
                 # reclaim is complete only when another worker stands ready in its place.
-                self._replacement_count += 1
+                with self._count_lock:
+                    self._replacement_count += 1
                 self._idle.put(self._start())
 
     def shutdown(self) -> None:

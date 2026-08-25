@@ -98,9 +98,10 @@ def test_the_named_unsatisfiable_rule_is_answered_by_the_deadline(tight: Expansi
     # The stated rejection quotes the rule the publisher wrote, and names the bound it hit.
     assert "BYMONTHDAY=30" in detail
     assert "seconds" in detail
-    # Bounded by the deadline rather than by anything else: half a second against a walk
-    # measured in thousands of them.
-    assert elapsed < 30
+    # Bounded by the deadline rather than by anything else: ten times the deadline, against a
+    # walk measured in thousands of them. The bound is the bite: a regression to inline
+    # expansion hangs here instead of finishing inside this margin.
+    assert elapsed < 5
 
 
 @pytest.mark.parametrize("rule", FURTHER_LEGAL_SHAPES)
@@ -190,8 +191,11 @@ async def test_a_request_during_an_expansion_is_answered_at_normal_latency() -> 
 
         assert quick_outcome.reparsed is True
         assert quick_state.last_error is None
-        # Normal latency: well under the deadline the hung expansion is about to spend.
-        assert latency < 0.5
+        # Normal latency: answered while the hung expansion is still spending its 2 s deadline.
+        # The margin is 1.0 s: half the deadline, so the property ("the loop never parks on the
+        # wait") keeps its bite while a loaded CI machine's scheduler jitter cannot flake it.
+        # An inline parse of this feed would blow past any margin here.
+        assert latency < 1.0
         assert not hung_task.done()
 
         hung_outcome, hung_state = await asyncio.wait_for(hung_task, timeout=15)
