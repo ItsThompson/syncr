@@ -9,13 +9,11 @@ import { describe, expect, it } from "vitest";
 import { UNALLOCATED, areaPigment } from "../../../ui/domain";
 import {
   VACANCY_LABEL,
-  WEDGE_LABEL_CHARS,
   deviationRowsOf,
   hoursOf,
   keyOf,
   legendOf,
   namingOf,
-  wedgeLabel,
   wedgesOf,
 } from "../entries";
 import {
@@ -171,32 +169,22 @@ describe("the wedges", () => {
 });
 
 describe("a wedge label", () => {
-  /* Measured in Chrome at 1440 and at 1024: the pie's gutter holds 97px and the label face sets at 5.7px per
-   * character, so a 57-character Area name ran 228px past the svg's own edge and painted over the panel's
-   * border. An Area name may be sixty characters, so this is an ordinary declaration. */
+  /* THE BOUND LIVES IN THE CHART THAT OWNS THE GUTTER (`ui/domain/charts/wedges.ts`), not on this screen.
+   * What is asserted here is the hand-over: this screen passes whole names to the pie, and never bounds a
+   * legend row or a deviation row, whose cells are HTML that wraps. */
   const LONG = "Career, interview preparation and the long game beyond it";
 
-  it("leaves a name the gutter holds exactly as it is", () => {
-    expect(wedgeLabel("Fitness")).toBe("Fitness");
-    expect(wedgeLabel("a".repeat(WEDGE_LABEL_CHARS))).toBe("a".repeat(WEDGE_LABEL_CHARS));
-  });
-
-  it("bounds a name the gutter does not hold, in one glyph rather than three", () => {
-    const bounded = wedgeLabel(LONG);
-
-    expect(bounded.length).toBeLessThanOrEqual(WEDGE_LABEL_CHARS);
-    expect(bounded.endsWith("\u2026")).toBe(true);
-  });
-
-  it("keeps two long names distinct where their heads differ", () => {
-    expect(wedgeLabel("Career, interview prep")).not.toBe(wedgeLabel("Career, long game"));
-  });
-
-  it("is applied to the pie and never to the legend, which is where the name is carried", () => {
+  it("hands the pie the whole name, because the bound is the chart's own arithmetic", () => {
     const areas = [buildArea({ name: LONG })];
     const categories = [buildCategory()];
 
-    expect(wedgesOf(categories, areas)[0].label).toBe(wedgeLabel(LONG));
+    expect(wedgesOf(categories, areas)[0].label).toBe(LONG);
+  });
+
+  it("never bounds a legend row, which is where the name is carried as text", () => {
+    const areas = [buildArea({ name: LONG })];
+    const categories = [buildCategory()];
+
     expect(legendOf(categories, areas, DISCRETIONARY_MINUTES)[0].label).toBe(LONG);
   });
 

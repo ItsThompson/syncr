@@ -19,12 +19,11 @@
  * it is a real Area holding a real step, and painting it with the vacancy's ink would say the opposite of what
  * is true. The step it holds is dealt to it alone, because no two Areas are ever dealt one step.
  *
- * A WEDGE LABEL IS BOUNDED AND A LEGEND ROW IS NOT, because they sit in different boxes. The pie draws its
- * labels in a fixed gutter beside the circle; a legend row is a table cell that wraps. Measured in Chrome: the
- * gutter holds 97px and the label face sets at 5.7px per character, so a name past seventeen characters runs
- * out of the svg and paints over the panel's own border. An Area name may be sixty characters, so this is an
- * ordinary declaration rather than an edge case. THE LEGEND IS WHERE THE NAME IS CARRIED IN FULL, which is
- * also where the figure is, so nothing is lost: the wedge is identified beside the pie and named under it. */
+ * A WEDGE LABEL IS BOUNDED IN THE CHART, NOT HERE. The gutter a label must fit is the pie's own geometry, so
+ * the bound lives beside it in `ui/domain/charts/wedges.ts`, computed from that geometry rather than from a
+ * measurement of it copied onto this screen. This screen hands whole names over. A bounded label keeps an
+ * ellipsis tail and carries the whole name on its own `<title>`, so nothing is lost: THE LEGEND IS WHERE THE
+ * NAME IS CARRIED AS TEXT, which is also where the figure is. */
 
 import { areaPigment, UNALLOCATED } from "../../ui/domain";
 import { asHours, asPercent, shareOf } from "./figures";
@@ -62,24 +61,6 @@ export function namingOf(
   return { label: found.name, pigment: areaPigment(found.pigmentIndex) };
 }
 
-/** How many characters the pie's label gutter holds. Measured in Chrome: 97px at 5.7px per character. */
-export const WEDGE_LABEL_CHARS = 17;
-
-/** U+2026 HORIZONTAL ELLIPSIS, one glyph, so a bounded label spends one character rather than three. */
-const ELLIPSIS = "\u2026";
-
-/**
- * A category's name as a wedge label, bounded to what the pie's gutter holds.
- *
- * A name that fits is untouched. One that does not keeps its head and takes an ellipsis, and the legend row
- * beside the pie carries it in full: identity rests on the name, and the name is still there, in the one place
- * on this screen that has a column wide enough for it.
- */
-export function wedgeLabel(name: string): string {
-  if (name.length <= WEDGE_LABEL_CHARS) return name;
-  return `${name.slice(0, WEDGE_LABEL_CHARS - 1).trimEnd()}${ELLIPSIS}`;
-}
-
 /** The pie's wedges, in the order the api drew them: each Area, then the vacancy. */
 export function wedgesOf(
   categories: readonly ReviewCategory[],
@@ -90,7 +71,6 @@ export function wedgesOf(
     return {
       id: keyOf(category),
       ...naming,
-      label: wedgeLabel(naming.label),
       minutes: category.actualMinutes,
     };
   });
