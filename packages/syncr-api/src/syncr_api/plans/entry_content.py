@@ -22,10 +22,12 @@ ignored.
 
 ## One state is dropped and three are refused, and the difference is what the table allows
 
-:class:`DropCause` names a binding naming no row this tenant has, which is a producer defect the
-template boundary does not yet refuse. Dropping is the degradation an anchor carrying an unread
-type already takes: the rest of the week assembles, and refusing would fail every solve, pin and
-live verdict for the week over one row.
+:class:`DropCause` names a binding naming no row this tenant has. The template boundary refuses
+such a binding where the entry is written, so this cause is what survives that check rather than
+the primary validation: it catches rows written before the boundary check existed, plus rows
+whose referent was removed afterwards, since neither removal path edits a day shape. Dropping is
+the degradation an anchor carrying an unread type already takes: the rest of the week assembles,
+and refusing would fail every solve, pin and live verdict for the week over one row.
 
 Three states are refused instead, because the tables forbid them: a slot with no Area, a concrete
 entry with no binding, and content with an empty title. The check constraint
@@ -65,7 +67,8 @@ class DropCause(StrEnum):
     """Why an entry a week holds cannot become a block, counted per cause in the log line.
 
     ``CONTENT_THIS_TENANT_DOES_NOT_HAVE`` is the reachable one: a binding naming no row, in either
-    table.
+    table. The boundary refuses such a binding at write time, so this cause answers for what that
+    check cannot see -- rows written before it existed, and referents removed afterwards.
 
     ``CONTENT_WITH_NO_AREA_AND_NONE_DECLARED`` is a net rather than a live cause. It answers content
     that resolves with no Area of its own beside an entry that declares none, and no table can hold

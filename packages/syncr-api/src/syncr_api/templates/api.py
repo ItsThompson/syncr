@@ -84,7 +84,10 @@ from syncr_api.templates.schemas import (
 from syncr_domain.templates import WeekPattern
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_api.templates.records import DayTypeRecord, TemplateRecord
+    from syncr_domain.templates import BindingTarget
 
 day_types_router = APIRouter()
 templates_router = APIRouter()
@@ -100,12 +103,19 @@ def _as_day_type(record: DayTypeRecord) -> DayTypeResponse:
     return DayTypeResponse(id=record.id, name=record.name)
 
 
-def _as_template(record: TemplateRecord) -> TemplateResponse:
+def _as_template(
+    record: TemplateRecord, held: Mapping[BindingTarget, frozenset[UUID]]
+) -> TemplateResponse:
+    """One shape as the wire states it, with each entry's binding resolved against ``held``.
+
+    The reads that answered ``held`` belong to the service; this mapping only reports them, so a
+    shape read is where the answer is assessed and nowhere else has to guess at it.
+    """
     return TemplateResponse(
         id=record.id,
         day_type_id=record.day_type_id,
         name=record.name,
-        entries=[TemplateEntryResponse.of(entry) for entry in record.entries],
+        entries=[TemplateEntryResponse.of(entry, held) for entry in record.entries],
     )
 
 
@@ -158,7 +168,10 @@ async def declare_template(
     declaration = TemplateDeclaration(day_type_id=body.day_type_id, name=body.name)
 
     async def declare() -> TemplateResponse:
-        return _as_template(await service.create(principal, declaration))
+        created = await service.create(principal, declaration)
+        # A declared shape holds no entries yet, so there is nothing to resolve and the empty
+        # answer is exact rather than a skipped read.
+        return _as_template(created, {})
 
     return await guard.once(DECLARE_TEMPLATE_ROUTE, TemplateResponse, declare)
 
@@ -168,7 +181,8 @@ async def read_template(
     template_id: UUID, principal: PrincipalDep, service: TemplateServiceDep
 ) -> TemplateResponse:
     """One shape of this tenant's, with its entries in the order the day runs."""
-    return _as_template(await service.read(principal, template_id))
+    shape = await service.read(principal, template_id)
+    return _as_template(shape, await service.held_bindings(shape))
 
 
 @templates_router.patch(TEMPLATE_PATH, summary="Rename a day shape")
@@ -183,7 +197,8 @@ async def update_template(
     change = TemplateChange(name=stated_unless_null(body.name))
 
     async def update() -> TemplateResponse:
-        return _as_template(await service.update(principal, template_id, change))
+        merged = await service.update(principal, template_id, change)
+        return _as_template(merged, await service.held_bindings(merged))
 
     return await guard.once(UPDATE_TEMPLATE_ROUTE, TemplateResponse, update)
 

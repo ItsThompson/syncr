@@ -52,6 +52,8 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
@@ -72,7 +74,7 @@ if TYPE_CHECKING:
         WeekPatternRepository,
     )
     from syncr_domain.identifiers import TemplateEntryId, TemplateId
-    from syncr_domain.templates import WeekPattern
+    from syncr_domain.templates import BindingTarget, WeekPattern
 
 _log = get_logger("syncr.templates")
 
@@ -157,6 +159,22 @@ class TemplateService:
         """One shape of this tenant's, with its entries in the order the day runs."""
         require_scope(principal, Scope.PLAN_READ)
         return await self._require_template(principal, template_id)
+
+    async def held_bindings(self, shape: TemplateRecord) -> dict[BindingTarget, frozenset[UUID]]:
+        """Which of a shape's bindings name a row this tenant still holds, per table.
+
+        The read model reports a dangling binding rather than leaving every client to infer it
+        from two lists it may not hold, so one scoped read per concrete entry answers for all of
+        them. Keyed per target, in step with how a binding names its row: an identifier is only
+        ever resolved against the table ``binding_target`` names.
+        """
+        held: dict[BindingTarget, set[UUID]] = {}
+        for entry in shape.entries:
+            if entry.binding_target is None or entry.binding_ref is None:
+                continue
+            if await self._bindings.holds(entry.binding_target, entry.binding_ref):
+                held.setdefault(entry.binding_target, set()).add(entry.binding_ref)
+        return {target: frozenset(refs) for target, refs in held.items()}
 
     @measured("templates")
     async def create(

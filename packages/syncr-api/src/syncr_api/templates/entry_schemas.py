@@ -41,6 +41,8 @@ from syncr_domain.templates import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_api.templates.records import TemplateEntryRecord
 
 TARGET_TIME_DESCRIPTION = (
@@ -71,6 +73,13 @@ PLACEMENT_STATEMENT_DESCRIPTION = (
     "declaration nothing materializes is stated rather than silently ignored. Named for its "
     "subject rather than `statement`, because a response that nests an entry carries a statement "
     "of its own about a different thing."
+)
+CONTENT_RESOLVES_DESCRIPTION = (
+    "Whether the routine or habit this concrete entry names is one this tenant still holds. "
+    "Assessed when a whole shape is read, so a client renders the dangling state from this answer "
+    "rather than inferring it from two other lists. False is the state an assembly drops the "
+    "entry for; the row itself survives, because removing content never edits a day shape. Null "
+    "on a slot, whose content is bound at solve time, and where no read assessed it."
 )
 
 _NOT_NULLABLE_MESSAGE = (
@@ -103,14 +112,23 @@ class TemplateEntryResponse(WireModel):
     placement_statement: str | None = Field(
         default=None, description=PLACEMENT_STATEMENT_DESCRIPTION
     )
+    content_resolves: bool | None = Field(default=None, description=CONTENT_RESOLVES_DESCRIPTION)
 
     @classmethod
-    def of(cls, record: TemplateEntryRecord) -> Self:
+    def of(
+        cls,
+        record: TemplateEntryRecord,
+        held: Mapping[BindingTarget, frozenset[UUID]] | None = None,
+    ) -> Self:
         """A stored entry as this shape. On the schema so the two routes that answer with an
         entry -- this package's, and the promotion accept that moves one -- map it one way.
 
         The statement is the charge rule's own sentence, imported from where the charge is decided,
         so the words the author reads and the rule the assembly applies cannot drift apart.
+
+        ``held`` is what a shape read resolved the tenant's bindings against. Without it the
+        answer is left unstated rather than guessed: a route that has not done the reads does not
+        claim one.
         """
         return cls(
             id=record.id,
@@ -125,6 +143,11 @@ class TemplateEntryResponse(WireModel):
                 THE_FRAME_PLACES_A_ROUTINE
                 if record.binding_target is BindingTarget.ROUTINE
                 else None
+            ),
+            content_resolves=(
+                None
+                if held is None or record.binding_ref is None or record.binding_target is None
+                else record.binding_ref in held.get(record.binding_target, frozenset())
             ),
         )
 

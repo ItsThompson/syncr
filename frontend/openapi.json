@@ -6920,6 +6920,18 @@
             ],
             "description": "Which table bindingRef names. A routine and a habit are separate tables, so the identifier alone does not say which to read."
           },
+          "contentResolves": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the routine or habit this concrete entry names is one this tenant still holds. Assessed when a whole shape is read, so a client renders the dangling state from this answer rather than inferring it from two other lists. False is the state an assembly drops the entry for; the row itself survives, because removing content never edits a day shape. Null on a slot, whose content is bound at solve time, and where no read assessed it.",
+            "title": "Contentresolves"
+          },
           "durationMinutes": {
             "description": "How long the entry runs, in minutes: 15 to 1440, in whole 15-minute steps so the block it materializes ends on the grid.",
             "title": "Durationminutes",
