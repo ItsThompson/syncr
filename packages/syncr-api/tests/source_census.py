@@ -39,9 +39,34 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+def tracked_files() -> tuple[Path, ...]:
+    """Every file the index holds, whatever its language.
+
+    Same reading as :func:`tracked_python_sources`, unfiltered: a claim about who sets an
+    environment variable has to cover compose files, justfiles and shell scripts, which no
+    per-language walk would reach. A path the index holds but the working tree has already
+    lost cannot be read and is not here; the deletions this reading can miss are mid-edit
+    states a commit will settle.
+    """
+    listed = subprocess.run(
+        # `git` from the PATH the developer and CI both have.
+        ["git", "ls-files", "--cached", "-z"],  # noqa: S607
+        cwd=repo_root(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    found = tuple(
+        repo_root() / name
+        for name in listed.stdout.split("\0")
+        if name and (repo_root() / name).exists()
+    )
+    assert found, "git listed no file, so every reading here would pass over nothing"
+    return found
+
+
 def tracked_python_sources() -> tuple[Path, ...]:
     """Every Python file the index holds, which is the repository as it will be committed.
-
     Git answers what the files are, rather than a walk with a list of directories to skip:
     the index covers a file staged and not yet committed, it cannot see a scratch file or a
     generated tree, and it grows a new member without anyone remembering to add it here.

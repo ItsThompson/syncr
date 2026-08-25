@@ -54,6 +54,7 @@ from tests.source_census import (
     reads_the_wall_clock,
     second_reader_source,
     settings_constructors,
+    tracked_files,
     tracked_python_sources,
 )
 from tests.test_alert_rules import member_roots, repo_root
@@ -286,6 +287,22 @@ def test_the_environment_is_read_for_the_offset_in_one_source_file() -> None:
     }
 
     assert reading == {clock_module()}
+
+
+def test_the_variable_is_named_by_its_reader_and_its_recipe_alone() -> None:
+    # The stack shift has exactly one writer chain: `just e2e-clock` records the offset and the
+    # e2e overlay's `env_file` carries it into api and worker. Neither compose file spells the
+    # variable, so a second setter ANYWHERE in the tree (a compose `environment:` entry, an
+    # export, a docker run -e) reddens this equality. The two Python-only censuses above cannot
+    # see those surfaces; this reading takes the whole index and is written against bytes so a
+    # file of any language counts.
+    naming = {
+        path.relative_to(repo_root())
+        for path in tracked_files()
+        if CLOCK_OFFSET_ENV_VAR.encode() in path.read_bytes()
+    }
+
+    assert naming == {clock_module().relative_to(repo_root()), Path("justfile")}
 
 
 @pytest.mark.parametrize("spelling", SECOND_READER_SPELLINGS)
