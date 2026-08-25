@@ -165,11 +165,14 @@ nothing in a browser can observe a parse.
 | S36 | The verdict cannot be gamed and it notices the clock | **partly automated** | `s36-verdict-and-the-clock.spec.ts` drives the two halves that need no clock MOVED, on `owes_more_than_a_week`: a verdict read on a week the clock has reached counts capacity from the reading instant onward, asserted as a figure against the same demand on the week ahead of it, which counts its whole span; and the denominator keeps the whole week in both. A skip then raises the gap by exactly the minutes the block held and returns none of its span to capacity. What remains is the third observation, advancing the clock past a deadline with work remaining, and one narrowing the file states in place: the block a skip is asserted on lies ahead of the reading instant, because the solver's gaps are clipped to it and a pin is refused into the past, so no block behind it is reachable without the clock |
 | S37 | A re-solve does not shrink the work | automated | `s28-s37-identity.spec.ts`, measured over the plan the candidate becomes once approved |
 
-Plus two cases that are not among the 37. B1 is the observation `reviews/spec-review-5.md` B1 requires;
-the `no_eligible_content` case above is S17's reason half.
+Plus three cases that are not among the 37. B1 is the observation `reviews/spec-review-5.md` B1 requires;
+the `no_eligible_content` case above is S17's reason half; and the refused tradeoff is the bound that
+keeps S9's solve-first requirement a product rule rather than a test workaround: on the week a new user
+actually has, materialized and unsolved, the request is refused and nothing changes.
 
 | Case | What it observes | Status | Where |
 |---|---|---|---|
+| Refused tradeoff | A tradeoff requested honestly (a kind the verdict really enumerates) on a materialized, unsolved week answers `409`, names the solve the caller is missing, and leaves the shortfall and the revision history unchanged; solved, the same week offers the same kind and accepts it. Shown to fail where the guard is absent: there the same request answers 202 and its operation succeeds | automated | `refused-tradeoff.spec.ts` |
 | B1 | A solved week whose floors are met by unpinned solver-placed blocks reports no `floors_exceed_capacity` and no inflated at-risk column; and pinning an already-placed block leaves the verdict unchanged | automated, and shown to fail | `b1-s34-floors-and-unallocated.spec.ts`, on the `tight_capacity` fixture. Reverting the probe's floor reservation to the pre-B1 immovable-only rule turns two of its three cases red. `b1-at-risk-in-the-browser.spec.ts` drives the at-risk half's rendering in a browser: the mark on the row, the words behind it, the band's figure, and the narrowing the screen's own filter select asks the api for |
 
 ## Two corrections to section 22's done-criteria table
