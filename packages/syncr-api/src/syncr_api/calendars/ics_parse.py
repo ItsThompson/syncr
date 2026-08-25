@@ -123,8 +123,8 @@ class _Collected:
         # Recorded only on success: a component refused whole contributes nothing, and its
         # cross-form resolutions stay unmade so its replacements read as never offered, exactly as
         # they do for a master whose expansion was refused.
-        self.cross_form_duplicates += placed.duplicates
-        self.cross_form_cancelled += placed.cancelled
+        self.cross_form_duplicates += placed.cross_form_duplicates
+        self.cross_form_cancelled += placed.cross_form_cancelled
         self.resolved_away |= placed.resolved_away
         self.remaining -= len(placed.events)
 

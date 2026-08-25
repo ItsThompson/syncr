@@ -362,6 +362,9 @@ def test_precedence_is_decided_once_and_not_again_at_match_time() -> None:
                     for side in ast.walk(compared)
                 ), f"{name} compares SEQUENCE at match time"
             if isinstance(node, ast.Attribute) and node.attr == "cancelled":
+                # Deliberately broader than the defect it guards: any cancellation READ at match
+                # time re-decides a precedence question here. A future read that looks legitimate
+                # belongs in resolution, not in matching.
                 raise AssertionError(f"{name} reads a cancellation at match time")
 
     for name in ("_resolve", "_across_forms"):

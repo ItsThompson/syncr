@@ -33,6 +33,7 @@ found a master".
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Final
 
@@ -108,17 +109,18 @@ class Placement:
     ``applied`` is what lets a replacement's fate be decided by expansion rather than by the
     partition: a key nothing consumed named an occurrence the rule never produces.
 
-    ``duplicates``, ``cancelled``, and ``resolved_away`` carry what cross-form precedence discarded
-    while deciding which spelling of an occurrence stands. The losers are gone from the series' own
-    registers by the time the partition compares what was registered against what expansion
-    consumed, so each count travels with the placement that produced it instead of being guessed at
-    afterwards.
+    ``cross_form_duplicates``, ``cross_form_cancelled``, and ``resolved_away`` carry what cross-form
+    precedence discarded while deciding which spelling of an occurrence stands. The names are the
+    scope this placement saw -- they are not the series-wide totals :class:`Series` reports from
+    sorting. The losers are gone from the series' own registers by the time the partition compares
+    what was registered against what expansion consumed, so each count travels with the placement
+    that produced it instead of being guessed at afterwards.
     """
 
     events: tuple[RawEvent, ...] = ()
     applied: frozenset[OccurrenceKey] = frozenset()
-    duplicates: int = 0
-    cancelled: int = 0
+    cross_form_duplicates: int = 0
+    cross_form_cancelled: int = 0
     resolved_away: frozenset[OccurrenceKey] = frozenset()
 
 
@@ -335,9 +337,19 @@ def _wall_of(key: OccurrenceKey) -> datetime:
     return key[1]
 
 
+@dataclass(frozen=True, slots=True)
+class _Settled:
+    """What settling one master's cross-form groups produced."""
+
+    effective: Series
+    cross_form_duplicates: int
+    cross_form_cancelled: int
+    resolved_away: frozenset[OccurrenceKey]
+
+
 def _across_forms(
     series: Series, master: EventComponent, produced: Iterable[datetime], *, profile: ZoneProfile
-) -> tuple[Series, int, int, frozenset[OccurrenceKey]]:
+) -> _Settled:
     """Settle replacements of ONE occurrence that a body named in more than one legal form.
 
     RFC 5545 permits a ``RECURRENCE-ID`` as the occurrence's own wall time, as UTC, or in any named
@@ -362,15 +374,16 @@ def _across_forms(
     A feed with no cross-form index pays nothing: the early return is the ordinary body's path.
     """
     if not series.same_instant:
-        return series, 0, 0, frozenset()
+        return _Settled(series, 0, 0, frozenset())
     instants = [resolve(master.start, profile, wall=wall) for wall in produced]
+    hosted = Counter(instants)
     overrides = dict(series.overrides)
     tombstones = dict(series.tombstones)
     duplicates = 0
     cancelled = 0
     resolved_away: set[OccurrenceKey] = set()
     for (uid, instant), keys in series.same_instant.items():
-        if uid != master.uid or sum(1 for at in instants if at == instant) != 1:
+        if uid != master.uid or hosted[instant] != 1:
             continue
         # Every spelling here names THE one occurrence this series produces on this instant, so the
         # group competes for a single slot. The entries are re-keyed onto that occurrence's own
@@ -396,8 +409,13 @@ def _across_forms(
             else:
                 overrides[key] = component
     if not resolved_away:
-        return series, duplicates, cancelled, frozenset()
-    return (
+        return _Settled(
+            series,
+            cross_form_duplicates=duplicates,
+            cross_form_cancelled=cancelled,
+            resolved_away=frozenset(),
+        )
+    return _Settled(
         replace(
             series,
             overrides={key: item for key, item in overrides.items() if key not in resolved_away},
@@ -408,9 +426,9 @@ def _across_forms(
                 if any(key not in resolved_away for key in keys)
             },
         ),
-        duplicates,
-        cancelled,
-        frozenset(resolved_away),
+        cross_form_duplicates=duplicates,
+        cross_form_cancelled=cancelled,
+        resolved_away=frozenset(resolved_away),
     )
 
 
@@ -445,9 +463,8 @@ def expand(
     # differently. The same walls are what let precedence across the two legal RECURRENCE-ID forms
     # run before matching: see :func:`_across_forms`.
     walls = frozenset(produced)
-    effective, merged_duplicates, merged_cancelled, resolved_away = _across_forms(
-        series, master, produced, profile=profile
-    )
+    settled = _across_forms(series, master, produced, profile=profile)
+    effective = settled.effective
     for wall in produced:
         key = _named_by(effective, master, wall, applied=applied, walls=walls, profile=profile)
         if key in effective.tombstones:
@@ -475,9 +492,9 @@ def expand(
     return Placement(
         events=tuple(built),
         applied=frozenset(applied),
-        duplicates=merged_duplicates,
-        cancelled=merged_cancelled,
-        resolved_away=resolved_away,
+        cross_form_duplicates=settled.cross_form_duplicates,
+        cross_form_cancelled=settled.cross_form_cancelled,
+        resolved_away=settled.resolved_away,
     )
 
 
