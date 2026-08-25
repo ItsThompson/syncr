@@ -14,8 +14,9 @@ the contract, so the real-document assertion carries a strict xfail behind the t
 Strict is what keeps the marker honest: when the last unguarded route joins the guard, the xfail
 itself goes red, and the marker is deleted rather than left agreeing with whatever the routes do.
 
-**Asserted by walking each operation's own ``parameters`` list**, for the same reason its sibling
-file gives: a text search answers true for a document in which nothing at all is declared.
+**Asserted by walking each operation's ``parameters`` list, inherited ones included**, for the
+same reason its sibling file gives: a text search answers true for a document in which nothing at
+all is declared.
 """
 
 from __future__ import annotations
@@ -39,7 +40,8 @@ CONTRACT = repo_root() / "frontend" / "openapi.json"
 OPERATION_METHODS = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
 
 # An operation is unsafe when its method can change state, so only these owe the document a key.
-SAFE_METHODS = frozenset({"get", "head", "options"})
+# TRACE is safe per RFC 7231: it changes nothing the client did not already send in the request.
+SAFE_METHODS = frozenset({"get", "head", "options", "trace"})
 
 # The whole of what may answer without a key, one stated reason per entry. An addition needs its
 # reason in the same change: the list must not absorb a route merely because guarding it is
@@ -76,7 +78,7 @@ def unsafe_operations(document: Mapping[str, Any]) -> set[tuple[str, str]]:
 
 
 def declaring_operations(document: Mapping[str, Any]) -> set[tuple[str, str]]:
-    """Every ``(method, path)`` whose own parameters list declares the header."""
+    """Every ``(method, path)`` whose parameters declare the header, own or inherited."""
     paths: Mapping[str, Mapping[str, Mapping[str, Any]]] = document["paths"]
     return {
         (method.upper(), path)
@@ -84,7 +86,10 @@ def declaring_operations(document: Mapping[str, Any]) -> set[tuple[str, str]]:
         for method in OPERATION_METHODS & path_item.keys()
         if any(
             parameter["in"] == "header" and parameter["name"] == IDEMPOTENCY_KEY_HEADER
-            for parameter in path_item[method].get("parameters", ())
+            for parameter in (
+                *path_item.get("parameters", ()),
+                *path_item[method].get("parameters", ()),
+            )
         )
     }
 
@@ -169,3 +174,20 @@ def test_a_planted_unguarded_operation_is_reported_rather_than_absorbed() -> Non
     assert unguarded_unsafe_operations(planted) == {("POST", "/planted")}
     assert unguarded_unsafe_operations(guarded) == set()
     assert unguarded_unsafe_operations(misdeclared) == {("POST", "/planted")}
+
+
+def test_a_key_declared_at_the_path_item_level_counts_for_its_operations() -> None:
+    # OpenAPI lets a path item hold shared parameters that every operation on it inherits. A
+    # generator that moves to that shape must not turn every guarded route into an unguarded one:
+    # the reader merges the two levels rather than reading the operation alone.
+    shared = {
+        "paths": {
+            "/shared": {
+                "parameters": [{"in": "header", "name": IDEMPOTENCY_KEY_HEADER}],
+                "post": {},
+            },
+            "/unshared": {"parameters": [], "post": {}},
+        }
+    }
+
+    assert unguarded_unsafe_operations(shared) == {("POST", "/unshared")}
