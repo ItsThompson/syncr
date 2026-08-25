@@ -7480,7 +7480,9 @@ export interface operations {
     replace_area_preference_api_v1_areas__area_id__preference_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 area_id: string;
             };
@@ -7551,7 +7553,9 @@ export interface operations {
     remove_area_preference_api_v1_areas__area_id__preference_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 area_id: string;
             };
@@ -9595,7 +9599,9 @@ export interface operations {
     replace_habit_preference_api_v1_habits__habit_id__preference_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 habit_id: string;
             };
@@ -9666,7 +9672,9 @@ export interface operations {
     remove_habit_preference_api_v1_habits__habit_id__preference_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 habit_id: string;
             };
@@ -12166,7 +12174,9 @@ export interface operations {
     replace_task_preference_api_v1_tasks__task_id__preference_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 task_id: string;
             };
@@ -12237,7 +12247,9 @@ export interface operations {
     remove_task_preference_api_v1_tasks__task_id__preference_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 task_id: string;
             };

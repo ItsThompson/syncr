@@ -15,12 +15,11 @@ it in one place rather than three.
 there is no partial update to offer. Only the Area's handler takes a shape carrying a daily cap; the
 other two take a shape with no field for one.
 
-**No idempotency guard, on any of the three unsafe methods, and that is a decision rather than an
-omission.** ``PUT`` and ``DELETE`` here are idempotent by construction: a replacement stores what
-the body says whatever was there before, and a removal of a preference already gone answers the
-same body as the removal that took it away. There is no second row either could create, so a guard
-would protect nothing and would add two more bodyless-or-identical-body routes to the set whose
-idempotency claims collide across resources. ``PUT /week-pattern`` takes none for the same reason.
+**Every unsafe method takes the idempotency guard, offered rather than demanded.** A replacement
+and a removal converge by construction, but that equality rests on today's service logic, which
+nothing asserts. Under one key a repeat reads the first request's stored answer instead of
+re-executing, so a retried ``DELETE`` answers the claim the first one stored rather than whatever
+the owner's preference has become since.
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from syncr_api.accounts.injection import PrincipalDep
+from syncr_api.idempotency.injection import IdempotencyGuardDep
 from syncr_api.preferences.declarations import DeclaredWindow, PreferenceDeclaration
 from syncr_api.preferences.injection import PreferenceServiceDep
 from syncr_api.preferences.schemas import (
@@ -49,6 +49,13 @@ if TYPE_CHECKING:
 area_router = APIRouter()
 habit_router = APIRouter()
 task_router = APIRouter()
+
+AREA_REPLACE_ROUTE = "preferences.replace_area"
+AREA_REMOVE_ROUTE = "preferences.remove_area"
+HABIT_REPLACE_ROUTE = "preferences.replace_habit"
+HABIT_REMOVE_ROUTE = "preferences.remove_habit"
+TASK_REPLACE_ROUTE = "preferences.replace_task"
+TASK_REMOVE_ROUTE = "preferences.remove_task"
 
 
 def _declared_windows(body: OverridePreferenceRequest) -> tuple[DeclaredWindow, ...]:
@@ -100,6 +107,7 @@ async def replace_area_preference(
     area_id: UUID,
     body: AreaPreferenceRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: PreferenceServiceDep,
 ) -> PreferenceResponse:
     """Replace an Area's preference. Every habit and task inside it inherits unless it overrides."""
@@ -109,17 +117,28 @@ async def replace_area_preference(
         preferred_duration_minutes=body.preferred_duration_minutes,
         max_per_day_minutes=body.max_per_day_minutes,
     )
-    return _as_response(
-        await service.replace(principal, PreferenceOwnerKind.AREA, area_id, declaration)
-    )
+
+    async def replace() -> PreferenceResponse:
+        return _as_response(
+            await service.replace(principal, PreferenceOwnerKind.AREA, area_id, declaration)
+        )
+
+    return await guard.once(AREA_REPLACE_ROUTE, PreferenceResponse, replace)
 
 
 @area_router.delete("", summary="Remove an Area's preference. Nothing then biases its placement")
 async def remove_area_preference(
-    area_id: UUID, principal: PrincipalDep, service: PreferenceServiceDep
+    area_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: PreferenceServiceDep,
 ) -> PreferenceResponse:
     """Remove an Area's preference. Its habits and tasks fall back to their own overrides only."""
-    return _as_response(await service.remove(principal, PreferenceOwnerKind.AREA, area_id))
+
+    async def remove() -> PreferenceResponse:
+        return _as_response(await service.remove(principal, PreferenceOwnerKind.AREA, area_id))
+
+    return await guard.once(AREA_REMOVE_ROUTE, PreferenceResponse, remove)
 
 
 @habit_router.get("", summary="A habit's preference, and which one is in effect")
@@ -135,20 +154,32 @@ async def replace_habit_preference(
     habit_id: UUID,
     body: OverridePreferenceRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: PreferenceServiceDep,
 ) -> PreferenceResponse:
     """Override a habit's Area wholly. A cap is not a field of this shape, so one is a 422."""
-    return _as_response(
-        await service.replace(principal, PreferenceOwnerKind.HABIT, habit_id, _declared(body))
-    )
+
+    async def replace() -> PreferenceResponse:
+        return _as_response(
+            await service.replace(principal, PreferenceOwnerKind.HABIT, habit_id, _declared(body))
+        )
+
+    return await guard.once(HABIT_REPLACE_ROUTE, PreferenceResponse, replace)
 
 
 @habit_router.delete("", summary="Remove a habit's override, restoring its Area's preference")
 async def remove_habit_preference(
-    habit_id: UUID, principal: PrincipalDep, service: PreferenceServiceDep
+    habit_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: PreferenceServiceDep,
 ) -> PreferenceResponse:
     """Remove the override. The response states which preference is in effect afterwards."""
-    return _as_response(await service.remove(principal, PreferenceOwnerKind.HABIT, habit_id))
+
+    async def remove() -> PreferenceResponse:
+        return _as_response(await service.remove(principal, PreferenceOwnerKind.HABIT, habit_id))
+
+    return await guard.once(HABIT_REMOVE_ROUTE, PreferenceResponse, remove)
 
 
 @task_router.get("", summary="A task's preference, and which one is in effect")
@@ -164,17 +195,29 @@ async def replace_task_preference(
     task_id: UUID,
     body: OverridePreferenceRequest,
     principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
     service: PreferenceServiceDep,
 ) -> PreferenceResponse:
     """Override a task's Area wholly. A cap is not a field of this shape, so one is a 422."""
-    return _as_response(
-        await service.replace(principal, PreferenceOwnerKind.TASK, task_id, _declared(body))
-    )
+
+    async def replace() -> PreferenceResponse:
+        return _as_response(
+            await service.replace(principal, PreferenceOwnerKind.TASK, task_id, _declared(body))
+        )
+
+    return await guard.once(TASK_REPLACE_ROUTE, PreferenceResponse, replace)
 
 
 @task_router.delete("", summary="Remove a task's override, restoring its Area's preference")
 async def remove_task_preference(
-    task_id: UUID, principal: PrincipalDep, service: PreferenceServiceDep
+    task_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: PreferenceServiceDep,
 ) -> PreferenceResponse:
     """Remove the override. The response states which preference is in effect afterwards."""
-    return _as_response(await service.remove(principal, PreferenceOwnerKind.TASK, task_id))
+
+    async def remove() -> PreferenceResponse:
+        return _as_response(await service.remove(principal, PreferenceOwnerKind.TASK, task_id))
+
+    return await guard.once(TASK_REMOVE_ROUTE, PreferenceResponse, remove)
