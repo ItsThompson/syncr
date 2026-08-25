@@ -12,15 +12,7 @@ import { HabitsTab } from "../tabs/HabitsTab";
 import { withRouter } from "./render";
 import { step } from "./step";
 import { writeDouble } from "./writeDouble";
-import {
-  HABIT_ANKI,
-  HABIT_GYM,
-  buildArea,
-  buildAreas,
-  buildFixedHabit,
-  buildHabit,
-  buildRamp,
-} from "./fixtures";
+import { HABIT_ANKI, HABIT_GYM, buildAreas, buildFixedHabit, buildHabit } from "./fixtures";
 import type { HabitEdit } from "../../../api/hooks/useHabits";
 import type { Problem } from "../../../contract";
 
@@ -336,36 +328,8 @@ describe("editing a habit", () => {
 });
 
 describe("the ramp reading", () => {
-  /* Past twelve Areas the pigment repeats, so two chips in this table can be the same ink. The api states that
-   * and this tab renders it: the wire carries the ramp step and not the position in the deal, so the frontend
-   * cannot tell the two apart on its own. */
-  it("states what identity rests on once two Areas share a step", () => {
-    const areas = [
-      buildArea({ id: "1", name: "Career", pigmentIndex: 0 }),
-      buildArea({ id: "2", name: "Thirteenth", pigmentIndex: 0 }),
-    ];
-    renderTab({
-      areas: {
-        status: "ready",
-        data: {
-          areas,
-          ramp: buildRamp({
-            areasSharingAPigment: 2,
-            statement: "Two Areas share a pigment, so identity rests on the name.",
-          }),
-        },
-      },
-      habits: {
-        status: "ready",
-        data: [buildHabit({ areaId: "1" }), buildFixedHabit({ areaId: "2" })],
-      },
-    });
-
-    expect(
-      screen.getByText("Two Areas share a pigment, so identity rests on the name."),
-    ).toBeInTheDocument();
-  });
-
+  /* The tab reads the ramp beside the Areas but draws no sentence from it: what separates two
+   * Areas is stated by the kit, not rendered here. */
   it("draws no footer at all while every Area holds its own step", () => {
     renderTab();
 
