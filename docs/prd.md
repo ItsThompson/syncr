@@ -4,7 +4,7 @@
 
 syncr is a scheduling and life-management system that owns the plan. It converts long-term time allocations and a short-term task backlog into a timeblocked week, projects that week to the user's calendar, and adapts the plan as reality diverges without rearranging it behind the user's back.
 
-This document covers the product definition, the domain model, the scheduling algorithm, the learning layer, calendar integration, and the P0 delivery cut. It does not cover the API route catalog, the database schema, or the authorization model in detail. Those follow as separate documents once P0 design is stable, matching the structure used in wren.
+This document covers the product definition, the domain model, the scheduling algorithm, the learning layer, calendar integration, and the P0 delivery cut. It does not cover the API route catalog, the database schema, or the authorization model in detail. Those are published as their own references: [api.md](api.md), [database.md](database.md), and [authorization.md](authorization.md).
 
 It does not cover the visual and interaction language either. `docs/DESIGN-LANGUAGE.md` is the authority for that, and this document defers to it wherever the two touch.
 
