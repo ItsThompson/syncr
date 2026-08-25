@@ -85,7 +85,12 @@ NUL_TEXT: Final = "Italy\x00"
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """One case per field, named after the field it is about."""
+    """One case per field, named after the field it is about.
+
+    The skip count runs high by design: exempt and not-applicable fields skip here rather
+    than being filtered out of the population, so every exemption stays visible per field
+    and each one is compensated by an exact-set or positive-control assertion elsewhere.
+    """
     if "field" in metafunc.fixturenames:
         metafunc.parametrize("field", TEXT_FIELDS, ids=[one.where for one in TEXT_FIELDS])
 
