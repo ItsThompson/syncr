@@ -9,9 +9,12 @@
  * approves it. That is why the control says `Propose`: the concession becomes real in the approval transaction and
  * nowhere else.
  *
- * EVERY ONE SENDS AN `Idempotency-Key`. The approval route DEMANDS it -- omitting it is a 400 -- and the other three
- * send it for the reason every guarded write in this api does: a retry must not become a second act. The header's
- * name and its minting live in the writing layer (`useWrite`), which hands them to every keyed write.
+ * EVERY WRITE TO A GUARDED ROUTE SENDS AN `Idempotency-Key`. The approval route DEMANDS it -- omitting it is a 400 --
+ * and the reject and the conflict resolution send it for the reason every guarded write in this api does: a retry must
+ * not become a second act. The tradeoff request sends none, because its route reads no key; the writing layer
+ * (`useWrite`) owns both the rule and the header, and no call site here states either. The key is untyped wherever it
+ * travels, because the api reads it off the request object rather than declaring it as a parameter, so it is absent
+ * from the document every generated client is built from.
  *
  * REJECTING A PROPOSED MOVE IS A PIN, not a rejection concept of its own: it pins the block where the plan of record
  * already holds it and re-solves, so the rest of the proposal is recomputed rather than preserved. Once the rejected
@@ -68,7 +71,6 @@ export function useWeekWrites(isoWeek: string, onOperation?: (one: Operation) =>
     const { body, problem } = await answered(() =>
       client.POST("/api/v1/weeks/{iso_week}/tradeoffs", {
         params: { path },
-        headers: idempotentHeaders(),
         body: { kind, targetId },
       }),
     );
