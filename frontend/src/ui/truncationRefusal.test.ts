@@ -19,21 +19,31 @@
  * None of the three draws identity-bearing text, so nowrap costs the reader nothing. A selector that starts to
  * carry a title through one of these classes is a change to this list, not a quiet pass. */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { domainDir, layoutDir, primitivesDir } from "../testing/kitStylesheets";
 import { truncationDeclarations } from "../testing/layerRules";
 
 const KIT_DIRECTORIES = [primitivesDir, layoutDir, domainDir];
 
-describe("no family in the kit truncates", () => {
-  it("declares a truncation property on exactly the three excused selectors", async () => {
-    const perLayer = await Promise.all(KIT_DIRECTORIES.map((dir) => truncationDeclarations(dir)));
-    const spent = perLayer
-      .flat()
-      .map(({ sheet, selector, property }) => `${sheet} ${selector} -> ${property}`)
-      .toSorted();
+/* The three layers are read once and both assertions answer from that one read. */
+let spent: string[];
+let values: string[];
 
+beforeAll(async () => {
+  const perLayer = await Promise.all(KIT_DIRECTORIES.map((dir) => truncationDeclarations(dir)));
+  spent = perLayer
+    .flat()
+    .map(({ sheet, selector, property }) => `${sheet} ${selector} -> ${property}`)
+    .toSorted();
+  values = perLayer
+    .flat()
+    .map(({ property, value }) => `${property}: ${value}`)
+    .toSorted();
+});
+
+describe("no family in the kit truncates", () => {
+  it("declares a truncation property on exactly the three excused selectors", () => {
     expect(spent).toEqual([
       /* The meter's cells butt against each other, so a wrapped run would read as two meters. */
       "charts/charts.css .meter -> white-space",
@@ -44,13 +54,7 @@ describe("no family in the kit truncates", () => {
     ]);
   });
 
-  it("excuses only nowrap, so an exception cannot grow an ellipsis or a clamp", async () => {
-    const perLayer = await Promise.all(KIT_DIRECTORIES.map((dir) => truncationDeclarations(dir)));
-    const values = perLayer
-      .flat()
-      .map(({ property, value }) => `${property}: ${value}`)
-      .toSorted();
-
+  it("excuses only nowrap, so an exception cannot grow an ellipsis or a clamp", () => {
     expect(values).toEqual(["white-space: nowrap", "white-space: nowrap", "white-space: nowrap"]);
   });
 });

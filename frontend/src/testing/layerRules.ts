@@ -144,8 +144,10 @@ export async function layerSources(dir: string): Promise<LayerSource[]> {
 }
 
 /** Matches every property whose effect is to clip or refuse to wrap text: the clamp shorthand and its
- * vendor spelling, the ellipsis longhand of the `overflow` shorthand's inline end, and nowrap itself. */
-export const TRUNCATION_PROPERTY = /line-clamp|block-ellipsis|text-overflow|white-space/;
+ * vendor spelling, the ellipsis longhand of the `overflow` shorthand's inline end, and nowrap itself.
+ * Matched against the WHOLE property name, so a longer name that merely contains one of these is not swept. */
+export const TRUNCATION_PROPERTY =
+  /^(?:-webkit-)?(?:line-clamp|block-ellipsis|text-overflow|white-space)$/;
 
 export interface TruncationDeclaration {
   readonly sheet: string;
