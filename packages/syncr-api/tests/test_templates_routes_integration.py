@@ -890,6 +890,66 @@ def test_removing_a_shape_removes_its_entries(
     assert http.get(f"{TEMPLATES}/{shape}", headers=signed_in).status_code == NotFound.status
 
 
+@pytest.mark.parametrize("content", ["routine", "habit"])
+def test_removing_content_an_entry_names_keeps_the_row_and_the_read_reports_it(
+    http: TestClient, signed_in: dict[str, str], content: str
+) -> None:
+    """A removal never edits a day shape: the row survives and its absence becomes visible.
+
+    The read model answers whether the named content is still held, so the screen renders the
+    dangling state from the read itself rather than inferring it from two other lists. Before the
+    removal the same read answers True; a slot states nothing either way.
+    """
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    area = declare_area(http, signed_in, "Learning")
+    ref = (
+        declare_routine(http, signed_in)
+        if content == "routine"
+        else declare_habit(http, signed_in, area)
+    )
+    added = http.post(
+        f"{TEMPLATES}/{shape}/entries",
+        json={
+            "kind": "concrete",
+            "targetTime": "07:00:00",
+            "durationMinutes": 15,
+            "flexBandMinutes": 0,
+            "bindingTarget": content,
+            "bindingRef": ref,
+        },
+        headers=signed_in,
+    )
+    assert added.status_code == HTTPStatus.CREATED, added.text
+    slot = http.post(
+        f"{TEMPLATES}/{shape}/entries",
+        json={
+            "kind": "slot",
+            "targetTime": "08:00:00",
+            "durationMinutes": 30,
+            "flexBandMinutes": 0,
+            "areaId": area,
+        },
+        headers=signed_in,
+    )
+    assert slot.status_code == HTTPStatus.CREATED, slot.text
+
+    before = http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"]
+    assert [row["contentResolves"] for row in before] == [True, None]
+
+    removed = http.delete(
+        f"{ROUTINES}/{ref}" if content == "routine" else f"{HABITS}/{ref}",
+        headers=signed_in,
+    )
+    assert removed.status_code == HTTPStatus.NO_CONTENT
+
+    survived = http.get(f"{TEMPLATES}/{shape}", headers=signed_in).json()["entries"]
+    assert [row["id"] for row in survived] == [added.json()["id"], slot.json()["id"]]
+    dangling = next(row for row in survived if row["kind"] == "concrete")
+    assert dangling["bindingRef"] == ref
+    assert dangling["contentResolves"] is False
+
+
 def test_a_declared_shape_creates_no_pin_row(
     http: TestClient,
     signed_in: dict[str, str],
