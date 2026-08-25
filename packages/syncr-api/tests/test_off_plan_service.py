@@ -13,7 +13,7 @@ it LEFT as well as the weeks it now covers, because both sets of denominators ch
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -27,13 +27,13 @@ from syncr_api.offplan.declarations import OffPlanChange, OffPlanDeclaration
 from syncr_api.offplan.records import OffPlanPeriodRecord
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.offplan.service import OffPlanService
-from syncr_api.user_settings.config import ReviewCadence
-from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
-from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+from syncr_api.user_settings.records import TravelOverrideRecord
+from syncr_api.user_settings.repository import TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek, week_span
+from tests.service_fakes import FakeSettingsRepository
 
 if TYPE_CHECKING:
     from syncr_domain.identifiers import OffPlanPeriodId, TenantId
@@ -116,29 +116,6 @@ class FakeOffPlanRepository(OffPlanPeriodRepository):
         self.rows = [row for row in self.rows if row.id != period_id]
 
 
-class FakeSettingsRepository(SettingsRepository):
-    """One settings row, for the home zone the weeks are resolved in, and the lock."""
-
-    def __init__(self, tenant_id: TenantId, home_zone: str = LONDON) -> None:
-        self._tenant_id = tenant_id
-        self._home_zone = home_zone
-        self.locks = 0
-
-    async def read(self) -> SettingsRecord:
-        return SettingsRecord(
-            tenant_id=self._tenant_id,
-            visible_hours=12,
-            day_start=time(7, 0),
-            day_end=time(23, 0),
-            review_cadence=ReviewCadence.ON_DEMAND,
-            home_zone=self._home_zone,
-        )
-
-    async def lock(self, *, created_at: datetime) -> SettingsRecord:
-        self.locks += 1
-        return await self.read()
-
-
 class StoredTravel(TravelOverrideRepository):
     """The declared overrides over a list, and no database."""
 
@@ -196,7 +173,7 @@ def build(
     travel: TravelOverrideRepository | None = None,
 ) -> tuple[OffPlanService, FakeOffPlanRepository, FakeSettingsRepository]:
     periods = FakeOffPlanRepository(principal.tenant_id, stored)
-    settings = FakeSettingsRepository(principal.tenant_id, home_zone)
+    settings = FakeSettingsRepository(principal.tenant_id, home_zone=home_zone)
     service = OffPlanService(
         periods=periods,
         settings=settings,

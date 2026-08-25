@@ -22,14 +22,13 @@ This is the one suite that reads against ``NoRecordedOutcomes``, and
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 
 from syncr_api.areas.records import AreaRecord
-from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.errors import Forbidden, NotFound, ValidationFailed
 from syncr_api.core.patches import ABSENT
 from syncr_api.core.principal import Principal
@@ -39,14 +38,12 @@ from syncr_api.habits.outcome_log import NoRecordedOutcomes
 from syncr_api.habits.records import HabitRecord, columns_of
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.habits.service import HabitService
-from syncr_api.user_settings.config import ReviewCadence
-from syncr_api.user_settings.records import SettingsRecord
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.identity import index_occurrence_key
 from syncr_domain.outcomes import MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.weeks import IsoWeek
+from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -127,35 +124,6 @@ class FakeHabitRepository(HabitRepository):
 
     async def remove(self, habit_id: HabitId) -> None:
         self.rows = [row for row in self.rows if row.id != habit_id]
-
-
-class FakeAreaRepository(AreaRepository):
-    """Answers whether an Area exists, which is the one thing this service asks of it."""
-
-    def __init__(self, tenant_id: TenantId, stored: list[AreaRecord] | None = None) -> None:
-        self._tenant_id = tenant_id
-        self.rows = list(stored or [])
-
-    async def find(self, area_id: AreaId) -> AreaRecord | None:
-        return next((row for row in self.rows if row.id == area_id), None)
-
-
-class FakeSettingsRepository(SettingsRepository):
-    """The home zone, which is what decides which week the bump floors at."""
-
-    def __init__(self, tenant_id: TenantId, home_zone: str = LONDON) -> None:
-        self._tenant_id = tenant_id
-        self._home_zone = home_zone
-
-    async def read(self) -> SettingsRecord:
-        return SettingsRecord(
-            tenant_id=self._tenant_id,
-            visible_hours=17,
-            day_start=time(6, 0),
-            day_end=time(23, 0),
-            review_cadence=ReviewCadence.ON_DEMAND,
-            home_zone=self._home_zone,
-        )
 
 
 class RecordingVersions:
@@ -276,7 +244,7 @@ class Fixture:
             outcomes=self.outcomes,
             bump=BacklogWideBump(
                 versions=self.versions,
-                settings=FakeSettingsRepository(self.tenant_id, home_zone),
+                settings=FakeSettingsRepository(self.tenant_id, home_zone=home_zone),
             ),
             clock=lambda: at,
         )

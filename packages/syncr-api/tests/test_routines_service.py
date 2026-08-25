@@ -31,13 +31,11 @@ from syncr_api.routines.records import RoutineRecord
 from syncr_api.routines.repository import RoutineRepository
 from syncr_api.routines.schemas import RoutineCreateRequest, RoutinePatchRequest, RoutineResponse
 from syncr_api.routines.service import RoutineService
-from syncr_api.user_settings.config import ReviewCadence
-from syncr_api.user_settings.records import SettingsRecord
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.schemas import SettingsPatchRequest, SettingsResponse
 from syncr_api.user_settings.service import SettingsChange
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.weeks import IsoWeek
+from tests.service_fakes import FakeSettingsRepository
 
 if TYPE_CHECKING:
     from syncr_api.routines.records import RoutineId
@@ -118,24 +116,6 @@ class FakeRoutineRepository(RoutineRepository):
 
     async def remove(self, routine_id: RoutineId) -> None:
         self.rows = [row for row in self.rows if row.id != routine_id]
-
-
-class FakeSettingsRepository(SettingsRepository):
-    """One settings row, for the home zone the bump's floor is resolved in."""
-
-    def __init__(self, tenant_id: TenantId, home_zone: str = LONDON) -> None:
-        self._tenant_id = tenant_id
-        self._home_zone = home_zone
-
-    async def read(self) -> SettingsRecord:
-        return SettingsRecord(
-            tenant_id=self._tenant_id,
-            visible_hours=12,
-            day_start=time(7, 0),
-            day_end=time(23, 0),
-            review_cadence=ReviewCadence.ON_DEMAND,
-            home_zone=self._home_zone,
-        )
 
 
 class RecordingWeekInputVersions:

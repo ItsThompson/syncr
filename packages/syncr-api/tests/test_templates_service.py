@@ -22,7 +22,6 @@ from uuid import uuid4
 import pytest
 
 from syncr_api.areas.records import AreaRecord
-from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from syncr_api.core.patches import ABSENT
 from syncr_api.core.principal import Principal
@@ -48,17 +47,14 @@ from syncr_api.templates.repository import (
     WeekPatternRepository,
 )
 from syncr_api.templates.service import DayTypeService, TemplateService, WeekPatternService
-from syncr_api.user_settings.config import ReviewCadence
-from syncr_api.user_settings.records import SettingsRecord
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.templates import BindingTarget, EntrySpan, TemplateEntryKind, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
+from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from decimal import Decimal
 
     from syncr_api.templates.declarations import EntryContent
     from syncr_domain.identifiers import (
@@ -197,28 +193,6 @@ class FakeWeekPatternRepository(WeekPatternRepository):
         self.writes += 1
 
 
-class FakeAreaRepository(AreaRepository):
-    """Only the one read the entry path makes: does this tenant have that Area?"""
-
-    def __init__(self, tenant_id: TenantId, stored: list[AreaId] | None = None) -> None:
-        self._tenant_id = tenant_id
-        self.rows = list(stored or [])
-
-    async def find(self, area_id: AreaId) -> AreaRecord | None:
-        if area_id not in self.rows:
-            return None
-        return AreaRecord(
-            id=area_id,
-            tenant_id=self._tenant_id,
-            parent_id=None,
-            name="Learning",
-            pigment_index=0,
-            budget_percent=_no_decimal(),
-            floor_hours=_no_decimal(),
-            created_at=NOW,
-        )
-
-
 class FakeRoutineRepository(RoutineRepository):
     """The routines one tenant holds in memory, scoped the way the real read is."""
 
@@ -249,24 +223,6 @@ class FakeHabitRepository(HabitRepository):
         )
 
 
-class FakeSettingsRepository(SettingsRepository):
-    """One settings row, for the home zone the bump's floor is resolved in."""
-
-    def __init__(self, tenant_id: TenantId, home_zone: str = LONDON) -> None:
-        self._tenant_id = tenant_id
-        self._home_zone = home_zone
-
-    async def read(self) -> SettingsRecord:
-        return SettingsRecord(
-            tenant_id=self._tenant_id,
-            visible_hours=12,
-            day_start=time(7, 0),
-            day_end=time(23, 0),
-            review_cadence=ReviewCadence.ON_DEMAND,
-            home_zone=self._home_zone,
-        )
-
-
 class RecordingWeekInputVersions:
     """Every range a service asked to have bumped, in order."""
 
@@ -275,10 +231,6 @@ class RecordingWeekInputVersions:
 
     async def bump(self, weeks: WeekRange) -> None:
         self.bumped.append(weeks)
-
-
-def _no_decimal() -> Decimal | None:
-    return None
 
 
 def _renamed(row: TemplateRecord, name: str) -> TemplateRecord:
@@ -607,7 +559,20 @@ async def test_a_slot_stores_its_area_and_no_binding(principal: Principal, wirin
     day_type = await wiring.a_day_type(principal)
     shape = await wiring.a_shape(principal, day_type)
     area_id = uuid4()
-    wiring.areas.rows.append(area_id)
+    # The one Area this tenant has, stored as the repository would have it rather than as an
+    # id, so the shared fake's find answers the record the entry path reads.
+    wiring.areas.rows.append(
+        AreaRecord(
+            id=area_id,
+            tenant_id=principal.tenant_id,
+            parent_id=None,
+            name="Learning",
+            pigment_index=0,
+            budget_percent=None,
+            floor_hours=None,
+            created_at=NOW,
+        )
+    )
 
     added = await wiring.template_service.add_entry(principal, shape.id, a_slot(area_id))
 

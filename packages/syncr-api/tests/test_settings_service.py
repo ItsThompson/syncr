@@ -33,10 +33,11 @@ from syncr_api.user_settings.config import (
     ReviewCadence,
 )
 from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
-from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
+from syncr_api.user_settings.repository import TravelOverrideRepository
 from syncr_api.user_settings.service import SettingsChange, SettingsService
 from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_domain.weeks import IsoWeek
+from tests.service_fakes import FakeSettingsRepository
 
 if TYPE_CHECKING:
     from syncr_api.user_settings.records import TravelOverrideId
@@ -52,43 +53,6 @@ NOW = datetime(2026, 8, 2, 9, 0, tzinfo=UTC)
 TODAY = date(2026, 8, 2)
 WEEK_31 = IsoWeek.parse("2026-W31")
 WEEK_32 = IsoWeek.parse("2026-W32")
-
-
-class FakeSettingsRepository(SettingsRepository):
-    """The real repository's interface over one optional record, and no database."""
-
-    def __init__(self, tenant_id: TenantId, stored: SettingsRecord | None = None) -> None:
-        self._tenant_id = tenant_id
-        self.stored = stored
-        self.locks = 0
-
-    async def read(self) -> SettingsRecord:
-        return self.stored if self.stored is not None else self.defaults()
-
-    async def lock(self, *, created_at: datetime) -> SettingsRecord:
-        self.locks += 1
-        if self.stored is None:
-            self.stored = self.defaults()
-        return self.stored
-
-    async def write(
-        self,
-        *,
-        visible_hours: int,
-        day_start: time,
-        day_end: time,
-        review_cadence: ReviewCadence,
-        home_zone: str,
-    ) -> SettingsRecord:
-        self.stored = SettingsRecord(
-            tenant_id=self._tenant_id,
-            visible_hours=visible_hours,
-            day_start=day_start,
-            day_end=day_end,
-            review_cadence=review_cadence,
-            home_zone=home_zone,
-        )
-        return self.stored
 
 
 class FakeTravelOverrideRepository(TravelOverrideRepository):
@@ -151,7 +115,9 @@ def build_service(
     stored: SettingsRecord | None = None,
     overrides: list[TravelOverrideRecord] | None = None,
 ) -> tuple[SettingsService, FakeSettingsRepository, FakeTravelOverrideRepository]:
-    settings = FakeSettingsRepository(principal.tenant_id, stored)
+    # The declared default zone, because this suite's defaults test reads that value rather
+    # than the London default every other service suite resolves in.
+    settings = FakeSettingsRepository(principal.tenant_id, stored, home_zone=HOME_ZONE_DEFAULT)
     travel = FakeTravelOverrideRepository(principal.tenant_id, overrides or [])
     service = SettingsService(
         settings=settings, overrides=travel, versions=versions, clock=lambda: NOW
@@ -198,6 +164,17 @@ async def test_a_tenant_with_no_row_reads_the_declared_defaults(
     # The read is a read: no row was created and no lock was taken to create one.
     assert settings.stored is None
     assert settings.locks == 0
+
+
+async def test_locking_creates_the_row_a_tenant_has_never_saved(principal: Principal) -> None:
+    # The real lock upserts the row before holding it, so what the lock answers and what a
+    # read answers afterwards are one stored record, not two defaults built independently.
+    settings = FakeSettingsRepository(principal.tenant_id, home_zone=HOME_ZONE_DEFAULT)
+
+    locked = await settings.lock(created_at=NOW)
+
+    assert settings.stored == locked
+    assert await settings.read() == locked
 
 
 async def test_the_read_states_the_home_zone_when_no_override_covers_today(

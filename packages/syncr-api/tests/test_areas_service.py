@@ -13,10 +13,10 @@ service that rejected them would be enforcing a rule the product does not have.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -27,24 +27,21 @@ from syncr_api.areas.declarations import (
     ProjectDeclaration,
 )
 from syncr_api.areas.records import AreaRecord, ProjectRecord
-from syncr_api.areas.repository import AreaRepository, ProjectRepository
 from syncr_api.areas.rules import FULL_RAMP_REFUSAL
 from syncr_api.areas.service import AreaService, ProjectService
 from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from syncr_api.core.patches import ABSENT
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
-from syncr_api.user_settings.config import ReviewCadence
-from syncr_api.user_settings.records import SettingsRecord
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.pigments import PIGMENT_COUNT, PIGMENT_DEAL_ORDER, next_pigment_index
 from syncr_domain.projects import ProjectStatus
 from syncr_domain.weeks import IsoWeek
-
-if TYPE_CHECKING:
-    from syncr_domain.identifiers import AreaId, ProjectId, TenantId
-    from syncr_domain.pigments import PigmentIndex
+from tests.service_fakes import (
+    FakeAreaRepository,
+    FakeProjectRepository,
+    FakeSettingsRepository,
+)
 
 LONDON = "Europe/London"
 
@@ -52,150 +49,6 @@ LONDON = "Europe/London"
 # and the UTC date agree and these tests are about budgets rather than about a date boundary.
 NOW = datetime(2026, 8, 2, 9, 0, tzinfo=UTC)
 WEEK_31 = IsoWeek.parse("2026-W31")
-
-
-class FakeAreaRepository(AreaRepository):
-    """The real repository's interface over a list of records, and no database."""
-
-    def __init__(self, tenant_id: TenantId, stored: list[AreaRecord] | None = None) -> None:
-        self._tenant_id = tenant_id
-        self.rows = list(stored or [])
-        self.locks = 0
-
-    async def list_all(self) -> tuple[AreaRecord, ...]:
-        return tuple(sorted(self.rows, key=lambda row: (row.created_at, row.id)))
-
-    async def lock_all(self) -> tuple[AreaRecord, ...]:
-        self.locks += 1
-        return await self.list_all()
-
-    async def find(self, area_id: AreaId) -> AreaRecord | None:
-        return next((row for row in self.rows if row.id == area_id), None)
-
-    async def create(
-        self,
-        *,
-        parent_id: AreaId | None,
-        name: str,
-        pigment_index: PigmentIndex,
-        budget_percent: Decimal | None,
-        floor_hours: Decimal | None,
-        created_at: datetime,
-    ) -> AreaRecord:
-        created = AreaRecord(
-            id=uuid4(),
-            tenant_id=self._tenant_id,
-            parent_id=parent_id,
-            name=name,
-            pigment_index=pigment_index,
-            budget_percent=budget_percent,
-            floor_hours=floor_hours,
-            created_at=created_at,
-        )
-        self.rows.append(created)
-        return created
-
-    async def write(
-        self,
-        area_id: AreaId,
-        *,
-        name: str,
-        pigment_index: PigmentIndex,
-        budget_percent: Decimal | None,
-        floor_hours: Decimal | None,
-    ) -> None:
-        self.rows = [
-            AreaRecord(
-                id=row.id,
-                tenant_id=row.tenant_id,
-                parent_id=row.parent_id,
-                name=name,
-                pigment_index=pigment_index,
-                budget_percent=budget_percent,
-                floor_hours=floor_hours,
-                created_at=row.created_at,
-            )
-            if row.id == area_id
-            else row
-            for row in self.rows
-        ]
-
-
-class FakeProjectRepository(ProjectRepository):
-    """Records what was written, so the service's effects are assertable."""
-
-    def __init__(self, tenant_id: TenantId, stored: list[ProjectRecord] | None = None) -> None:
-        self._tenant_id = tenant_id
-        self.rows = list(stored or [])
-
-    async def list_all(self, *, area_id: AreaId | None = None) -> tuple[ProjectRecord, ...]:
-        ordered = sorted(self.rows, key=lambda row: (row.created_at, row.id))
-        return tuple(row for row in ordered if area_id is None or row.area_id == area_id)
-
-    async def find(self, project_id: ProjectId) -> ProjectRecord | None:
-        return next((row for row in self.rows if row.id == project_id), None)
-
-    async def create(
-        self,
-        *,
-        area_id: AreaId,
-        name: str,
-        deadline: datetime | None,
-        status: ProjectStatus,
-        created_at: datetime,
-    ) -> ProjectRecord:
-        created = ProjectRecord(
-            id=uuid4(),
-            tenant_id=self._tenant_id,
-            area_id=area_id,
-            name=name,
-            deadline=deadline,
-            status=status,
-            created_at=created_at,
-        )
-        self.rows.append(created)
-        return created
-
-    async def write(
-        self,
-        project_id: ProjectId,
-        *,
-        name: str,
-        deadline: datetime | None,
-        status: ProjectStatus,
-    ) -> None:
-        self.rows = [
-            ProjectRecord(
-                id=row.id,
-                tenant_id=row.tenant_id,
-                area_id=row.area_id,
-                name=name,
-                deadline=deadline,
-                status=status,
-                created_at=row.created_at,
-            )
-            if row.id == project_id
-            else row
-            for row in self.rows
-        ]
-
-
-class FakeSettingsRepository(SettingsRepository):
-    """One settings row, for the home zone the bump's floor is resolved in."""
-
-    def __init__(self, tenant_id: TenantId, home_zone: str = LONDON) -> None:
-        self._tenant_id = tenant_id
-        self._home_zone = home_zone
-
-    async def read(self) -> SettingsRecord:
-        return SettingsRecord(
-            tenant_id=self._tenant_id,
-            visible_hours=12,
-            day_start=time(7, 0),
-            day_end=time(23, 0),
-            review_cadence=ReviewCadence.ON_DEMAND,
-            home_zone=self._home_zone,
-        )
 
 
 class RecordingWeekInputVersions:
@@ -256,6 +109,56 @@ def a_declaration(name: str, **changes: object) -> AreaDeclaration:
 
 def no_change() -> AreaChange:
     return AreaChange(name=ABSENT, pigment_index=ABSENT, budget_percent=ABSENT, floor_hours=ABSENT)
+
+
+async def test_the_shared_listing_fakes_answer_in_the_repository_s_order(
+    principal: Principal,
+) -> None:
+    """The shared fakes' one behavior beyond storage: the real listings are ordered reads.
+
+    Both real repositories answer ``ORDER BY created_at, id``, so a fake answering insertion
+    order would let a service test pass over rows only a sorted page distinguishes. Pinned here
+    because no service test happens to store rows out of declaration order.
+    """
+    # Stored out of declaration order on purpose: an insertion-order answer would read
+    # "Later" first, which is not what the real read answers.
+    area_rows = [
+        replace(a_stored_area(principal, 0), id=UUID(int=3), created_at=NOW + timedelta(days=1)),
+        replace(a_stored_area(principal, 1), id=UUID(int=1), created_at=NOW),
+        replace(a_stored_area(principal, 2), id=UUID(int=2), created_at=NOW),
+    ]
+    areas = FakeAreaRepository(principal.tenant_id, area_rows)
+    projects = FakeProjectRepository(
+        principal.tenant_id,
+        [
+            ProjectRecord(
+                id=UUID(int=9),
+                tenant_id=principal.tenant_id,
+                area_id=area_rows[2].id,
+                name="Later",
+                deadline=None,
+                status=ProjectStatus.ACTIVE,
+                created_at=NOW + timedelta(days=1),
+            ),
+            ProjectRecord(
+                id=UUID(int=8),
+                tenant_id=principal.tenant_id,
+                area_id=area_rows[0].id,
+                name="Earlier",
+                deadline=None,
+                status=ProjectStatus.ACTIVE,
+                created_at=NOW,
+            ),
+        ],
+    )
+
+    listed_areas = await areas.list_all()
+    listed_projects = await projects.list_all()
+    career_only = await projects.list_all(area_id=area_rows[0].id)
+
+    assert [row.name for row in listed_areas] == ["Area 1", "Area 2", "Area 0"]
+    assert [row.name for row in listed_projects] == ["Earlier", "Later"]
+    assert [row.name for row in career_only] == ["Earlier"]
 
 
 async def declare(
@@ -348,8 +251,6 @@ async def test_the_twelfth_area_is_accepted_and_takes_the_last_unused_step(
 
     assert twelfth.area.pigment_index == PIGMENT_DEAL_ORDER[-1]
     assert twelfth.ramp.pigments_in_use == PIGMENT_COUNT
-    assert twelfth.ramp.areas_sharing_a_pigment == 0
-    assert twelfth.ramp.statement is None
 
 
 async def test_a_tenant_holding_more_areas_than_the_ramp_is_refused_as_well(
@@ -456,8 +357,7 @@ async def test_at_the_bound_new_work_still_fits_inside_an_area_as_a_project(
 async def test_a_full_ramp_is_reported_before_it_is_exhausted(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
-    # The control at the other end of the boundary: twelve Areas hold twelve distinct steps, so
-    # nothing is shared and no statement is made.
+    # The control at the other end of the boundary: twelve Areas hold twelve distinct steps.
     service, _ = build_areas(principal, versions)
     for index in range(PIGMENT_COUNT):
         await declare(service, principal, f"Area {index}")
@@ -465,8 +365,24 @@ async def test_a_full_ramp_is_reported_before_it_is_exhausted(
     view = await service.list_all(principal)
 
     assert view.ramp.pigments_in_use == PIGMENT_COUNT
-    assert view.ramp.areas_sharing_a_pigment == 0
-    assert view.ramp.statement is None
+
+
+async def test_the_reading_counts_distinct_steps_when_rows_share_one(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # Rows declared before the bound existed can hold one step between them; the reading
+    # reports how many distinct steps they hold rather than reconciling them.
+    service, areas = build_areas(principal, versions)
+    dealt = await declare(service, principal, "Dealt")
+    predating = replace(
+        a_stored_area(principal, 1), name="Predating", pigment_index=dealt.pigment_index
+    )
+    areas.rows.append(predating)
+
+    view = await service.list_all(principal)
+
+    assert len(areas.rows) == 2
+    assert view.ramp.pigments_in_use == 1
 
 
 async def test_a_pigment_can_be_re_picked_from_the_ramp(
@@ -509,10 +425,10 @@ async def test_a_name_another_area_holds_is_refused(
     with pytest.raises(Conflict) as refused:
         await declare(service, principal, "Fitness")
 
-    # Refused rather than stored: a duplicate name would leave a wedge with nothing to
-    # identify it once the ramp repeats.
+    # Refused rather than stored: a duplicate name would leave two Areas that every
+    # name-labeled surface renders as one.
     assert len(areas.rows) == 1
-    assert "hatch" in str(refused.value.detail)
+    assert "two Areas cannot share one" in str(refused.value.detail)
 
 
 async def test_renaming_an_area_to_its_own_name_is_not_a_conflict(
