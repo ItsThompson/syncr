@@ -271,10 +271,10 @@ async def test_the_last_nights_frame_occurrence_belongs_to_this_week_unclipped()
 
 async def test_a_routine_longer_than_its_local_day_emits_both_overlapping_occurrences() -> None:
     # No positive duration cap expresses "an occurrence never reaches its own next one": a
-    # spring-forward local day is 23 hours, so 1381 minutes already overlaps. Two frame blocks
-    # overlapping is a state the grid draws, and each date keys its own block, so dropping either
-    # would lose a key an outcome may already reference.
-    routine = a_routine(target_time=time(23, 0), duration_minutes=1381)
+    # spring-forward local day is 23 hours, so the first whole step past it already overlaps. Two
+    # frame blocks overlapping is a state the grid draws, and each date keys its own block, so
+    # dropping either would lose a key an outcome may already reference.
+    routine = a_routine(target_time=time(23, 0), duration_minutes=23 * 60 + 15)
 
     inputs = await an_assembler(
         settings=FakeSettings(LONDON), routines=FakeRoutines([routine])
