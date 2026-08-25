@@ -568,6 +568,29 @@ def test_a_label_cannot_be_emptied_by_a_patch_either(
     assert [row.label for row in period_rows(live_database_url, owner.tenant_id)] == ["Italy"]
 
 
+@pytest.mark.parametrize(
+    "label",
+    ["", "   ", "Italy\x00"],
+    ids=["empty", "whitespace_only", "nul_byte"],
+)
+def test_a_label_that_is_no_text_answers_422_naming_the_field(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    label: str,
+) -> None:
+    # An empty value and a whitespace-only one are both "nothing was named" once the shared
+    # user-text type strips before its length bound, and a NUL byte is a control stream rather
+    # than text. Each is a caller error, so each is a stated 422 whose error NAMES the field,
+    # rather than a stored nothing or an unexpected-error 500 from the driver.
+    answered = http.post(OFF_PLAN, json={**FRIDAY_TO_MONDAY, "label": label}, headers=signed_in)
+
+    assert answered.status_code == ValidationFailed.status, answered.text
+    assert {error["field"] for error in answered.json()["errors"]} == {"body.label"}
+    assert period_rows(live_database_url, owner.tenant_id) == []
+
+
 def test_a_label_at_the_length_bound_is_accepted_and_one_past_it_is_not(
     http: TestClient, signed_in: dict[str, str]
 ) -> None:
@@ -582,25 +605,13 @@ def test_a_label_at_the_length_bound_is_accepted_and_one_past_it_is_not(
     assert refused == ValidationFailed.status
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a label carrying a control byte reaches the driver, which refuses the byte at flush, "
-    "so a caller error answers 500 with no actionable reason and an unexpected-error line lands "
-    "in the log. Measured: 500, nothing stored. The fix is the shared user-text type, not a "
-    "validator per module. Tracked as ticket 1135, which removes this marker.",
-)
 def test_a_label_carrying_a_control_byte_is_refused_rather_than_faulting(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
 ) -> None:
     """A NUL byte in a label is a caller error and must read as one.
 
-    Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect as though
-    it were the contract. Under ``strict=True`` an xfail that starts passing is itself a failure, so
-    the shared fix forces this marker to be deleted rather than leaving a test that quietly agrees
-    with whatever the code does.
-
-    Nothing is lost today, because the transaction rolls back, which is why this is the status and
-    the log line rather than a data defect.
+    The shared user-text type refuses the control character at the boundary, so this is a
+    stated 422 and nothing reaches the driver.
     """
     status, problem = declare(http, signed_in, label="Italy\x00")
 

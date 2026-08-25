@@ -35,7 +35,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import AfterValidator, ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireModel, WireText
 from syncr_api.routines.config import ROUTINE_TITLE_MAX_LENGTH
 from syncr_domain.routines import (
     MAX_DURATION_MINUTES,
@@ -152,7 +152,7 @@ class RoutineCreateRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(
+    title: WireText = Field(
         min_length=1, max_length=ROUTINE_TITLE_MAX_LENGTH, description=_TITLE_DESCRIPTION
     )
     target_time: WallTime = Field(description=_TARGET_TIME_DESCRIPTION)
@@ -183,7 +183,7 @@ class RoutinePatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = Field(
+    title: WireText | None = Field(
         default=None,
         min_length=1,
         max_length=ROUTINE_TITLE_MAX_LENGTH,

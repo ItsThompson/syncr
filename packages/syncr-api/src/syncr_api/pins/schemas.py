@@ -20,7 +20,7 @@ from uuid import UUID  # noqa: TC003 - as above
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireInstant, WireModel, WireSpan
+from syncr_api.core.schemas import WireInstant, WireModel, WireSpan, WireText
 from syncr_api.plans.verdict_schemas import VerdictResponse
 from syncr_api.solving.schemas import OperationResponse
 
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 class PinCreateRequest(WireModel):
     """One drag, one keyboard move, or the ``p`` toggle."""
 
-    block_id: str = Field(
+    block_id: WireText = Field(
         description="The block being pinned, as the week view spells its id.",
         min_length=1,
     )
@@ -45,7 +45,7 @@ class PinCreateRequest(WireModel):
 class RejectBlockRequest(WireModel):
     """One proposed move the user refuses."""
 
-    block_id: str = Field(
+    block_id: WireText = Field(
         description="The block the pending proposal would move. Rejecting the move pins the block "
         "at the placement the plan of record already holds it at.",
         min_length=1,

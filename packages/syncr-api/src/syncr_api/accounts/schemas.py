@@ -16,7 +16,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 from pydantic import Field
 
 from syncr_api.accounts.config import EMAIL_MAX_LENGTH
-from syncr_api.core.schemas import WireInstant, WireModel
+from syncr_api.core.schemas import WireInstant, WireModel, WireText
 
 # A password is not validated for shape at sign-in: the only question is whether it
 # matches, and a rule here would be a second source of truth for whatever the
@@ -28,7 +28,7 @@ PASSWORD_MAX_LENGTH = 1024
 class LoginRequest(WireModel):
     """Credentials presented to establish a session."""
 
-    email: str = Field(min_length=3, max_length=EMAIL_MAX_LENGTH)
+    email: WireText = Field(min_length=3, max_length=EMAIL_MAX_LENGTH)
     password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 

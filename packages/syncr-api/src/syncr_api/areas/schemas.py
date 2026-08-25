@@ -36,7 +36,7 @@ from syncr_api.areas.config import (
     FLOOR_HOURS_MIN,
     PROJECT_NAME_MAX_LENGTH,
 )
-from syncr_api.core.schemas import WireDecimal, WireInstant, WireModel
+from syncr_api.core.schemas import WireDecimal, WireInstant, WireModel, WireText
 from syncr_domain.pigments import PIGMENT_COUNT
 from syncr_domain.projects import ProjectStatus
 
@@ -134,7 +134,7 @@ class AreaCreateRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(
+    name: WireText = Field(
         min_length=1, max_length=AREA_NAME_MAX_LENGTH, description=_AREA_NAME_DESCRIPTION
     )
     parent_id: UUID | None = Field(default=None, description=_PARENT_DESCRIPTION)
@@ -162,7 +162,7 @@ class AreaPatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(
+    name: WireText | None = Field(
         default=None,
         min_length=1,
         max_length=AREA_NAME_MAX_LENGTH,
@@ -220,7 +220,7 @@ class ProjectCreateRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     area_id: UUID
-    name: str = Field(min_length=1, max_length=PROJECT_NAME_MAX_LENGTH)
+    name: WireText = Field(min_length=1, max_length=PROJECT_NAME_MAX_LENGTH)
     deadline: WireInstant | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
 
@@ -236,7 +236,7 @@ class ProjectPatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1, max_length=PROJECT_NAME_MAX_LENGTH)
+    name: WireText | None = Field(default=None, min_length=1, max_length=PROJECT_NAME_MAX_LENGTH)
     deadline: WireInstant | None = None
     status: ProjectStatus | None = None
 

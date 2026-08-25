@@ -54,7 +54,7 @@ from syncr_api.anchors.config import (
     PostScope,
 )
 from syncr_api.anchors.identity import collapsed_text, is_control
-from syncr_api.core.schemas import WireInstant, WireModel
+from syncr_api.core.schemas import WireInstant, WireModel, WireText
 
 _TYPE_SOURCE_DESCRIPTION = (
     "Where this commitment's type came from. "
@@ -276,8 +276,8 @@ class AnchorTypeCreateRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=ANCHOR_TYPE_NAME_MAX_LENGTH)
-    match_title_contains: str | None = Field(
+    name: WireText = Field(min_length=1, max_length=ANCHOR_TYPE_NAME_MAX_LENGTH)
+    match_title_contains: WireText | None = Field(
         default=None, min_length=1, max_length=MATCH_TITLE_MAX_LENGTH
     )
     match_source_id: UUID | None = None
@@ -321,8 +321,10 @@ class AnchorTypePatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1, max_length=ANCHOR_TYPE_NAME_MAX_LENGTH)
-    match_title_contains: str | None = Field(
+    name: WireText | None = Field(
+        default=None, min_length=1, max_length=ANCHOR_TYPE_NAME_MAX_LENGTH
+    )
+    match_title_contains: WireText | None = Field(
         default=None, min_length=1, max_length=MATCH_TITLE_MAX_LENGTH
     )
     match_source_id: UUID | None = None

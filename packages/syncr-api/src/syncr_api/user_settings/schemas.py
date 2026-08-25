@@ -28,7 +28,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import AfterValidator, ConfigDict, Field, ValidationInfo, field_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireModel, WireText
 from syncr_api.user_settings.config import (
     VISIBLE_HOURS_MAX,
     VISIBLE_HOURS_MIN,
@@ -145,7 +145,7 @@ class SettingsPatchRequest(WireModel):
     review_cadence: ReviewCadence | None = None
     # Bounded by the domain's own limit, so this rejects nothing the zone lookup would
     # have accepted and the two bounds cannot drift apart.
-    home_zone: str | None = Field(
+    home_zone: WireText | None = Field(
         default=None, min_length=1, max_length=MAX_ZONE_KEY_LENGTH, description=_ZONE_DESCRIPTION
     )
 
@@ -182,7 +182,9 @@ class TravelOverrideRequest(WireModel):
 
     start_date: date
     end_date: date
-    zone: str = Field(min_length=1, max_length=MAX_ZONE_KEY_LENGTH, description=_ZONE_DESCRIPTION)
+    zone: WireText = Field(
+        min_length=1, max_length=MAX_ZONE_KEY_LENGTH, description=_ZONE_DESCRIPTION
+    )
 
     @field_validator("end_date")
     @classmethod

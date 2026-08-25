@@ -33,7 +33,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireInstant, WireModel
+from syncr_api.core.schemas import WireInstant, WireModel, WireText
 from syncr_api.tasks.config import (
     ESTIMATE_MINUTES_MAX,
     ESTIMATE_MINUTES_MIN,
@@ -130,7 +130,7 @@ class BacklogTaskResponse(TaskResponse):
     """One task as the BACKLOG lists it: everything above, plus whether it is at risk.
 
     A shape of its own rather than a field on ``TaskResponse``, because at-risk is a fact about the
-    week's verdict rather than about the row. The five routes that answer about one task would have
+    week's verdict rather than about the row. The six routes that answer about one task would have
     to assemble a week to state it truthfully, and a mutation that computed a verdict would owe a
     recorded transition; answering false there instead would be a claim none of them checked. So the
     marking is on the read that has the figure beside it, and nowhere else.
@@ -181,7 +181,9 @@ class TaskCreateRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     area_id: UUID = Field(description=_AREA_DESCRIPTION)
-    title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH, description=_TITLE_DESCRIPTION)
+    title: WireText = Field(
+        min_length=1, max_length=TITLE_MAX_LENGTH, description=_TITLE_DESCRIPTION
+    )
     project_id: UUID | None = Field(default=None, description=_PROJECT_DESCRIPTION)
     estimate_minutes: int = Field(
         default=DEFAULT_ESTIMATE_MINUTES,
@@ -220,7 +222,7 @@ class TaskPatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = Field(
+    title: WireText | None = Field(
         default=None, min_length=1, max_length=TITLE_MAX_LENGTH, description=_TITLE_DESCRIPTION
     )
     project_id: UUID | None = Field(default=None, description=_PROJECT_DESCRIPTION)

@@ -152,8 +152,10 @@ class CalendarSourceService:
         own opaque identifier, and rewriting it would break the read.
         """
         require_scope(principal, Scope.ADMIN)
+        # No strip here: the shared user-text type on the request schema has already stripped
+        # both values, so stripping again would state one rule twice.
         external_id = (
-            normalize_feed_url(new.external_id) if new.provider == ICS else new.external_id.strip()
+            normalize_feed_url(new.external_id) if new.provider == ICS else new.external_id
         )
         if await self._sources.find_by_external_id(new.provider, external_id) is not None:
             raise Conflict(
@@ -164,7 +166,7 @@ class CalendarSourceService:
         created = await self._sources.create(
             provider=new.provider,
             role=ANCHOR_SOURCE,
-            display_name=new.display_name.strip(),
+            display_name=new.display_name,
             external_id=external_id,
             included=True,
             horizon_days=None,

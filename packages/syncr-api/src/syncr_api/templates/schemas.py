@@ -25,7 +25,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireModel, WireText
 from syncr_api.templates.config import DAY_TYPE_NAME_MAX_LENGTH, TEMPLATE_NAME_MAX_LENGTH
 from syncr_api.templates.entry_schemas import (
     TemplateEntryResponse,  # noqa: TC001 - pydantic resolves annotations at runtime
@@ -72,7 +72,7 @@ class DayTypeCreateRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=DAY_TYPE_NAME_MAX_LENGTH)
+    name: WireText = Field(min_length=1, max_length=DAY_TYPE_NAME_MAX_LENGTH)
 
 
 class TemplateResponse(WireModel):
@@ -112,7 +112,7 @@ class TemplateCreateRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     day_type_id: UUID = Field(description=_DAY_TYPE_DESCRIPTION)
-    name: str = Field(min_length=1, max_length=TEMPLATE_NAME_MAX_LENGTH)
+    name: WireText = Field(min_length=1, max_length=TEMPLATE_NAME_MAX_LENGTH)
 
 
 class TemplatePatchRequest(WireModel):
@@ -125,7 +125,7 @@ class TemplatePatchRequest(WireModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1, max_length=TEMPLATE_NAME_MAX_LENGTH)
+    name: WireText | None = Field(default=None, min_length=1, max_length=TEMPLATE_NAME_MAX_LENGTH)
 
     @field_validator("name")
     @classmethod

@@ -31,6 +31,15 @@ a block, a rejected candidate window, a forbidden window, an unfilled slot. Ever
 the same half-open pair of instants, and a shape declared per feature is a shape whose halves
 come to be read two ways.
 
+``WireText`` is here for every value a user authors that must both fit a length bound and be
+text rather than a control stream. The strip happens inside the shared type so it cannot be
+ordered after the length bound somewhere else: a name of only spaces is empty once stripped,
+and refusing it as too short is one refusal instead of two spellings of "nothing was sent".
+The same reasoning puts the control-character refusal here: a NUL byte is a caller error, and
+one module answering 500 for it while another answers 422 would make the caller's mistake
+read differently depending on where it was typed. ``null`` on a nullable name still means
+"no name" -- the type reads a string or refuses one, and says nothing about absence.
+
 ``WireInstant`` is here because a datetime with no offset names no instant. A bare ``datetime``
 reads ``"2026-03-08T09:00"`` and ``"2026-03-08"`` as wall time in whatever zone the process runs
 in, so a caller a zone away from the server stores a deadline hours or a day from the one it
@@ -41,15 +50,18 @@ form.
 
 from __future__ import annotations
 
+import unicodedata
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Self
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
     PlainSerializer,
+    StringConstraints,
     WithJsonSchema,
 )
 from pydantic.alias_generators import to_camel
@@ -63,6 +75,20 @@ type WireDecimal = Annotated[
     Decimal,
     PlainSerializer(float, return_type=float, when_used="json"),
     WithJsonSchema({"type": "number"}),
+]
+
+
+def _refuse_control_characters(value: str) -> str:
+    """Refuse any Unicode control character, NUL included, as a caller error."""
+    if any(unicodedata.category(character) == "Cc" for character in value):
+        raise ValueError("must not contain control characters")
+    return value
+
+
+type WireText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True),
+    AfterValidator(_refuse_control_characters),
 ]
 
 # Every instant the api accepts or returns, in either direction. An aware value is the only one

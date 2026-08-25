@@ -39,7 +39,7 @@ from syncr_api.calendars.config import (
     SourceState,
 )
 from syncr_api.core.notices import Notice  # noqa: TC001 - pydantic resolves annotations at runtime
-from syncr_api.core.schemas import WireInstant, WireModel
+from syncr_api.core.schemas import WireInstant, WireModel, WireText
 
 if TYPE_CHECKING:
     from syncr_api.calendars.events import RemoteCalendar
@@ -258,8 +258,8 @@ class AddCalendarSourceRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: CalendarProvider
-    display_name: str = Field(min_length=1, max_length=DISPLAY_NAME_MAX_LENGTH)
-    external_id: str = Field(
+    display_name: WireText = Field(min_length=1, max_length=DISPLAY_NAME_MAX_LENGTH)
+    external_id: WireText = Field(
         min_length=1,
         # Bounded at the boundary as well as inside the ICS normalizer, because a Google
         # calendarId is taken as the provider states it and is never normalized: without this a
@@ -278,7 +278,9 @@ class CalendarSourcePatchRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     included: bool | None = None
-    display_name: str | None = Field(default=None, min_length=1, max_length=DISPLAY_NAME_MAX_LENGTH)
+    display_name: WireText | None = Field(
+        default=None, min_length=1, max_length=DISPLAY_NAME_MAX_LENGTH
+    )
 
 
 class HorizonPatchRequest(WireModel):

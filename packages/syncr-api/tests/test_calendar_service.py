@@ -432,8 +432,9 @@ async def test_an_ics_address_is_normalized_and_a_google_identifier_is_not(
     )
 
     assert feed.external_id == "https://x.ac.uk/t"
-    # The name is trimmed, because a panel row labelled with padding reads as a rendering bug.
-    assert feed.display_name == "Timetable"
+    # The name is stored as the service received it: the shared user-text type strips at the
+    # boundary, and stripping here a second time would state one rule twice.
+    assert feed.display_name == " Timetable "
     assert feed.role == ANCHOR_SOURCE
     assert feed.horizon_days is None
     # A calendarId is the provider's own opaque identifier: rewriting it would break the read.

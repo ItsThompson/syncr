@@ -29,7 +29,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field, field_validator
 
-from syncr_api.core.schemas import WireInstant, WireModel
+from syncr_api.core.schemas import WireInstant, WireModel, WireText
 from syncr_api.habits.config import HABIT_TITLE_MAX_LENGTH
 from syncr_domain.habits import (
     DEFAULT_DEBT_CAP_PERIODS,
@@ -199,9 +199,9 @@ class HabitsResponse(WireModel):
     habits: list[HabitResponse]
 
 
-type _Title = Annotated[str, Field(min_length=1, max_length=HABIT_TITLE_MAX_LENGTH)]
+type _Title = Annotated[WireText, Field(min_length=1, max_length=HABIT_TITLE_MAX_LENGTH)]
 type _Variants = Annotated[
-    list[Annotated[str, Field(min_length=1, max_length=VARIANT_MAX_LENGTH)]],
+    list[Annotated[WireText, Field(min_length=1, max_length=VARIANT_MAX_LENGTH)]],
     Field(max_length=MAX_VARIANTS),
 ]
 type _Duration = Annotated[int, Field(ge=MIN_DURATION_MINUTES, le=MAX_DURATION_MINUTES)]
