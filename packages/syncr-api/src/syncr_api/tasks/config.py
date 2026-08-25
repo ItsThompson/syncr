@@ -43,6 +43,7 @@ TASKS_PREFIX: Final = f"{API_PREFIX}/tasks"
 # Relative to the router's prefix.
 TASK_PATH: Final = "/{task_id}"
 TASK_COMPLETE_PATH: Final = "/{task_id}/complete"
+TASK_REOPEN_PATH: Final = "/{task_id}/reopen"
 
 TASKS_TABLE: Final = "tasks"
 

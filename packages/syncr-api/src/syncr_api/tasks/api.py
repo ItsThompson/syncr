@@ -1,4 +1,4 @@
-"""The five backlog routes.
+"""The six backlog routes.
 
 Thin, on purpose. Each handler validates a body, resolves who is asking, calls exactly one
 service method, and maps the result onto a response shape. No authorization decision and no
@@ -16,7 +16,10 @@ retry can be replayed from a stored body the way every other unsafe method's can
 
 Every unsafe method takes the idempotency guard. A repeat of any of them is recoverable on its
 own, so none demands the header: capture is the one that would create a second row, and the
-other three converge, so the guard is offered rather than required.
+others converge, so the guard is offered rather than required. Each route declares its own
+principal dependency rather than leaning on the guard's, because what the guard resolves as a
+sub-dependency says nothing about which credential the route itself accepts: ``capture`` and
+``complete`` take either credential, and the rest are browser-only.
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ from fastapi import APIRouter, Query
 from syncr_api.accounts.injection import ClientPrincipalDep, PrincipalDep
 from syncr_api.core.patches import stated, stated_unless_null
 from syncr_api.idempotency.injection import IdempotencyGuardDep
-from syncr_api.tasks.config import TASK_COMPLETE_PATH, TASK_PATH
+from syncr_api.tasks.config import TASK_COMPLETE_PATH, TASK_PATH, TASK_REOPEN_PATH
 from syncr_api.tasks.declarations import TaskChange, TaskDeclaration
 from syncr_api.tasks.injection import TaskServiceDep
 from syncr_api.tasks.schemas import (
@@ -53,6 +56,7 @@ CAPTURE_ROUTE = "tasks.capture"
 UPDATE_ROUTE = "tasks.update"
 COMPLETE_ROUTE = "tasks.complete"
 DROP_ROUTE = "tasks.drop"
+REOPEN_ROUTE = "tasks.reopen"
 
 
 def _as_task(record: TaskRecord) -> TaskResponse:
@@ -194,3 +198,18 @@ async def complete_task(
         return _as_task(await service.complete(principal, task_id))
 
     return await guard.once(COMPLETE_ROUTE, TaskResponse, complete)
+
+
+@router.post(TASK_REOPEN_PATH, summary="Reopen a dropped task. Recorded time is left intact")
+async def reopen_task(
+    task_id: UUID,
+    principal: PrincipalDep,
+    guard: IdempotencyGuardDep,
+    service: TaskServiceDep,
+) -> TaskResponse:
+    """Return a dropped task to open. A completed one is refused: its completion was counted."""
+
+    async def reopen() -> TaskResponse:
+        return _as_task(await service.reopen(principal, task_id))
+
+    return await guard.once(REOPEN_ROUTE, TaskResponse, reopen)

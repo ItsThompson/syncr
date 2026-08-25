@@ -819,6 +819,75 @@ def test_dropping_a_completed_task_is_a_409(
 
 
 # --------------------------------------------------------------------------------
+# Reopen
+# --------------------------------------------------------------------------------
+
+
+def test_reopening_a_dropped_task_returns_it_to_open_with_the_recorded_time_untouched(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # A mistaken drop costs nothing the user had already recorded: the minutes confirmed before
+    # the drop survive it, and the row is eligible for the next solve again.
+    created = capture(http, signed_in, areaId=area, title="Leetcode", estimateMinutes=90)
+    record_progress(live_database_url, owner.tenant_id, 30)
+    assert http.delete(f"{TASKS}/{created['id']}", headers=signed_in).status_code == HTTPStatus.OK
+
+    reopened = http.post(f"{TASKS}/{created['id']}/reopen", headers=signed_in)
+
+    assert reopened.status_code == HTTPStatus.OK, reopened.text
+    body = reopened.json()
+    assert body["status"] == TaskStatus.OPEN.value
+    assert body["recordedMinutes"] == 30
+    assert body["remainingMinutes"] == 60
+    assert body["completedAt"] is None
+    assert body["eligibleForSolving"] is True
+    [row] = task_rows(live_database_url, owner.tenant_id)
+    assert row.status is TaskStatus.OPEN
+    assert row.recorded_minutes == 30
+    assert row.completed_at is None
+
+
+def test_reopening_an_already_open_task_answers_200_and_changes_nothing(
+    http: TestClient, signed_in: dict[str, str], area: str
+) -> None:
+    created = capture(http, signed_in, areaId=area, title="Leetcode")
+
+    response = http.post(f"{TASKS}/{created['id']}/reopen", headers=signed_in)
+
+    assert response.status_code == HTTPStatus.OK, response.text
+    assert response.json() == created
+
+
+def test_reopening_a_completed_task_is_a_409_naming_capture_as_the_remedy(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # A completion was counted by a report and a drop never was, so only the drop comes back.
+    created = capture(http, signed_in, areaId=area, title="Leetcode")
+    assert (
+        http.post(f"{TASKS}/{created['id']}/complete", headers=signed_in).status_code
+        == HTTPStatus.OK
+    )
+
+    response = http.post(f"{TASKS}/{created['id']}/reopen", headers=signed_in)
+
+    assert response.status_code == Conflict.status, response.text
+    problem = response.json()
+    assert problem["type"] == Conflict.type
+    assert "already completed" in problem["detail"]
+    assert "apture" in problem["detail"]
+    [row] = task_rows(live_database_url, owner.tenant_id)
+    assert row.status is TaskStatus.COMPLETED
+
+
+# --------------------------------------------------------------------------------
 # Idempotency and the input version
 # --------------------------------------------------------------------------------
 
@@ -861,7 +930,7 @@ def test_the_same_key_on_a_different_capture_is_refused(
     assert len(task_rows(live_database_url, owner.tenant_id)) == 1
 
 
-@pytest.mark.parametrize("method", ["post", "patch", "delete", "complete"])
+@pytest.mark.parametrize("method", ["post", "patch", "delete", "complete", "reopen"])
 def test_every_unsafe_method_accepts_an_idempotency_key(
     http: TestClient, signed_in: dict[str, str], area: str, method: str
 ) -> None:
@@ -876,6 +945,10 @@ def test_every_unsafe_method_accepts_an_idempotency_key(
         ),
         "delete": lambda: http.delete(f"{TASKS}/{created['id']}", headers=headers),
         "complete": lambda: http.post(f"{TASKS}/{created['id']}/complete", headers=headers),
+        "reopen": lambda: (
+            http.delete(f"{TASKS}/{created['id']}", headers=signed_in),
+            http.post(f"{TASKS}/{created['id']}/reopen", headers=headers),
+        )[1],
     }
 
     response = requests[method]()
@@ -955,6 +1028,31 @@ def test_the_week_input_version_is_bumped_by_every_mutating_route(
     second = capture(http, signed_in, areaId=area, title="Second")
     http.delete(f"{TASKS}/{second['id']}", headers=signed_in)
     assert version_rows(live_database_url, owner.tenant_id)[week] == 6
+
+
+def test_reopening_bumps_the_current_week_onwards_and_touches_no_earlier_week(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    # A reopened task is a solve input again, so the weeks a solve may still place it in are
+    # invalidated from the week the user is living in onwards. A past week keeps the inputs it
+    # was computed with, whatever the backlog does today.
+    week = this_week()
+    track_week(live_database_url, owner.tenant_id, week)
+    track_week(live_database_url, owner.tenant_id, "2020-W01")
+    created = capture(http, signed_in, areaId=area, title="Leetcode")
+    http.delete(f"{TASKS}/{created['id']}", headers=signed_in)
+    versions = version_rows(live_database_url, owner.tenant_id)
+    assert versions[week] == 3
+
+    http.post(f"{TASKS}/{created['id']}/reopen", headers=signed_in)
+
+    versions = version_rows(live_database_url, owner.tenant_id)
+    assert versions[week] == 4
+    assert versions["2020-W01"] == 1
 
 
 def test_a_read_and_a_refused_mutation_bump_nothing(

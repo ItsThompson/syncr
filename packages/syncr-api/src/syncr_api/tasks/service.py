@@ -1,6 +1,6 @@
 """The Task service: authorization, the physics, the two Area checks, and the version bump.
 
-Six rules live here rather than anywhere else.
+Seven rules live here rather than anywhere else.
 
 **A capture needs a title and an Area.** Every other value has a default, and the one default
 that is derived rather than constant, the minimum chunk, is resolved here from the domain's own
@@ -41,6 +41,12 @@ answered with the stored task, its instant unmoved, because nothing about the in
 bump would supersede a running solve for no reason. Crossing between the two endings is a 409:
 completed is work that happened and survives in reports, dropped is work that will not.
 
+**Reopening runs the other direction, and only for a drop.** A mistaken drop costs nothing the
+user had already recorded: recorded minutes and created_at are untouched and the task returns to
+eligibility. A completed task is refused with a 409 naming capture as the remedy, because its
+completion was counted by a report and a drop never was. Reopening an already-open task answers
+with it unchanged, which is the same retried-request safety the endings grant themselves.
+
 ``authorize_tenant`` is called on the one row a caller addresses by identifier. Every row these
 methods touch was fetched through a repository scoped to the principal's own tenant, so its
 ``tenant_id`` IS the principal's, and the scoped ``SELECT`` is what turns another tenant's
@@ -77,6 +83,7 @@ from syncr_domain.tasks import (
     require_a_chunk_on_the_grid,
     require_a_chunk_that_fits,
     require_a_compatible_ending,
+    require_a_reopenable_task,
 )
 
 if TYPE_CHECKING:
@@ -307,6 +314,35 @@ class TaskService:
         """
         require_scope(principal, Scope.PLAN_WRITE)
         return await self._end(principal, task_id, ending=TaskStatus.DROPPED)
+
+    @measured("tasks")
+    async def reopen(self, principal: Principal, task_id: TaskId) -> TaskRecord:
+        """Return a dropped task to open, its recorded minutes and created_at untouched."""
+        require_scope(principal, Scope.PLAN_WRITE)
+        now = self._clock()
+        current = await self._require_task(principal, task_id)
+        with stated_rejection():
+            require_a_reopenable_task(current=current.status)
+        if current.status is TaskStatus.OPEN:
+            _log.info(
+                "tasks.task.reopened_again",
+                tenant_id=str(principal.tenant_id),
+                task_id=str(task_id),
+            )
+            return current
+
+        await self._tasks.reopen(task_id)
+        reopened = replace(current, status=TaskStatus.OPEN)
+        _log.info(
+            "tasks.task.reopened",
+            tenant_id=str(principal.tenant_id),
+            task_id=str(task_id),
+            recorded_minutes=reopened.recorded_minutes,
+            solve_input_changed=changes_a_solve_input(current, reopened),
+        )
+        if changes_a_solve_input(current, reopened):
+            await self._bump.from_the_week_holding(now)
+        return reopened
 
     async def _end(
         self, principal: Principal, task_id: TaskId, *, ending: TaskEnding

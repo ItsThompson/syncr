@@ -165,6 +165,18 @@ class TaskRepository(TenantScopedRepository):
             .values(status=ending, completed_at=at)
         )
 
+    async def reopen(self, task_id: TaskId) -> None:
+        """Return one dropped task to open, leaving every recorded figure exactly as it was.
+
+        The caller has checked the guard, so the row this reaches is a dropped one: its
+        ``completed_at`` is already the ``None`` an open row must carry, so the status alone
+        moves. ``recorded_minutes`` and ``created_at`` are absent on purpose, because a reopen
+        that cost the user anything would not be worth reaching for.
+        """
+        await self._session.execute(
+            self.scoped_update(TaskRow).where(TaskRow.id == task_id).values(status=TaskStatus.OPEN)
+        )
+
     def _filtered(
         self, *, area_id: AreaId | None, status: TaskStatus | None
     ) -> Select[tuple[TaskRow]]:

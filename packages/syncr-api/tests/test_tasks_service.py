@@ -23,6 +23,7 @@ raising the minimum above a stored estimate, and neither request names both numb
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -189,6 +190,14 @@ class FakeTaskRepository(TaskRepository):
             if row.id == task_id
             else row
             for row in self.rows
+        ]
+
+    async def reopen(self, task_id: TaskId) -> None:
+        # Mirrors the real statement's restraint: the status alone moves, so recorded time and
+        # created_at survive by never being named.
+        self.writes += 1
+        self.rows = [
+            replace(row, status=TaskStatus.OPEN) if row.id == task_id else row for row in self.rows
         ]
 
 
@@ -953,6 +962,75 @@ async def test_an_ended_task_is_still_editable_because_a_report_can_be_corrected
     assert corrected.title == "a better title"
     assert corrected.status is TaskStatus.DROPPED
     assert tasks.writes == 1
+
+
+async def test_reopening_a_dropped_task_returns_it_to_open_with_the_recorded_figures_untouched(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The whole point of the route: a mistaken drop costs nothing the user had already recorded,
+    # so recorded minutes and created_at survive and eligibility returns with them.
+    area = an_area(principal.tenant_id)
+    stored = a_task(
+        principal.tenant_id,
+        area.id,
+        status=TaskStatus.DROPPED,
+        recorded_minutes=30,
+        created_at=NOW,
+    )
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored], now=LATER)
+
+    reopened = await service.reopen(principal, stored.id)
+
+    assert reopened.status is TaskStatus.OPEN
+    assert reopened.recorded_minutes == 30
+    assert reopened.created_at == NOW
+    assert reopened.completed_at is None
+    assert reopened.is_eligible_for_solving() is True
+    assert tasks.writes == 1
+    assert tasks.rows[0].status is TaskStatus.OPEN
+    assert versions.bumped == [WeekRange(first=WEEK_31, last=None)]
+
+
+async def test_reopening_an_already_open_task_writes_nothing_and_bumps_nothing(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # Reopen asks for open and open is what the task already is: the retried-request safety every
+    # converging mutation on this resource grants. A bump would supersede a running solve over a
+    # change that did not happen.
+    area = an_area(principal.tenant_id)
+    stored = a_task(principal.tenant_id, area.id)
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored], now=LATER)
+
+    again = await service.reopen(principal, stored.id)
+
+    assert again.status is TaskStatus.OPEN
+    assert tasks.writes == 0
+    assert versions.bumped == []
+
+
+async def test_reopening_a_completed_task_is_a_conflict_naming_capture_and_changes_nothing(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    # The half that protects a report: its completion was counted the day it happened, and no
+    # route may uncount it. Capture is the remedy the refusal names.
+    area = an_area(principal.tenant_id)
+    stored = a_task(
+        principal.tenant_id,
+        area.id,
+        status=TaskStatus.COMPLETED,
+        completed_at=NOW,
+        recorded_minutes=45,
+    )
+    service, tasks = build(principal, versions, areas=[area], tasks=[stored], now=LATER)
+
+    with pytest.raises(Conflict) as refused:
+        await service.reopen(principal, stored.id)
+
+    assert "already completed" in refused.value.detail
+    assert "capture" in refused.value.detail.lower()
+    assert tasks.writes == 0
+    assert tasks.rows[0].status is TaskStatus.COMPLETED
+    assert versions.bumped == []
 
 
 # --------------------------------------------------------------------------------

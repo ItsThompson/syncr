@@ -11,9 +11,10 @@ two of the task's own numbers, so it is stated once, in the pure package, and th
 what turns that rejection into the 422 the boundary owes it. That is why there is no comparison
 of a chunk against an estimate anywhere in this module or in ``schemas.py``.
 
-The one rejection that is not a 422 is a task that already ended. Completed and dropped say
-opposite things, so crossing between them is a conflict with the current state rather than a bad
-value in the request.
+The one rejection that is not a 422 there is a task that already ended. Completed and dropped
+say opposite things, so crossing between them is a conflict with the current state rather than a
+bad value in the request. Reopening joins it: a completed task cannot come back, and that refusal
+is also a conflict with the state, naming capture as the remedy.
 """
 
 from __future__ import annotations
@@ -25,7 +26,12 @@ from syncr_api.core.errors import Conflict, FieldError, ValidationFailed
 from syncr_api.tasks.config import TASK_RESOURCE
 from syncr_domain.projects import ProjectAreaMismatch
 from syncr_domain.snap import SNAP_MINUTES
-from syncr_domain.tasks import ChunkLargerThanEstimate, ChunkOffTheGrid, TaskAlreadyEnded
+from syncr_domain.tasks import (
+    ChunkLargerThanEstimate,
+    ChunkOffTheGrid,
+    TaskAlreadyEnded,
+    TaskIsCompleted,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -91,4 +97,10 @@ def stated_rejection() -> Iterator[None]:
             f"That {TASK_RESOURCE} was not changed: {error}. A completed task is work that "
             "happened and survives in reports, and a dropped one is work that will not, so one "
             "cannot become the other. The task still reads as it did."
+        ) from error
+    except TaskIsCompleted as error:
+        raise Conflict(
+            f"That {TASK_RESOURCE} was not changed: {error}. A completion was counted by a "
+            "report the day it happened, and reopening the task would make that report lie. "
+            "Capture a new task instead: a mistaken drop is the only ending that comes back."
         ) from error

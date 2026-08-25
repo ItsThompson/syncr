@@ -1,4 +1,4 @@
-"""The backlog: tasks, their physics, and the five routes that capture and settle them.
+"""The backlog: tasks, their physics, and the six routes that capture, settle, and reopen them.
 
 A task is one piece of work the user wants scheduled. Roughly a quarter of the blocks in the
 reference weeks are task work; the rest are routines, habits, and anchors, which is why a task is
@@ -31,5 +31,5 @@ Import layout, so a reader knows where to look:
 | ``schemas.py`` | the wire shapes |
 | ``repository.py`` | tenant-scoped persistence, including the count the header states |
 | ``service.py`` | authorization, the physics, the Area checks, and the solve-input bump |
-| ``api.py`` | the five routes |
+| ``api.py`` | the six routes |
 """
