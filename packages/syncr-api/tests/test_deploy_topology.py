@@ -25,6 +25,7 @@ tier skips without a database.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from typing import TYPE_CHECKING, Any, Final
@@ -152,6 +153,11 @@ def _compose_config(
         command += ["--profile", profile]
     command += ["config", "--format", "json"]
     environ = {"PATH": "/usr/bin:/bin:/usr/local/bin"}
+    # The compose plugin is discovered under the user's home (`~/.docker/cli-plugins`), so an
+    # environment with no HOME finds a docker binary but no `compose` subcommand.
+    for carried in ("HOME", "DOCKER_CONFIG"):
+        if carried in os.environ:
+            environ[carried] = os.environ[carried]
     return subprocess.run(  # noqa: S603 - a fixed argv, and no shell
         command,
         cwd=repo_root(),
