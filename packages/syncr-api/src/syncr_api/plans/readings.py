@@ -18,7 +18,7 @@ can answer them: they are facts about what the week holds. ``dropped_legs`` is t
 for the same reason, and a figure rather than something a client counts out of the payload:
 an absence explained on the grid is still one fact about the week.
 
-## Three of the nine are worth stating exactly
+## Four of the nine are worth stating exactly
 
 ``scheduled_minutes`` is a COVERAGE figure, unioned and clipped to the week. Unioned because a
 minute the user deliberately double-booked is one scheduled minute rather than two, and clipped
