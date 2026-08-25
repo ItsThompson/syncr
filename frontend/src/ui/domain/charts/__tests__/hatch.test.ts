@@ -201,16 +201,18 @@ describe("which Area holds which hatch", () => {
     expect(hatchFor(UNALLOCATED)).toBeNull();
   });
 
-  /* PAST TWELVE AREAS THE PAIR REPEATS, and this is the measurement of that rather than a claim about it. The
-   * wire carries a step of the ramp, not the deal, so a thirteenth Area arrives holding the first step and a
-   * chart cannot tell the two apart. Identity then rests on the NAME alone, which is why every wedge is
-   * labelled: the design language and `syncr_domain.pigments` both say "the hatch and the Area name", and the
-   * hatch half is not available in this case. */
-  it("repeats with the pigment past twelve, so the name is what separates a thirteenth Area", () => {
-    const thirteenth = AREA_PIGMENTS[0];
-
-    expect(hatchFor(thirteenth)).toBe(hatchFor(AREA_PIGMENTS[0]));
-    expect(new Set(Object.values(AREA_HATCHES)).size).toBeLessThan(AREA_PIGMENTS.length);
+  /* THE TWELVE STEPS ARE DEALT ONE TO AN AREA AND NEVER SHARED, so there is no collision case to measure any
+   * more: the deal skips the steps already held, a declaration past twelve is refused, and a patch onto a step
+   * another Area holds is refused too. What this kit can still assert about that guarantee is its own model of
+   * it: the ramp is twelve DISTINCT steps, and the ledger answers for each on its own, so no chart can ever
+   * hold two categories that share a step. The redundancy channel may repeat across steps -- six hatches over
+   * twelve pigments -- because the pigment separates there; what never repeats is the step under two names. */
+  it("deals twelve distinct steps, one answer each, so two Areas never hold one", () => {
+    expect(AREA_PIGMENTS.length).toBe(12);
+    expect(new Set(AREA_PIGMENTS).size).toBe(AREA_PIGMENTS.length);
+    for (const step of AREA_PIGMENTS) {
+      expect(hatchFor(step)).toBe(AREA_HATCHES[step]);
+    }
   });
 });
 
