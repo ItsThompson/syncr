@@ -7,7 +7,7 @@ lookup, derives no domain projection, and reads no clock, so it is testable agai
 
 ## The pipeline, and the count that is load-bearing
 
-**Eighteen resolutions over nineteen repository reads.** The figure is stated once, here, and the
+**Eighteen resolutions over twenty repository reads.** The figure is stated once, here, and the
 bullets below are counted to match it, because a latency budget and an alert are calibrated to
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
 histogram's alert is read against that budget. **The budget and the alert were both set against a
@@ -33,7 +33,8 @@ assemble(iso_week, now, extra_adjustment=None)
   │     each concrete one named and charged by the routine or habit row it binds
   ├── expand habit cadence into occurrences, keyed by index in expansion order
   │     ├── derive each rotation cursor from the outcome log
-  │     └── apply outstanding debt, capped
+  │     ├── apply outstanding debt, capped
+  │     └── read each long interval's last occurrence, bounded to the longest declared interval
   ├── read the active weight set's duration multipliers, gated by maturity
   ├── read the anchor types, and the anchors of the span they widen it to, pairing each
   │     anchor with the type it carries
@@ -84,7 +85,7 @@ from typing import TYPE_CHECKING
 from prometheus_client import Histogram
 
 from syncr_api.anchors.reach import casting_span
-from syncr_api.plans.cadence import habit_occurrences
+from syncr_api.plans.cadence import habit_occurrences, log_window
 from syncr_api.plans.calendar_occupancy import calendar_occupancy, typed_anchors
 from syncr_api.plans.candidates import reductions_of
 from syncr_api.plans.demand import deadline_demands, eligible_tasks, task_demands
@@ -147,10 +148,12 @@ _log = get_logger("syncr.plans")
 RESOLUTION_COUNT = 18
 
 # How many repository reads one assembly performs. The dominant cost of every request that
-# returns a live verdict, which is what the assembly histogram exists to make visible. Nineteen
+# returns a live verdict, which is what the assembly histogram exists to make visible. Twenty
 # reads over eighteen collaborators: the concession table is read once per week, for this week and
-# for the one whose boundary-crossing occurrences this week inherits.
-REPOSITORY_READ_COUNT = 19
+# for the one whose boundary-crossing occurrences this week inherits, and the outcome log is read
+# twice, whole for the two derivations that accumulate over history and bounded to the longest
+# declared interval for the last occurrence the due rule reads.
+REPOSITORY_READ_COUNT = 20
 
 # The version an assembly of a week nothing has referenced reports. A missing row is a MISMATCH
 # to the conditional write rather than a match, so a first solve's write is superseded and its
@@ -311,9 +314,14 @@ class WeekAssembler:
         )
 
         multipliers = DurationMultipliers.of(await self._weights.active())
+        habit_ids = [record.id for record in habits]
         occurrences = habit_occurrences(
             habits,
-            outcomes=await self._outcomes.read([habit.id for habit in habits]),
+            outcomes=await self._outcomes.read(habit_ids),
+            last_recorded=await self._outcomes.latest(
+                habit_ids, since=log_window(habits, span=span)
+            ),
+            span=span,
             now=now,
             multipliers=multipliers,
         )

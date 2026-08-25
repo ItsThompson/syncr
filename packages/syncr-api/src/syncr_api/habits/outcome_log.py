@@ -25,9 +25,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from syncr_domain.identifiers import HabitId
+    from syncr_domain.intervals import Instant
     from syncr_domain.outcomes import HabitOutcome
 
 
@@ -64,6 +65,19 @@ class HabitOutcomeReader(Protocol):
         """
         ...
 
+    async def latest(
+        self, habit_ids: Sequence[HabitId], *, since: Instant
+    ) -> Mapping[HabitId, Instant | None]:
+        """When each habit last recorded an occurrence, among rows on or after ``since``.
+
+        One entry per requested id, ``None`` where the window holds no row. This is the interval
+        cadence's due rule, and it is the one question over the log whose answer needs only recent
+        history: an occurrence older than the longest interval the tenant declares cannot make any
+        present week due. Callers bound the window for that reason, and a reader that answered by
+        scanning the whole log would spend the tenant's history on dates nothing reads.
+        """
+        ...
+
 
 class NoRecordedOutcomes:
     """An empty log, for the suite that asserts what a habit with no recorded outcome reads as.
@@ -79,3 +93,8 @@ class NoRecordedOutcomes:
 
     async def read(self, habit_ids: Sequence[HabitId]) -> tuple[HabitOutcome, ...]:
         return ()
+
+    async def latest(
+        self, habit_ids: Sequence[HabitId], *, since: Instant
+    ) -> Mapping[HabitId, Instant | None]:
+        return {}

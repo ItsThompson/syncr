@@ -17,6 +17,12 @@ than a filter that could silently narrow. The at-most-one-row-per-occurrence pre
 protocol states is held by the write path's identity, ``(tenant_id, block_id)``, so this reader has
 no rule to apply for it: a habit occurrence in one week is one block, and one block is one row.
 
+**``latest`` is the bounded half of the seam.** The week assembler's interval rule asks when each
+habit last recorded an occurrence, and the answer only needs rows as far back as one declared
+interval past the week being assembled. That bound keeps the read inside the range the expression
+index serves rather than walking every row of the tenant's history for instants the rule never
+reads, and it is why the method takes ``since`` rather than answering from an unbounded read.
+
 **Neither predicate is the correctness boundary, and saying so matters.** Both derivations filter
 the rows they are handed by ``habit_id`` themselves, so a read that returned every row of the log
 would still produce the right cursor and the right debt figure. What the two predicates buy is the
@@ -45,11 +51,12 @@ from syncr_domain.identity import BindingKind
 from syncr_domain.outcomes import HabitOutcome, OutcomeState
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from sqlalchemy import Select
 
     from syncr_domain.identifiers import HabitId
+    from syncr_domain.intervals import Instant
 
 
 class HabitOutcomeLog(TenantScopedReader):
@@ -82,6 +89,38 @@ class HabitOutcomeLog(TenantScopedReader):
             BlockOutcome.binding[KIND].astext == BindingKind.HABIT.value,
             BlockOutcome.binding[ENTITY_ID].astext.in_([str(one) for one in habit_ids]),
         )
+
+    async def latest(
+        self, habit_ids: Sequence[HabitId], *, since: Instant
+    ) -> Mapping[HabitId, Instant | None]:
+        """When each habit last recorded an occurrence, among the rows on or after ``since``.
+
+        One entry per requested id, with ``None`` where the window holds no row, so a caller reads
+        "never recorded" out of the mapping instead of an absent key. The reduction happens here
+        rather than in the caller because the rows come back in whatever order the index holds them
+        and a latest-of is order-dependent: two readers of one unordered read could otherwise pick
+        different rows.
+        """
+        if not habit_ids:
+            return {}
+        rows = await self._session.scalars(self.recent_statement(habit_ids, since=since))
+        latest_seen: dict[HabitId, Instant | None] = dict.fromkeys(habit_ids)
+        for row in rows:
+            outcome = _as_habit_outcome(row)
+            seen = latest_seen[outcome.habit_id]
+            if seen is None or outcome.occurred_at > seen:
+                latest_seen[outcome.habit_id] = outcome.occurred_at
+        return latest_seen
+
+    def recent_statement(
+        self, habit_ids: Sequence[HabitId], *, since: Instant
+    ) -> Select[tuple[BlockOutcome]]:
+        """The bounded read :meth:`latest` is taken over. Public so the SQL itself can be asserted.
+
+        The window predicate sits beside the projection's own two, so the statement still leads
+        with everything the expression index reads and the bound narrows the range within it.
+        """
+        return self.statement(habit_ids).where(BlockOutcome.occurred_at >= since)
 
 
 def _as_habit_outcome(row: BlockOutcome) -> HabitOutcome:

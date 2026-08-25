@@ -44,7 +44,7 @@ has no panel to show it on.
 ## The cost, and which branch pays it
 
 The slot branch is free to this module. The fallback is a whole assembly, which is eighteen
-resolutions over nineteen reads and the dominant cost of any request that probes, plus arithmetic
+resolutions over twenty reads and the dominant cost of any request that probes, plus arithmetic
 that is sub-millisecond beside it. Both callers are reads with a p95 budget, so the branch that
 pays is the one whose week has a plan and no current proposal -- which is every week between an
 approval and the next solve.
