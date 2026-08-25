@@ -362,20 +362,30 @@ def captured_from_slot(
 def preference_in_effect(*chain: Preference | None) -> Preference | None:
     """The one preference in effect, from a chain ordered most specific first.
 
-    An override's own preference, or its Area's, or none: one of them entire, never two
-    merged. A habit that declares windows and no ideal duration therefore has no ideal
-    duration, whatever its Area declares, which is what makes an override a replacement.
+    An override's own preference, then its Area's, then that Area's parent's, out to the root:
+    one of them entire, never two merged. A habit that declares windows and no ideal duration
+    therefore has no ideal duration, however deep its ancestry goes, which is what makes an
+    override a replacement at every depth.
 
-    An Area's preference may only be the LAST link, because it is the root of every chain. A
-    caller that passed it first would make every override inert, and every window the user
-    authored on a habit would silently stop being read.
+    The non-shadowing property the guard asserts is positional, because the function sees the
+    chain and not the hierarchy behind it: no Area link may stand ahead of an override link.
+    Every Area link therefore trails every override, so among the Area links the nearest
+    ancestor necessarily stands before its own ancestors and wins over them. A caller that put
+    an Area's preference ahead of an override would make that override inert, and every window
+    the user authored on it would silently stop being read, so a chain built in the wrong order
+    is refused rather than resolved.
     """
-    last = len(chain) - 1
+    first_area_position: int | None = None
     for position, candidate in enumerate(chain):
-        if candidate is not None and candidate.owner.is_an_area and position != last:
+        if candidate is None:
+            continue
+        if candidate.owner.is_an_area:
+            if first_area_position is None:
+                first_area_position = position
+        elif first_area_position is not None:
             raise PreferenceChainOutOfOrder(
-                f"an Area's preference is the root of a chain and this one is at position "
-                f"{position} of {len(chain)}. Ahead of an override it would shadow it, and the "
-                "windows the user set on the override would never be read"
+                f"an Area's preference is at position {first_area_position} of {len(chain)}, "
+                f"ahead of an override at {position}. Ahead of an override it would shadow it, "
+                "and the windows the user set on the override would never be read"
             )
     return next((candidate for candidate in chain if candidate is not None), None)

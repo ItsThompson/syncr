@@ -246,6 +246,74 @@ class TestP5AnOverrideReplacesWholly:
         assert in_effect.owner == HABIT
 
 
+class TestTheChainClimbsTheAncestry:
+    """The guard and the pick over chains longer than two links.
+
+    The walk that builds these chains lives where the hierarchy lives; this class states what
+    :func:`preference_in_effect` owes any caller that hands it one: nearest link wins, one
+    preference entire, and a chain with an Area link ahead of an override raises rather than
+    resolving.
+    """
+
+    def test_an_override_wins_over_a_whole_ancestry(self) -> None:
+        parent = a_preference(AREA)
+        child = a_preference(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4()))
+        habit = a_preference(HABIT)
+
+        assert preference_in_effect(habit, child, parent) is habit
+
+    def test_the_nearest_ancestor_wins_over_its_own_ancestors(self) -> None:
+        parent = a_preference(AREA)
+        child = a_preference(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4()))
+
+        assert preference_in_effect(None, child, parent) is child
+
+    def test_an_ancestor_beyond_an_undeclared_one_is_still_reached(self) -> None:
+        # A chain carries every link its walker walked, declared or not: the placeholders are
+        # what keep the positions honest, and the resolution skips them.
+        grandparent = a_preference(AREA)
+
+        assert preference_in_effect(None, None, grandparent) is grandparent
+
+    def test_among_area_links_alone_the_nearest_wins(self) -> None:
+        parent = a_preference(AREA)
+        child = a_preference(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4()))
+
+        assert preference_in_effect(child, parent) is child
+
+    def test_an_override_that_states_no_ideal_duration_has_none_at_any_depth(self) -> None:
+        # Whole replacement holds across a two-link ancestry: the Area's duration does not
+        # reach a habit that declared windows without one.
+        parent = a_preference(AREA, preferred_duration_minutes=90)
+        child = a_preference(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4()))
+        habit = a_preference(HABIT, preferred_duration_minutes=None)
+
+        in_effect = preference_in_effect(habit, child, parent)
+
+        assert in_effect is not None
+        assert in_effect.preferred_duration_minutes is None
+
+    def test_an_area_link_anywhere_ahead_of_an_override_is_refused(self) -> None:
+        # The restated guard over a longer chain: the offending link sits between two legal ones,
+        # so a rule that only checked the first position would miss it.
+        parent = a_preference(AREA)
+        child = a_preference(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4()))
+        habit = a_preference(HABIT)
+
+        with pytest.raises(PreferenceChainOutOfOrder, match="position 0 of 3"):
+            preference_in_effect(parent, habit, child)
+
+    def test_the_guard_names_the_first_area_link_even_when_several_precede(self) -> None:
+        # The refusal points at the link that does the shadowing, not at the override that
+        # found it, so the nearest Area link is the one named however deep the chain.
+        grandparent = a_preference(AREA)
+        parent = a_preference(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=uuid4()))
+        habit = a_preference(HABIT)
+
+        with pytest.raises(PreferenceChainOutOfOrder, match="position 0 of 3"):
+            preference_in_effect(grandparent, parent, habit)
+
+
 class TestP2CaptureFromASlotIsAlwaysSoft:
     def test_the_captured_preference_is_soft(self) -> None:
         captured = captured_from_slot(owner=HABIT, windows=(MIDDAY,))
