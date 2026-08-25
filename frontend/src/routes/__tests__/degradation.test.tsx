@@ -30,6 +30,7 @@ import {
   recordingHandler,
 } from "../../testing/apiStub";
 import { indicatorsIn } from "../../testing/indicators";
+import { noticeSurfaces } from "../../testing/notices";
 import { renderAt } from "../../testing/renderRoute";
 import { EVENT_TYPES, type EventType } from "../../api/events";
 import { buildAreas as buildTodayAreas, buildDay } from "../today/__tests__/fixtures";
@@ -77,10 +78,6 @@ function dayWithAnAnchor() {
     blockCount: 1,
     presumedCount: 0,
   });
-}
-
-function noticeSurfaces(container: ParentNode, pigment: string): Element[] {
-  return [...container.querySelectorAll(`.notice--${pigment}`)];
 }
 
 describe("a solve that produced no plan", () => {
@@ -159,6 +156,16 @@ describe("a write the api refused", () => {
 });
 
 describe("a feed that can no longer be read", () => {
+  const failing = buildSource({
+    displayName: "Uni timetable",
+    state: "error",
+    syncState: buildSyncState({
+      lastSuccessAt: staleSince(1),
+      lastAttemptAt: staleSince(1),
+      lastError: null,
+    }),
+  });
+
   /* THE NOTICE IS THE API'S OWN, arrived on the source list. Its sync state is deliberately FRESH: a surface that
    * computed staleness from the row would stay silent, so rendering the notice at all is the proof it renders
    * what the api composed. The days in doubt are named in the notice's scope, which is how a day marks itself
@@ -183,16 +190,6 @@ describe("a feed that can no longer be read", () => {
       scope: { screen: "settings", sourceId: failing.id, dates },
     },
   ];
-
-  const failing = buildSource({
-    displayName: "Uni timetable",
-    state: "error",
-    syncState: buildSyncState({
-      lastSuccessAt: staleSince(1),
-      lastAttemptAt: staleSince(1),
-      lastError: null,
-    }),
-  });
 
   const sourcesRead = (notices: unknown[] = []) =>
     jsonHandler("/api/v1/calendar-sources", {

@@ -15,14 +15,16 @@
  * The composer's own suite (`packages/syncr-api/tests/test_feed_notices.py`) owns the threshold's behaviour;
  * the integration suite owns its arrival on the wire. This file owns the client side of the seam. */
 
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { appSourceDir } from "../../../scripts/lib/paths.ts";
 import { apiServer } from "../../testing/apiServer";
 import { jsonHandler } from "../../testing/apiStub";
+import { noticeSurfaces } from "../../testing/notices";
 import { renderAt } from "../../testing/renderRoute";
 import { SOURCE_TIMETABLE, buildSource } from "../settings/__tests__/fixtures";
 import { settingsHandlers } from "../settings/__tests__/handlers";
@@ -36,9 +38,9 @@ const THRESHOLD_PATTERN = new RegExp(
   `${PATTERN_PARTS[0]}${PATTERN_PARTS[1]}|${PATTERN_PARTS[2]}${PATTERN_PARTS[3]}`,
 );
 
-/** The surfaces that render the api's notice. A staleness computation here is a second opinion on one fact. */
-const SURFACE_DIRS = new Set(["routes/today"]);
-const SURFACE_FILES = new Set(["routes/settings/sourceNotices.ts"]);
+/** The surfaces that render the api's notice. A staleness computation here is a second opinion on one fact.
+ * Whole directories, not named files: a differently-named module on the same screen evades nothing. */
+const SURFACE_DIRS = new Set(["routes/today", "routes/settings"]);
 
 /** Every production source file under the app, as [relative path, text]. Tests are not production. */
 async function productionSources(root: string): Promise<[string, string][]> {
@@ -70,24 +72,36 @@ describe("no client surface computes staleness for itself", () => {
     expect(offenders).toEqual([]);
   });
 
-  /* THE POSITIVE CONTROL. Without it the pattern above could be unmatchable -- too narrow, or anchored wrong --
-   * and every surface would pass while computing whatever it liked. */
-  it("reports a surface that recomputes staleness, which is what the scan exists to refuse", async () => {
-    const planted = [
-      "export function isFeed".concat("Stale(source: unknown): boolean { return true; }"),
-    ].join("\n");
+  /* THE POSITIVE CONTROL, THROUGH THE WHOLE PIPELINE. Asserting the pattern alone would let the walk narrow to
+   * nothing -- wrong root, wrong filter -- while every rule passed. A planted tree proves the scan can actually
+   * see a file, and says which one. */
+  it("reports a surface that recomputes staleness, found by walking a planted tree", async () => {
+    const tree = await mkdtemp(path.join(tmpdir(), "staleness-scan-"));
+    try {
+      await writeFile(path.join(tree, "planted.ts"), [
+        "export function isFeed".concat("Stale(source: unknown): boolean { return true; }"),
+      ]);
+      await writeFile(path.join(tree, "clean.ts"), "export const nothingSuspicious = true;\n");
 
-    expect(THRESHOLD_PATTERN.test(planted)).toBe(true);
+      const offenders = (await productionSources(tree)).filter(([, text]) =>
+        THRESHOLD_PATTERN.test(text),
+      );
+
+      expect(offenders.map(([file]) => file)).toEqual(["planted.ts"]);
+    } finally {
+      await rm(tree, { recursive: true, force: true });
+    }
   });
 
   /* The notice can only come from scope.dates and the response's own list, so any reading of the failure
-   * fields on either surface is a threshold comparison waiting to be written. (The rejection panel's `since`
-   * reads the last success to state an instant; it decides nothing from it.) */
+   * fields anywhere on either screen is a threshold comparison waiting to be written. Whole directories are
+   * scanned, because a differently-named module on the same screen evades a named-file ban. (The rejection
+   * panel's `since` and the sources table read the last success to state an instant; neither decides anything
+   * from it.) */
   it("reads no failure state on either surface, where only the api's notices are read", async () => {
     const sources = await productionSources(appSourceDir);
-    const surfaces = sources.filter(
-      ([file]) =>
-        SURFACE_DIRS.has(file.split("/").slice(0, 2).join("/")) || SURFACE_FILES.has(file),
+    const surfaces = sources.filter(([file]) =>
+      SURFACE_DIRS.has(file.split("/").slice(0, 2).join("/")),
     );
 
     expect(surfaces.length).toBeGreaterThan(1);
@@ -173,7 +187,7 @@ describe("changing the server figure moves both surfaces with no client edit", (
     renderAt("/today");
 
     const notice = await waitFor(() => {
-      const found = [...document.querySelectorAll(".notice--amber")];
+      const found = noticeSurfaces(document.body, "amber");
       expect(found).toHaveLength(1);
       return found[0];
     });
