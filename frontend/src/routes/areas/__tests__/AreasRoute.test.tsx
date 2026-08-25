@@ -126,6 +126,26 @@ describe("the Areas screen", () => {
     expect(headers).not.toContain("Pigment");
   });
 
+  /* THE SHEET DECLARES ITS COLUMNS, and the Area column is the one that absorbs the surplus: every other
+   * column holds a figure or one control at the width it declares, so a long Area name spends its own row's
+   * height instead of reshaping the figures a reader compares down their columns. Read from the style
+   * ATTRIBUTE: jsdom's style object drops a `calc()` it cannot parse. */
+  it("declares the Area column as the one that absorbs the surplus", async () => {
+    const table = await renderAreas();
+
+    const widths = [...table.querySelectorAll("col")].map((col) => col.getAttribute("style"));
+
+    expect(widths).toEqual([
+      "width: calc(100% - (96px + 56px + 88px + 64px + 72px + 240px));",
+      "width: 96px;",
+      "width: 56px;",
+      "width: 88px;",
+      "width: 64px;",
+      "width: 72px;",
+      "width: 240px;",
+    ]);
+  });
+
   it("renders a row per Area, with its floor, share, hours and signed deviation", async () => {
     const table = await renderAreas();
 
@@ -306,7 +326,7 @@ describe("declaring an Area", () => {
     expect(screen.getByText("2 of 12 pigments in use")).toBeInTheDocument();
   });
 
-  it("states that identity rests on the hatch and the name once a step repeats", async () => {
+  it("states the full ramp without any shared-step sentence", async () => {
     const areas = buildThirteenAreas();
     await renderAreas({
       areas,
@@ -315,8 +335,11 @@ describe("declaring an Area", () => {
       }),
     });
 
-    expect(screen.getByText(areas.ramp.statement as string)).toBeInTheDocument();
     expect(screen.getByText("12 of 12 pigments in use")).toBeInTheDocument();
+    /* The api serves no sentence about a shared step and this screen renders none, so no wording
+     * about what separates two Areas can drift between the wire and the panel. */
+    expect(screen.queryByText(/identity rests on the hatch/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/two Areas now hold one step/i)).not.toBeInTheDocument();
   });
 
   it("offers no colour control of any kind, because a pigment is dealt", async () => {

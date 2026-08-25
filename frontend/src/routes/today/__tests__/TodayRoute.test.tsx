@@ -17,7 +17,6 @@ import {
   buildEmptyDay,
   buildGymRow,
   buildOutcome,
-  buildRamp,
   buildRow,
 } from "./fixtures";
 import { hostToday, onHostToday, renderToday } from "./render";
@@ -208,22 +207,6 @@ describe("a ledger row", () => {
 
     const row = (await screen.findByText("Leetcode")).closest(".ledger__row") as HTMLElement;
     expect(row.querySelector(".ledger__area .area-chip")).toBeNull();
-  });
-
-  it("carries the ramp's statement where two Areas hold one step", async () => {
-    await renderToday(
-      onHostToday(buildDay()),
-      buildAreas({
-        ramp: buildRamp({
-          areasSharingAPigment: 2,
-          statement: "Two Areas share a pigment: identity rests on the name.",
-        }),
-      }),
-    );
-
-    expect(
-      await screen.findByText("Two Areas share a pigment: identity rests on the name."),
-    ).toBeInTheDocument();
   });
 
   it("shows the minutes a partial really took beside the planned figure", async () => {

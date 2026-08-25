@@ -246,7 +246,7 @@ export const areasResponse: StubbedResponse = {
   status: 200,
   body: {
     areas: [],
-    ramp: { pigmentCount: 12, pigmentsInUse: 0, areasSharingAPigment: 0, statement: null },
+    ramp: { pigmentCount: 12, pigmentsInUse: 0 },
   },
 };
 

@@ -48,13 +48,9 @@ export function buildArea(overrides: Partial<Area> = {}): Area {
 }
 
 export function buildRamp(overrides: Partial<Ramp> = {}): Ramp {
-  /* `statement` is `string | null` on the wire and null is what the api sends until two Areas share a step, so
-   * the default is the null: a fixture that omitted it would make a surface's own null handling a no-op. */
   return {
     pigmentCount: 12,
     pigmentsInUse: 2,
-    areasSharingAPigment: 0,
-    statement: null,
     ...overrides,
   };
 }

@@ -79,8 +79,6 @@ export function setupHandlers(state: SetupState): RequestHandler[] {
         ramp: {
           pigmentCount: 12,
           pigmentsInUse: state.areas,
-          areasSharingAPigment: 0,
-          statement: null,
         },
       },
     }),

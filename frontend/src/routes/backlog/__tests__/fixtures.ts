@@ -47,8 +47,6 @@ export function buildRamp(overrides: Partial<Ramp> = {}): Ramp {
   return {
     pigmentCount: 12,
     pigmentsInUse: 2,
-    areasSharingAPigment: 0,
-    statement: null,
     ...overrides,
   };
 }

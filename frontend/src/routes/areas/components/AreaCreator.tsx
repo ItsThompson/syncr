@@ -6,13 +6,8 @@
  * the twelve are in use.
  *
  * A THIRTEENTH TOP-LEVEL AREA IS A LEGITIMATE THING TO DECLARE AND A THIRTEENTH INK IS NOT A LEGITIMATE THING
- * TO INVENT, so past twelve the ramp repeats and this panel renders the api's own sentence saying that
- * identity now rests on the hatch and the Area name. THAT SENTENCE IS CURRENTLY OPTIMISTIC ABOUT THE HATCH:
- * the texture is a function of the ramp step, so a thirteenth Area takes the first Area's texture as well as
- * its ink, and the NAME is the whole of what separates the two. Ticket 1201 carries the decision between
- * surfacing the deal so the texture can vary and correcting the sentence. This screen shows every Area at
- * once, so it is where a reader meets the collision; the statement is rendered rather than paraphrased so
- * that whichever way 1201 resolves, this panel says what the product says.
+ * TO INVENT, so the api refuses a declaration once all twelve steps are held: no Area is ever dealt a step
+ * another Area already holds, and the refusal reaches this panel as the problem detail it was served.
  *
  * THE TWO BUDGET FIELDS ARE PLAIN FIGURES AND NOT STEPPERS, because both are stored as `NUMERIC(5, 2)`, which
  * holds a floor to the hundredth of an hour: neither field has a grid for a step to land on, and
@@ -80,7 +75,6 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
           {ramp.pigmentsInUse} of {ramp.pigmentCount} pigments in use
         </span>
       }
-      footer={ramp.statement === null ? undefined : <span>{ramp.statement}</span>}
     >
       <form
         className="flex flex-col gap-2"

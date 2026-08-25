@@ -140,7 +140,6 @@ export function TodayRoute() {
               form={ledger.form}
               refusal={refusal}
               actions={ledger.actions}
-              footer={areas.ramp.statement ?? undefined}
             />
             <LedgerSection
               title={AHEAD_TITLE}

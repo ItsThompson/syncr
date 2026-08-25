@@ -40,8 +40,6 @@ export function buildRamp(overrides: Partial<Ramp> = {}): Ramp {
   return {
     pigmentCount: 12,
     pigmentsInUse: 2,
-    areasSharingAPigment: 0,
-    statement: null,
     ...overrides,
   };
 }
@@ -64,7 +62,7 @@ export function buildAreas(overrides: Partial<Areas> = {}): Areas {
   };
 }
 
-/** Thirteen Areas, so the thirteenth repeats the first's ramp step and the ramp says so. */
+/** Thirteen declared Areas, as rows predating the cap would read: every step held, none shared. */
 export function buildThirteenAreas(): Areas {
   return {
     areas: Array.from({ length: 13 }, (_, index) =>
@@ -75,12 +73,7 @@ export function buildThirteenAreas(): Areas {
         budgetPercent: null,
       }),
     ),
-    ramp: buildRamp({
-      pigmentsInUse: 12,
-      areasSharingAPigment: 2,
-      statement:
-        "Two Areas now hold one step of the ramp, so identity rests on the hatch and the Area name.",
-    }),
+    ramp: buildRamp({ pigmentsInUse: 12 }),
   };
 }
 
