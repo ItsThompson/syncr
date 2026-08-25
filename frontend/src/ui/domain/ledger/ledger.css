@@ -23,7 +23,7 @@
   grid-template-columns: auto 74px 46px auto minmax(0, 1fr) auto;
   gap: 9px;
   align-items: center;
-  height: var(--h-row);
+  min-height: var(--h-row);
   padding: 0 9px;
   border-bottom: var(--hairline) solid var(--rule);
   font-size: var(--fs-chrome);
@@ -49,14 +49,13 @@
   font-size: var(--fs-eyebrow);
 }
 
-/* The title is the one cell that may run out of room, and it clips rather than pushing the controls off the row:
-   a ledger's controls are at a fixed offset so a reader's pointer lands on the same place in every row. */
+/* The title is the one cell that may run out of room, and it wraps rather than clipping: the row grows
+   downward and every control keeps its horizontal offset, which the fixed grid columns give it. A long word
+   breaks instead of overflowing the column. */
 .ledger__title {
   min-width: 0;
-  overflow: hidden;
   color: var(--ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .ledger__outcome {
