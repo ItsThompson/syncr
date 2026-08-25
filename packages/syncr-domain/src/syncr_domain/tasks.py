@@ -15,6 +15,7 @@ they are in the pure package rather than at the boundary:
 | T3, remaining work, never negative | :func:`remaining_minutes` |
 | T4, a completed task is not placed again | :func:`is_eligible_for_solving` |
 | a task leaves the backlog by one door only | :func:`require_a_compatible_ending` |
+| only a dropped task comes back | :func:`require_a_reopenable_task` |
 
 **A task carries no preferred time.** Preferred times are a ``Preference``, whose owner is an
 Area, a Habit, or a Task, so a task inherits its Area's windows unless it overrides them.
@@ -39,7 +40,7 @@ from syncr_domain.snap import SNAP_MINUTES, is_a_snap_multiple
 
 
 class TaskStatus(StrEnum):
-    """Where a task is. Two of the three are endings, and nothing here returns a task to open."""
+    """Where a task is. Two of the three are endings, and only a dropped one comes back."""
 
     OPEN = "open"
     COMPLETED = "completed"
@@ -88,6 +89,10 @@ class ChunkOffTheGrid(DomainError):
 
 class TaskAlreadyEnded(DomainError):
     """A task that already left the backlog is being sent out through the other door."""
+
+
+class TaskIsCompleted(DomainError):
+    """A completed task is being asked to come back, which would uncount a counted completion."""
 
 
 def default_min_chunk_minutes(estimate_minutes: int) -> int:
@@ -154,6 +159,23 @@ def is_eligible_for_solving(*, status: TaskStatus, remaining_minutes: int) -> bo
     already spent survives in reports.
     """
     return status is TaskStatus.OPEN and remaining_minutes > 0
+
+
+def require_a_reopenable_task(*, current: TaskStatus) -> None:
+    """Refuse reopening a completed task, beside :func:`require_a_compatible_ending`, apart from it.
+
+    The two endings are not symmetrically reversible, and the asymmetry is what makes a mistaken
+    drop cheap: a drop was never counted by anything, so taking it back costs nothing that was
+    already recorded. A completion was counted by a report on the day it happened, so bringing
+    that task back would rewrite what the report said rather than correct it.
+
+    An already-open task passes here rather than being refused: reopen asks for open and open is
+    what the task already is, which is the same retried-request safety the endings grant
+    themselves.
+    """
+    if current is not TaskStatus.COMPLETED:
+        return
+    raise TaskIsCompleted(f"this task is already {current.value}, so there is nothing to reopen")
 
 
 def require_a_compatible_ending(*, current: TaskStatus, ending: TaskEnding) -> None:

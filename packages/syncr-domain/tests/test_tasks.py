@@ -28,6 +28,7 @@ from syncr_domain.tasks import (
     Priority,
     TaskAlreadyEnded,
     TaskEnding,
+    TaskIsCompleted,
     TaskStatus,
     default_min_chunk_minutes,
     is_eligible_for_solving,
@@ -35,6 +36,7 @@ from syncr_domain.tasks import (
     require_a_chunk_on_the_grid,
     require_a_chunk_that_fits,
     require_a_compatible_ending,
+    require_a_reopenable_task,
 )
 
 AN_HOUR = 60
@@ -244,6 +246,25 @@ def test_crossing_between_the_two_endings_is_refused_and_says_which(
 
     assert current.value in str(refused.value)
     assert ending.value in str(refused.value)
+
+
+# --------------------------------------------------------------------------------
+# The reopen guard
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [TaskStatus.OPEN, TaskStatus.DROPPED])
+def test_a_task_that_was_not_completed_can_be_reopened(status: TaskStatus) -> None:
+    # Open passes because reopening an open task asks for the state it is already in, which is
+    # what makes a retried reopen safe; dropped passes because that is the case reopen exists for.
+    require_a_reopenable_task(current=status)
+
+
+def test_reopening_a_completed_task_is_refused_and_names_the_state() -> None:
+    with pytest.raises(TaskIsCompleted) as refused:
+        require_a_reopenable_task(current=TaskStatus.COMPLETED)
+
+    assert TaskStatus.COMPLETED.value in str(refused.value)
 
 
 # --------------------------------------------------------------------------------
