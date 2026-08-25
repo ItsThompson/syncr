@@ -137,7 +137,7 @@ const CASES = (Object.keys(KEYED_WRITES) as KeyedName[]).map((name) => ({ name }
 /** The route a case drives, recording what every request it answered said about idempotency. */
 function keysSentTo(name: KeyedName): {
   stated: Stated[];
-  write: (typeof KEYED_WRITES)[KeyedName];
+  submit: (screen: ScreenWrites) => Promise<boolean>;
 } {
   const write = KEYED_WRITES[name];
   const stated: Stated[] = [];
@@ -147,29 +147,29 @@ function keysSentTo(name: KeyedName): {
       return write.respond();
     }),
   );
-  return { stated, write };
+  return { stated, submit: (screen) => write.submit(screen) };
 }
 
 describe("every write whose route reads a key sends a freshly minted one", () => {
   it.each(CASES)("$name carries an Idempotency-Key", async ({ name }) => {
-    const { stated, write } = keysSentTo(name);
+    const { stated, submit } = keysSentTo(name);
 
     const { result } = renderHook(() => useScreenWrites(), { wrapper: FreshCache });
 
     /* The write has to LAND. A refused request carries whatever header it carried, so a case that only read the
      * recorder would report a key on a request the api never accepted. */
-    await expect(write.submit(result.current)).resolves.toBe(true);
+    await expect(submit(result.current)).resolves.toBe(true);
     expect(stated).toHaveLength(1);
     expect(stated[0]?.present).toBe(true);
     expect(stated[0]?.value).toMatch(MINTED);
   });
 
   it("mints again per attempt, so two attempts never share a key", async () => {
-    const { stated, write } = keysSentTo("pin");
+    const { stated, submit } = keysSentTo("pin");
 
     const { result } = renderHook(() => useScreenWrites(), { wrapper: FreshCache });
-    await write.submit(result.current);
-    await write.submit(result.current);
+    await submit(result.current);
+    await submit(result.current);
 
     expect(stated).toHaveLength(2);
     expect(stated[0]?.value).toMatch(MINTED);
