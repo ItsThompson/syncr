@@ -31,7 +31,6 @@ import {
 } from "../../../ui/primitives";
 import { zonedInstant } from "../../../lib/zonedInstant";
 import { KEEP_FRAME_MEANINGS } from "../offPlan";
-import { FieldGroup } from "./FieldGroup";
 import { Refusal } from "./Refusal";
 import type { OffPlanCreateBody } from "../../../api/hooks/useOffPlan";
 import type { Write } from "../../../api/hooks/useWrite";
@@ -92,19 +91,20 @@ export function OffPlanDeclaration({ write, today, zone }: OffPlanDeclarationPro
           />
         )}
       </FormRow>
-      <FieldGroup
+      <FormRow
         label="Times"
         hint="Snapped to the quarter hour. The end is not inside the period, so a span ending at 09:00 leaves 09:00 on plan."
+        isGroup
       >
         {(field) => (
           <TimeRangeInput
-            label="Times"
+            labelledBy={field.labelledBy}
             describedBy={field.describedBy}
             value={times}
             onValueChange={setTimes}
           />
         )}
-      </FieldGroup>
+      </FormRow>
       <FormRow label="Label" hint="Rendered in the gutter beside the span. Optional.">
         {(field) => (
           <Input

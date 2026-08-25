@@ -32,7 +32,6 @@ import { FormRow, Panel } from "../../../ui/layout";
 import { Button, Select, TimeRangeInput, snapClock, type TimeRange } from "../../../ui/primitives";
 import { zoomLevels } from "../../../ui/domain/week-grid/zoom";
 import { capStatement } from "../geometry";
-import { FieldGroup } from "./FieldGroup";
 import type { Settings, SettingsPatchBody } from "../../../api/hooks/useSettings";
 import type { Write } from "../../../api/hooks/useWrite";
 
@@ -96,18 +95,19 @@ export function GeometryPanel({
           />
         )}
       </FormRow>
-      <FieldGroup
+      <FormRow
         label="Day bounds"
         hint={
           "Where the Week grid's axis STARTS by default, never where it stops: a block outside these hours " +
           "widens the axis rather than being hidden. Wall time, in whichever zone is active on the day."
         }
         error={boundsPatch.problem === null ? undefined : boundsPatch.problem.detail}
+        isGroup
       >
         {(field) => (
           <span className="flex flex-wrap items-center gap-3.25">
             <TimeRangeInput
-              label="Day bounds"
+              labelledBy={field.labelledBy}
               describedBy={field.describedBy}
               value={shown}
               onValueChange={setBounds}
@@ -118,7 +118,7 @@ export function GeometryPanel({
             </Button>
           </span>
         )}
-      </FieldGroup>
+      </FormRow>
       <p className="text-base text-ink-soft">
         {`At ${settings.visibleHours} hours the grid shows ${settings.visibleHours} of the day's ` +
           `hours at a time and scrolls to the rest. The axis opens on ${asClock(settings.dayStart)} to ` +
