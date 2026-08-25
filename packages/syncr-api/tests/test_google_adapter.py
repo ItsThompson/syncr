@@ -4,11 +4,14 @@ The transport is faked and everything below the adapter is real: the client, the
 payload validation, the value parsing, the horizon clip, and the sync-state arithmetic.
 
 What is asserted here is the arithmetic that decides whether a stale calendar is visible, and the
-design decision a reader will want to check: **the sync token is a change detector, and the read
-that follows it is a full one.** An incremental answer is a delta, and the reconciler removes
-anchors the events do not mention, so handing it a delta would delete every commitment the provider
-did not happen to change. A poll that finds no change costs one small request, which is the saving
-the token exists for; a poll that finds one costs a second request and returns the calendar.
+design decision a reader will want to check: **a delta is applied as what it is, a list of
+changes.** An incremental answer is not the calendar; handing it to a reconciler that removes what
+it was not told about would delete every commitment the provider did not happen to change. So the
+delta keeps its own shape all the way to the anchor writer: its events are created and updated
+exactly as a full read's are, its removals travel as the identifiers the provider named, and a poll
+that reports nothing changed is answered exactly as an ICS 304 is. The token buys the poll that
+costs one small request instead of a fortnight of events, and no longer costs a second request on
+a poll that found a change.
 
 The other claims worth naming: a failure keeps everything the source already had, a rate limit says
 when syncr will try again, an unstorable token says why the next read is full, and no line this
@@ -37,7 +40,6 @@ from syncr_api.calendars.config import (
     UNKNOWN_LINE,
 )
 from syncr_api.calendars.google_adapter import (
-    CHANGES_DETECTED,
     CURSOR_INVALIDATED,
     CURSOR_UNSTORABLE,
     GoogleAdapter,
@@ -323,7 +325,7 @@ async def test_a_full_read_names_no_removal_even_when_the_provider_volunteers_on
 
 
 # --------------------------------------------------------------------------------------
-# The sync token as a change detector
+# A change-bearing delta is the attempt's answer
 # --------------------------------------------------------------------------------------
 
 
@@ -346,49 +348,55 @@ async def test_a_poll_that_finds_no_change_costs_one_request_and_reparses_nothin
     assert state.cursor == f"{CURSOR_PREFIX}{NEXT_TOKEN}"
 
 
-async def test_a_poll_that_finds_a_change_reads_the_calendar_in_full() -> None:
-    # THE design decision. The delta says what changed; the full read says what the calendar is, and
-    # only the second is safe to reconcile against.
+async def test_a_poll_that_finds_a_change_applies_the_delta_rather_than_reading_fully() -> None:
+    # THE design decision, inverted from what it was: the delta says what changed, and applying it
+    # IS the poll. A second read of the whole calendar would spend a fortnight of events to learn
+    # nothing the delta had not already said.
     google, transport = adapter(
         [
-            ok(events_page(event("changed"), sync_token=NEXT_TOKEN)),
-            ok(events_page(event("a"), event("b"))),
+            ok(
+                events_page(
+                    event("moved", start="2026-02-11T09:00:00Z", end="2026-02-11T10:00:00Z"),
+                    sync_token=NEXT_TOKEN,
+                )
+            )
         ]
     )
 
     outcome, state = await google.fetch(source(sync_state=synced()))
 
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 1
     assert transport.calls[0].params["syncToken"] == SYNC_TOKEN
-    assert "syncToken" not in transport.calls[1].params
-    assert transport.calls[1].params["timeMin"] == HORIZON.start.isoformat()
+    assert outcome.incremental is True
     assert outcome.reparsed is True
-    assert [one.uid for one in outcome.events] == ["a", "b"]
-    assert state.anchors_current == 2
-    assert state.resync_reason == CHANGES_DETECTED
-    # Both requests are counted, because the count on the source is what the poll cost.
-    assert state.attempts == 2
+    assert [one.uid for one in outcome.events] == ["moved"]
+    assert outcome.removed_uids == ()
+    assert state.last_success_at == NOW
+    assert state.last_error is None
+    assert state.anchors_current == 1
+    assert state.attempts == 1
+    assert state.resync_reason is None
+    # The fresh token replaces the one that produced the delta.
+    assert state.cursor == f"{CURSOR_PREFIX}{NEXT_TOKEN}"
 
 
-async def test_a_change_bigger_than_the_page_bound_is_read_fully_rather_than_stranding() -> None:
-    # The detector stops on the first page that carries an entry, so a delta of any size costs one
-    # page and becomes a full read. Before that, such a delta failed on the page bound with the
-    # cursor retained, and every later poll re-paged it: the source could only escape when Google
-    # expired the token itself.
+async def test_a_delta_wider_than_one_page_is_paged_to_its_end_and_applied_whole() -> None:
+    # Every entry of a delta is a change to make, so an early stop would apply part of one and keep
+    # a cursor that skips the rest.
     google, transport = adapter(
         [
-            ok(events_page(event("one-of-many"), page_token="always-another")),
-            ok(events_page(event("a"), event("b"))),
+            ok(events_page(event("p1"), page_token="more")),
+            ok(events_page(event("p2"), sync_token=NEXT_TOKEN)),
         ]
     )
 
     outcome, state = await google.fetch(source(sync_state=synced()))
 
     assert len(transport.calls) == 2
+    assert [one.uid for one in outcome.events] == ["p1", "p2"]
     assert outcome.reparsed is True
-    assert state.last_error is None
-    assert state.resync_reason == CHANGES_DETECTED
-    assert state.cursor == f"{CURSOR_PREFIX}{SYNC_TOKEN}"
+    assert state.cursor == f"{CURSOR_PREFIX}{NEXT_TOKEN}"
+    assert state.attempts == 2
 
 
 async def test_an_incremental_read_carries_the_delta_and_the_identifiers_it_removed() -> None:
@@ -442,14 +450,15 @@ async def test_an_incremental_read_carries_the_delta_and_the_identifiers_it_remo
     assert outcome.events_read == len(outcome.events) + len(outcome.removed_uids) + (
         outcome.rejected_count
     )
-    # A delta is not a read of the feed's whole body, and this is the bit the anchor reconciler
-    # keys removal on: marking it would make a two-entry delta delete the rest of the calendar.
-    assert outcome.reparsed is False
+    # A change-bearing delta is a successful read, and this mark is what sends it down the
+    # reconcile path: the anchor writer removes by identifier here, never by absence, which is
+    # what keeps the entries the delta did not mention exactly where they stand.
+    assert outcome.reparsed is True
 
 
-async def test_a_delta_carrying_only_removals_still_reads_the_calendar_in_full() -> None:
+async def test_a_delta_carrying_only_removals_is_a_read_that_removes_them() -> None:
     # The case a change count cannot see. A poll whose every entry is a cancellation reports no
-    # event at all, so a detector that asked only "did any event change" would call it unchanged and
+    # event at all, so a reader that asked only "did any event change" would call it unchanged and
     # leave the removed commitments occupying the plan until something else happened to move.
     google, transport = adapter(
         [
@@ -459,37 +468,38 @@ async def test_a_delta_carrying_only_removals_still_reads_the_calendar_in_full()
                     event("gone-2", status="cancelled", start=None, end=None),
                     sync_token=NEXT_TOKEN,
                 )
-            ),
-            ok(events_page(event("survivor"))),
+            )
         ]
     )
 
     outcome, state = await google.fetch(source(sync_state=synced()))
 
-    assert len(transport.calls) == 2
-    assert "syncToken" not in transport.calls[1].params
-    assert state.resync_reason == CHANGES_DETECTED
-    # And what comes back is the calendar rather than the delta, so the reconciler may remove by
-    # absence: the two cancelled entries are simply not in it.
-    assert outcome.incremental is False
-    assert [one.uid for one in outcome.events] == ["survivor"]
+    assert len(transport.calls) == 1
+    assert state.last_error is None
+    assert state.anchors_current == 0
+    # What comes back is still the delta, so the removals travel as the identifiers the provider
+    # named rather than as an absence nobody can address.
+    assert outcome.incremental is True
+    assert outcome.reparsed is True
+    assert outcome.events == ()
+    assert outcome.removed_uids == ("gone-1", "gone-2")
 
 
-async def test_a_delta_syncr_cannot_read_still_reads_the_calendar_in_full() -> None:
+async def test_an_unreadable_delta_entry_is_still_a_change_whose_rejection_is_recorded() -> None:
     # An entry that produced neither an event nor a removal is still a change: something moved, and
-    # the full read is what decides whether it can be placed.
+    # answering "unchanged" would leave whatever moved unread until something else happened. The
+    # rejection rides the successful attempt, because the read itself succeeded.
     google, transport = adapter(
-        [
-            ok(events_page(event("unreadable", start="2026-02-10T09:00:00", end=None))),
-            ok(events_page(event("a"), event("b"))),
-        ]
+        [ok(events_page(event("unreadable", start="2026-02-10T09:00:00", end=None)))]
     )
 
     outcome, state = await google.fetch(source(sync_state=synced()))
 
-    assert len(transport.calls) == 2
-    assert state.resync_reason == CHANGES_DETECTED
-    assert [one.uid for one in outcome.events] == ["a", "b"]
+    assert len(transport.calls) == 1
+    assert outcome.reparsed is True
+    assert outcome.events == ()
+    assert [one.uid for one in outcome.rejected] == ["unreadable"]
+    assert state.rejected_total == 1
 
 
 async def test_a_delta_reports_an_occurrence_that_moved_out_of_the_horizon() -> None:
@@ -548,10 +558,11 @@ async def test_a_delta_outside_the_horizon_still_accounts_for_every_entry() -> N
     )
 
 
-async def test_a_change_outside_the_horizon_still_reads_the_calendar_in_full() -> None:
-    # The same rule at the decision it feeds. The full read that follows is windowed and finds
-    # nothing new, which is a wasted request rather than a wrong answer; treating the delta as
-    # unchanged is the wrong answer, because the occurrence has already left the plan's window.
+async def test_a_change_outside_the_horizon_is_applied_rather_than_escalated() -> None:
+    # The same rule at the decision it feeds. The occurrence has already left the plan's window, so
+    # treating the delta as unchanged would be the wrong answer; and reading fully over the horizon
+    # would find nothing new, because a windowed read cannot list an event outside it. Applying the
+    # delta is both cheaper and the only answer that touches the commitment at all.
     google, transport = adapter(
         [
             ok(
@@ -559,16 +570,15 @@ async def test_a_change_outside_the_horizon_still_reads_the_calendar_in_full() -
                     event("moved-away", start="2027-02-10T09:00:00Z", end="2027-02-10T10:00:00Z"),
                     sync_token=NEXT_TOKEN,
                 )
-            ),
-            ok(events_page(event("still-here"))),
+            )
         ]
     )
 
-    outcome, state = await google.fetch(source(sync_state=synced()))
+    outcome, _state = await google.fetch(source(sync_state=synced()))
 
-    assert len(transport.calls) == 2
-    assert state.resync_reason == CHANGES_DETECTED
-    assert [one.uid for one in outcome.events] == ["still-here"]
+    assert len(transport.calls) == 1
+    assert outcome.reparsed is True
+    assert [one.uid for one in outcome.events] == ["moved-away"]
 
 
 async def test_a_poll_that_finds_no_change_answers_with_an_empty_delta() -> None:
@@ -585,11 +595,11 @@ async def test_a_poll_that_finds_no_change_answers_with_an_empty_delta() -> None
     assert outcome.reparsed is False
 
 
-async def test_the_escalation_line_states_what_changed_and_what_was_removed(
+async def test_the_delta_line_states_what_changed_and_what_was_removed(
     rendered_lines: io.StringIO,
 ) -> None:
-    # The two figures an operator needs to read a poll that escalated: a source re-reading a whole
-    # calendar every tick looks healthy, and the delta's shape is what says why it did.
+    # The two figures an operator needs to read one applied delta, under names the redactor keeps:
+    # the titles these lines pass over are the most sensitive values in the product.
     google, _ = adapter(
         [
             ok(
@@ -599,14 +609,13 @@ async def test_the_escalation_line_states_what_changed_and_what_was_removed(
                     event("gone-2", status="cancelled", start=None, end=None),
                     sync_token=NEXT_TOKEN,
                 )
-            ),
-            ok(events_page(event("a"))),
+            )
         ]
     )
 
     await google.fetch(source(sync_state=synced()))
 
-    line = one_line(rendered_lines, "calendars.google.changes_detected")
+    line = one_line(rendered_lines, "calendars.google.delta")
     # Asserted as an exact key set, so a field added to this line has to be justified here rather
     # than arriving with whatever it carries.
     assert set(line) == {
@@ -617,7 +626,9 @@ async def test_the_escalation_line_states_what_changed_and_what_was_removed(
         "source_id",
         "tenant_id",
         "changed_count",
+        "rejected_count",
         "removed_count",
+        "attempt_count",
     }
     # Two different figures, so neither can be read as the other's constant.
     assert line["changed_count"] == 1

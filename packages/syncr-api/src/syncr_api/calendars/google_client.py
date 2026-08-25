@@ -83,9 +83,9 @@ class CalendarsRead:
 class EventsRead:
     """One calendar's events, the token to send next time, and the calls it took.
 
-    ``sync_token`` is ``None`` when a read returned before its last page, which only a detector read
-    does: the token lives on the last page, and a caller that stops early goes on to read fully and
-    stores that read's token instead.
+    ``sync_token`` is what the last page carried: a read that pages to its end collects it, and a
+    caller that applies the answer stores it. It is ``None`` only when the provider issued no
+    token, which keeps whatever cursor the source already held.
     """
 
     events: tuple[GoogleEventPayload, ...]
@@ -175,27 +175,17 @@ class GoogleCalendarClient:
         *,
         sync_token: str | None,
         window: Interval,
-        stop_at_first_change: bool = False,
     ) -> EventsAnswer:
         """One calendar's events: incrementally when a sync token is held, fully otherwise.
 
-        ``stop_at_first_change`` answers the only question a detector read asks, which is WHETHER
-        anything changed. It returns on the first page that carries an entry, so a delta of ten
-        thousand entries costs one page rather than forty, and a delta larger than the page bound is
-        no longer a read that fails: it is a read that reports a change. Without it such a delta
-        failed on the bound, `recorded_failure` retained the cursor, and the next poll re-paged the
-        same delta forever, with the provider's own token expiry as the only escape.
+        Both readings page to their end, because both are answers a caller applies whole: an
+        incremental answer is a delta whose every entry is a change to make, so returning before
+        its last page would apply part of one and store a cursor that skips the rest.
         """
         tally = _Tally()
         try:
             async with asyncio.timeout(self._deadline):
-                return await self._all_events(
-                    calendar_id,
-                    sync_token,
-                    window,
-                    tally,
-                    stop_at_first_change=stop_at_first_change,
-                )
+                return await self._all_events(calendar_id, sync_token, window, tally)
         except TimeoutError:
             return self._out_of_time(tally)
 
@@ -233,8 +223,6 @@ class GoogleCalendarClient:
         sync_token: str | None,
         window: Interval,
         tally: _Tally,
-        *,
-        stop_at_first_change: bool = False,
     ) -> EventsAnswer:
         found: list[GoogleEventPayload] = []
         page_token: str | None = None
@@ -250,12 +238,9 @@ class GoogleCalendarClient:
                 return self._unreadable(invalid, tally)
             found.extend(page.items)
             page_token = page.next_page_token
-            if page_token is None or (stop_at_first_change and found):
+            if page_token is None:
                 return EventsRead(
                     events=tuple(found),
-                    # None when this returned mid-pagination, which only a detector read does. The
-                    # caller reads a full calendar next and stores THAT read's token, so there is no
-                    # cursor to lose.
                     sync_token=page.next_sync_token,
                     attempts=tally.attempts,
                 )

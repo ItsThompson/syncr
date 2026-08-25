@@ -57,13 +57,14 @@ def recorded_success(
 ) -> SyncStateRecord:
     """The state after an attempt that read the feed, whatever it rejected.
 
-    Nothing carries forward from the previous state, because this parse replaced it wholesale:
-    the counts and the rejections describe the feed as it is now.
+    Nothing carries forward from the previous state, because this parse replaced what it read
+    wholesale: the counts and the rejections describe what THIS read offered. For a full read that
+    is the calendar as it stands; for a change-bearing delta it is the changes themselves, which is
+    the honest figure for a poll whose answer was two entries rather than a fortnight of them.
 
     ``anchors_current`` is the count of events this parse produced. The anchor reconciler
-    replaces it with its own delta once anchors exist; until then the event count is the
-    honest answer to "how much occupancy did this feed contribute", and it is the number the
-    panel reports progress with.
+    replaces it with its own delta once anchors exist; until then the event count is the honest
+    answer to "how much occupancy did this feed contribute", and it is what progress reports with.
     """
     return SyncStateRecord(
         last_success_at=at,

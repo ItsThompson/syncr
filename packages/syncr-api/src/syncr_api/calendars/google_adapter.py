@@ -10,29 +10,25 @@ calendars must not lose four because one calendar is gone, so every failure is a
 with a stated reason. That is the ICS adapter's contract, kept deliberately: the syncer writes sync
 state on every attempt and neither adapter gets to opt out.
 
-**The sync token is a CHANGE DETECTOR, and the read that follows it is a full one.** An incremental
-answer is a delta: "these entries changed, everything else is as you last saw it". Handing that to a
-reconciler as though it were the calendar would delete every anchor the provider did not happen to
-mention, and applying it as a delta is a second reconciliation path with its own removal rule. So an
-incremental read that reports nothing changed is answered exactly as an ICS ``304`` is, and one that
-reports any change is followed by a full read of the horizon, whose events ARE the calendar. The
-detector stops on the first page that carries an entry, because whether anything changed is the
-whole question it asks: a delta of ten thousand entries costs one page rather than forty. What the
-token buys is the poll that costs one small request instead of a fortnight of events, which is the
-saving Google's own guide describes; what it costs is one extra request on a poll that found a
-change. The three attempt kinds the syncer already distinguishes stay three.
+**A delta is applied as what it is: a list of changes.** An incremental answer is not the calendar;
+it is "these entries changed, everything else is as you last saw it". Handing that to a reconciler
+as though absence meant removal would delete every anchor the provider did not happen to mention,
+so the delta keeps its own shape all the way to the anchor writer: its events are created and
+updated exactly as a full read's are, its removals travel as the identifiers the provider named,
+and nothing absent from it is touched. A poll that reports nothing changed is answered exactly as
+an ICS ``304`` is. A delta is a fourth kind of successful READ, not a fourth kind of attempt: the
+three attempt kinds the syncer already distinguishes stay three.
 
 **The delta itself is carried as a value, marked incremental and naming what the provider removed.**
 A cancellation is the one thing a delta cannot express by absence, so it travels as an identifier;
-and delta-ness travels with it because the decision that a second read is needed is made on the
-answer rather than on which method produced it. A read of the calendar reports entries too, so a
-decision made on "did this report anything" alone would send every first poll back for a second copy
-of what it just read.
+and delta-ness travels with it because the anchor writer removes by absence on one reading and by
+identifier on the other. A read of the calendar reports entries too, so both readings carry the
+mark that tells them apart.
 
-**The horizon is applied here, not at the provider.** Google refuses ``timeMin`` beside a sync
-token, so the detector read sees the whole calendar and the full read that follows is windowed. A
-change outside the horizon therefore triggers a windowed read that finds nothing new, which is a
-wasted request rather than a wrong answer.
+**The horizon is not applied at the provider.** Google refuses ``timeMin`` beside a sync token, so
+an incremental read sees the whole calendar and the full read is windowed. A change outside the
+horizon therefore arrives in a delta anyway, and a delta places nothing, so there is no window for
+one of its entries to fall outside of.
 
 **The cursor is bounded before it is stored.** A sync token is a value Google chooses the length of,
 and the column that holds it is finite. An oversize write does not fail one source: it rolls back
@@ -47,6 +43,7 @@ sensitive values in the product.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Final
 
@@ -101,16 +98,13 @@ type GoogleFetch = tuple[FetchOutcome, SyncStateRecord]
 # than by a timer of its own.
 _BACKING_OFF: Final = "Sync is backing off and will try again at"
 
-# Why a full read happened while a cursor was held. Both are recorded on the source, because a
-# source quietly re-reading a whole calendar every poll looks healthy and is not.
+# Why a full read happened while a cursor was held. Recorded on the source, because a source
+# quietly re-reading a whole calendar every poll looks healthy and is not.
 CURSOR_INVALIDATED: Final = (
     "Google invalidated the incremental sync token, so this read was a full one"
 )
 CURSOR_UNSTORABLE: Final = (
     "Google issued a sync token too long to store, so the next read will be a full one"
-)
-CHANGES_DETECTED: Final = (
-    "the incremental read reported changes, so the calendar was read in full to place them"
 )
 
 
@@ -169,36 +163,13 @@ class GoogleAdapter:
     async def fetch(self, source: CalendarSourceRecord) -> GoogleFetch:
         """One attempt on ``source``: what it produced, and the sync state to store.
 
-        **A delta is not the calendar, and this is the one place that difference is acted on.** An
-        answer that lists only what changed is followed by an answer that lists the calendar, whose
-        events ARE the calendar: the anchor reconciler removes every anchor a read does not mention,
-        and a delta mentions almost nothing.
-
-        The answer's own delta-ness is what gates that, rather than which method produced it. A read
-        of the calendar reports events too, so a decision made on "did this report anything" alone
-        would send every first poll back for a second copy of what it just read.
+        **The cheap read when a cursor is held, and the whole calendar when there is none.** The
+        token buys the poll that costs one small request instead of a fortnight of events, which is
+        the saving Google's own guide describes. Whatever that read answers is the attempt's answer:
+        a quiet delta is a 304, and a change-bearing one is applied through the anchor writer rather
+        than followed by a second read of everything.
         """
         at = self._clock()
-        outcome, state = await self._read(source, at=at)
-        if not outcome.incremental:
-            return outcome, state
-        if not _reports_a_change(outcome):
-            _log.info(
-                "calendars.google.unchanged", **_identity(source), attempt_count=state.attempts
-            )
-            return outcome, state
-        _log.info(
-            "calendars.google.changes_detected",
-            **_identity(source),
-            changed_count=len(outcome.events),
-            removed_count=len(outcome.removed_uids),
-        )
-        return await self._read_fully(
-            source, at=at, spent=state.attempts, resync_reason=CHANGES_DETECTED
-        )
-
-    async def _read(self, source: CalendarSourceRecord, *, at: datetime) -> GoogleFetch:
-        """The cheap read when a cursor is held, and the whole calendar when there is none."""
         held = sync_token_of(source.sync_state.cursor)
         if held is None:
             return await self._read_fully(source, at=at)
@@ -210,27 +181,22 @@ class GoogleAdapter:
         """What changed on ``source`` since ``since``, as a delta rather than as the calendar.
 
         The same two values ``fetch`` answers with, so an attempt is recorded whatever it found, and
-        it does not raise for the same reason nothing here does. Three answers: the token is no
-        longer accepted, which is a full read; the read failed, which is a recorded attempt; or a
-        delta, marked incremental and carrying the identifiers the provider reported as removed.
+        it does not raise for the same reason nothing here does. Four answers: the token is no
+        longer accepted, which is a full read; the read failed, which is a recorded attempt; a
+        delta that reports nothing changed, which takes the 304 path; or a delta that reports
+        changes, which is marked a successful read and applied by the caller through the anchor
+        writer.
 
-        The state is the one a poll that found NOTHING stores, because that is the only case where
-        this read is the whole attempt. A caller that goes on to read the calendar records what that
-        read cost instead.
+        A change-bearing delta pages to its end, because its every entry is a change to make: an
+        early stop would apply part of one and keep a cursor that skips the rest. Its fresh token
+        replaces the one that produced it, dropped when it will not fit, which costs one full read
+        on the next poll rather than a failed write.
 
-        ``at`` is passed rather than read from the clock here, so one poll's two reads record one
-        instant rather than two microseconds apart.
+        ``at`` is passed rather than read from the clock here, so a poll records one instant rather
+        than two microseconds apart.
         """
         answer = await self._client.list_events(
-            source.external_id,
-            sync_token=since,
-            window=self._horizon,
-            # The detector asks WHETHER anything changed, so it stops on the first page that carries
-            # an entry. A delta bigger than the page bound is then a change rather than a read
-            # that fails on a bound while keeping the cursor that produced it, which stranded the
-            # source: the next poll re-paged the same delta, and the provider's own token expiry
-            # was the only escape.
-            stop_at_first_change=True,
+            source.external_id, sync_token=since, window=self._horizon
         )
         if isinstance(answer, GoogleReadFailed):
             return self._failed(source, answer, at=at)
@@ -239,11 +205,37 @@ class GoogleAdapter:
             return await self._read_fully(
                 source, at=at, spent=answer.attempts, resync_reason=CURSOR_INVALIDATED
             )
-        # The token is replaced by the fresh one Google issued, and dropped when it will not fit,
-        # which costs one full read on the next poll rather than a failed write.
-        cursor = bounded_cursor(answer.sync_token) or source.sync_state.cursor
-        return self._delta(answer), recorded_unchanged(
-            source.sync_state, at=at, cursor=cursor, attempts=answer.attempts
+        delta = self._delta(answer)
+        if not _reports_a_change(delta):
+            _log.info(
+                "calendars.google.unchanged", **_identity(source), attempt_count=answer.attempts
+            )
+            # The fresh token replaces the one that produced the match, and the previous one is kept
+            # when the new one will not fit, which costs nothing until the next poll reads fully.
+            cursor = bounded_cursor(answer.sync_token) or source.sync_state.cursor
+            return delta, recorded_unchanged(
+                source.sync_state, at=at, cursor=cursor, attempts=answer.attempts
+            )
+        _log.info(
+            "calendars.google.delta",
+            **_identity(source),
+            changed_count=len(delta.events),
+            rejected_count=delta.rejected_count,
+            removed_count=len(delta.removed_uids),
+            attempt_count=answer.attempts,
+        )
+        # Marked reparsed, because a delta IS a body successfully read: this is the successful-read
+        # attempt, whose changes reach the anchor writer through the reconcile path. The mark does
+        # NOT make it a calendar -- ``incremental`` still says what is missing from it -- but a
+        # delta that reported nothing would otherwise be indistinguishable from a feed down.
+        cursor = bounded_cursor(answer.sync_token)
+        unstorable = answer.sync_token is not None and cursor is None
+        return replace(delta, reparsed=True), recorded_success(
+            delta,
+            at=at,
+            cursor=cursor,
+            attempts=answer.attempts,
+            resync_reason=CURSOR_UNSTORABLE if unstorable else None,
         )
 
     async def reconcile(

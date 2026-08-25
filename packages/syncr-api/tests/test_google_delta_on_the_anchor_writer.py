@@ -33,12 +33,14 @@ from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import GoogleCalendarClient
 from syncr_api.calendars.google_cursors import CURSOR_PREFIX
 from syncr_api.calendars.injection import READS_ONLY
+from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.sync import SourceSyncer
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.intervals import Interval
+from syncr_domain.weeks import IsoWeek
 from syncr_domain.zones import ZoneProfile
 from tests.fake_google import (
     SYNC_TOKEN,
@@ -68,6 +70,8 @@ HORIZON = Interval(NOW, NOW + timedelta(days=14))
 HOME_ZONE = "UTC"
 NEXT_TOKEN = "CNEXT-token"  # pragma: allowlist secret
 
+# 2026-02-09 opens 2026-W07.
+WEEK = IsoWeek(2026, 7)
 MOVED_UID = "evt-07@provider.test"
 CANCELLED_UID = "evt-11@provider.test"
 
@@ -185,13 +189,18 @@ async def run_a_poll(
     source: CalendarSourceRecord,
     answers: list[GoogleResponse],
 ) -> tuple[list[AnchorRecord], SyncStateRecord]:
-    """One sync pass, whole: adapter, syncer, and the real reconciler, in one transaction."""
+    """One sync pass, whole: adapter, syncer, and the real reconciler, in one transaction.
+
+    Answers with the rows as the pass left them and the state the pass WROTE, which carries the
+    reconciler's own count of the rows rather than the count of events the read produced.
+    """
+    sources = RecordingSources()
     async with sessions() as session, session.begin():
         versions = TrackedWeekInputVersions(
             WeekInputVersionRepository(session, tenant_id), clock=lambda: NOW
         )
         syncer = SourceSyncer(
-            sources=RecordingSources(),  # type: ignore[arg-type]
+            sources=sources,
             operations=None,  # type: ignore[arg-type]  # a scheduled pass enqueues no operation
             adapters={GOOGLE: an_adapter(answers)},
             anchors=AnchorReconciler(
@@ -204,9 +213,9 @@ async def run_a_poll(
             solves=SilentSolves(),  # type: ignore[arg-type]
             clock=lambda: NOW,
         )
-        _outcome, state = await syncer.sync(source)
+        _outcome, _returned = await syncer.sync(source)
         rows = await AnchorRepository(session, tenant_id).list_for_source(source.id)
-    return list(rows), state
+    return list(rows), sources.saved[0]
 
 
 async def test_two_reported_changes_leave_the_fifty_eight_unmentioned_rows_alone(
@@ -320,3 +329,114 @@ async def test_a_quiet_delta_confirms_rather_than_reconciles(
     } == {uid: (row.id, row.title, row.interval, row.possibly_stale) for uid, row in before.items()}
     assert quiet_state.last_error is None
     assert quiet_state.anchors_current == 60
+
+
+# --------------------------------------------------------------------------------------
+# The delta branch of the reconcile itself, against the rows rather than a fake.
+# --------------------------------------------------------------------------------------
+
+
+async def track(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: UUID, *weeks: IsoWeek
+) -> None:
+    """Give each week a version row, which is what makes it a week the counter bumps."""
+    async with sessions() as session, session.begin():
+        versions = WeekInputVersionRepository(session, tenant_id)
+        for week in weeks:
+            await versions.bump(week, at=NOW)
+
+
+async def version_of(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: UUID, week: IsoWeek
+) -> int | None:
+    async with sessions() as session:
+        return await WeekInputVersionRepository(session, tenant_id).current(week)
+
+
+async def test_a_cancelled_occurrence_the_delta_reports_is_removed(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: UUID,
+    source: CalendarSourceRecord,
+) -> None:
+    commitments = sixty_commitments()
+
+    _first_rows, first_state = await run_a_poll(
+        sessions,
+        tenant_id,
+        source,
+        [ok(events_page(*commitments))],
+    )
+    await track(sessions, tenant_id, WEEK)
+
+    second_rows, second_state = await run_a_poll(
+        sessions,
+        tenant_id,
+        replace(source, sync_state=first_state),
+        [
+            ok(
+                events_page(
+                    event(CANCELLED_UID, status="cancelled", start=None, end=None),
+                    sync_token=NEXT_TOKEN,
+                )
+            )
+        ],
+    )
+
+    assert {row.external_uid for row in second_rows} == {
+        one["id"] for one in commitments if one["id"] != CANCELLED_UID
+    }
+    assert second_state.anchors_current == 59
+    # And the week the removed commitment occupied was invalidated: its plan still describes an
+    # hour of occupancy the source says is gone.
+    assert await version_of(sessions, tenant_id, WEEK) == 2
+
+
+async def test_a_reported_removal_matches_the_stored_key_through_the_same_scrub(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: UUID,
+    source: CalendarSourceRecord,
+) -> None:
+    """The stored half of every reconciliation key went through the scrub, so a removal must go
+    through it too: a provider echoing a UID with whitespace in it names an anchor the table no
+    longer addresses under any other reading."""
+    spaced = "evt-03@provider.test "
+    commitments = (
+        {
+            "id": spaced,
+            "summary": "Commitment 3",
+            "start": {"dateTime": (NOW + timedelta(hours=4)).isoformat(), "timeZone": "UTC"},
+            "end": {"dateTime": (NOW + timedelta(hours=5)).isoformat(), "timeZone": "UTC"},
+        },
+        {
+            "id": CANCELLED_UID,
+            "summary": "Commitment 11",
+            "start": {"dateTime": (NOW + timedelta(days=1)).isoformat(), "timeZone": "UTC"},
+            "end": {
+                "dateTime": (NOW + timedelta(days=1, minutes=30)).isoformat(),
+                "timeZone": "UTC",
+            },
+        },
+    )
+
+    _first_rows, first_state = await run_a_poll(
+        sessions,
+        tenant_id,
+        source,
+        [ok(events_page(*commitments))],
+    )
+
+    second_rows, _second_state = await run_a_poll(
+        sessions,
+        tenant_id,
+        replace(source, sync_state=first_state),
+        [
+            ok(
+                events_page(
+                    event(spaced, status="cancelled", start=None, end=None),
+                    sync_token=NEXT_TOKEN,
+                )
+            )
+        ],
+    )
+
+    assert [row.external_uid for row in second_rows] == [CANCELLED_UID]

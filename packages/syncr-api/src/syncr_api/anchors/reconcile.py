@@ -10,6 +10,13 @@ answered "unchanged" both produce an empty event list, so removing on an empty l
 every anchor of a healthy feed that had nothing new to say. The caller distinguishes the three
 attempts and calls the matching method; this module never has to guess.
 
+**A delta removes only what it names.** A change-bearing delta is a successful read whose events
+are reconciled exactly as a full read's are, but its silence means "as you last saw it", not "no
+longer published": so ``outcome.incremental`` switches the removal rule from absence (everything
+the read does not mention) to identifier (exactly what the provider reported removed). One branch,
+and it lives here rather than in a second reconcile method, because everything else -- keying,
+typing, override carry-forward, week invalidation, the count read off the rows -- is the same work.
+
 **Typing happens here, not afterwards.** A created anchor is matched against the tenant's rules
 in one pass, and an occurrence of a series the user has already retyped inherits that override
 instead. Doing it in a second pass would leave a window in which an anchor existed with no type,
@@ -93,12 +100,17 @@ class AnchorReconciler:
 
     @measured("anchors")
     async def reconcile(self, source: CalendarSourceRecord, outcome: FetchOutcome) -> AnchorDelta:
-        """Make ``source``'s anchors match ``outcome``, and report what changed.
+        """Make ``source``'s anchors match what was just read, and report what changed.
 
         Creates what is new, replaces the fact of what moved or was renamed, and removes what the
-        feed no longer publishes. Every anchor it touches stops being possibly stale, because the
-        source just confirmed it. The weeks whose occupancy moved are invalidated in this
-        transaction, so a solve that read one of them fails its own conditional write.
+        read says is gone. Every anchor it touches stops being possibly stale, because the source
+        just confirmed it. The weeks whose occupancy moved are invalidated in this transaction, so
+        a solve that read one of them fails its own conditional write.
+
+        What "gone" means follows the reading: a full read states what is present and absence
+        removes the rest; a delta states what changed and removes exactly the identifiers the
+        provider named. Both counts come back from the rows, never from the events, because two
+        entries can reach one reconciliation key.
         """
         held = await self._anchors.list_for_source(source.id)
         by_key = {anchor.external_uid: anchor for anchor in held}
@@ -132,13 +144,23 @@ class AnchorReconciler:
                 occupied.update(self._weeks_reached(existing.interval, reach))
                 occupied.update(self._weeks_reached(event.interval, reach))
 
-        # Taken off the prior state, BEFORE the delete: `remove_absent` answers with a count, so a
-        # removed commitment's occupancy is unreadable once it has run.
-        for key, anchor in by_key.items():
-            if key not in incoming:
-                occupied.update(self._weeks_reached(anchor.interval, reach))
-
-        removed = await self._anchors.remove_absent(source.id, keeping=set(incoming))
+        # Taken off the prior state, BEFORE any delete: a removal answers with a count, so a removed
+        # commitment's occupancy is unreadable once the delete has run.
+        if outcome.incremental:
+            # A delta's silence is not evidence of removal, so the identifiers it NAMES are the only
+            # ones taken off. Keys are matched through the same reconciliation function the stored
+            # half went through, or a provider echoing a UID with whitespace in it would name an
+            # anchor the table no longer addresses.
+            reported = {reconciliation_key(uid) for uid in outcome.removed_uids}
+            for key, anchor in by_key.items():
+                if key in reported:
+                    occupied.update(self._weeks_reached(anchor.interval, reach))
+            removed = await self._anchors.remove_reported(source.id, keys=reported)
+        else:
+            for key, anchor in by_key.items():
+                if key not in incoming:
+                    occupied.update(self._weeks_reached(anchor.interval, reach))
+            removed = await self._anchors.remove_absent(source.id, keeping=set(incoming))
         delta = AnchorDelta(
             created=created,
             updated=updated,

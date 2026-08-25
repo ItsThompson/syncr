@@ -98,11 +98,13 @@ class AnchorWriter(Protocol):
     """The reconciler, as one sync pass needs it."""
 
     async def reconcile(self, source: CalendarSourceRecord, outcome: FetchOutcome) -> AnchorDelta:
-        """Make this source's anchors match what the feed just produced.
+        """Make this source's anchors match what was just read.
 
-        Called only for an attempt that actually read the feed. Anchors absent from ``outcome``
-        are removed, which is what makes a commitment cancelled at the source stop occupying
-        the plan.
+        Called only for an attempt that actually read the feed. For a full read, anchors absent
+        from ``outcome`` are removed, which is what makes a commitment cancelled at the source stop
+        occupying the plan. For a delta -- ``outcome.incremental`` -- silence means "as you last saw
+        it", so only the identifiers ``outcome.removed_uids`` names are removed and nothing absent
+        is touched.
         """
         ...
 

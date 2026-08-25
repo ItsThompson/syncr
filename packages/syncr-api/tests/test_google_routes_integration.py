@@ -44,7 +44,6 @@ from syncr_api.calendars.config import (
     ICS,
     OK,
 )
-from syncr_api.calendars.google_adapter import CHANGES_DETECTED
 from syncr_api.calendars.injection import get_feed_client, get_google_read_client
 from syncr_api.calendars.schemas import DESTRUCTIVE_RECONCILIATION, RECONCILIATION_KIND
 from syncr_api.core.app_factory import create_app
@@ -394,7 +393,7 @@ def test_a_google_source_syncs_through_the_same_route_an_ics_source_does(
     assert read["syncState"]["resyncReason"] is None
 
 
-def test_a_second_sync_asks_what_changed_and_reads_fully_when_something_did(
+def test_a_second_sync_applies_the_delta_the_token_reports(
     http: TestClient, signed_in: dict[str, str], owner: UserRecord, google: FakeGoogle
 ) -> None:
     connect(http, signed_in, owner)
@@ -404,24 +403,22 @@ def test_a_second_sync_asks_what_changed_and_reads_fully_when_something_did(
     ]
     http.post(f"{SOURCES}/{source['id']}/sync", headers=signed_in)
 
-    # The second poll: the detector reports a change, so the calendar is read in full.
+    # The second poll: the delta reports one commitment moved, and the delta IS what is applied.
     google.events_answers = [
         httpx.Response(
             200, content=events_page(inside_the_horizon("moved", days=3), sync_token="CNEXT")
-        ),
-        httpx.Response(
-            200,
-            content=events_page(
-                inside_the_horizon("one"), inside_the_horizon("moved", days=3), sync_token="CNEXT"
-            ),
-        ),
+        )
     ]
-    http.post(f"{SOURCES}/{source['id']}/sync", headers=signed_in)
+    synced = http.post(f"{SOURCES}/{source['id']}/sync", headers=signed_in)
 
+    assert synced.status_code == HTTPStatus.OK, synced.text
     read = http.get(f"{SOURCES}/{source['id']}", headers=signed_in).json()
+    # The moved commitment replaced its own anchor and no other row was touched.
+    assert read["state"] == OK
     assert read["anchorCount"] == 2
-    assert read["syncState"]["resyncReason"] == CHANGES_DETECTED
-    assert read["syncState"]["attempts"] == 2
+    assert read["syncState"]["lastError"] is None
+    assert read["syncState"]["resyncReason"] is None
+    assert read["syncState"]["attempts"] == 1
     sent = [one for one in google.asked_google_for("/events") if "syncToken" in str(one.url)]
     assert sent, "the second poll sent the token the first stored"
 

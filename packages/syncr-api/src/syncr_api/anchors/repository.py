@@ -269,6 +269,23 @@ class AnchorRepository(TenantScopedRepository):
             statement = statement.where(Anchor.external_uid.not_in(keeping))
         return await self._affected_rows(statement)
 
+    async def remove_reported(self, source_id: CalendarSourceId, *, keys: Collection[str]) -> int:
+        """Delete this source's anchors whose removal a delta named by identifier, and count them.
+
+        The delta-side counterpart of :meth:`remove_absent`, and its opposite in what absence
+        means: a list of changes is silent about everything it did not mention, so only the keys
+        the provider explicitly reported removed are taken off here. An empty set removes nothing,
+        which is what a delta that reported no removals means rather than a calendar that lists
+        nothing.
+        """
+        if not keys:
+            return 0
+        return await self._affected_rows(
+            self.scoped_delete(Anchor).where(
+                Anchor.source_id == source_id, Anchor.external_uid.in_(keys)
+            )
+        )
+
     async def set_possibly_stale(self, source_id: CalendarSourceId, *, stale: bool) -> int:
         """Mark or clear this source's anchors as possibly stale, and report how many moved."""
         return await self._affected_rows(

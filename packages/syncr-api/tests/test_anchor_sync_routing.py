@@ -207,6 +207,38 @@ def a_read(*, events: int) -> tuple[FetchOutcome, SyncStateRecord]:
     return outcome, state
 
 
+def a_change_bearing_delta() -> tuple[FetchOutcome, SyncStateRecord]:
+    """A Google poll that reported changes: the fourth kind of successful read.
+
+    A delta is not a fourth ATTEMPT. ``reparsed`` is set exactly as a full read's is, because a
+    body was read and its changes are safe to apply; ``incremental`` is what keeps the reconciler
+    from removing what the delta did not mention.
+    """
+    outcome = FetchOutcome(
+        events=(an_event("changed"),),
+        removed_uids=("cancelled",),
+        events_read=2,
+        placed=1,
+        cancelled_discarded=1,
+        reparsed=True,
+        incremental=True,
+    )
+    state = SyncStateRecord(last_success_at=NOW, last_attempt_at=NOW, anchors_current=1)
+    return outcome, state
+
+
+def a_quiet_delta() -> tuple[FetchOutcome, SyncStateRecord]:
+    """A Google poll whose provider answered "nothing changed since your cursor".
+
+    The same shape an ICS 304 produces: a success that reparsed nothing, so the anchors are
+    confirmed rather than reconciled, whatever the mechanism that produced the answer.
+    """
+    return (
+        FetchOutcome(incremental=True),
+        SyncStateRecord(last_success_at=NOW, last_attempt_at=NOW, anchors_current=7),
+    )
+
+
 def an_unchanged_feed() -> tuple[FetchOutcome, SyncStateRecord]:
     """A 304: a successful attempt that reparsed nothing, so the last parse still stands."""
     return FetchOutcome(), SyncStateRecord(
@@ -228,11 +260,20 @@ def an_unreachable_feed() -> tuple[FetchOutcome, SyncStateRecord]:
     ("fetched", "expected"),
     [
         (a_read(events=3), RECONCILED),
+        (a_change_bearing_delta(), RECONCILED),
         (a_read(events=0), RECONCILED),
         (an_unchanged_feed(), CONFIRMED),
+        (a_quiet_delta(), CONFIRMED),
         (an_unreachable_feed(), MARKED_STALE),
     ],
-    ids=["a-feed-was-read", "a-feed-published-nothing", "unchanged", "unreachable"],
+    ids=[
+        "a-feed-was-read",
+        "a-delta-reported-changes",
+        "a-feed-published-nothing",
+        "unchanged",
+        "a-quiet-delta",
+        "unreachable",
+    ],
 )
 async def test_each_attempt_takes_the_anchor_path_it_should(
     fetched: tuple[FetchOutcome, SyncStateRecord], expected: str
@@ -270,10 +311,11 @@ async def test_a_feed_that_published_nothing_removes_and_an_empty_answer_does_no
     ("fetched", "path"),
     [
         (a_read(events=3), RECONCILED),
+        (a_change_bearing_delta(), RECONCILED),
         (an_unchanged_feed(), CONFIRMED),
         (an_unreachable_feed(), MARKED_STALE),
     ],
-    ids=["read", "unchanged", "unreachable"],
+    ids=["read", "a-change-bearing-delta", "unchanged", "unreachable"],
 )
 async def test_the_reconcilers_own_count_is_what_the_sync_state_records(
     fetched: tuple[FetchOutcome, SyncStateRecord], path: str

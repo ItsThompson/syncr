@@ -266,7 +266,7 @@ async def test_every_event_the_real_api_returns_is_one_syncr_can_read(
 async def test_an_incremental_read_after_a_full_one_reports_no_change(
     live_client: GoogleCalendarClient,
 ) -> None:
-    # The change detector against the real provider: two reads with nothing happening between them
+    # The token against the real provider: two reads with nothing happening between them
     # must produce an empty second answer, which is what makes a quiet poll cheap.
     listed = await live_client.list_calendars()
     assert isinstance(listed, CalendarsRead), listed
@@ -280,7 +280,6 @@ async def test_an_incremental_read_after_a_full_one_reports_no_change(
         development.calendar_id,
         sync_token=first.sync_token,
         window=window,
-        stop_at_first_change=True,
     )
 
     assert isinstance(second, EventsRead), second

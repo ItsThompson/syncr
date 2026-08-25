@@ -176,59 +176,30 @@ async def test_a_read_that_never_stops_paginating_is_cut_off_and_says_so() -> No
 
 
 # --------------------------------------------------------------------------------------
-# The detector read
+# An incremental read pages to its token
 # --------------------------------------------------------------------------------------
 
 
-async def test_a_detector_read_stops_at_the_first_page_that_carries_a_change() -> None:
-    # The caller only needs to know THAT something changed, so paging the rest is work nobody reads.
+async def test_an_incremental_read_pages_to_its_token_rather_than_stopping_at_a_change() -> None:
+    # Both readings are answers a caller applies whole, so an incremental read that returned on its
+    # first page would apply part of one delta and keep a cursor that skips the rest.
     reader, transport = client(
-        [ok(events_page(event("changed"), page_token="more")), ok(events_page(event("also")))]
+        [
+            ok(events_page(event("changed"), page_token="more")),
+            ok(events_page(sync_token=SYNC_TOKEN)),
+        ]
     )
 
-    answer = await reader.list_events(
-        CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW, stop_at_first_change=True
-    )
+    answer = await reader.list_events(CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW)
 
     assert isinstance(answer, EventsRead)
-    assert len(transport.calls) == 1
     assert [one.id for one in answer.events] == ["changed"]
-
-
-async def test_a_detector_read_of_a_quiet_calendar_still_pages_to_its_token() -> None:
-    # An empty page carries no change to stop on, so the token on the last page is still collected:
-    # that token is what the next quiet poll spends.
-    reader, transport = client(
-        [ok(events_page(page_token="more")), ok(events_page(sync_token=SYNC_TOKEN))]
-    )
-
-    answer = await reader.list_events(
-        CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW, stop_at_first_change=True
-    )
-
-    assert isinstance(answer, EventsRead)
-    assert answer.events == ()
     assert answer.sync_token == SYNC_TOKEN
     assert len(transport.calls) == 2
 
 
-async def test_a_delta_larger_than_the_page_bound_is_a_change_rather_than_a_failure() -> None:
-    # THE bite for the stranding: without stopping early, a delta over 40 pages failed on the page
-    # bound, `recorded_failure` retained the cursor, and every later poll re-paged the same delta
-    # with the provider's own token expiry as the only escape.
-    reader, transport = client([ok(events_page(event("one-of-many"), page_token="always-another"))])
-
-    answer = await reader.list_events(
-        CALENDAR_ID, sync_token=SYNC_TOKEN, window=WINDOW, stop_at_first_change=True
-    )
-
-    assert isinstance(answer, EventsRead)
-    assert len(transport.calls) == 1
-
-
 async def test_a_full_read_pages_to_the_end_even_when_the_first_page_carries_events() -> None:
-    # The flag is the detector's, not the reader's: a full read whose first page had events and
-    # stopped there would report a calendar as holding one page of it.
+    # A read that stopped on its first page would report a calendar as holding one page of it.
     reader, transport = client(
         [ok(events_page(event("one"), page_token="more")), ok(events_page(event("two")))]
     )
