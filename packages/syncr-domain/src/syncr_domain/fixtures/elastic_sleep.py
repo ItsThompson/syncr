@@ -10,17 +10,18 @@ coincide and an assertion about ``23:00`` is not also an assertion about an offs
 
 | What | Value |
 |---|---|
-| the routine | ``Sleep``, target 23:00, 8h long, minimum 7h40m |
-| the give, per night | 20 minutes, which is the target less the minimum |
+| the routine | ``Sleep``, target 23:00, 8h long, minimum 7h30m |
+| the give, per night | 30 minutes, which is the target less the minimum |
 | ``now`` | Tuesday 10 February at 09:00 |
 | the gap the week holds | 60 minutes |
 | the nights a concession would touch | Tuesday, Wednesday and Thursday, 20 minutes each |
 
-**Why the gap is 60 and the give is 20.** Three nights is the number the PRD's own phrasing names,
-and it is a consequence rather than a coincidence: an hour cannot come off one night that has only
-twenty minutes to give, so the fewest nights that can supply the gap is three. A fixture whose give
-was an hour a night would recover the whole gap from Tuesday and would never exercise the
-distribution.
+**Why the gap is 90 and the give is 30.** Three nights is the number the PRD's own phrasing names,
+and it is a consequence rather than a coincidence: ninety minutes cannot come off one night that
+has only thirty to give, so the fewest nights that can supply the gap is three. A fixture whose
+give was the whole gap would recover it from Tuesday and would never exercise the distribution.
+Both figures are whole steps of the fifteen-minute grid, because a routine's floor owes the grid
+like its target does.
 
 **Why ``now`` is Tuesday morning.** Monday night's occurrence is wholly behind it, so shortening
 that night would hand back a span the probe counts no capacity in: capacity starts at ``now``. The
@@ -56,7 +57,7 @@ ZONE: Final = "Europe/London"
 TITLE: Final = "Sleep"
 TARGET_TIME: Final = time(23, 0)
 DURATION_MINUTES: Final = 8 * 60
-MIN_DURATION_MINUTES: Final = 7 * 60 + 40
+MIN_DURATION_MINUTES: Final = 7 * 60 + 30
 # What one night could be shortened by: the target less the minimum the assembler clamps to.
 GIVE_MINUTES: Final = DURATION_MINUTES - MIN_DURATION_MINUTES
 
@@ -65,7 +66,7 @@ GIVE_MINUTES: Final = DURATION_MINUTES - MIN_DURATION_MINUTES
 NOW: Final = datetime(2026, 2, 10, 9, 0, tzinfo=UTC)
 
 # The shortfall the week holds, in minutes. Three nights of give, exactly.
-GAP_MINUTES: Final = 60
+GAP_MINUTES: Final = 3 * GIVE_MINUTES
 # What one night gives up when the gap is spread over the fewest nights that can supply it.
 REDUCTION_EACH: Final = GAP_MINUTES // 3
 
@@ -85,7 +86,7 @@ REDUCTIONS: Final[Mapping[Date, int]] = MappingProxyType(
 )
 
 # How the label reads, which names the nights because the concession stores them.
-LABEL: Final = "Reduce Sleep by 20m on Tue, Wed and Thu"
+LABEL: Final = "Reduce Sleep by 30m on Tue, Wed and Thu"
 
 # Monday night's occurrence, which is wholly behind `NOW`: 23:00 Monday to 07:00 Tuesday.
 MONDAY_NIGHT: Final = Interval(

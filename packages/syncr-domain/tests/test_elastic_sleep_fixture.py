@@ -41,9 +41,10 @@ def test_every_stated_night_is_the_span_the_declaration_produces_in_its_zone() -
 
 
 def test_the_give_is_what_the_minimum_leaves_of_the_target() -> None:
-    # Twenty minutes a night is the whole point: an hour cannot come off one night, so the fewest
-    # nights that can supply the gap is three rather than one.
-    assert fixture.GIVE_MINUTES == 20
+    # Thirty minutes a night is the whole point: ninety minutes cannot come off one night, so
+    # the fewest nights that can supply the gap is three rather than one. Both figures are whole
+    # steps of the grid, which a routine's floor owes like its target.
+    assert fixture.GIVE_MINUTES == 30
     assert fixture.MIN_DURATION_MINUTES + fixture.GIVE_MINUTES == fixture.DURATION_MINUTES
     assert fixture.MIN_DURATION_MINUTES < fixture.DURATION_MINUTES
 
@@ -81,5 +82,5 @@ def test_the_reduced_night_is_the_declaration_less_one_nights_reduction() -> Non
 def test_the_label_names_each_night_and_the_figure_one_night_gives_up() -> None:
     # The crossing point between two packages: the enumerator renders this string and this fixture
     # is where the expectation lives, so a change to either side is a failure rather than a drift.
-    assert fixture.LABEL == "Reduce Sleep by 20m on Tue, Wed and Thu"
+    assert fixture.LABEL == "Reduce Sleep by 30m on Tue, Wed and Thu"
     assert fixture.TITLE in fixture.LABEL
