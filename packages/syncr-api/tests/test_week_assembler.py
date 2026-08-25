@@ -87,6 +87,7 @@ if TYPE_CHECKING:
     from syncr_api.habits.records import HabitRecord
     from syncr_domain.fixtures.dst_weeks import DstWeek
     from syncr_domain.habits import Cadence
+    from syncr_domain.identifiers import HabitId
     from syncr_solver.inputs import SolveInputs
 
 BERLIN = "Europe/Berlin"
@@ -633,7 +634,7 @@ async def test_the_due_instant_is_read_half_open_like_every_span() -> None:
     this_week = await assembler.assemble(WEEK, NOW)
     next_week = await assembler.assemble(WEEK.following(), NOW)
 
-    def counts_of(week: SolveInputs) -> Counter:
+    def counts_of(week: SolveInputs) -> Counter[HabitId]:
         return Counter(occurrence.binding.entity_id for occurrence in week.habit_occurrences)
 
     assert counts_of(this_week) == Counter({due_at_the_start.id: 1})
