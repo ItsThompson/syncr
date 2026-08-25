@@ -62,9 +62,10 @@ describe("bandOfEmptySlot", () => {
     expect(bandOfEmptySlot(slot()).reason).toBe("no_eligible_content");
   });
 
-  /* THE NEWEST REASON TRAVELS LIKE THE REST. A dropped leg arrives as an ordinary empty slot whose reason names
-   * the collision that caused it, so no branch here distinguishes it: the day renders whatever wording the payload
-   * rendered, and widening `BandReason` without this case would still compile if the code were dropped. */
+  /* A REGRESSION GUARD, NOT A BITING TEST. The pass-through below predates this reason, so this case passes on
+   * the tree before the reason existed too: what makes a dropped leg reach the day is the payload carrying it as an
+   * ordinary empty slot, which is asserted server-side. What this pins here is only that the widened vocabulary
+   * keeps travelling beside the label like every other member's code does. */
   it("carries a dropped leg's cause through as its reason", () => {
     expect(bandOfEmptySlot(slot({ reason: "dropped_leg" })).reason).toBe("dropped_leg");
   });
