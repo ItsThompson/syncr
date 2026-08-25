@@ -451,3 +451,23 @@ jobs:
 
       - name: Scan the tree for secrets
         run: just secret-scan
+
+  # ---------------------------------------------------------------------------
+  # The committed monitoring configuration must actually load. `just monitoring-check`
+  # runs `promtool check config` and `amtool check-config` over the committed files,
+  # in the same images the deployment runs, so a rule file the deployed Prometheus
+  # would silently refuse is a red build rather than a deployment with no alerting.
+  # It needs no running stack, which is why it is a static gate here and not part of
+  # a probe against the Compose stack.
+  # ---------------------------------------------------------------------------
+  monitoring-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Validate that the committed Prometheus rules and Alertmanager config load
+        run: just monitoring-check
