@@ -176,15 +176,20 @@ describe("editing a type's geometry", () => {
     expect(within(scope).getByRole("radio", { name: "these Areas" })).toBeChecked();
   });
 
-  /* The words are the control: a group named only by an `aria-label` gives a sighted reader no question at all. */
-  it("draws the question as well as announcing it", () => {
+  /* Named by the words the screen draws, not by a string of its own: a group carrying its own `aria-label`
+   * beside the drawn question announces the same words twice. */
+  it("names the scope group by the drawn question and no string of its own", () => {
     renderTab();
 
-    const drawn = screen
-      .getAllByText("forbids after: nothing, everything, or these Areas")
-      .filter((element) => element.tagName === "P");
-
+    const drawn = screen.getAllByText("forbids after: nothing, everything, or these Areas");
     expect(drawn).toHaveLength(1);
+    expect(drawn[0]).toHaveClass("form-row__label");
+
+    const scope = screen.getByRole("radiogroup", {
+      name: "forbids after: nothing, everything, or these Areas",
+    });
+    expect(scope).toHaveAttribute("aria-labelledby", drawn[0].id);
+    expect(scope).not.toHaveAttribute("aria-label");
   });
 
   it("submits every geometry member, because each is an absolute value", async () => {

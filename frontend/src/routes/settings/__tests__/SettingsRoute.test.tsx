@@ -14,6 +14,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { authoredNames } from "../../../testing/accessibleNames";
 import { apiServer } from "../../../testing/apiServer";
 import { jsonHandler, recordingHandler } from "../../../testing/apiStub";
 import { renderAt } from "../../../testing/renderRoute";
@@ -431,6 +432,29 @@ describe("the grid geometry panel", () => {
     expect(panel).toHaveTextContent("with no reload");
   });
 
+  /* The interval is named by the words the row draws: a reader asking for "Day bounds" reaches the fieldset,
+   * and the words were written once rather than drawn on the screen and again as the control's own string. */
+  it("names the day bounds interval by the words the screen draws, written once", async () => {
+    apiServer.use(...settingsHandlers());
+    renderAt("/settings");
+    await settled();
+
+    const panel = panelNamed("Grid geometry");
+    const interval = within(panel).getByLabelText("Day bounds");
+
+    expect(interval.tagName).toBe("FIELDSET");
+    expect(interval).not.toHaveAttribute("aria-label");
+    expect(authoredNames(panel, "Day bounds")).toEqual([
+      { source: "drawn text", by: "span.form-row__label" },
+    ]);
+
+    /* The row's hint reaches the fields through the id the row hands over, so a reader gets it without
+     * opening either end. */
+    expect(within(panel).getByLabelText("from")).toHaveAccessibleDescription(
+      expect.stringContaining("Where the Week grid's axis STARTS"),
+    );
+  });
+
   /* The wall time that reaches the api names no zone and carries no seconds: the zone comes from the day being
    * rendered, and a column with no offset would drop one in silence.
    *
@@ -444,7 +468,8 @@ describe("the grid geometry panel", () => {
     renderAt("/settings");
     await settled();
 
-    fireEvent.change(screen.getByLabelText("Day bounds, from"), { target: { value: "06:07" } });
+    const panel = panelNamed("Grid geometry");
+    fireEvent.change(within(panel).getByLabelText("from"), { target: { value: "06:07" } });
     fireEvent.click(screen.getByRole("button", { name: "Set the day bounds" }));
 
     await waitFor(() => expect(patch.bodies).toEqual([{ dayStart: "06:00", dayEnd: "23:00" }]));
@@ -488,10 +513,11 @@ describe("the grid geometry panel", () => {
     renderAt("/settings");
     await settled();
 
-    const from = screen.getByLabelText("Day bounds, from");
+    const panel = panelNamed("Grid geometry");
+    const from = within(panel).getByLabelText("from");
     await userEvent.clear(from);
     await userEvent.type(from, "23:00");
-    const to = screen.getByLabelText("Day bounds, to");
+    const to = within(panel).getByLabelText("to");
     await userEvent.clear(to);
     await userEvent.type(to, "07:00");
     await userEvent.click(screen.getByRole("button", { name: "Set the day bounds" }));
@@ -683,6 +709,29 @@ describe("the off-plan panel", () => {
     expect(panel).toHaveTextContent("your routines still materialize and nothing else does");
   });
 
+  /* The interval is named by the words the row draws, so "Times" answers for the fieldset and is written
+   * once: drawn beside the control and referenced by name, not repeated as the control's own string. */
+  it("names the times interval by the words the screen draws, announced once", async () => {
+    apiServer.use(...settingsHandlers());
+    renderAt("/settings");
+    await settled();
+
+    const panel = panelNamed("Off plan");
+    const interval = within(panel).getByLabelText("Times");
+
+    expect(interval.tagName).toBe("FIELDSET");
+    expect(interval).not.toHaveAttribute("aria-label");
+    expect(authoredNames(panel, "Times")).toEqual([
+      { source: "drawn text", by: "span.form-row__label" },
+    ]);
+
+    /* The row's hint reaches the fields through the id the row hands over, so a reader gets it without
+     * opening either end. */
+    expect(within(panel).getByLabelText("from")).toHaveAccessibleDescription(
+      expect.stringContaining("Snapped to the quarter hour"),
+    );
+  });
+
   /* An arbitrary span, not whole days: Friday afternoon to Monday morning is the case the feature exists for, and
    * the times snap to the quarter hour because every bound in this product does.
    *
@@ -704,8 +753,8 @@ describe("the off-plan panel", () => {
     const to = within(panel).getByRole("textbox", { name: "To" });
     await userEvent.clear(to);
     await userEvent.type(to, "2026-08-10");
-    fireEvent.change(within(panel).getByLabelText("Times, from"), { target: { value: "14:07" } });
-    fireEvent.change(within(panel).getByLabelText("Times, to"), { target: { value: "09:00" } });
+    fireEvent.change(within(panel).getByLabelText("from"), { target: { value: "14:07" } });
+    fireEvent.change(within(panel).getByLabelText("to"), { target: { value: "09:00" } });
 
     fireEvent.click(within(panel).getByRole("button", { name: "Declare off plan" }));
 
