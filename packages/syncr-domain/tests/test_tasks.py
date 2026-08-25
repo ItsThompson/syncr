@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from syncr_domain.habits import Duration, HabitError
 from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.tasks import (
     DEFAULT_ESTIMATE_MINUTES,
@@ -23,6 +24,7 @@ from syncr_domain.tasks import (
     DEFAULT_SPLITTABLE,
     NO_RECORDED_MINUTES,
     ChunkLargerThanEstimate,
+    ChunkOffTheGrid,
     Priority,
     TaskAlreadyEnded,
     TaskEnding,
@@ -30,6 +32,7 @@ from syncr_domain.tasks import (
     default_min_chunk_minutes,
     is_eligible_for_solving,
     remaining_minutes,
+    require_a_chunk_on_the_grid,
     require_a_chunk_that_fits,
     require_a_compatible_ending,
 )
@@ -87,6 +90,49 @@ def test_a_chunk_one_minute_larger_than_the_estimate_is_refused() -> None:
 def test_the_rejection_is_a_domain_error_so_the_boundary_can_map_it_once() -> None:
     with pytest.raises(ValueError, match="does not fit"):
         require_a_chunk_that_fits(estimate_minutes=15, min_chunk_minutes=30)
+
+
+# --------------------------------------------------------------------------------
+# The grid: a minimum chunk is a whole number of steps
+# --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("minutes", [SNAP_MINUTES - 1, 25, 61, 100])
+def test_a_chunk_off_the_grid_is_refused(minutes: int) -> None:
+    # Every placement lands on the quarter-hour grid, and the chunk is the smallest placement a
+    # splittable task may take, so an off-step chunk names a length no block could hold.
+    with pytest.raises(ChunkOffTheGrid, match=f"{SNAP_MINUTES}-minute grid"):
+        require_a_chunk_on_the_grid(min_chunk_minutes=minutes)
+
+
+@pytest.mark.parametrize("minutes", [SNAP_MINUTES, 30, 45, 90])
+def test_a_chunk_on_the_grid_is_accepted(minutes: int) -> None:
+    require_a_chunk_on_the_grid(min_chunk_minutes=minutes)
+
+
+def test_the_grid_refusal_sits_beside_t1_rather_than_inside_it() -> None:
+    # An off-grid chunk under the estimate passes T1 and is still refused: the two rules answer
+    # different questions, the pair's fit and the one value's shape, and neither subsumes the
+    # other.
+    require_a_chunk_that_fits(estimate_minutes=AN_HOUR, min_chunk_minutes=25)
+    with pytest.raises(ChunkOffTheGrid):
+        require_a_chunk_on_the_grid(min_chunk_minutes=25)
+
+
+def test_25_minutes_answers_identically_on_a_task_chunk_and_a_habit_minimum() -> None:
+    # `docs/prd.md` illustrates elasticity with `Leetcode` at 25, 45, and 90 minutes. Before
+    # this rule joined the declared durations, 25 was refused on a habit's minimum duration and
+    # accepted on a task's minimum chunk: the same figure, answered differently by two fields
+    # that declare the same kind of thing. Both now read the one grid question, so 25 is
+    # refused on each with the same sentence about the same grid.
+    with pytest.raises(ChunkOffTheGrid) as chunk_refused:
+        require_a_chunk_on_the_grid(min_chunk_minutes=25)
+    with pytest.raises(HabitError) as habit_refused:
+        Duration.elastic(min_minutes=25, max_minutes=45)
+
+    assert str(chunk_refused.value) == str(habit_refused.value).replace(
+        "minimum duration", "minimum chunk"
+    )
 
 
 # --------------------------------------------------------------------------------

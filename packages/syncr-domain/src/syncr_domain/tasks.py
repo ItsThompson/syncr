@@ -11,6 +11,7 @@ they are in the pure package rather than at the boundary:
 | Rule | Function |
 |---|---|
 | T1, a minimum chunk fits inside the estimate | :func:`require_a_chunk_that_fits` |
+| a minimum chunk is a whole number of grid steps | :func:`require_a_chunk_on_the_grid` |
 | T3, remaining work, never negative | :func:`remaining_minutes` |
 | T4, a completed task is not placed again | :func:`is_eligible_for_solving` |
 | a task leaves the backlog by one door only | :func:`require_a_compatible_ending` |
@@ -34,7 +35,7 @@ from enum import StrEnum
 from typing import Final, Literal
 
 from syncr_domain.errors import DomainError
-from syncr_domain.snap import SNAP_MINUTES
+from syncr_domain.snap import SNAP_MINUTES, is_a_snap_multiple
 
 
 class TaskStatus(StrEnum):
@@ -81,6 +82,10 @@ class ChunkLargerThanEstimate(DomainError):
     """T1: a minimum chunk that does not fit inside the estimate."""
 
 
+class ChunkOffTheGrid(DomainError):
+    """A minimum chunk between two of the grid's lines."""
+
+
 class TaskAlreadyEnded(DomainError):
     """A task that already left the backlog is being sent out through the other door."""
 
@@ -106,6 +111,23 @@ def require_a_chunk_that_fits(*, estimate_minutes: int, min_chunk_minutes: int) 
     raise ChunkLargerThanEstimate(
         f"a minimum chunk of {min_chunk_minutes} minutes does not fit inside an estimate of "
         f"{estimate_minutes} minutes, so no placement could ever satisfy both"
+    )
+
+
+def require_a_chunk_on_the_grid(*, min_chunk_minutes: int) -> None:
+    """Refuse a minimum chunk that is not a whole number of grid steps.
+
+    Every placement lands on the quarter-hour grid, and a chunk is the smallest placement a
+    splittable task may take, so an off-step chunk names a length no block could hold. A habit's
+    declared duration owes the same grid and answers with the same rule
+    (:func:`syncr_domain.snap.is_a_snap_multiple`), which is deliberate: one question, asked of
+    every declared duration, so a value refused on one field is not silently legal on another.
+    """
+    if is_a_snap_multiple(min_chunk_minutes):
+        return
+    raise ChunkOffTheGrid(
+        f"a minimum chunk of {min_chunk_minutes} minutes does not land on the "
+        f"{SNAP_MINUTES}-minute grid, so a block carrying it could not either"
     )
 
 

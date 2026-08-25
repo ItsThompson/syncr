@@ -35,6 +35,9 @@ hold.
 The declaration predicates are read at these sites, and this list is the whole of them:
 
 * ``syncr_domain.habits`` reads both bounds of a habit's duration.
+* ``syncr_domain.tasks`` reads a splittable task's minimum chunk.
+* ``syncr_domain.routines`` reads a frame's target time, and both bounds of its span: the target
+  duration and the elastic floor.
 * ``syncr_domain.preferences`` reads a preferred window's bounds, and a preference's ideal
   session length.
 * ``syncr_domain.templates`` reads a day-shape entry's target time and its duration, so an entry
