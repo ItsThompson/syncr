@@ -46,9 +46,16 @@ const quoted = (verdict: Verdict | null, kind: string): Tradeoff => {
 /** The origins whose time a solve chose, which is the set the refusal is derived from. */
 const SOLVER_PLACED: readonly string[] = ["task", "habit"];
 
-/** One page of the week's revision history, which is what "nothing was written" is counted over. */
-const revisionsOf = async (client: ApiClient, isoWeek: string): Promise<WeekRevisions> =>
-  client.get<WeekRevisions>(`/api/v1/weeks/${isoWeek}/revisions`);
+/** One page of the week's revision history, which is what "nothing was written" is counted over.
+ *
+ * The route answers a bounded page, so every count this case reads is asserted against
+ * `truncated` first: a truncated page's length is a floor, not a total, and equality over it
+ * would stop biting once a week's history outgrew the page. */
+const revisionsOf = async (client: ApiClient, isoWeek: string): Promise<WeekRevisions> => {
+  const page = await client.get<WeekRevisions>(`/api/v1/weeks/${isoWeek}/revisions`);
+  expect(page.truncated, "the revision history outgrew the page this case counts over").toBe(false);
+  return page;
+};
 
 test("a tradeoff on a materialized, unsolved week answers 409 and changes nothing; solved, the same week offers and accepts one", async ({
   api,
