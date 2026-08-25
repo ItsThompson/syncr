@@ -732,9 +732,10 @@ def test_an_unconfirmed_skip_leaves_a_debt_habit_owing_zero_and_unraised() -> No
     what the reading reports: an unconfirmed skipped occurrence charges no debt and raises nothing.
     """
     target = habit()
+    disengaged = misses(target, 3, confirmed=False)
 
-    assert outstanding_debt(target, misses(target, 3, confirmed=False), LATER) == 0
-    owed = reading(target, misses(target, 3, confirmed=False))
+    assert outstanding_debt(target, disengaged, LATER) == 0
+    owed = reading(target, disengaged)
 
     assert owed.outstanding == 0
     assert not owed.raised_in_weekly_session
