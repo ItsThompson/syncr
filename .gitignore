@@ -24,6 +24,10 @@ coverage/
 e2e/test-results/
 e2e/playwright-report/
 
+# The clock shift `just e2e-clock` records between runs. Stack state rather than source: written by
+# that recipe alone, read by the e2e overlay's `env_file`, and put back with `just e2e-clock PT0S`.
+e2e/clock-offset.env
+
 # Secrets and local config. .env.example is committed; .env is not.
 .env
 .env.*

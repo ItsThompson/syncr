@@ -434,6 +434,11 @@ test-frontend:
 # Both files, in this order, so the project directory is the repository root
 e2e_compose := "-f docker-compose.yml -f e2e/docker-compose.e2e.yml"
 
+# The clock shift `just e2e-clock` records, and the one file it is recorded in. The e2e overlay's
+# `env_file` entries read it, so a shift survives an `e2e-down`/`e2e-up` cycle until it is put
+# back; this recipe is its only writer.
+clock_offset_env_file := "e2e/clock-offset.env"
+
 # Install the suite's locked dependency tree and the browser it drives.
 #
 # `--with-deps` because Playwright's bundled Chromium needs system libraries a Linux CI image does not
@@ -485,6 +490,27 @@ e2e:
 # One scenario or one file, by title or path: `just e2e-only S10`
 e2e-only pattern:
     cd e2e && npx playwright test {{pattern}}
+
+# Shift the stack's clock by `offset`, or put it back with `PT0S`: `just e2e-clock P3D`.
+#
+# The offset is SYNCR_CLOCK_OFFSET, which `syncr_api.core.clock` reads and nothing else in the
+# tree sets; the overlay passes it to api and worker and to nothing else, because those two are
+# the processes that hold readers. A shift is STACK STATE, not test state: it is written to
+# {{clock_offset_env_file}} and so outlives whatever asked for it, which is why the Playwright
+# `clock` project owns putting it back (see `e2e/tests/harness.ts` for the rule).
+#
+# The value is validated through the reader itself BEFORE anything moves, so a misspelled
+# duration fails here with that reader's own message rather than failing a container boot later.
+# An empty value means no offset, so `just e2e-clock ""` restores as well as `PT0S` does.
+e2e-clock offset:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker compose {{e2e_compose}} run --rm --no-deps \
+      -e SYNCR_CLOCK_OFFSET="{{offset}}" api \
+      python -c "from syncr_api.core.clock import clock_offset; clock_offset()" >/dev/null
+    printf 'SYNCR_CLOCK_OFFSET=%s\n' "{{offset}}" > {{clock_offset_env_file}}
+    docker compose {{e2e_compose}} up -d --wait api worker
+    echo "stack clock shifted by '{{offset}}' · restore with: just e2e-clock PT0S"
 
 # tsc over the harness. vitest is not what runs here, but the same rule applies: Playwright
 # transpiles with esbuild and strips types without checking them
