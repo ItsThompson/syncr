@@ -62,6 +62,13 @@ describe("bandOfEmptySlot", () => {
     expect(bandOfEmptySlot(slot()).reason).toBe("no_eligible_content");
   });
 
+  /* THE NEWEST REASON TRAVELS LIKE THE REST. A dropped leg arrives as an ordinary empty slot whose reason names
+   * the collision that caused it, so no branch here distinguishes it: the day renders whatever wording the payload
+   * rendered, and widening `BandReason` without this case would still compile if the code were dropped. */
+  it("carries a dropped leg's cause through as its reason", () => {
+    expect(bandOfEmptySlot(slot({ reason: "dropped_leg" })).reason).toBe("dropped_leg");
+  });
+
   /* THE WORDING IS NOT A FUNCTION OF THE REASON HERE. Two slots of one reason carrying two wordings draw two
    * different gutters: a lookup in this tree would collapse them onto one and pass every case above. */
   it("draws two wordings for one reason, because it reads the label and not the code", () => {

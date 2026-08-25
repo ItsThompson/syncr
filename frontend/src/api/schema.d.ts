@@ -2232,7 +2232,7 @@ export interface components {
             budgetPercent?: components["schemas"]["WireDecimal"] | null;
             /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
             floorHours?: components["schemas"]["WireDecimal"] | null;
-            /** @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name. */
+            /** @description Unique within the tenant. Every surface that labels an Area labels it by this name, so two Areas cannot share one. */
             name: components["schemas"]["WireText"];
             /**
              * Parentid
@@ -2256,7 +2256,7 @@ export interface components {
             budgetPercent?: components["schemas"]["WireDecimal"] | null;
             /** @description An absolute weekly minimum in hours, which the solver treats as a constraint rather than a preference. Bounded at 168 hours, which rejects a floor no week could meet. Null means the Area declares no floor. */
             floorHours?: components["schemas"]["WireDecimal"] | null;
-            /** @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name. */
+            /** @description Unique within the tenant. Every surface that labels an Area labels it by this name, so two Areas cannot share one. */
             name?: components["schemas"]["WireText"] | null;
             /**
              * Pigmentindex
@@ -2306,7 +2306,7 @@ export interface components {
             id: string;
             /**
              * Name
-             * @description Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.
+             * @description Unique within the tenant. Every surface that labels an Area labels it by this name, so two Areas cannot share one.
              */
             name: string;
             /**
@@ -3358,9 +3358,14 @@ export interface components {
          *     ``elapsed`` is the one the clock decides rather than the backlog. The week had already
          *     reached the slot when the solve ran, so no content could be placed into it and none will
          *     be: whether the Area had any is a question the span never got to ask.
+         *
+         *     ``dropped_leg`` is the one a collision decides rather than the solver. The anchor type
+         *     declared the journey and another commitment's buffer took the time first, so the leg was
+         *     dropped whole: the span stays empty and the emptiness has a stated cause instead of reading
+         *     as time nothing ever claimed.
          * @enum {string}
          */
-        EmptySlotReason: "no_eligible_content" | "off_plan" | "blocked_by_constraint" | "not_solved" | "elapsed";
+        EmptySlotReason: "no_eligible_content" | "off_plan" | "blocked_by_constraint" | "not_solved" | "elapsed" | "dropped_leg";
         /**
          * EmptySlotResponse
          * @description Discretionary time an Area was offered, and nothing filled.
@@ -4650,16 +4655,9 @@ export interface components {
          * RampReading
          * @description How much of the sealed ramp this tenant's Areas are using.
          *
-         *     Reported on the list and on every mutation, because both change it. ``statement`` is
-         *     non-null exactly when two Areas hold one step, which is what a thirteenth Area produces:
-         *     the ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.
+         *     Reported on the list and on every mutation, because both change it.
          */
         RampReading: {
-            /**
-             * Areassharingapigment
-             * @description How many Areas hold a step another Area also holds. Zero until the ramp is full.
-             */
-            areasSharingAPigment: number;
             /**
              * Pigmentcount
              * @description How many steps the ramp holds. Sealed: it is always the same number.
@@ -4670,11 +4668,6 @@ export interface components {
              * @description How many distinct steps of the ramp this tenant's Areas hold.
              */
             pigmentsInUse: number;
-            /**
-             * Statement
-             * @description What identity now rests on, stated when a step is shared.
-             */
-            statement?: string | null;
         };
         /**
          * ReadinessReading
@@ -5925,6 +5918,11 @@ export interface components {
              * @description The denominator the STRIP renders. Today it is the week's span less the interval union of off-plan periods alone: the occupancy reader behind it does not yet subtract the circadian frame, external anchors or absolutely forbidden windows, so on a week with a frame it reads high by the whole of it. verdict.discretionaryMinutes is the same quantity with all four subtracted and is the authoritative one until this reader catches up. Never scheduled time.
              */
             discretionaryMinutes: number;
+            /**
+             * Droppedlegs
+             * @description How many declared journeys a collision dropped whole in this week. Reported rather than counted by the client, and rendered per leg on the grid as a gap whose gutter names the cause.
+             */
+            droppedLegs: number;
             /**
              * Offplanminutes
              * @description How many of the week's minutes were declared off-plan. Already subtracted from discretionaryMinutes, so this explains the denominator rather than reducing it again.

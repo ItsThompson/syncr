@@ -47,7 +47,8 @@ export type BandReason =
   | "no_eligible_content"
   | "blocked_by_constraint"
   | "not_solved"
-  | "elapsed";
+  | "elapsed"
+  | "dropped_leg";
 
 /** One thing that happens in the week, reduced to what the grid draws it from. */
 export interface GridBlock {

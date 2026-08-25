@@ -846,7 +846,7 @@
           },
           "name": {
             "$ref": "#/components/schemas/WireText",
-            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
+            "description": "Unique within the tenant. Every surface that labels an Area labels it by this name, so two Areas cannot share one.",
             "maxLength": 60,
             "minLength": 1
           },
@@ -907,7 +907,7 @@
                 "type": "null"
               }
             ],
-            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name."
+            "description": "Unique within the tenant. Every surface that labels an Area labels it by this name, so two Areas cannot share one."
           },
           "pigmentIndex": {
             "anyOf": [
@@ -1011,7 +1011,7 @@
             "type": "string"
           },
           "name": {
-            "description": "Unique within the tenant. Past twelve Areas the ramp repeats, so identity rests on the hatch and this name.",
+            "description": "Unique within the tenant. Every surface that labels an Area labels it by this name, so two Areas cannot share one.",
             "title": "Name",
             "type": "string"
           },
@@ -2954,13 +2954,14 @@
         "type": "string"
       },
       "EmptySlotReason": {
-        "description": "Why a template slot the solver could not fill is empty.\n\n``not_solved`` is the materialized case, where no binding was attempted at all. It is a\nmember of its own because nobody looked at the backlog, and every other member reports\nsomething a phase computed.\n\n``elapsed`` is the one the clock decides rather than the backlog. The week had already\nreached the slot when the solve ran, so no content could be placed into it and none will\nbe: whether the Area had any is a question the span never got to ask.",
+        "description": "Why a template slot the solver could not fill is empty.\n\n``not_solved`` is the materialized case, where no binding was attempted at all. It is a\nmember of its own because nobody looked at the backlog, and every other member reports\nsomething a phase computed.\n\n``elapsed`` is the one the clock decides rather than the backlog. The week had already\nreached the slot when the solve ran, so no content could be placed into it and none will\nbe: whether the Area had any is a question the span never got to ask.\n\n``dropped_leg`` is the one a collision decides rather than the solver. The anchor type\ndeclared the journey and another commitment's buffer took the time first, so the leg was\ndropped whole: the span stays empty and the emptiness has a stated cause instead of reading\nas time nothing ever claimed.",
         "enum": [
           "no_eligible_content",
           "off_plan",
           "blocked_by_constraint",
           "not_solved",
-          "elapsed"
+          "elapsed",
+          "dropped_leg"
         ],
         "title": "EmptySlotReason",
         "type": "string"
@@ -5456,13 +5457,8 @@
         "type": "string"
       },
       "RampReading": {
-        "description": "How much of the sealed ramp this tenant's Areas are using.\n\nReported on the list and on every mutation, because both change it. ``statement`` is\nnon-null exactly when two Areas hold one step, which is what a thirteenth Area produces:\nthe ramp repeats rather than inventing a thirteenth ink, and the interface has to say so.",
+        "description": "How much of the sealed ramp this tenant's Areas are using.\n\nReported on the list and on every mutation, because both change it.",
         "properties": {
-          "areasSharingAPigment": {
-            "description": "How many Areas hold a step another Area also holds. Zero until the ramp is full.",
-            "title": "Areassharingapigment",
-            "type": "integer"
-          },
           "pigmentCount": {
             "description": "How many steps the ramp holds. Sealed: it is always the same number.",
             "title": "Pigmentcount",
@@ -5472,24 +5468,11 @@
             "description": "How many distinct steps of the ramp this tenant's Areas hold.",
             "title": "Pigmentsinuse",
             "type": "integer"
-          },
-          "statement": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "What identity now rests on, stated when a step is shared.",
-            "title": "Statement"
           }
         },
         "required": [
           "pigmentCount",
-          "pigmentsInUse",
-          "areasSharingAPigment"
+          "pigmentsInUse"
         ],
         "title": "RampReading",
         "type": "object"
@@ -7567,6 +7550,11 @@
             "title": "Discretionaryminutes",
             "type": "integer"
           },
+          "droppedLegs": {
+            "description": "How many declared journeys a collision dropped whole in this week. Reported rather than counted by the client, and rendered per leg on the grid as a gap whose gutter names the cause.",
+            "title": "Droppedlegs",
+            "type": "integer"
+          },
           "offPlanMinutes": {
             "description": "How many of the week's minutes were declared off-plan. Already subtracted from discretionaryMinutes, so this explains the denominator rather than reducing it again.",
             "title": "Offplanminutes",
@@ -7605,6 +7593,7 @@
           "unconfirmedDays",
           "offPlanMinutes",
           "blockCount",
+          "droppedLegs",
           "planCurrency"
         ],
         "title": "WeekReadingsResponse",

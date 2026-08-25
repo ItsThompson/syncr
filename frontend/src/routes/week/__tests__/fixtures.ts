@@ -124,7 +124,7 @@ export function buildAreas(): Areas {
         floorHours: 5,
       },
     ],
-    ramp: { pigmentCount: 12, pigmentsInUse: 2, areasSharingAPigment: 0, statement: null },
+    ramp: { pigmentCount: 12, pigmentsInUse: 2 },
   };
 }
 
@@ -273,6 +273,7 @@ export function buildReadings(overrides: Partial<WeekReadings> = {}): WeekReadin
     unconfirmedDays: 0,
     offPlanMinutes: 0,
     blockCount: 91,
+    droppedLegs: 0,
     planCurrency: "current",
     ...overrides,
   };
