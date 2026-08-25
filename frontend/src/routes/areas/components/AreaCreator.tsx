@@ -93,7 +93,7 @@ export function AreaCreator({ ramp, write }: AreaCreatorProps) {
         <FormRow
           label="Name"
           isRequired
-          hint="Unique within your Areas. Past twelve the ramp repeats, so the name is what identifies one."
+          hint="Unique within your Areas. No two Areas can share a name, so a name always identifies its Area."
         >
           {(field) => (
             <Input
