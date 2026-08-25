@@ -48,7 +48,8 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       // A file outside the two directories below never sees a shifted clock: the shift happens
       // only inside the `clock` project and is undone by its teardown before anything else runs.
-      testIgnore: [/\/clock\//, /\/clock-restore\//],
+      // Anchored at `tests/` so an unrelated nested directory named clock/ elsewhere is not caught.
+      testIgnore: /\/tests\/clock(-restore)?\//,
     },
     {
       name: "clock",

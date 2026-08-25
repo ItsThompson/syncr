@@ -16,7 +16,7 @@
  */
 
 import { expect, pinBrowserClock, test } from "../harness.ts";
-import { stackInstant, setStackClock } from "../../src/harness/clock.ts";
+import { setStackClock, stackInstant } from "../../src/harness/clock.ts";
 import { BASE_URL } from "../../src/config.ts";
 
 /* Long enough that no reading of it could be confused with a drift of the wall clock during a

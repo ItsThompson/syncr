@@ -83,7 +83,7 @@ export const usingFixture = (name: string): void => {
 /** Pin the browser's own clock to `instant`, which is the instant the shifted stack reports.
  *
  * WHY THIS EXISTS AND WHY THE CALLER PASSES THE INSTANT IN: the week grid reads `Date.now()`
- * (`WeekRoute.tsx:147,177`) to place the current hour, and the browser's clock is one of the clocks
+ * (`WeekRoute.tsx:60,147,178`) to place the current hour, and the browser's clock is one of the clocks
  * a stack shift does not move: the offset lives in the api and worker processes only. A server-only
  * shift therefore leaves a browser assertion comparing two clocks, which passes whenever both are
  * wrong the same way. Pinning the page to the SAME instant the stack reports makes the two agree by

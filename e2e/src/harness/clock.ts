@@ -29,7 +29,13 @@ export const stackInstant = async (service: StackService): Promise<Date> => {
     ["compose", ...COMPOSE_FILES, "exec", "-T", service, "python", "-c", INSTANT_PROBE],
     { cwd: repoRoot },
   );
-  return new Date(stdout.trim());
+  const instant = new Date(stdout.trim());
+  // An Invalid Date would poison every comparison downstream into a silent false, and the
+  // caller would report a generic poll timeout instead of whatever the probe actually said.
+  if (Number.isNaN(instant.getTime())) {
+    throw new Error(`${service} did not report an instant: ${stdout.trim() || "(no output)"}`);
+  }
+  return instant;
 };
 
 /** Shift the stack's clock by `offset`, through the recipe that owns the shift.
