@@ -1283,3 +1283,197 @@ drill-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     SYNCR_OPS_COMPOSE="$backup_overlays" just backup-now || exit 1
     echo "=== 5 the drill, against what is in that bucket"
     SYNCR_RESTORE_COMPOSE="$drill_overlays" just restore-drill
+
+# --- Point-in-time recovery, rehearsed locally -------------------------------
+
+# THE POINT-IN-TIME REHEARSAL. Recover a scratch instance to an instant ASKED FOR after the dump,
+# from a physical base backup plus the archived WAL, against the local bucket and the throwaway
+# keypair.
+#
+# WHAT SEPARATES THIS FROM `just restore-drill`. That drill restores the nightly dump, and a dump
+# lands at THE INSTANT IT WAS TAKEN whatever anyone asks for: `pg_restore` replays nothing. This
+# rehearsal takes a physical base backup (`pg_basebackup`), writes a row AFTER it, and recovers to
+# an instant past that row. Only real WAL replay can put the row back, and only an honored
+# `recovery_target_time` could have stopped before it.
+#
+# THE NINTH CLAIM, beside the eight `ops.compare` prints about the recovered copy: the database
+# came back at the instant ASKED FOR rather than at the instant of the dump (`ops.pitr`). It is
+# shown to fail where a fake recovery hides, by recovering a SECOND time to the DUMP'S OWN instant:
+# there the post-dump row must be ABSENT. Present at both instants means the replay ignored the
+# target; absent at both means nothing replayed and this was a dump restore all along. Either way
+# the rehearsal fails loudly rather than reporting a pass.
+#
+# THE BASE BACKUP DOES NOT TRANSIT THE BUCKET, deliberately: it is streamed from the live instance
+# into the scratch volume moments before it is used. The direction under test here is REPLAY; the
+# dump-to-bucket-to-fetch direction is what `just restore-drill` already proves. The WAL does
+# transit the bucket, encrypted to the throwaway key, and comes back the way a real recovery reads
+# it: one segment per `python3 -m ops.fetch_segment` invocation.
+#
+# WHY NOTHING HERE IS ON CI, stated here rather than left as an omission: the suite gates every
+# structure this recipe depends on (`tests/test_pitr_drill.py` carries the refusals, the crossings
+# and the claim logic), and what CI cannot host is the run itself. Docker builds, a wall-clock WAL
+# timeline with sleeps in it, and minutes of runtime to prove what no unit test can fake. So the
+# structure is gated and the behavior is rehearsed by hand, exactly like `just drill-local`.
+drill-pitr-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # The same development encryption key `just drill-local` exports, for the reason stated there:
+    # an empty value overrides the settings layer's safe development default and the api refuses
+    # to start by name.
+    export GOOGLE_TOKEN_ENCRYPTION_KEY="${GOOGLE_TOKEN_ENCRYPTION_KEY:-ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U=}"
+    export SYNCR_DRILL_STARTED_AT="$(date +%s)"
+    backup_overlays="-f docker-compose.yml -f docker-compose.drill-local.yml"
+    pitr_overlays="-f docker-compose.yml -f docker-compose.restore.yml -f docker-compose.drill-local.yml -f docker-compose.drill-pitr.yml"
+    live() { docker compose -f docker-compose.yml "$@"; }
+    backup() { docker compose $backup_overlays "$@"; }
+    pitr() { docker compose $pitr_overlays "$@"; }
+    psql_live() {
+      live exec -T postgres psql -v ON_ERROR_STOP=1 \
+        -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" "$@"
+    }
+    # The one row whose presence IS the ninth claim: written after the base backup, so a copy that
+    # came back at the dump's instant cannot hold it.
+    marker() {
+      pitr exec -T postgres-recovery psql -tA \
+        -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
+        -c "select count(*) from public.edit_events where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'"
+    }
+    # Millisecond precision, taken INSIDE the ops image because the host's `date` may be BSD's,
+    # whose %N answers literally. Postgres parses this format as a `recovery_target_time`.
+    instant() { backup run --rm --no-deps ops date -u '+%Y-%m-%d %H:%M:%S.%N' | cut -b1-23; }
+    # The volume's PHYSICAL name follows the resolved project, which an environment override moves:
+    # derive it rather than spell it, so the removal below cannot quietly remove nothing.
+    pitr_volume() {
+      pitr config --format json \
+        | python3 -c 'import json, sys; print(json.load(sys.stdin)["name"] + "_pitr_pgdata")'
+    }
+    await_promotion() {
+      for _ in $(seq 1 90); do
+        [ "$(pitr exec -T postgres-recovery psql -tA \
+          -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
+          -c 'select pg_is_in_recovery()' 2>/dev/null)" = "f" ] && return 0
+        sleep 2
+      done
+      echo "the recovery did not reach its target within three minutes" >&2
+      return 1
+    }
+    # BY SERVICE NAME AND BY VOLUME NAME, never a project-scoped teardown: this
+    # project is `syncr`, and on a deployed host that project holds the live database's volume.
+    teardown() {
+      pitr rm -fsv postgres-recovery >/dev/null 2>&1
+      docker volume rm -f "$(pitr_volume)" >/dev/null 2>&1
+    }
+    trap teardown EXIT
+
+    echo "--- 1/8 a database, migrations, and evidence"
+    live up -d --wait postgres || exit 1
+    live run --rm --no-deps api alembic upgrade head || exit 1
+    just drill-seed || exit 1
+    # REFUSE OVER AN EMPTY EVIDENCE SET, as `just restore-drill` refuses through the verdict's
+    # `_there_was_data_to_lose`: a recovery of an empty table always succeeds, so a rehearsal over
+    # empty evidence tables is the most convincing false pass there is. The five names are crossed
+    # against `ops.config.EVIDENCE_TABLES` by a test, so the two cannot drift apart silently.
+    for table in public.plan_revisions public.block_outcomes public.pins public.week_adjustments public.edit_events; do
+      count="$(psql_live -tAc "select count(*) from $table")"
+      if [ "${count:-0}" -eq 0 ]; then
+        echo "$table held no rows before the base backup, so this rehearsal proves nothing" >&2
+        echo "about it. Seed the database and re-run." >&2
+        exit 1
+      fi
+    done
+    # Establishes the volumes' ownership before anything but root writes to them: what
+    # `just backup-now` does as its own first step every night.
+    backup run --rm --no-deps ops python3 -m ops.prepare || exit 1
+    # A REPLICATION CONNECTION FOR THE BASE BACKUP. The initialized pg_hba.conf admits regular
+    # connections from any host and no replication connection, which is exactly what
+    # `pg_basebackup --wal-method=stream` asks for: measured, on this checkout. Idempotent, and
+    # password-authenticated like every other host line, so nothing new trusts the drill network.
+    live exec -T postgres sh -c \
+      'grep -q "host replication" "$PGDATA/pg_hba.conf" || echo "host replication all all scram-sha-256" >> "$PGDATA/pg_hba.conf"' || exit 1
+    psql_live -c 'select pg_reload_conf()' >/dev/null || exit 1
+
+    echo "--- 2/8 shipping what the seed wrote"
+    psql_live -c 'select pg_switch_wal()' >/dev/null || exit 1
+    SYNCR_OPS_COMPOSE="$backup_overlays" just wal-ship || exit 1
+
+    # THE REHEARSAL'S ROWS, CLEARED BEFORE THE BASE BACKUP. Both markers are deleted HERE and not
+    # beside their inserts, because the live database outlives one run: a marker a previous run
+    # left behind would be captured INTO this run's base backup, sit in every recovery at any
+    # instant, and make the control below see the marker where by construction it cannot be.
+    psql_live -c "delete from public.edit_events where id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')" || exit 1
+
+    echo "--- 3/8 the physical base backup, streamed into the scratch volume"
+    backup run --rm --no-deps ops sh -c \
+      'rm -rf /var/backups/restore/base && mkdir /var/backups/restore/base' || exit 1
+    backup run --rm --no-deps ops pg_basebackup --pgdata=/var/backups/restore/base \
+      --format=plain --wal-method=stream --checkpoint=fast || exit 1
+    dump_instant="$(instant)"
+
+    echo "--- 4/8 a row written AFTER the dump, then its WAL shipped"
+    # The dump instant must be strictly BEFORE this commit, at any clock or truncation: the sleep
+    # is what keeps the control recovery below from including the marker at equal resolution.
+    sleep 2
+    psql_live -c "insert into public.edit_events (id, tenant_id, iso_week, binding, proposed_starts_at, proposed_ends_at, accepted_starts_at, accepted_ends_at, objective_delta, context, weight_set_version, created_at) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-4111-8111-111111111111', '2026-W32', '{\"kind\": \"habit\", \"entity_id\": \"44444444-4444-4444-8444-444444444444\", \"occurrence_key\": \"09\", \"split_index\": null}'::jsonb, now(), now() + interval '1 hour', now() + interval '2 hours', now() + interval '3 hours', 0.5, '{\"note\": \"written after the base backup: the instant the rehearsal asks for\"}'::jsonb, 1, now())" || exit 1
+    asked_for="$(instant)"
+    # ONE MORE TRANSACTION, COMMITTED PAST THE INSTANT ASKED FOR, and deleted again before the
+    # manifest below is read. Not decoration: a recovery reaches its target by finding a COMMIT
+    # stamped after it, so an archive whose last commit precedes the target does not stop there,
+    # it FAILS -- Postgres cannot know no further transaction follows. Measured, on this checkout:
+    # shipping an empty switched-out segment changed nothing, because an empty segment carries no
+    # commit. The delete makes the live database's own contents identical either side of the
+    # instant, so the EIGHT claims still hold against the copy recovered to the target.
+    psql_live -c "insert into public.edit_events (id, tenant_id, iso_week, binding, proposed_starts_at, proposed_ends_at, accepted_starts_at, accepted_ends_at, objective_delta, context, weight_set_version, created_at) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', '2026-W32', '{\"kind\": \"habit\", \"entity_id\": \"44444444-4444-4444-8444-444444444444\", \"occurrence_key\": \"10\", \"split_index\": null}'::jsonb, now(), now() + interval '1 hour', now() + interval '2 hours', now() + interval '3 hours', 0.5, '{\"note\": \"committed past the target so the target is reachable\"}'::jsonb, 1, now())" || exit 1
+    psql_live -c "delete from public.edit_events where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'" || exit 1
+    psql_live -c 'select pg_switch_wal()' >/dev/null || exit 1
+    SYNCR_OPS_COMPOSE="$backup_overlays" just wal-ship || exit 1
+
+    echo "--- 5/8 staging every segment the bucket holds"
+    objects="$(backup run --rm --no-deps ops sh -c 'rclone lsf --recursive "$SYNCR_BACKUP_REMOTE/wal"')" || exit 1
+    if [ -z "$objects" ]; then
+      echo "the bucket holds no archived WAL segment, so there is nothing a recovery could" >&2
+      echo "replay and nothing this rehearsal could prove. Ship and re-run." >&2
+      exit 1
+    fi
+    for object in $objects; do
+      case "$object" in *.gz.gpg) ;; *) continue ;; esac
+      segment="${object%.gz.gpg}"
+      printf '%s' "$segment" \
+        | grep -q -E '^([0-9A-F]{24}(\.[0-9A-F]{8}\.backup)?|[0-9A-F]{8}\.history)$' || continue
+      pitr run --rm --no-deps ops python3 -m ops.fetch_segment "$segment" || exit 1
+    done
+
+    echo "--- 6/8 recovering to the instant ASKED FOR ($asked_for)"
+    export SYNCR_PITR_TARGET_TIME="$asked_for"
+    teardown
+    pitr run --rm --no-deps pitr-prepare || exit 1
+    pitr up -d --force-recreate --no-deps postgres-recovery || exit 1
+    await_promotion || exit 1
+    found_at_target="$(marker)"
+    # The reading the EIGHT claims are judged on. Both readings are written by the same console
+    # script the drill uses, pointed at two databases and one scratch directory; the staging volume
+    # is no use for this, because a directory that exists in an image resets a mounted empty
+    # volume's ownership at every container creation here, which is what a reading into it kept
+    # failing on. The scratch directory is non-empty from the base backup onward and keeps what
+    # `ops.prepare` gave it.
+    pitr run --rm --no-deps ops python3 -c \
+      "import os; from ops import environment; from ops.prepare import writable_by_app; writable_by_app(environment.paths(os.environ).scratch, environ=os.environ)" || exit 1
+    pitr run --rm --no-deps \
+      -e "DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres:5432/${POSTGRES_DB:-syncr}" \
+      -e SYNCR_FINGERPRINT_PATH=/var/backups/restore/restore.manifest.json \
+      fingerprint-restore || exit 1
+    pitr run --rm --no-deps \
+      -e "DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-syncr}:${POSTGRES_PASSWORD:-syncr}@postgres-recovery:5432/${POSTGRES_DB:-syncr}" \
+      fingerprint-restore || exit 1
+    pitr run --rm --no-deps ops python3 -m ops.compare || exit 1
+
+    echo "--- 7/8 recovering AGAIN, to the dump's own instant ($dump_instant)"
+    teardown
+    export SYNCR_PITR_TARGET_TIME="$dump_instant"
+    pitr run --rm --no-deps pitr-prepare || exit 1
+    pitr up -d --force-recreate --no-deps postgres-recovery || exit 1
+    await_promotion || exit 1
+    found_at_dump_instant="$(marker)"
+
+    echo "--- 8/8 the ninth claim"
+    pitr run --rm --no-deps ops python3 -m ops.pitr \
+      "$asked_for" "$dump_instant" "$found_at_target" "$found_at_dump_instant" || exit 1

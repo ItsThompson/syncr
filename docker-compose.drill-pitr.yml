@@ -1,0 +1,112 @@
+# =============================================================================
+# THE POINT-IN-TIME REHEARSAL'S OWN TOPOLOGY. Layered ON TOP of docker-compose.yml,
+# docker-compose.restore.yml and docker-compose.drill-local.yml by `just drill-pitr-local`,
+# and never valid standalone.
+#
+# WHAT IS RECOVERED WHERE. `docker-compose.restore.yml` gives the restore drill a scratch
+# instance that starts empty and receives a logical dump through `pg_restore`. A point-in-time
+# recovery cannot work that way: WAL replay needs a PHYSICAL base backup already in the data
+# directory before Postgres starts, plus `recovery.signal` telling it to replay rather than serve.
+# So this overlay adds two services of its own:
+#
+#   postgres-recovery   the scratch instance, recovered from a base backup to the instant the
+#                       rehearsal asks for, then promoted
+#   pitr-prepare        a one-shot that fills an EMPTY data volume from the base backup and writes
+#                       the two files a recovery needs: `recovery.signal`, and the target instant in
+#                       `postgresql.auto.conf`
+#
+# THE TARGET INSTANT IS DATA, NOT TOPOLOGY, which is why it is not on any command line here. The
+# recipe exports `SYNCR_PITR_TARGET_TIME` before each recovery and `pitr-prepare` writes it into
+# `postgresql.auto.conf`; the same stack recovers to two different instants in one run, which is
+# how the ninth claim sees both sides of the seam. A prepare run without one refuses by name.
+#
+# EVERYTHING ELSE ABOUT THIS INSTANCE IS THE RESTORE DRILL'S, ON PURPOSE: the same pinned Postgres
+# digest (`test_deploy_topology.py` crosses it against the live pin), the same `max_connections`
+# (Postgres refuses to replay WAL on an instance configured below the server that wrote it), and
+# the same `restore_command` reading the same scratch volume `ops.fetch_segment` stages into. The
+# crossings live in `tests/test_pitr_drill.py`.
+#
+# NO ARCHIVING HERE, as in the drill's own instance: an archive_mode on a recovery would ship the
+# replay's own WAL back into the bucket beside production's.
+#
+# THE DATA VOLUME IS REMOVED BY NAME, never with a project-scoped teardown: this project is
+# `syncr`, and on a
+# deployed host that project holds the live database's volume. The recipe removes
+# `syncr_pitr_pgdata` at both ends, so every recovery starts from a volume that held nothing.
+# =============================================================================
+name: syncr
+
+services:
+  postgres-recovery:
+    # postgres:16.10-bookworm, the same literal digest `docker-compose.restore.yml` pins for its
+    # scratch instance. A recovery proven against another build is proven against another server.
+    image: postgres@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      # The same command `docker-compose.restore.yml` declares, for the same reason: the segment is
+      # staged by `python3 -m ops.fetch_segment` into the scratch volume, and this copies it and
+      # does nothing else. The database container makes no network call and holds no key; see that
+      # file for the full statement of the rule.
+      - "-c"
+      - "restore_command=cp /var/backups/restore/wal/%f %p"
+    volumes:
+      # Where the recovered copy lives, unlike the drill's scratch instance, whose data stays in
+      # its container's writable layer: a physical recovery needs the data directory populated
+      # BEFORE Postgres starts, and only a volume can hold it there across services.
+      - pitr_pgdata:/var/lib/postgresql/data
+      # Read-only: the one container that replays a segment cannot alter the copy it replays.
+      - restore_scratch:/var/backups/restore:ro
+    networks:
+      - data-net
+    # Generous, because a healthcheck that passes during replay says nothing: pg_isready succeeds
+    # against an instance still in recovery. The recipe waits for PROMOTION itself, polling
+    # `pg_is_in_recovery()`, and treats this check as the crash guard only.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-syncr} -d ${POSTGRES_DB:-syncr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    restart: "no"
+
+  # One-shot: fill an empty data volume from the base backup, write the recovery configuration,
+  # hand the whole directory to the user Postgres runs as. Runs fresh before EACH recovery, so the
+  # second recovery in one rehearsal starts from the same base backup the first did.
+  pitr-prepare:
+    image: postgres@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
+    environment:
+      SYNCR_PITR_TARGET_TIME: ${SYNCR_PITR_TARGET_TIME:-}
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -eu
+        if [ -z "$${SYNCR_PITR_TARGET_TIME:-}" ]; then
+          echo 'SYNCR_PITR_TARGET_TIME is not set: the rehearsal refuses to guess an instant.' >&2
+          exit 1
+        fi
+        echo "recovering to $${SYNCR_PITR_TARGET_TIME}"
+        find /var/lib/postgresql/data -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        cp -a /var/backups/restore/base/. /var/lib/postgresql/data/
+        chmod 700 /var/lib/postgresql/data
+        # THE PREPARED DIRECTORY IS A BASE BACKUP, AND THIS IS HOW THE RECIPE CAN TELL: a base
+        # backup carries `backup_label`, which only its completion turns into `backup_label.old`.
+        # Anything else here means an earlier recovery survived the wipe, and a control recovery
+        # run over one would read the WRONG instance and report whatever that instance held.
+        if [ ! -f /var/lib/postgresql/data/backup_label ]; then
+          echo 'the prepared data directory holds no base backup: the wipe above failed' >&2
+          exit 1
+        fi
+        printf "\nrecovery_target_time = '%s'\nrecovery_target_action = 'promote'\n" \
+          "$${SYNCR_PITR_TARGET_TIME}" >> /var/lib/postgresql/data/postgresql.auto.conf
+        touch /var/lib/postgresql/data/recovery.signal
+        chown -R postgres:postgres /var/lib/postgresql/data
+    volumes:
+      - pitr_pgdata:/var/lib/postgresql/data
+      - restore_scratch:/var/backups/restore:ro
+    restart: "no"
+
+volumes:
+  # Declared here so it belongs to this overlay alone. Removed BY NAME by the recipe, at both ends;
+  # never by a project-scoped teardown, which would take every other volume beside it.
+  pitr_pgdata:
