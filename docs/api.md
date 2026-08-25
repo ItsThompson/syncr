@@ -135,32 +135,24 @@ Each of the three also carries the preference trio described above, on its own p
 
 ### Calendar sources and Google connect
 
+An ICS feed needs no OAuth. A Google account connects through the three dedicated `google`
+routes in this group beside the generic source routes; the flow itself, its state parameter,
+and token refresh are covered in [authorization.md](authorization.md).
+
 | Method | Path | Summary |
 |---|---|---|
 | GET | `/api/v1/calendar-sources` | Every calendar source, with its sync state |
 | POST | `/api/v1/calendar-sources` | Add an anchor source. No OAuth for an ICS feed |
-
-An ICS feed needs no OAuth; a Google account connects through three dedicated routes beside
-the generic source routes:
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/calendar-sources/google/connect` | Start a Google connect. Names the scopes and what is read |
 | GET | `/api/v1/calendar-sources/google/callback` | Where Google returns from consent. Redirects to Settings with the outcome |
+| POST | `/api/v1/calendar-sources/google/connect` | Start a Google connect. Names the scopes and what is read |
 | GET | `/api/v1/calendar-sources/google/connection` | Whether Google is connected, and every notice it raises |
-
-| Method | Path | Summary |
-|---|---|---|
+| DELETE | `/api/v1/calendar-sources/{source_id}` | Remove a source and the anchors it contributed |
 | GET | `/api/v1/calendar-sources/{source_id}` | One source and its sync state |
 | PATCH | `/api/v1/calendar-sources/{source_id}` | Include or exclude a source, or rename it |
-| DELETE | `/api/v1/calendar-sources/{source_id}` | Remove a source and the anchors it contributed |
 | PATCH | `/api/v1/calendar-sources/{source_id}/horizon` | Set the projection horizon. Write-target only |
 | GET | `/api/v1/calendar-sources/{source_id}/remote-calendars` | The account's calendars, for selection during setup. Google only |
 | PUT | `/api/v1/calendar-sources/{source_id}/role` | Assign the write-target role. 409 if one exists |
 | POST | `/api/v1/calendar-sources/{source_id}/sync` | Force a sync. Returns an Operation |
-
-The connect flow itself, its state parameter, and token refresh are covered in
-[authorization.md](authorization.md).
 
 ### Weeks, solving, and assent
 

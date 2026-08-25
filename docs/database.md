@@ -88,7 +88,7 @@ Everything the solve lifecycle reads and writes.
 
 | Tables | Hold |
 |---|---|
-| `sessions` | Browser sessions: the token digest, sliding idle window, and absolute expiry |
+| `sessions` (see identity tables above) | Browser sessions: the token digest, sliding idle window, and absolute expiry |
 | `oauth_grants`, `oauth_authorization_codes`, `oauth_refresh_tokens` | The Authorization Server's grants, single-use codes (stored digested), and rotating refresh tokens |
 
 How credentials move through these tables is [authorization.md](authorization.md). How clients
