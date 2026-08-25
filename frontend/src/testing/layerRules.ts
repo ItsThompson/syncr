@@ -143,6 +143,41 @@ export async function layerSources(dir: string): Promise<LayerSource[]> {
   );
 }
 
+/** Matches every property whose effect is to clip or refuse to wrap text: the clamp shorthand and its
+ * vendor spelling, the ellipsis longhand of the `overflow` shorthand's inline end, and nowrap itself. */
+export const TRUNCATION_PROPERTY = /line-clamp|block-ellipsis|text-overflow|white-space/;
+
+export interface TruncationDeclaration {
+  readonly sheet: string;
+  readonly selector: string;
+  readonly property: string;
+  readonly value: string;
+}
+
+/** Every truncation-shaped declaration a layer makes, with the rule each sits in.
+ *
+ * Read over declarations rather than over source text, so a property named in a comment is not a finding,
+ * and by PROPERTY NAME rather than by value, because `-webkit-line-clamp: n` carries its ellipsis inside the
+ * shorthand where neither `text-overflow` nor `white-space` would see it. */
+export async function truncationDeclarations(dir: string): Promise<TruncationDeclaration[]> {
+  const found: TruncationDeclaration[] = [];
+  for (const { name, css } of await layerStylesheets(dir)) {
+    parse(css).walkRules((rule) => {
+      rule.walkDecls((declaration) => {
+        if (TRUNCATION_PROPERTY.test(declaration.prop)) {
+          found.push({
+            sheet: name,
+            selector: rule.selector,
+            property: declaration.prop,
+            value: declaration.value,
+          });
+        }
+      });
+    });
+  }
+  return found;
+}
+
 /** Every value of a property a layer declares, with the sheet each came from. */
 export async function declarationsOf(
   dir: string,
