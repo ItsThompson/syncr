@@ -21,6 +21,12 @@ bounded shape rather than the second floor.
 Every helper returns data rather than asserting, so the rule is checked against the real
 tree AND against a deliberately planted violation. A census with no positive control passes
 forever once it has gone blind, which is worse than having no census at all.
+
+One adjacent reading is deliberately not a finding: ``plans/served_verdicts.py`` resolves
+``IsoWeek.containing(local_date(now, profile.home_zone))`` for a single-week verdict read.
+That is semantically "the week holding today's local date", but it is not an open-ended bump
+floor -- it names no range and bumps nothing -- so the census does not flag it, and this note
+is what keeps it from being mistaken for an escaped fourth derivation.
 """
 
 from __future__ import annotations
@@ -41,6 +47,11 @@ if TYPE_CHECKING:
 SHARED_FLOOR_MODULE: Final = "packages/syncr-api/src/syncr_api/user_settings/solve_inputs.py"
 EXEMPT_SETTINGS_SERVICE: Final = "packages/syncr-api/src/syncr_api/user_settings/service.py"
 SANCTIONED_SITES: Final = frozenset({SHARED_FLOOR_MODULE, EXEMPT_SETTINGS_SERVICE})
+
+# The settings exemption is for the ONE home-zone bump, not the whole file: a second call
+# there would be a second floor wearing the exemption, so the file is capped rather than
+# exempted wholesale. A legitimate new bump site must widen this budget consciously.
+EXEMPT_SITE_BUDGET: Final = 1
 
 FEATURE_ROOTS: Final = ("packages/*/src", "cli/src")
 
@@ -154,6 +165,15 @@ def test_the_census_has_not_gone_blind_over_the_real_tree() -> None:
 
     assert sites[SHARED_FLOOR_MODULE], "the shared floor no longer calls weeks_from"
     assert sites[EXEMPT_SETTINGS_SERVICE], "the exempt settings site no longer calls weeks_from"
+
+
+def test_the_settings_exemption_covers_one_call_not_the_whole_file() -> None:
+    # The exemption names the home-zone bump, so a SECOND weeks_from elsewhere in the file is
+    # a second floor wearing the exemption rather than a sanctioned site. Capping the count
+    # closes that hole without pinning the guard to a method name a rename would break.
+    sites = all_call_sites(repository_root())
+
+    assert len(sites[EXEMPT_SETTINGS_SERVICE]) == EXEMPT_SITE_BUDGET
 
 
 # ---------------------------------------------------------------------------------
