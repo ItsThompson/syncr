@@ -305,7 +305,7 @@ Three consequences.
 
 **Bounded scales get block characters; arbitrary magnitudes get a fill.** A meter is bounded 0 to 100% and the segmented look is the aesthetic. A ranked bar carries arbitrary magnitude, where about 22 discrete steps collapse every non-leading row to a one-cell stub, so it is a single fill whose width is a percentage. That is a rectangle, not a chart, and it needs no library.
 
-Pie and wedge labels sit **outside** the wedge. A wedge fill only has to clear 3:1 as an indicator; text on it would need 4.5:1.
+Pie and wedge labels sit **outside** the wedge. A wedge fill only has to clear 3:1 as an indicator; text on it would need 4.5:1. A name longer than the label gutter holds is bounded there with an ellipsis, and the whole name rides on the bounded label's own `title`.
 
 **A deviation row carries no Area ink at all, including its label column.** See [the Area ramp](#the-area-ramp): a chart row is a chart context end to end.
 
