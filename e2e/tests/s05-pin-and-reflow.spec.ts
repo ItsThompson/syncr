@@ -42,8 +42,9 @@
 import { test, expect, usingFixture } from "./harness.ts";
 import type { Page } from "@playwright/test";
 import { HOME_ZONE } from "../src/config.ts";
+import type { Block, Operation, Pin, Shortfall, Verdict } from "../src/api/schemas.ts";
 import { planWeek } from "../src/harness/subject-weeks.ts";
-import { awaitTerminal, solveAndSettle } from "../src/harness/week.ts";
+import { awaitTerminal, solveAndSettle, weekView } from "../src/harness/week.ts";
 
 usingFixture("tight_capacity");
 test.describe.configure({ mode: "serial" });
@@ -158,6 +159,13 @@ const readMarker = (page: Page): Promise<{ top: number; at: string } | null> =>
     };
   })()`);
 
+/** The next painted frame, and the one after it. A frame boundary, not a wait: nothing here sleeps a
+ * fixed amount, because the drag commits synchronously with the pointer events it reads. */
+const nextPaint = (page: Page): Promise<void> =>
+  page.evaluate(
+    "() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+  );
+
 /** `1h15m`, `45m`, `2h`: the one spelling of a duration on this screen, which
  * `frontend/src/ui/domain/verdict-panel/verdict.ts` owns. Restated here because this case reads rendered
  * words, and the frontend's module is not importable from the harness. */
@@ -177,13 +185,13 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
 
   // THE CHUNK, AND THE PREMISE. The earliest unpinned task chunk has the clearest room above it, and the
   // case needs a shortfall to exist: without one, no pin could visibly answer the verdict.
-  const before = await api.get<any>(`/api/v1/weeks/${planWeek()}`);
+  const before = await weekView(api, planWeek());
   const chunk = (before.live?.blocks ?? [])
-    .filter((b: any) => b.origin === "task" && !b.pinned)
-    .sort((a: any, b: any) => Date.parse(a.interval.start) - Date.parse(b.interval.start))[0];
+    .filter((b: Block) => b.origin === "task" && !b.pinned)
+    .sort((a: Block, b: Block) => Date.parse(a.interval.start) - Date.parse(b.interval.start))[0];
   expect(chunk, "the solved week placed nothing a drag could lift").toBeDefined();
   expect(
-    before.verdict.shortfalls.some((s: any) => s.minutes > 0),
+    before.verdict?.shortfalls.some((s: Shortfall) => s.minutes > 0),
     "the week reports no shortfall, so the verdict has nothing for a pin to answer",
   ).toBe(true);
 
@@ -263,7 +271,8 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
   await page.mouse.move(pressX, pressY);
   await page.mouse.down();
   await page.mouse.move(pressX, pressY + 2 * 15 * pxPerMin, { steps: 4 });
-  await page.waitForTimeout(200);
+  // The drag commits with its pointer events; this waits for the drawn state to say so, not for a clock.
+  await expect.poll(async () => (await readMarker(page)) !== null).toBe(true);
 
   // OBSERVATION, MID-DRAG IN THE ORIGIN COLUMN: one marker, drawn once, naming a quarter.
   const midDrag = (await page.evaluate(`(() => ({
@@ -277,10 +286,10 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
 
   // OBSERVATION, OVER THE NEXT COLUMN: the pointer crosses a real boundary, and the grid states nothing.
   await page.mouse.move(columnB!.l + 60, pressY, { steps: 8 });
-  await page.waitForTimeout(200);
-  const markersOverNextColumn = await page.evaluate(
-    "document.querySelectorAll('.week-insertion').length",
-  );
+  const markersOverNextColumn = await page
+    .waitForFunction("document.querySelectorAll('.week-insertion').length === 0")
+    .then(() => 0)
+    .catch(() => null);
   expect(markersOverNextColumn, "a marker followed the pointer across the column boundary").toBe(0);
   const overNextColumn = await blockByIndex(page, drawn.bi);
   expect(
@@ -295,7 +304,7 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
   // so the aim walks onto the wanted line and holds there.
   const desiredMarkerTop = drawn.styleTop - liftPx;
   await page.mouse.move(pressX, releaseY, { steps: 6 });
-  await page.waitForTimeout(200);
+  await nextPaint(page);
   let aim = await readMarker(page);
   expect(aim, "returning to the origin column drew no marker").not.toBeNull();
   for (
@@ -304,7 +313,7 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
     correction++
   ) {
     await page.mouse.move(pressX, releaseY - (aim!.top - desiredMarkerTop), { steps: 2 });
-    await page.waitForTimeout(150);
+    await nextPaint(page);
     aim = await readMarker(page);
   }
   const backInOrigin = { markers: [aim] };
@@ -355,17 +364,17 @@ test("S5, pin and reflow: a discrete drag across a real column boundary", async 
   expect(pinRequests, "the drop posted more than one pin").toBe(1);
   const pinReply = await pinAnswered;
   expect(pinReply.status(), "the pin was refused").toBe(201);
-  const pinBody = (await pinReply.json()) as any;
-  const pinMinutes = pinBody?.verdict?.shortfalls?.reduce(
-    (sum: number, s: any) => sum + s.minutes,
+  const pinBody = (await pinReply.json()) as { verdict: Verdict; operation: Operation };
+  const pinMinutes = pinBody.verdict?.shortfalls?.reduce(
+    (sum: number, s: Shortfall) => sum + s.minutes,
     0,
   );
   expect(Number.isFinite(pinMinutes), "the pin response carried no shortfall figure").toBe(true);
 
-  const stored = await api.get<any>(`/api/v1/weeks/${planWeek()}`);
-  const heldPin = stored.pins.find((p: any) => p.blockId === chunk.id);
+  const stored = await weekView(api, planWeek());
+  const heldPin = stored.pins.find((p: Pin) => p.blockId === chunk.id);
   expect(heldPin, "no pin was stored for the dropped block").toBeDefined();
-  expect(Date.parse(heldPin.interval.start)).toBe(
+  expect(Date.parse(heldPin!.interval.start)).toBe(
     Date.parse(chunk.interval.start) - LIFT_MINUTES * 60_000,
   );
 
