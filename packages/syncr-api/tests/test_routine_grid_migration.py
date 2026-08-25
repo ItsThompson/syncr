@@ -21,10 +21,12 @@ from typing import TYPE_CHECKING
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import text
+from alembic.script import ScriptDirectory
+from sqlalchemy import CheckConstraint, text
 
 from syncr_api.core.db import create_db_engine
 from syncr_api.core.migrations import ALEMBIC_DIR
+from syncr_api.routines.models import RoutineRow
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -134,6 +136,24 @@ def read_column(url: str, statement: str) -> list[str]:
     return asyncio.run(read())
 
 
+def test_the_models_declare_what_the_revision_creates() -> None:
+    # The revision and the models state the grid twice, so this is what makes an edit to either a
+    # deliberate change in both places rather than a silent divergence in one.
+    revision = ScriptDirectory(str(ALEMBIC_DIR)).get_revision(GRID_REVISION).module
+    declared = {
+        str(constraint.name): " ".join(str(constraint.sqltext).split())
+        for constraint in RoutineRow.__table__.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+
+    assert declared["ck_routines_target_time_is_on_the_grid"] == " ".join(
+        revision.TARGET_TIME_GRID_SQL.split()
+    )
+    assert declared["ck_routines_durations_land_on_the_grid"] == " ".join(
+        revision.DURATIONS_GRID_SQL.split()
+    )
+
+
 def test_the_revision_refuses_an_off_grid_row_and_names_it(scratch_url: str) -> None:
     upgrade_to(scratch_url, PREVIOUS_REVISION)
     bad_target = seed_routine(scratch_url, target_time="05:07", duration=480, minimum=480)
@@ -167,8 +187,13 @@ def test_the_revision_accepts_on_grid_rows_and_the_constraints_then_bite(
     assert "ck_routines_target_time_is_on_the_grid" in checks
     assert "ck_routines_durations_land_on_the_grid" in checks
 
-    # Each new constraint refuses its own half, so neither can be silently absent.
+    # Each new constraint refuses its own half, and each half refuses each of its clauses, so no
+    # conjunct can be silently absent or weakened.
     with pytest.raises(Exception, match="target_time_is_on_the_grid"):
         seed_routine(scratch_url, target_time="05:07", duration=45, minimum=45)
+    with pytest.raises(Exception, match="target_time_is_on_the_grid"):
+        seed_routine(scratch_url, target_time="05:00:30", duration=45, minimum=45)
     with pytest.raises(Exception, match="durations_land_on_the_grid"):
         seed_routine(scratch_url, target_time="05:00", duration=50, minimum=45)
+    with pytest.raises(Exception, match="durations_land_on_the_grid"):
+        seed_routine(scratch_url, target_time="05:00", duration=45, minimum=50)

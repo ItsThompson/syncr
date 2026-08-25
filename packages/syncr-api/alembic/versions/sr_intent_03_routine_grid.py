@@ -46,11 +46,16 @@ TARGET_TIME_GRID_CONSTRAINT = f"ck_{TABLE}_{TARGET_TIME_GRID_CHECK}"
 DURATIONS_GRID_CONSTRAINT = f"ck_{TABLE}_{DURATIONS_GRID_CHECK}"
 
 # The same readings the two constraints enforce, spelled as the scan that must come back clean
-# before they are created.
+# before they are created, and as the SQL the constraints are created with.
 _OFF_GRID_TARGET_TIME = (
     "mod(EXTRACT(MINUTE FROM target_time)::int, 15) <> 0 OR EXTRACT(SECOND FROM target_time) <> 0"
 )
 _OFF_GRID_DURATIONS = "mod(duration_minutes, 15) <> 0 OR mod(min_duration_minutes, 15) <> 0"
+
+TARGET_TIME_GRID_SQL = (
+    "mod(EXTRACT(MINUTE FROM target_time)::int, 15) = 0 AND EXTRACT(SECOND FROM target_time) = 0"  # noqa: E501
+)
+DURATIONS_GRID_SQL = "mod(duration_minutes, 15) = 0 AND mod(min_duration_minutes, 15) = 0"
 
 
 def _refuse_off_grid_rows() -> None:
@@ -89,17 +94,8 @@ def _refuse_off_grid_rows() -> None:
 
 def upgrade() -> None:
     _refuse_off_grid_rows()
-    op.create_check_constraint(
-        TARGET_TIME_GRID_CHECK,
-        TABLE,
-        "mod(EXTRACT(MINUTE FROM target_time)::int, 15) = 0 "
-        "AND EXTRACT(SECOND FROM target_time) = 0",
-    )
-    op.create_check_constraint(
-        DURATIONS_GRID_CHECK,
-        TABLE,
-        "mod(duration_minutes, 15) = 0 AND mod(min_duration_minutes, 15) = 0",
-    )
+    op.create_check_constraint(TARGET_TIME_GRID_CHECK, TABLE, TARGET_TIME_GRID_SQL)
+    op.create_check_constraint(DURATIONS_GRID_CHECK, TABLE, DURATIONS_GRID_SQL)
 
 
 def downgrade() -> None:
