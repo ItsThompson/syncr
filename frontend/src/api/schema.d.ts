@@ -2260,7 +2260,7 @@ export interface components {
             name?: components["schemas"]["WireText"] | null;
             /**
              * Pigmentindex
-             * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.
+             * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable onto any step no other Area holds. There is no colour picker: a pigment is a step, not a value.
              */
             pigmentIndex?: number | null;
         };
@@ -2316,7 +2316,7 @@ export interface components {
             parentId: string | null;
             /**
              * Pigmentindex
-             * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable from the ramp. There is no colour picker: a pigment is a step, not a value.
+             * @description A step of the sealed ramp, 0 to 11. Assigned on creation from the deal, and re-pickable onto any step no other Area holds. There is no colour picker: a pigment is a step, not a value.
              */
             pigmentIndex: number;
         };
