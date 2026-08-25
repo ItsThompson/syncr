@@ -274,12 +274,10 @@ class AnchorRepository(TenantScopedRepository):
 
         The delta-side counterpart of :meth:`remove_absent`, and its opposite in what absence
         means: a list of changes is silent about everything it did not mention, so only the keys
-        the provider explicitly reported removed are taken off here. An empty set removes nothing,
-        which is what a delta that reported no removals means rather than a calendar that lists
-        nothing.
+        the provider explicitly reported removed are taken off here. A set with no members removes
+        nothing, which is what a delta that reported no removals means rather than a calendar that
+        lists nothing.
         """
-        if not keys:
-            return 0
         return await self._affected_rows(
             self.scoped_delete(Anchor).where(
                 Anchor.source_id == source_id, Anchor.external_uid.in_(keys)
