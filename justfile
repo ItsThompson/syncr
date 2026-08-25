@@ -1274,7 +1274,11 @@ drill-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     echo "=== 2 migrations, as the one-shot a deploy runs"
     docker compose -f docker-compose.yml run --rm --no-deps api alembic upgrade head || exit 1
     echo "=== 3 seeding something the drill can lose"
-    just drill-seed || exit 1
+    # THE APPLICATION, NOT THE SERVICE. Step 1 brings up postgres only, so the seeder runs as a
+    # one-shot in the api's image, exactly the way the migration one-shot above does. It writes
+    # every row through the product's own repositories and services and refuses any database that
+    # holds a tenant it did not create itself.
+    docker compose -f docker-compose.yml run --rm --no-deps api syncr-drill-seed || exit 1
     echo "=== 4 a real backup into the local bucket"
     SYNCR_OPS_COMPOSE="$backup_overlays" just backup-now || exit 1
     echo "=== 5 the drill, against what is in that bucket"

@@ -2081,8 +2081,8 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
     `drill-seed` composes `docker-compose.yml` alone, that file declares the project `syncr`, and on
     a deployed host `syncr` is the live stack. So the recipe whose own comment calls a compose route
     reaching the wrong database "the most expensive hazard in this repository" WAS that route, and
-    nothing refused: `just drill-seed` on a host writes invented tenants, weeks and outcomes into
-    real plan history, and `just drill-local` step 3 calls it.
+    nothing refused: `just drill-seed` on a host writes invented tenants, weeks and outcomes
+    into real plan history. `drill-local` seeds through the product's write paths now.
 
     THE RULE IS STATED OVER A DERIVED SET RATHER THAN OVER A LIST, because the defect a list cannot
     catch is a forgotten member: a second seeding recipe added beside the two that exist.
@@ -2105,10 +2105,10 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
     def test_the_recipes_that_reach_it(self) -> None:
         """The derived set, stated whole so a member that stops being derived is visible.
 
-        A parametrization derived from this set SHRINKS silently: removing `just drill-seed` from
-        `drill-local`'s body would drop that recipe's case rather than redden it.
+        A parametrization derived from this set SHRINKS silently: rewiring `drill-local` onto
+        the write-path seeder dropped its case here rather than reddening it.
         """
-        assert _recipes_reaching_seed_data() == {"drill-seed", "drill-local"}
+        assert _recipes_reaching_seed_data() == {"drill-seed"}
 
     @pytest.mark.parametrize("recipe", sorted(_recipes_reaching_seed_data()))
     def test_it_refuses_before_any_other_dependency(self, recipe: str) -> None:
