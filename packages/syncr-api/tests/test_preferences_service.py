@@ -36,7 +36,11 @@ from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.habits.records import HabitRecord
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.preferences.declarations import DeclaredWindow, PreferenceDeclaration
-from syncr_api.preferences.owners import PreferenceOwners
+from syncr_api.preferences.owners import (
+    MAX_AREA_DEPTH,
+    PreferenceOwners,
+    UnreadableAreaAncestry,
+)
 from syncr_api.preferences.records import (
     PreferenceRecord,
     UnattributedPreferenceRow,
@@ -119,9 +123,16 @@ class FakePreferenceRepository(PreferenceRepository):
         self.rows = kept
         return removed
 
+    async def list_all(self) -> tuple[PreferenceRecord, ...]:
+        return tuple(self.rows)
+
 
 class FakeAreaRepository(AreaRepository):
-    """Answers whether an Area exists, which is the one thing this service asks of it."""
+    """Answers whether an Area exists and how its hierarchy hangs together.
+
+    The ancestry walk reads every Area of the tenant in one call, so the fake answers it from
+    the same list :meth:`find` addresses by identifier.
+    """
 
     def __init__(self, tenant_id: TenantId, stored: list[AreaRecord] | None = None) -> None:
         self._tenant_id = tenant_id
@@ -129,6 +140,33 @@ class FakeAreaRepository(AreaRepository):
 
     async def find(self, area_id: AreaId) -> AreaRecord | None:
         return next((row for row in self.rows if row.id == area_id), None)
+
+    async def list_all(self) -> tuple[AreaRecord, ...]:
+        return tuple(self.rows)
+
+
+class CountingAreas(FakeAreaRepository):
+    """Counts how many times the whole table was listed, so the one-statement rule is assertable."""
+
+    def __init__(self, tenant_id: TenantId, stored: list[AreaRecord] | None = None) -> None:
+        super().__init__(tenant_id, stored)
+        self.reads = 0
+
+    async def list_all(self) -> tuple[AreaRecord, ...]:
+        self.reads += 1
+        return await super().list_all()
+
+
+class CountingPreferences(FakePreferenceRepository):
+    """Counts how many times every preference was listed, for the same assertion."""
+
+    def __init__(self, tenant_id: TenantId, stored: list[PreferenceRecord] | None = None) -> None:
+        super().__init__(tenant_id, stored)
+        self.listings = 0
+
+    async def list_all(self) -> tuple[PreferenceRecord, ...]:
+        self.listings += 1
+        return await super().list_all()
 
 
 class FakeHabitRepository(HabitRepository):
@@ -197,13 +235,19 @@ def record(
     )
 
 
-def area(tenant_id: TenantId) -> AreaRecord:
+def area(
+    tenant_id: TenantId,
+    *,
+    name: str = "Fitness",
+    parent_id: AreaId | None = None,
+    pigment_index: int = 0,
+) -> AreaRecord:
     return AreaRecord(
         id=uuid4(),
         tenant_id=tenant_id,
-        parent_id=None,
-        name="Fitness",
-        pigment_index=0,
+        parent_id=parent_id,
+        name=name,
+        pigment_index=pigment_index,
         budget_percent=None,
         floor_hours=None,
         created_at=NOW,
@@ -296,14 +340,22 @@ def a_preference(
 
 
 class World:
-    """One tenant with an Area, a habit and a task inside it, and the service over fakes."""
+    """One tenant with two nested Areas, a habit and a task in each, and the service over fakes.
+
+    The child subtree exists so the ancestry is exercisable without a second world: ``area`` is
+    the root, ``child_area`` hangs under it, and the child's habit and task live inside it. Every
+    existing test addresses owners by identifier, so the extra rows change nothing for them.
+    """
 
     def __init__(self, stored: list[Preference] | None = None) -> None:
         self.tenant_id: TenantId = uuid4()
         self.principal = Principal(tenant_id=self.tenant_id, user_id=uuid4(), scopes=ALL_SCOPES)
         self.area = area(self.tenant_id)
+        self.child_area = area(self.tenant_id, name="Fitness / Running", parent_id=self.area.id)
         self.habit = habit(self.tenant_id, self.area.id)
         self.task = task(self.tenant_id, self.area.id)
+        self.child_habit = habit(self.tenant_id, self.child_area.id)
+        self.child_task = task(self.tenant_id, self.child_area.id)
         self.preferences = FakePreferenceRepository(
             self.tenant_id, [record(self.tenant_id, one) for one in (stored or [])]
         )
@@ -311,9 +363,9 @@ class World:
         self.service = PreferenceService(
             preferences=self.preferences,
             owners=PreferenceOwners(
-                areas=FakeAreaRepository(self.tenant_id, [self.area]),
-                habits=FakeHabitRepository(self.tenant_id, [self.habit]),
-                tasks=FakeTaskRepository(self.tenant_id, [self.task]),
+                areas=FakeAreaRepository(self.tenant_id, [self.area, self.child_area]),
+                habits=FakeHabitRepository(self.tenant_id, [self.habit, self.child_habit]),
+                tasks=FakeTaskRepository(self.tenant_id, [self.task, self.child_task]),
             ),
             bump=BacklogWideBump(
                 versions=self.versions, settings=FakeSettingsRepository(self.tenant_id)
@@ -324,6 +376,10 @@ class World:
     @property
     def area_owner(self) -> PreferenceOwner:
         return PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=self.area.id)
+
+    @property
+    def child_area_owner(self) -> PreferenceOwner:
+        return PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=self.child_area.id)
 
     @property
     def habit_owner(self) -> PreferenceOwner:
@@ -432,6 +488,272 @@ class TestTheChain:
             (MIDDAY,),
             (EVENING,),
         ]
+
+
+class TestTheChainClimbsTheAncestry:
+    """A preference declared above an owner is read below it, nearest ancestor winning.
+
+    The walk lives in ``PreferenceOwners.ancestry``; these tests drive it through the service,
+    because what the routes answer is the contract: a preference on ``Fitness`` reaches
+    ``Fitness / Running`` and everything inside it.
+    """
+
+    async def test_a_preference_on_the_parent_area_is_read_by_the_child_area(self) -> None:
+        world = World()
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+
+        read = await world.service.read(
+            world.principal, PreferenceOwnerKind.AREA, world.child_area.id
+        )
+
+        assert read.declared is None
+        assert read.in_effect is not None
+        assert read.in_effect.owner == world.area_owner
+        assert read.in_effect.windows == (EARLY,)
+
+    @pytest.mark.parametrize("kind", ["habit", "task"], ids=["habit", "task"])
+    async def test_a_preference_on_the_parent_area_is_read_inside_the_child(
+        self, kind: str
+    ) -> None:
+        world = World()
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+        owner_id = world.child_habit.id if kind == "habit" else world.child_task.id
+
+        read = await world.service.read(world.principal, PreferenceOwnerKind(kind), owner_id)
+
+        assert read.declared is None
+        assert read.in_effect is not None
+        assert read.in_effect.owner == world.area_owner
+        assert read.in_effect.windows == (EARLY,)
+
+    async def test_the_nearest_ancestor_wins_over_its_own_ancestors(self) -> None:
+        world = World()
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+        await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.child_area.id,
+            declaration(windows=(MIDDAY,), strength=PreferenceStrength.SOFT),
+        )
+
+        read = await world.service.read(
+            world.principal, PreferenceOwnerKind.HABIT, world.child_habit.id
+        )
+
+        assert read.in_effect is not None
+        assert read.in_effect.owner == world.child_area_owner
+        assert read.in_effect.windows == (MIDDAY,)
+        assert read.in_effect.strength is PreferenceStrength.SOFT
+
+    async def test_an_override_declared_on_the_child_replaces_the_parents_wholly(self) -> None:
+        # Whole replacement at depth: the child Area declares windows and no ideal duration, so
+        # the parent's 90 does not reach anything that resolves through the child.
+        world = World()
+        await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.area.id,
+            declaration(preferred_duration_minutes=90),
+        )
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.child_area.id, declaration()
+        )
+
+        read = await world.service.read(
+            world.principal, PreferenceOwnerKind.HABIT, world.child_habit.id
+        )
+
+        assert read.in_effect is not None
+        assert read.in_effect.owner == world.child_area_owner
+        assert read.in_effect.preferred_duration_minutes is None
+
+    async def test_an_override_inside_the_child_still_wins_over_both_areas(self) -> None:
+        world = World()
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+        await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.child_area.id,
+            declaration(windows=(EVENING,)),
+        )
+        await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.HABIT,
+            world.child_habit.id,
+            declaration(windows=(MIDDAY,), strength=PreferenceStrength.SOFT),
+        )
+
+        read = await world.service.read(
+            world.principal, PreferenceOwnerKind.HABIT, world.child_habit.id
+        )
+
+        assert read.in_effect is not None
+        assert read.in_effect.owner.kind is PreferenceOwnerKind.HABIT
+        assert read.in_effect.windows == (MIDDAY,)
+
+    async def test_removing_the_child_areas_preference_falls_back_to_the_parent(self) -> None:
+        world = World()
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+        await world.service.replace(
+            world.principal,
+            PreferenceOwnerKind.AREA,
+            world.child_area.id,
+            declaration(windows=(MIDDAY,)),
+        )
+
+        read = await world.service.remove(
+            world.principal, PreferenceOwnerKind.AREA, world.child_area.id
+        )
+
+        assert read.declared is None
+        assert read.in_effect is not None
+        assert read.in_effect.owner == world.area_owner
+
+
+class TestTheAncestryWalk:
+    """The walk itself: one read, nearest first, refusing stored cycles by name."""
+
+    def owners(self, world: World) -> PreferenceOwners:
+        return PreferenceOwners(
+            areas=FakeAreaRepository(world.tenant_id, [world.area, world.child_area]),
+            habits=FakeHabitRepository(world.tenant_id),
+            tasks=FakeTaskRepository(world.tenant_id),
+        )
+
+    async def test_the_walk_answers_nearest_first_and_ends_at_the_root(self) -> None:
+        world = World()
+
+        found = await self.owners(world).ancestry(world.child_area.id)
+
+        assert [one.name for one in found] == ["Fitness / Running", "Fitness"]
+
+    async def test_the_root_areas_ancestry_is_itself_alone(self) -> None:
+        world = World()
+
+        found = await self.owners(world).ancestry(world.area.id)
+
+        assert [one.id for one in found] == [world.area.id]
+
+    async def test_a_cycle_in_the_stored_parent_links_is_refused_naming_the_areas(self) -> None:
+        # Only data written around the application can close a loop: the Areas module confirms a
+        # declared parent exists and an Area never moves. So this is a stored-data fault, not a
+        # request fault, and it is raised as one.
+        world = World()
+        looping = replace(world.child_area, parent_id=world.child_area.id)
+        owners = PreferenceOwners(
+            areas=FakeAreaRepository(world.tenant_id, [world.area, looping]),
+            habits=FakeHabitRepository(world.tenant_id),
+            tasks=FakeTaskRepository(world.tenant_id),
+        )
+
+        with pytest.raises(UnreadableAreaAncestry, match="Fitness / Running") as refused:
+            await owners.ancestry(world.child_area.id)
+
+        assert "Fitness / Running -> Fitness / Running" in str(refused.value)
+
+    async def test_a_cycle_through_an_ancestor_names_every_area_it_passes(self) -> None:
+        world = World()
+        looping = replace(world.area, parent_id=world.child_area.id)
+        owners = PreferenceOwners(
+            areas=FakeAreaRepository(world.tenant_id, [looping, world.child_area]),
+            habits=FakeHabitRepository(world.tenant_id),
+            tasks=FakeTaskRepository(world.tenant_id),
+        )
+
+        with pytest.raises(
+            UnreadableAreaAncestry, match="Fitness / Running -> Fitness -> Fitness / Running"
+        ):
+            await owners.ancestry(world.child_area.id)
+
+    async def test_an_ancestry_deeper_than_the_cap_is_refused(self) -> None:
+        world = World()
+        deepest = world.child_area
+        rows = [world.area, deepest]
+        for _ in range(MAX_AREA_DEPTH):
+            deepest = area(world.tenant_id, name="Deeper", parent_id=deepest.id)
+            rows.append(deepest)
+        owners = PreferenceOwners(
+            areas=FakeAreaRepository(world.tenant_id, rows),
+            habits=FakeHabitRepository(world.tenant_id),
+            tasks=FakeTaskRepository(world.tenant_id),
+        )
+
+        with pytest.raises(UnreadableAreaAncestry, match=str(MAX_AREA_DEPTH)):
+            await owners.ancestry(deepest.id)
+
+    async def test_exactly_the_caps_depth_of_areas_is_walked(self) -> None:
+        # The control for the refusal above: without it, a walk that stopped at one link would
+        # pass both.
+        world = World()
+        deepest = world.child_area
+        rows = [world.area, deepest]
+        for _ in range(MAX_AREA_DEPTH - 2):
+            deepest = area(world.tenant_id, name="Deeper", parent_id=deepest.id)
+            rows.append(deepest)
+        owners = PreferenceOwners(
+            areas=FakeAreaRepository(world.tenant_id, rows),
+            habits=FakeHabitRepository(world.tenant_id),
+            tasks=FakeTaskRepository(world.tenant_id),
+        )
+
+        found = await owners.ancestry(deepest.id)
+
+        assert len(found) == MAX_AREA_DEPTH
+
+    async def test_a_parent_identifier_naming_no_row_of_this_tenant_ends_the_walk(self) -> None:
+        # Another tenant's identifier reads as no parent at all: the scoped listing never
+        # returned it, so the walk stops short rather than crossing tenants or hanging.
+        world = World()
+        orphaned = replace(world.child_area, parent_id=uuid4())
+        owners = PreferenceOwners(
+            areas=FakeAreaRepository(world.tenant_id, [world.area, orphaned]),
+            habits=FakeHabitRepository(world.tenant_id),
+            tasks=FakeTaskRepository(world.tenant_id),
+        )
+
+        found = await owners.ancestry(world.child_area.id)
+
+        assert [one.id for one in found] == [orphaned.id]
+
+    async def test_a_read_issues_one_listing_per_table_whatever_the_depth(self) -> None:
+        # The one-statement rule observed at the seam: however deep the ancestry, one read of the
+        # Areas and one of the preferences serve the whole chain.
+        world = World()
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+        areas = CountingAreas(world.tenant_id, [world.area, world.child_area])
+        preferences = CountingPreferences(
+            world.tenant_id,
+            [record(world.tenant_id, declaration().as_preference(world.area_owner))],
+        )
+        service = PreferenceService(
+            preferences=preferences,
+            owners=PreferenceOwners(
+                areas=areas,
+                habits=FakeHabitRepository(world.tenant_id, [world.child_habit]),
+                tasks=FakeTaskRepository(world.tenant_id),
+            ),
+            bump=BacklogWideBump(
+                versions=RecordingVersions(), settings=FakeSettingsRepository(world.tenant_id)
+            ),
+            clock=lambda: NOW,
+        )
+
+        await service.read(world.principal, PreferenceOwnerKind.HABIT, world.child_habit.id)
+
+        assert areas.reads == 1
+        assert preferences.listings == 1
 
 
 class TestReplacingWholly:

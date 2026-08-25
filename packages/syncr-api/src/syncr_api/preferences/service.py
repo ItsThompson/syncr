@@ -11,10 +11,13 @@ restated in a request schema would be a second, weaker statement of this one.
 an answer rather than an absence: the owner's Area may declare one, or nothing may be in effect at
 all, and both are states a caller reads.
 
-**The chain is one link for an Area and two for an override.** An Area is the root: there is
-nothing above it to fall back to, so its own preference is what is in effect. An override's chain
-is its own preference then its Area's, resolved by :func:`~syncr_domain.preferences.
-preference_in_effect`, which returns one of them entire rather than merging two.
+**The chain climbs the Area ancestry to the root, nearest ancestor winning.** An owner's own
+preference stands first; then its Area's, then that Area's parent's, out to the root, each link
+entire. The ancestry itself is :meth:`~syncr_api.preferences.owners.PreferenceOwners.ancestry`'s:
+one read of the Areas table and one walk carrying a visited set and a depth cap, which is what makes
+a cycle in stored ``parent_id`` rows an :class:`~syncr_api.preferences.owners.
+UnreadableAreaAncestry` rather than a hang or a request fault. Both reads of the walk -- the Areas
+and the preferences -- are one statement each, not one per level.
 
 **A mutation bumps the week input version only when it changed something a solve reads.** A
 replacement that stores what was already stored, and a removal of a preference nothing declared,
@@ -53,7 +56,12 @@ from syncr_api.preferences.config import PREFERENCE_RESOURCE
 from syncr_api.preferences.rules import stated_rejection, unknown_owner
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
-from syncr_domain.preferences import PreferenceError, preference_in_effect
+from syncr_domain.preferences import (
+    PreferenceError,
+    PreferenceOwner,
+    PreferenceOwnerKind,
+    preference_in_effect,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -66,7 +74,7 @@ if TYPE_CHECKING:
     from syncr_api.preferences.records import PreferenceRecord
     from syncr_api.preferences.repository import PreferenceRepository
     from syncr_api.user_settings.solve_inputs import BacklogWideBump
-    from syncr_domain.preferences import Preference, PreferenceOwner, PreferenceOwnerKind
+    from syncr_domain.preferences import Preference
 
 _log = get_logger("syncr.preferences")
 
@@ -200,26 +208,42 @@ class PreferenceService:
     async def _read(self, resolved: ResolvedOwner) -> ReadPreference:
         declared = await self._preferences.find(resolved.owner)
         with stated_rejection():
-            chain = await self._chain(resolved, declared)
+            chain = await self._chain(resolved)
             return ReadPreference(
                 owner=resolved.owner,
                 declared=_as_entity(declared),
                 in_effect=preference_in_effect(*chain),
             )
 
-    async def _chain(
-        self, resolved: ResolvedOwner, declared: PreferenceRecord | None
-    ) -> tuple[Preference | None, ...]:
+    async def _chain(self, resolved: ResolvedOwner) -> tuple[Preference | None, ...]:
         """The preferences that could apply, most specific first.
 
-        One link for an Area, because an Area is the root: nothing sits above it, and reading its
-        own row a second time would put an Area's preference ahead of itself, which the resolution
-        refuses for the reason it exists.
+        An override's own link first when there is one; then every Area of the ancestry nearest
+        first, declared or not, so the positions the resolution reads stay honest about which
+        ancestor each link came from. A preference on ``Fitness`` therefore reaches everything in
+        ``Fitness / Running``, and one declared on the child still replaces the parent's wholly,
+        because the resolution picks one link out of the chain and merges nothing.
+
+        Both tables behind the chain are read once: the Areas through the ancestry walk, the
+        preferences through one listing filtered to the owners this chain names. Rows outside the
+        chain are left unparsed, so a row this service cannot read stays invisible unless it is
+        one this read would have parsed anyway.
         """
-        if resolved.owner.is_an_area:
-            return (_as_entity(declared),)
-        area = await self._preferences.find(resolved.area_owner)
-        return (_as_entity(declared), _as_entity(area))
+        ancestors = await self._owners.ancestry(resolved.area_id)
+        wanted = {resolved.owner} | {
+            PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area.id) for area in ancestors
+        }
+        by_owner = {
+            record.owner: _as_entity(record)
+            for record in await self._preferences.list_all()
+            if record.owner in wanted
+        }
+        own_link = [] if resolved.owner.is_an_area else [by_owner.get(resolved.owner)]
+        area_links = (
+            by_owner.get(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area.id))
+            for area in ancestors
+        )
+        return (*own_link, *area_links)
 
     async def _invalidate_if_changed(
         self, *, was: Preference | None, now_is: Preference, at: datetime
