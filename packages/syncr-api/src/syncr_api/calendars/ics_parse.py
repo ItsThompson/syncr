@@ -43,6 +43,7 @@ from syncr_api.calendars.config import (
     UNKNOWN_LINE,
 )
 from syncr_api.calendars.events import FetchOutcome, RejectedComponent
+from syncr_api.calendars.expansion_bound import ExpansionBound, default_bound
 from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import (
     UNREPRESENTABLE,
@@ -62,7 +63,7 @@ if TYPE_CHECKING:
     from syncr_api.calendars.events import RawEvent
     from syncr_api.calendars.ics_components import EventComponent
     from syncr_api.calendars.ics_lines import Component
-    from syncr_api.calendars.ics_series import OccurrenceKey, Placement
+    from syncr_api.calendars.ics_series import OccurrenceKey, Placement, Series
     from syncr_domain.intervals import Interval
     from syncr_domain.zones import ZoneProfile
 
@@ -117,13 +118,24 @@ class _Collected:
 
 
 def parse_feed(
-    body: str, *, horizon: Interval, profile: ZoneProfile, budget: float = MAX_PARSE_SECONDS
+    body: str,
+    *,
+    horizon: Interval,
+    profile: ZoneProfile,
+    budget: float = MAX_PARSE_SECONDS,
+    bound: ExpansionBound | None = None,
 ) -> FetchOutcome:
     """Every event ``body`` declares inside ``horizon``, plus the rejections it produced.
 
     ``budget`` is the seconds the whole parse may spend. It is a parameter rather than only a
     constant so a test can state a spent budget instead of waiting for one.
+
+    ``bound`` is where one component's expansion runs. A rule dateutil cannot be interrupted
+    inside is expanded in another process whose deadline the parent enforces; ``None`` means
+    the shared pool. A test that needs a deadline of its own hands one in.
     """
+    if bound is None:
+        bound = default_bound()
     deadline = monotonic() + budget
     try:
         components = tuple(events_in(parse_components(body)))
@@ -145,7 +157,9 @@ def parse_feed(
     series = sort_components(readable)
     collected = _Collected(rejections=rejections, deadline=deadline, budget=budget)
     for master in series.masters:
-        collected.take(master, partial(expand, master, series, horizon=horizon, profile=profile))
+        collected.take(
+            master, _produce(master, series, horizon=horizon, profile=profile, bound=bound)
+        )
 
     # Which replacements found an occurrence is only known once every master has expanded, so the
     # ones that found none are accounted for after that rather than guessed at during the partition.
@@ -177,6 +191,26 @@ def parse_feed(
         # nothing" is true in every case.
         unplaced=collected.unplaced + superseded,
     )
+
+
+def _produce(
+    master: EventComponent,
+    series: Series,
+    *,
+    horizon: Interval,
+    profile: ZoneProfile,
+    bound: ExpansionBound,
+) -> Callable[[], Placement]:
+    """How this master's events are produced: through the bound when it has a rule to expand.
+
+    The boundary exists to interrupt one thing no local check can reach: dateutil advancing
+    inside a single ``next()`` call. A component with no rule has no such call - its only
+    candidates are its own start and finite ``RDATE`` list - so sending it across a process
+    pipe would pay the round trip without buying an interruption.
+    """
+    if master.recurrence.rule_text is not None:
+        return partial(bound.expand, master, series, horizon=horizon, profile=profile)
+    return partial(expand, master, series, horizon=horizon, profile=profile)
 
 
 def _require_time_left(*, deadline: float, budget: float) -> None:

@@ -179,3 +179,23 @@ MAX_EVENTS_PER_FEED: Final = 10_000
 # missing from a plan while the source still reads as healthy, so the multiple is worth more than
 # the seconds saved on a feed nobody should be publishing.
 MAX_PARSE_SECONDS: Final = 60.0
+
+# How long ONE recurrence expansion may run before the parent stops waiting for it.
+# MAX_PARSE_SECONDS above can only be checked between components; one component whose rule is
+# legal but never satisfiable (``FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30;BYHOUR=2``) walks inside a
+# single dateutil call measured at 1,290 seconds. That expansion runs in its own process, so the
+# parent CAN bound it: a wait past this deadline terminates the worker and answers a rejection.
+#
+# The value has two-sided headroom. The slowest legitimate single expansion measurable is under a
+# second (a weekly rule reaching dateutil's maximum year costs 0.54s), and even the step-bounded
+# runaway of 50,000 secondly steps completes well inside it. The cheapest known hang of the
+# unsatisfiable family costs upwards of 200 seconds, twenty times this figure. A deadline below
+# ten would risk cutting a legitimate expansion on a loaded machine for no time saved that
+# matters; one above it leaves a hung reader holding a worker tick for minutes.
+EXPANSION_DEADLINE_SECONDS: Final = 10.0
+
+# How many recurrence-expansion processes are kept to take work from. One suffices for the
+# worker, which reads one tenant's feeds sequentially and one tenant at a time; the second lets
+# an on-demand read on the api proceed while a worker tick holds the first. A process idles at
+# roughly zero cost between feeds, so spare capacity here is cheaper than serializing readers.
+EXPANSION_POOL_SIZE: Final = 2

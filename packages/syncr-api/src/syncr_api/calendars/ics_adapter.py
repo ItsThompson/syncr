@@ -23,6 +23,7 @@ otherwise spend a request to produce a number the read model discards.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from syncr_api.calendars.events import FetchOutcome
@@ -37,6 +38,7 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from syncr_api.calendars.expansion_bound import ExpansionBound
     from syncr_api.calendars.feeds import FeedFetcher
     from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
     from syncr_api.core.clock import Clock
@@ -58,12 +60,19 @@ class IcsAdapter:
     """
 
     def __init__(
-        self, *, fetcher: FeedFetcher, profile: ZoneProfile, horizon: Interval, clock: Clock
+        self,
+        *,
+        fetcher: FeedFetcher,
+        profile: ZoneProfile,
+        horizon: Interval,
+        clock: Clock,
+        bound: ExpansionBound | None = None,
     ) -> None:
         self._fetcher = fetcher
         self._profile = profile
         self._horizon = horizon
         self._clock = clock
+        self._bound = bound
 
     @measured("ics_adapter")
     async def fetch(self, source: CalendarSourceRecord) -> IcsFetch:
@@ -71,6 +80,11 @@ class IcsAdapter:
 
         The events and the rejections travel together, so a caller saves both in one write,
         and the sync state is returned whether the attempt succeeded or not.
+
+        The parse runs on a worker thread rather than on this loop. The expansion half runs in
+        another process, but the waiting itself would still park the event loop for up to the
+        deadline; on a thread, a request issued mid-expansion is answered at the api's normal
+        latency.
         """
         now = self._clock()
         previous = source.sync_state
@@ -82,7 +96,13 @@ class IcsAdapter:
             return FetchOutcome(), recorded_unchanged(previous, at=now, cursor=answer.cursor)
 
         if isinstance(answer, FeedBody):
-            outcome = parse_feed(answer.body, horizon=self._horizon, profile=self._profile)
+            outcome = await asyncio.to_thread(
+                parse_feed,
+                answer.body,
+                horizon=self._horizon,
+                profile=self._profile,
+                bound=self._bound,
+            )
             _log.info("calendars.ics.parsed", **identity, **outcome.as_log_fields())
             return outcome, recorded_success(outcome, at=now, cursor=answer.cursor)
 
