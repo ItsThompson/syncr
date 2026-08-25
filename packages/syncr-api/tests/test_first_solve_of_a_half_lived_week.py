@@ -25,7 +25,7 @@ over a real Postgres.
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -46,7 +46,7 @@ from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
-from syncr_api.solving.config import FAILED, PAST_DISAGREEMENT, PENDING, SUCCEEDED
+from syncr_api.solving.config import FAILED, MAX_ATTEMPTS, PAST_DISAGREEMENT, PENDING, SUCCEEDED
 from syncr_api.solving.dispatch import SolveDispatch
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
 from syncr_api.tasks.repository import TaskRepository
@@ -71,7 +71,7 @@ from tests.live_tenants import delete_tenant, seed_owner
 from tests.plan_documents import a_block, between
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -269,9 +269,15 @@ async def spent(
 ) -> OperationRecord:
     """One solve driven to its attempt bound, which is where a permanent refusal comes to rest."""
     finished = await a_solve(sessions, context, owner, clock)
+    attempts = 1
     while finished.status == PENDING:
+        assert attempts < MAX_ATTEMPTS, (
+            f"the solve was still {PENDING} after {attempts} attempts and never reached a "
+            "terminal status; the lifecycle's own attempt bound did not apply"
+        )
         clock.advance(timedelta(hours=1))
         finished = await a_solve(sessions, context, owner, clock)
+        attempts += 1
     return finished
 
 
@@ -310,7 +316,7 @@ def the_future_slot_spans() -> tuple[Interval, ...]:
     )
 
 
-def the_lived_dates() -> set[Any]:
+def the_lived_dates() -> set[date]:
     """Monday and Tuesday of the week, which the frozen clock had already reached."""
     return {WEEK.monday(), WEEK.dates()[1]}
 
@@ -366,6 +372,11 @@ def _solved_with(document: PlanDocument) -> Any:
         blocked_log=(),
         iterations=0,
     )
+
+
+# What one parametrized guard case answers with: the week restated so that it disagrees with the
+# live plan about a block the week has already reached.
+type Restates = Callable[[PlanDocument, Block, AreaId], PlanDocument]
 
 
 def _dropped(document: PlanDocument, started: Block, _area_id: AreaId) -> PlanDocument:
@@ -492,7 +503,7 @@ class TestThePastGuardIsNotLoosened:
         owner: UserRecord,
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
-        restates: Any,
+        restates: Restates,
     ) -> None:
         area_id = await a_materialized_week(sessions, context, owner, clock)
         finished = await a_solve(sessions, context, owner, clock)
