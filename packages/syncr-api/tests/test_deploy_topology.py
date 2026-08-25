@@ -423,7 +423,7 @@ class TestEveryServiceDeclaresABoundedLog:
     configuration and exits, which is what makes this module runnable in CI and by an AFK agent.
     """
 
-    def test_every_deployed_service_declares_a_bounded_log(self, deployed) -> None:
+    def test_every_deployed_service_declares_a_bounded_log(self, deployed: dict[str, Any]) -> None:
         assert_every_service_declares_a_bounded_log(deployed)
 
     # The two keys are RESTATED here rather than read from `BOUNDED_LOG_KEYS`, so a key dropped
@@ -435,8 +435,9 @@ class TestEveryServiceDeclaresABoundedLog:
         """The positive control for vacuity: drop one option from one service, and the failure
         names it. Parametrized over both keys, because either alone missing is unbounded."""
         wounded = deepcopy(deployed)
-        victim = sorted(services(wounded))[0]
-        del services(wounded)[victim]["logging"]["options"][key]
+        found = services(wounded)
+        victim = sorted(found)[0]
+        del found[victim]["logging"]["options"][key]
 
         # The name must come from the assertion's own message, not from a bare-assert repr.
         with pytest.raises(AssertionError, match=f"declare no bounded log: .*'{victim}'"):
@@ -456,10 +457,16 @@ class TestEveryServiceDeclaresABoundedLog:
         from tests.test_compose_logging import DECIDED
 
         for name, service in services(deployed).items():
-            declared = service.get("logging") or {}
-            for key, value in DECIDED.items():
-                found = (declared if key == "driver" else logging_options(service)).get(key)
-                assert found == value, (name, key, found)
+            # The driver sits beside the options in the resolved form, so it is read on its own.
+            resolved_logging = service.get("logging") or {}
+            assert resolved_logging.get("driver") == DECIDED["driver"], (
+                name,
+                "driver",
+                resolved_logging.get("driver"),
+            )
+            options = logging_options(service)
+            for key in BOUNDED_LOG_KEYS:
+                assert options.get(key) == DECIDED[key], (name, key, options.get(key))
 
 
 class TestTheOneShots:
