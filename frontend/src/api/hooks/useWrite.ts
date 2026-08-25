@@ -16,6 +16,31 @@
 import { useState } from "react";
 
 import { NOTHING_SELECTED_PROBLEM_TYPE, type Problem } from "../../contract";
+
+/* THE IDEMPOTENCY HEADER IS THE WRITING LAYER'S, not any resource hook's: its name and its minting
+ * each live exactly here, so no call site spells either for itself and no resource hook is ever
+ * asked for them.
+ *
+ * EVERY WRITE TO A GUARDED ROUTE CARRIES THE HEADER, because a retried write must not become a
+ * second act. The api reads the key off the request rather than declaring it a parameter, so it
+ * appears nowhere in the OpenAPI document and no generated client types it; `openapi-fetch` sends
+ * what the document does not know about just the same.
+ *
+ * A ROUTE THAT READS NO KEY IS SENT NONE. `/api/v1/weeks/{iso_week}/tradeoffs` declares no key
+ * reader, so whatever was sent there would be ignored, and a dead header would claim a protection
+ * the route does not offer.
+ *
+ * THE KEY IS MINTED FRESH FOR EACH ATTEMPT. What a retry of one gesture reuses is this layer's
+ * policy rather than a caller's decision, so it changes beside the minter or nowhere. */
+
+export const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+/**
+ * The headers one keyed write carries: the api's chosen name, and a key minted for this attempt.
+ */
+export function idempotentHeaders(): { [IDEMPOTENCY_KEY_HEADER]: string } {
+  return { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() };
+}
 export interface Write<Body> {
   /** True when the change was applied. False leaves `problem` naming what refused it. */
   readonly submit: (body: Body) => Promise<boolean>;

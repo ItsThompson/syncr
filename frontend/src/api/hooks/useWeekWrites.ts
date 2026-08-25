@@ -10,9 +10,8 @@
  * nowhere else.
  *
  * EVERY ONE SENDS AN `Idempotency-Key`. The approval route DEMANDS it -- omitting it is a 400 -- and the other three
- * send it for the reason every unsafe method in this api does: a retry must not become a second act. The header is
- * untyped for all four, because the api reads it off the request object rather than declaring it as a parameter, so
- * it is absent from the document every generated client is built from. Ticket 1134 is the fix.
+ * send it for the reason every guarded write in this api does: a retry must not become a second act. The header's
+ * name and its minting live in the writing layer (`useWrite`), which hands them to every keyed write.
  *
  * REJECTING A PROPOSED MOVE IS A PIN, not a rejection concept of its own: it pins the block where the plan of record
  * already holds it and re-solves, so the rest of the proposal is recomputed rather than preserved. Once the rejected
@@ -23,8 +22,7 @@ import { useSWRConfig } from "swr";
 import { client } from "../client";
 import { weekKey } from "../keys";
 import { answered, apply } from "./request";
-import { IDEMPOTENCY_KEY_HEADER } from "./usePins";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import type { components } from "../schema";
 
 type AdjustmentKind = components["schemas"]["AdjustmentKind"];
@@ -62,8 +60,6 @@ export interface WeekWrites {
   readonly resolveConflict: Write<ResolveConflictRequest>;
 }
 
-const key = (): string => crypto.randomUUID();
-
 export function useWeekWrites(isoWeek: string, onOperation?: (one: Operation) => void): WeekWrites {
   const { mutate } = useSWRConfig();
   const path = { iso_week: isoWeek };
@@ -72,7 +68,7 @@ export function useWeekWrites(isoWeek: string, onOperation?: (one: Operation) =>
     const { body, problem } = await answered(() =>
       client.POST("/api/v1/weeks/{iso_week}/tradeoffs", {
         params: { path },
-        headers: { [IDEMPOTENCY_KEY_HEADER]: key() },
+        headers: idempotentHeaders(),
         body: { kind, targetId },
       }),
     );
@@ -85,7 +81,7 @@ export function useWeekWrites(isoWeek: string, onOperation?: (one: Operation) =>
     const { body, problem } = await answered(() =>
       client.POST("/api/v1/weeks/{iso_week}/approve", {
         params: { path },
-        headers: { [IDEMPOTENCY_KEY_HEADER]: key() },
+        headers: idempotentHeaders(),
       }),
     );
     if (problem !== null) return problem;
@@ -100,7 +96,7 @@ export function useWeekWrites(isoWeek: string, onOperation?: (one: Operation) =>
     const { body, problem } = await answered(() =>
       client.POST("/api/v1/weeks/{iso_week}/reject-block", {
         params: { path },
-        headers: { [IDEMPOTENCY_KEY_HEADER]: key() },
+        headers: idempotentHeaders(),
         body: { blockId },
       }),
     );
@@ -115,7 +111,7 @@ export function useWeekWrites(isoWeek: string, onOperation?: (one: Operation) =>
       const refusal = await apply(() =>
         client.POST("/api/v1/conflicts/{conflict_id}/resolve", {
           params: { path: { conflict_id: conflictId } },
-          headers: { [IDEMPOTENCY_KEY_HEADER]: key() },
+          headers: idempotentHeaders(),
           body: { resolution, ...(anchorTypeId === undefined ? {} : { anchorTypeId }) },
         }),
       );

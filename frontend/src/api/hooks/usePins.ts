@@ -6,10 +6,9 @@
  * lands.
  *
  * EVERY PIN SENDS AN `Idempotency-Key`. A retried pin must not become two pins, and a pin is a training label: two
- * rows for one gesture would teach the learning layer a preference the reader stated once. The header is sent
- * UNTYPED, because the api reads it off the request object rather than declaring it as a parameter, so it appears
- * nowhere in the OpenAPI document and no generated client can type it. Ticket 1134 is the fix; nothing here changes
- * when it lands, because `openapi-fetch` passes headers through whatever the document says.
+ * rows for one gesture would teach the learning layer a preference the reader stated once. The header's name and its
+ * minting live in the writing layer (`useWrite`), which hands them to every keyed write; nothing about this route
+ * states either.
  *
  * A RESPONSE FOR AN OLDER INPUT VERSION IS DISCARDED. Two pins in quick succession can answer out of order, and the
  * verdict of the earlier one describes inputs the week has moved past: applying it would show a shortfall that has
@@ -26,16 +25,13 @@ import { client } from "../client";
 import { weekKey } from "../keys";
 import { answered, apply } from "./request";
 import { withPinAt, withPinReleased } from "./pinProjection";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import type { Operation } from "../events";
 import type { WeekView } from "./useWeek";
 import type { components } from "../schema";
 import type { Problem } from "../../contract";
 
 type Verdict = components["schemas"]["VerdictResponse"];
-
-/** The header the api reads off the request. Not in the document, so not in the generated types. */
-export const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
 export interface PinRequest {
   readonly blockId: string;
@@ -106,7 +102,7 @@ export function usePinning(
     const { body, problem } = await answered(() =>
       client.POST("/api/v1/weeks/{iso_week}/pins", {
         params: { path: { iso_week: isoWeek } },
-        headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() },
+        headers: idempotentHeaders(),
         body: { blockId, start: new Date(startMs).toISOString() },
       }),
     );
@@ -135,7 +131,7 @@ export function usePinning(
     const refusal = await apply(() =>
       client.DELETE("/api/v1/weeks/{iso_week}/pins/{pin_id}", {
         params: { path: { iso_week: isoWeek, pin_id: pinId } },
-        headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() },
+        headers: idempotentHeaders(),
       }),
     );
     /* Either way the week is read again: a release changes the plan the next solve produces, and a refusal means the
