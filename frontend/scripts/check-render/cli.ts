@@ -7,7 +7,7 @@
  * to the same shorthand, and a `-webkit-line-clamp` shorthand supplying an end-ellipsis that reading `white-space`
  * and `text-overflow` could not see.
  *
- * THE LAST OF THE ELEVEN CHECKS `just lint-frontend` RUNS, in the pre-commit hook and in CI. No browser is a declared
+ * THE LAST CHECK `just lint-frontend` RUNS, in the pre-commit hook and in CI. No browser is a declared
  * dependency of this repository, so it uses the one already installed and REFUSES rather than skips when it finds
  * none: a check that passes when it cannot look reports a claim it never tested. GitHub's ubuntu runner images ship
  * `/usr/bin/google-chrome`, which is one of the paths it probes, so CI needs no setup step.

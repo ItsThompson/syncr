@@ -185,11 +185,11 @@ jobs:
   # result names whether a design rule or a type broke. Both must pass: vitest
   # transpiles with esbuild, which strips types without checking them.
   #
-  # One of the nine checks builds the frontend and reads the emitted stylesheet, which
+  # One of the checks builds the frontend and reads the emitted stylesheet, which
   # is why this job is also the first one to compile the application at all: a banned
   # declaration reached production for three review iterations because no job did. A second
   # one renders that stylesheet in a headless browser and reads a PIXEL, which is the one
-  # input the other eight do not have: it needs a Chromium, and the runner image ships
+  # input the others do not have: it needs a Chromium, and the runner image ships
   # `/usr/bin/google-chrome`, which is one of the paths it probes. It REFUSES rather than
   # skips when it finds none, so this job fails loudly if that ever stops being true rather
   # than reporting a claim it never tested.
@@ -217,7 +217,7 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: The nine frontend checks, by specifier, by resolved directory, by emitted bytes, and by pixel
+      - name: The frontend checks, by specifier, by resolved directory, by emitted bytes, and by pixel
         run: just lint-frontend
 
       - name: tsc

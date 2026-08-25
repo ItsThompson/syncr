@@ -31,9 +31,9 @@ pre-commit:
       fail_text: "ruff found an issue it cannot fix. Fix it before committing."
 
     frontend-lint:
-      # All EIGHT checks `just lint-frontend` runs, over the whole frontend rather than the staged
+      # Every check `just lint-frontend` runs, over the whole frontend rather than the staged
       # subset: oxlint, stylelint, prettier, the token validator, the markup scan, the channel
-      # assertion, the resolved-import check and the built-stylesheet gate. Four of the eight are
+      # assertion, the resolved-import check and the built-stylesheet gate. Four of them are
       # whole-layer questions by nature: a renamed token breaks a file nobody staged, a duplicated
       # channel is a relationship between two files, an import zone is a question about where a
       # resolved file lives, and the bundle is the whole tree compiled. Running the same recipe CI

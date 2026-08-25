@@ -665,7 +665,7 @@ fmt:
 # Every frontend static gate. The pre-commit hook runs this, and so does CI, so the hook and
 # the gate cannot drift.
 #
-# Ten checks, none of which the others can cover:
+# The checks, none of which the others can cover:
 #   oxlint          the language and React rules, plus the kit's import zones by SPECIFIER
 #   stylelint       the design rules that live in CSS: no raw color, no motion, no radius
 #   prettier        formatting, so twenty tickets of TypeScript accumulate no drift
@@ -705,11 +705,11 @@ fmt:
 # 17 seconds with it and 6 without, because it builds the stylesheet a second time and invokes Chromium
 # twice. It stays here anyway. This recipe IS the hook, and moving the one gate that reads a pixel to
 # pre-push or to CI alone would leave it unarmed exactly where the three defects it exists to catch were
-# written. Ten seconds a commit is the price of the input none of the other eight has.
+# written. Ten seconds a commit is the price of the input none of the others has.
 #
 # THE RECIPE COUNTS ITS OWN CHECKS AND SAYS SO AT THE END, and that is not decoration. Most of them print
-# `ok` themselves and three are third-party tools with their own success lines, so a reader counting `ok`
-# counted seven of ten, and a check that had silently stopped running looked exactly like the three that never
+# `ok` themselves and some are third-party tools with their own success lines, so a reader counting `ok`
+# counted fewer than ran, and a check that had silently stopped running looked exactly like the ones that never
 # said it. The tail line names how many ran, which is the figure a hard-coded count would have contradicted.
 #
 # Every check runs even when an earlier one fails: one red linter must not hide the rest.
