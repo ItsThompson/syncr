@@ -52,9 +52,11 @@ can move the reading, and the routes are the walk that file bounds the bump rule
 each is then read off the wiring: the service method the route calls, whether that method writes a
 transition, and whether the framework resolved the session header for it. A minority record their
 own flip, and those rows carry what the request stated. The rest leave it to one of the two
-recorders the worker composes, both of which bind ``NO_SESSION_IS_OPEN``, so the row reads false
-however the request answered. The two guards over that set assert the correct behavior and fail
-today, so what the code does now cannot become the contract by being written down.
+recorders the worker composes: the solve's reads what the requesting caller stated, carried on the
+operation the mutation scheduled, and the maintainer's binds ``NO_SESSION_IS_OPEN``, because time
+passing is not a request. The guard over the second group still asserts the correct behavior and
+fails today; the first was armed strict and expired the day the operation began carrying the
+answer, which is why it now reads as an ordinary assertion.
 
 **That guard's blind spot is the row's own ``module``.** A row names one module, so a mutation that
 reaches its write through another package's service belongs to a package no row names, and three
@@ -185,9 +187,10 @@ ISO_WEEK_PARAMETER = "iso_week"
 RECORDS_A_TRANSITION = ("_verdicts", VerdictRecorder.record.__name__)
 ASKS_FOR_A_SOLVE = (f"_{REQUESTS_A_SOLVE.split('.')[0]}", REQUESTS_A_SOLVE.split(".")[1])
 
-# The two spellings a composition binds when nothing about a session is stated: the constant
-# ``plans/recording.py`` names, and the bare value it holds. What separates the worker's recorders
-# from a request's is that theirs cannot vary with the caller, and these are how that reads.
+# The spellings a composition binds when nothing about a session is stated: the constant
+# ``plans/recording.py`` names, and the bare value it holds. What separates the maintainer's
+# recorder from a request's is that its value cannot vary with the caller, and this is how that
+# reads.
 STATES_NO_SESSION = frozenset({"NO_SESSION_IS_OPEN", repr(NO_SESSION_IS_OPEN)})
 
 # How many mutating routes the trigger table derives, and how many of them the periodic probe is
@@ -197,7 +200,7 @@ MUTATIONS_THAT_CAN_MOVE_A_READING = 57
 FLIPS_THE_PERIODIC_PROBE_RECORDS = 43
 
 # The routes whose own act records the flip it causes, so the row carries what the request stated.
-# Named rather than counted, because this is the set the two failing guards below exist to grow: a
+# Named rather than counted, because this is the set the remaining expiring guard exists to grow: a
 # route that joins it has to be a diff a reviewer reads.
 CARRY_THE_REQUESTS_STATEMENT = frozenset(
     {
@@ -208,8 +211,9 @@ CARRY_THE_REQUESTS_STATEMENT = frozenset(
 )
 
 # The routes whose flip the solve they schedule records instead. An operation exists on each of
-# these paths, which is what makes them a different question from the ones that schedule nothing at
-# all: there is something for a statement to travel on.
+# these paths, and since the operation began carrying the requesting caller's statement about the
+# session, each of them resolves the header too: their rows carry what the request stated, under
+# the solve's surface rather than their own.
 FLIPS_THE_SCHEDULED_SOLVE_RECORDS = frozenset(
     {
         f"DELETE {WEEKS_PREFIX}/{{iso_week}}/adjustments/{{adjustment_id}}",
@@ -832,10 +836,11 @@ def test_the_mutations_that_can_move_a_weeks_reading_divide_into_three_attributi
 ) -> None:
     """The enumeration, with every figure exact so a reading that covers nothing fails here.
 
-    The two small sets are named because each is a handoff. The first is what the rule already
-    holds for, and it is what grows. The second is where an operation the mutation scheduled already
-    exists to carry the answer, which is a different question from the rest: those schedule nothing,
-    so there is no producer to carry anything until ``VerdictSurface.MUTATION`` gets one.
+    The two small sets are named because each is a handoff. The first is what the rule held for
+    before an operation could carry a statement, and it is what grows. The second schedules a solve,
+    and its statement travels on the operation the mutation created rather than on a row the act
+    wrote itself, which is why the two groups are kept apart even though every route in both now
+    resolves the header: a route moving between them changes both named sets either way.
 
     The union closes the three against the whole, so with the counts beside it a route cannot fall
     into two groups or into none.
@@ -855,7 +860,7 @@ def test_the_mutations_that_can_move_a_weeks_reading_divide_into_three_attributi
     }
 
     assert len(attributed) == MUTATIONS_THAT_CAN_MOVE_A_READING
-    assert carrying == CARRY_THE_REQUESTS_STATEMENT
+    assert carrying == CARRY_THE_REQUESTS_STATEMENT | FLIPS_THE_SCHEDULED_SOLVE_RECORDS
     assert by_the_solve == FLIPS_THE_SCHEDULED_SOLVE_RECORDS
     assert len(by_the_probe) == FLIPS_THE_PERIODIC_PROBE_RECORDS
     assert carrying | by_the_solve | by_the_probe == {_identity(route) for route in attributed}
@@ -947,7 +952,12 @@ def test_the_periodic_probe_binds_a_state_no_request_supplies_and_the_request_su
         one for one in _composed_members(composed) if _answers_from_the_request(one, composed)
     }
 
-    assert from_the_request == {VerdictSurface.PIN, VerdictSurface.CLI, VerdictSurface.TRADEOFF}
+    assert from_the_request == {
+        VerdictSurface.PIN,
+        VerdictSurface.CLI,
+        VerdictSurface.TRADEOFF,
+        VerdictSurface.SOLVE,
+    }
     assert the_time_driven_surface(composed) is VerdictSurface.MAINTAINER
     assert the_scheduled_solves_surface(composed) is VerdictSurface.SOLVE
     assert not _answers_from_the_request(the_time_driven_surface(composed), composed)
@@ -980,23 +990,16 @@ def test_every_package_that_composes_a_recorder_and_serves_a_mutation_writes_thr
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ticket 1571: a mutation that schedules a solve hands the operation no statement about the "
-        "weekly session, and the solve's recorder binds NO_SESSION_IS_OPEN, so the row recording "
-        "the flip reads false however the request answered. Measured at five routes, including the "
-        "revocation the ticket names. Under strict=True the day the operation carries the answer "
-        "is the day this marker has to be deleted."
-    ),
-)
 def test_a_flip_the_scheduled_solve_records_carries_what_the_request_stated(
     composed: Compositions, attributed: dict[MutatingRoute, Attributed]
 ) -> None:
-    """Asserts the CORRECT behavior and is expected to fail, rather than pinning the defect.
+    """Every mutation that schedules a solve hands the operation its caller's statement.
 
-    Every route is named in the failure with the surface that records it and what the row says, so a
-    route this rule starts holding for is visible and one still unattributed cannot hide in a count.
+    Armed strict while the solve's recorder bound ``NO_SESSION_IS_OPEN``, because the assertion was
+    correct behavior the code did not yet have. The operation carries the statement now, so the
+    marker is gone and this reads as an ordinary guard: a route whose solve request stops carrying
+    an answer reddens here, named per route with the surface that records it and what the row says,
+    so one still unattributed cannot hide in a count.
     """
     unattributed = sorted(
         _as_reported(route, one)
