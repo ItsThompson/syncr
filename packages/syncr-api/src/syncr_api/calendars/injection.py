@@ -69,6 +69,7 @@ from syncr_api.calendars.solve_requests import TrackedWeekSolves
 from syncr_api.calendars.sync import SourceSyncer
 from syncr_api.conflicts.ingest import IngestConflicts
 from syncr_api.core.clock import utc_now
+from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.google_account.injection import build_access_tokens
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
@@ -259,6 +260,7 @@ async def get_calendar_source_service(
     transaction: TransactionDep,
     client: FeedClientDep,
     google: GoogleReadClientDep,
+    session_mode: SessionModeDep,
 ) -> CalendarSourceService:
     """The calendar-source service, wired for this request and scoped to this tenant."""
     settings: ServiceSettings = request.app.state.settings
@@ -303,6 +305,9 @@ async def get_calendar_source_service(
                     clock=utc_now,
                     debounce=configured_debounce(request),
                 ),
+                # A mutation here can move several weeks' readings, and the solve of each is
+                # recorded with what this request stated about the weekly session.
+                session_mode_active=session_mode,
             ),
             clock=utc_now,
         ),

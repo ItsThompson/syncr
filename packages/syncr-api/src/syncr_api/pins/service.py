@@ -19,7 +19,7 @@ pin(week, blockId, start)
   │     ├── pins.price(delta)                         the pin's second statement
   │     ├── verdicts.record(week, verdict)            only if it TRANSITIONED
   │     ├── editEvents.append(...)                    E1: the pair, or neither
-  │     └── coordinator.request_solve(week, version)
+  │     └── coordinator.request_solve(week, version, session_mode_active)
   └── { pin, verdict, operation }
 ```
 
@@ -159,6 +159,7 @@ class PinService:
         tasks: TaskRepository,
         areas: AreaRepository,
         clock: Clock,
+        session_mode_active: bool = False,
     ) -> None:
         self._assembler = assembler
         self._probe = probe
@@ -173,6 +174,10 @@ class PinService:
         self._tasks = tasks
         self._areas = areas
         self._clock = clock
+        # What this request stated about the weekly session. The recorder above is bound to the
+        # same answer at composition; this copy is for the release path, which computes no verdict
+        # of its own but schedules the solve whose recorder reads it.
+        self._session_mode_active = session_mode_active
 
     @measured("pins")
     async def pin(self, principal: Principal, iso_week: str, requested: PinRequested) -> PinnedWeek:
@@ -225,7 +230,9 @@ class PinService:
             pin_id=str(pin_id),
             input_version=version,
         )
-        await self._coordinator.request_solve(week, version)
+        await self._coordinator.request_solve(
+            week, version, session_mode_active=self._session_mode_active
+        )
 
     async def _held(
         self,
@@ -321,7 +328,9 @@ class PinService:
         return PinnedWeek(
             pin=priced,
             verdict=verdict,
-            operation=await self._coordinator.request_solve(week, version),
+            operation=await self._coordinator.request_solve(
+                week, version, session_mode_active=self._session_mode_active
+            ),
         )
 
     async def _task_deadline(self, block: Block) -> datetime | None:

@@ -171,6 +171,7 @@ def build_pin_service(
         tasks=TaskRepository(transaction, tenant_id),
         areas=AreaRepository(transaction, tenant_id),
         clock=clock,
+        session_mode_active=session_mode_active,
     )
 
 

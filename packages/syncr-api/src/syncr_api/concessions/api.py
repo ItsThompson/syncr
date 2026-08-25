@@ -12,9 +12,10 @@ the request-and-approve split on the wire: the answer to "what did clicking this
 solve is running against it", and the concession appears only if the proposal it produces is
 approved.
 
-The ``POST`` resolves a service of its own, and the difference is the weekly-session header: it is
-the only route here that computes a verdict, so it is the only one that may be refused for stating
-that header wrongly.
+The ``POST`` and the ``DELETE`` resolve services of their own, and the difference is the
+weekly-session header: only the ``POST`` computes a verdict, but both schedule a solve whose
+recorder reads what the request stated about the session, so both resolve the header. The ``GET``
+resolves one that never looks at it, because it neither records nor schedules.
 
 Two routers rather than one, and the split is the resource: a tradeoff is a request about the week,
 an adjustment is a row the week holds. Requesting is also the only act here that can conflict with
@@ -32,7 +33,11 @@ from starlette.responses import Response
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.concessions.config import ADJUSTMENT_PATH, ADJUSTMENTS_PATH, TRADEOFFS_PATH
 from syncr_api.concessions.declarations import RequestedConcession
-from syncr_api.concessions.injection import ConcessionServiceDep, TradeoffServiceDep
+from syncr_api.concessions.injection import (
+    ConcessionServiceDep,
+    RevocationServiceDep,
+    TradeoffServiceDep,
+)
 from syncr_api.concessions.schemas import (
     AdjustmentResponse,
     AdjustmentsResponse,
@@ -79,7 +84,7 @@ async def revoke_adjustment(
     iso_week: str,
     adjustment_id: UUID,
     principal: PrincipalDep,
-    service: ConcessionServiceDep,
+    service: RevocationServiceDep,
 ) -> Response:
     """Remove a concession, so the next plan is one the week was not conceded anything for."""
     await service.revoke(principal, iso_week, adjustment_id)

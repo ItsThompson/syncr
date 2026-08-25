@@ -88,6 +88,7 @@ class ConflictService:
         anchors: AnchorService,
         pins: PinRelease,
         clock: Clock,
+        session_mode_active: bool = False,
     ) -> None:
         self._conflicts = conflicts
         self._revisions = revisions
@@ -96,6 +97,10 @@ class ConflictService:
         self._anchors = anchors
         self._pins = pins
         self._clock = clock
+        # What this request stated about the weekly session, bound at composition. The resolution
+        # records no verdict of its own, but the solve it asks for does, and the statement rides
+        # the operation so the solve's recorder reads the caller's answer.
+        self._session_mode_active = session_mode_active
 
     @measured("conflicts")
     async def list_all(
@@ -218,7 +223,9 @@ class ConflictService:
         if chosen.resolution == KEPT_BOTH_RESOLUTION:
             return None
         bumped = await self._versions.bump(found.iso_week, at=self._clock())
-        return await self._coordinator.request_solve(found.iso_week, bumped)
+        return await self._coordinator.request_solve(
+            found.iso_week, bumped, session_mode_active=self._session_mode_active
+        )
 
     async def _live(self, iso_week: IsoWeek) -> PlanDocument | None:
         """The week's live plan, or ``None`` when it holds none."""

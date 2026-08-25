@@ -25,6 +25,7 @@ from fastapi import Depends, Request
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.learned.activation import FutureWeeksResolved, WeightSetActivation
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.learned.service import LearnedService
@@ -34,7 +35,10 @@ from syncr_api.user_settings.repository import SettingsRepository
 
 
 def get_learned_service(
-    request: Request, principal: PrincipalDep, transaction: TransactionDep
+    request: Request,
+    principal: PrincipalDep,
+    transaction: TransactionDep,
+    session_mode: SessionModeDep,
 ) -> LearnedService:
     """The learning service, wired for this request and scoped to this tenant."""
     tenant_id = principal.tenant_id
@@ -51,6 +55,9 @@ def get_learned_service(
                 clock=utc_now,
                 debounce=configured_debounce(request),
             ),
+            # The activation's future weeks are re-solved for the caller that flipped the flag,
+            # so the statement rides to each of their solves.
+            session_mode_active=session_mode,
         ),
         clock=utc_now,
     )

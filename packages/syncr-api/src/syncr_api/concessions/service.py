@@ -99,6 +99,7 @@ class ConcessionService:
         current: WeekInputVersionRepository,
         versions: WeekInputVersions,
         clock: Clock,
+        session_mode_active: bool = False,
     ) -> None:
         self._assembler = assembler
         self._probe = probe
@@ -108,6 +109,10 @@ class ConcessionService:
         self._current = current
         self._versions = versions
         self._clock = clock
+        # What this request stated about the weekly session, bound at composition like the
+        # recorder above is. Both acts here schedule a solve, and the solve's recorder reads it
+        # off the operation: a withdrawal opens an episode just as a tradeoff does.
+        self._session_mode_active = session_mode_active
 
     @measured("concessions")
     async def request(
@@ -137,6 +142,7 @@ class ConcessionService:
             await self._current_version(week),
             immediate=True,
             candidate=as_document(offer.as_candidate(adjustment_id=uuid4())),
+            session_mode_active=self._session_mode_active,
         )
         _log.info(
             "concessions.tradeoff.requested",
@@ -184,7 +190,9 @@ class ConcessionService:
             adjustment_id=str(adjustment_id),
             kind=found.kind,
         )
-        await self._coordinator.request_solve(week, await self._current_version(week))
+        await self._coordinator.request_solve(
+            week, await self._current_version(week), session_mode_active=self._session_mode_active
+        )
 
     async def _current_version(self, week: IsoWeek) -> int:
         """The version this week now holds, for the coordinator's answer to the caller.

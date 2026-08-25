@@ -42,9 +42,17 @@ _log = get_logger("syncr.calendars")
 class TrackedWeekSolves:
     """The solve each week a sync invalidated needs, asked for once per week."""
 
-    def __init__(self, versions: WeekInputVersionRepository, coordinator: SolveCoordinator) -> None:
+    def __init__(
+        self,
+        versions: WeekInputVersionRepository,
+        coordinator: SolveCoordinator,
+        session_mode_active: bool = False,
+    ) -> None:
         self._versions = versions
         self._coordinator = coordinator
+        # What the request behind this pass stated about the weekly session, bound at composition.
+        # A poll passes nothing and records the default: time passing is not a request.
+        self._session_mode_active = session_mode_active
 
     async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
         """Ask for a solve of every tracked week in ``weeks``, earliest first.
@@ -67,7 +75,11 @@ class TrackedWeekSolves:
         tracked = await self._versions.tracked_weeks(min(weeks), max(weeks))
         asked = tuple(week for week in tracked if week in weeks)
         for week in asked:
-            await self._coordinator.request_solve(week, await self._versions.tracked_version(week))
+            await self._coordinator.request_solve(
+                week,
+                await self._versions.tracked_version(week),
+                session_mode_active=self._session_mode_active,
+            )
         _log.info(
             "calendars.sync.solves_requested",
             weeks_invalidated=len(weeks),

@@ -31,6 +31,7 @@ from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: T
 from syncr_api.anchors.injection import get_anchor_service
 from syncr_api.conflicts.service import ConflictService
 from syncr_api.core.clock import utc_now
+from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.pins.release import StoredPinRelease
 from syncr_api.plans.conflicts import PlanConflictRepository
 from syncr_api.plans.pins import PinRepository
@@ -40,7 +41,10 @@ from syncr_api.solving.injection import build_solve_coordinator, configured_debo
 
 
 def get_conflict_service(
-    request: Request, principal: PrincipalDep, transaction: TransactionDep
+    request: Request,
+    principal: PrincipalDep,
+    transaction: TransactionDep,
+    session_mode: SessionModeDep,
 ) -> ConflictService:
     """The conflict service, wired for this request and scoped to this tenant."""
     return ConflictService(
@@ -56,6 +60,7 @@ def get_conflict_service(
         anchors=get_anchor_service(principal, transaction),
         pins=StoredPinRelease(PinRepository(transaction, principal.tenant_id)),
         clock=utc_now,
+        session_mode_active=session_mode,
     )
 
 

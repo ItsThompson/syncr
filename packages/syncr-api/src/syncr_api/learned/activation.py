@@ -80,10 +80,13 @@ class FutureWeeksResolved:
         versions: WeekInputVersionRepository,
         settings: SettingsRepository,
         coordinator: SolveCoordinator,
+        session_mode_active: bool = False,
     ) -> None:
         self._versions = versions
         self._settings = settings
         self._coordinator = coordinator
+        # What the activating request stated about the weekly session, bound at composition.
+        self._session_mode_active = session_mode_active
 
     async def from_the_week_holding(self, now: datetime) -> list[OperationRecord]:
         """Bump and re-solve every tracked week from the one holding ``now``'s local date on."""
@@ -105,4 +108,6 @@ class FutureWeeksResolved:
         state the activation produced rather than the one the week held before it.
         """
         version = await self._versions.bump(week, at=at)
-        return await self._coordinator.request_solve(week, version)
+        return await self._coordinator.request_solve(
+            week, version, session_mode_active=self._session_mode_active
+        )

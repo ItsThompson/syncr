@@ -142,6 +142,7 @@ class WeekService:
         off_plan: OffPlanPeriodRepository,
         confirmations: DayConfirmationReader,
         clock: Clock,
+        session_mode_active: bool = False,
     ) -> None:
         self._budgets = budgets
         self._revisions = revisions
@@ -158,6 +159,10 @@ class WeekService:
         self._off_plan = off_plan
         self._confirmations = confirmations
         self._clock = clock
+        # What this request stated about the weekly session, bound at composition. The re-solve
+        # control records no verdict of its own, but the solve it asks for does, and the statement
+        # rides the operation so the solve's recorder reads the caller's answer.
+        self._session_mode_active = session_mode_active
 
     @measured("weeks")
     async def read(self, principal: Principal, iso_week: str) -> WeekView:
@@ -312,7 +317,10 @@ class WeekService:
         # This control changes no input, so the version it reports is the one the week already
         # holds: it is what the client's response says was acknowledged, and it is not the guard.
         return await self._coordinator.request_solve(
-            week, await self._versions.tracked_version(week), immediate=immediate
+            week,
+            await self._versions.tracked_version(week),
+            immediate=immediate,
+            session_mode_active=self._session_mode_active,
         )
 
     async def _readings(

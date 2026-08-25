@@ -44,6 +44,7 @@ from syncr_api.areas.repository import AreaRepository
 from syncr_api.budgets.injection import build_budget_service
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.habits.repository import HabitRepository
 from syncr_api.learned.repository import WeightSetRepository
@@ -195,7 +196,10 @@ def build_verdict_recorder(
 
 
 def get_week_service(
-    request: Request, principal: ClientPrincipalDep, transaction: TransactionDep
+    request: Request,
+    principal: ClientPrincipalDep,
+    transaction: TransactionDep,
+    session_mode: SessionModeDep,
 ) -> WeekService:
     """The week service, wired for this request and scoped to this tenant."""
     return build_week_service(
@@ -203,6 +207,7 @@ def get_week_service(
         principal.tenant_id,
         clock=utc_now,
         debounce=configured_debounce(request),
+        session_mode_active=session_mode,
     )
 
 
@@ -212,6 +217,7 @@ def build_week_service(
     *,
     clock: Clock,
     debounce: timedelta = DEFAULT_DEBOUNCE,
+    session_mode_active: bool = False,
 ) -> WeekService:
     """One week service, scoped to ``tenant_id``, reading time from ``clock``.
 
@@ -269,6 +275,7 @@ def build_week_service(
             overrides,
         ),
         clock=clock,
+        session_mode_active=session_mode_active,
     )
 
 

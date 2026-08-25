@@ -17,10 +17,12 @@ the weekly session is open, because only the caller knows the second. A tradeoff
 during a weekly session more often than not, so a surface that reported false here would
 under-report the metric's numerator on its most likely path.
 
-**Two dependencies rather than one, and the split is the header.** Only the tradeoff ``POST``
+**Three dependencies rather than two, and the split is the header.** Only the tradeoff ``POST``
 computes a verdict, and the header's refusal is a 422 saying nothing was changed: on the ``GET``
 that lists a week's concessions that message is meaningless and the header is one the read has no
-use for. So the read and the revocation resolve a service that never looks at it.
+use for. So the read resolves a service that never looks at it. The revocation computes no verdict
+either, but it schedules a solve whose recorder reads the statement, so it resolves the header and
+lets the operation carry the answer instead.
 """
 
 from __future__ import annotations
@@ -64,13 +66,29 @@ def get_tradeoff_service(
 def get_concession_service(
     request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> ConcessionService:
-    """The service the read and the revocation resolve, which state nothing about a session.
+    """The service the read resolves, which states nothing about a session.
 
-    Neither method computes a verdict, so the recorder this carries is never called and the header
-    is never read: a read refused for a malformed mutation header would be answering a question
-    nobody asked it.
+    The list answers no mutation and schedules no solve, so the recorder this carries is never
+    called and the header is never read: a read refused for a malformed mutation header would be
+    answering a question nobody asked it.
     """
     return _service(request, principal.tenant_id, transaction, session_mode_active=False)
+
+
+def get_revocation_service(
+    request: Request,
+    principal: PrincipalDep,
+    transaction: TransactionDep,
+    session_mode: SessionModeDep,
+) -> ConcessionService:
+    """The service the revocation resolves, which carries the caller's statement onward.
+
+    A withdrawal computes no verdict of its own, but it bumps the week and asks for the solve that
+    reads it, and that solve's recorder decides what an episode's first row says. So this route
+    resolves the header even though nothing here records under it: the answer travels on the
+    operation instead.
+    """
+    return _service(request, principal.tenant_id, transaction, session_mode_active=session_mode)
 
 
 def _service(
@@ -101,8 +119,10 @@ def _service(
         current=versions,
         versions=TrackedWeekInputVersions(versions, clock=utc_now),
         clock=utc_now,
+        session_mode_active=session_mode_active,
     )
 
 
 type TradeoffServiceDep = Annotated[ConcessionService, Depends(get_tradeoff_service)]
 type ConcessionServiceDep = Annotated[ConcessionService, Depends(get_concession_service)]
+type RevocationServiceDep = Annotated[ConcessionService, Depends(get_revocation_service)]
