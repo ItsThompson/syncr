@@ -25,6 +25,21 @@ APPLY_PATH: Final = "/budget/apply"
 SESSION_PATH: Final = "/week/{iso_week}"
 ISO_WEEK_FIELD: Final = "isoWeek"
 
+# The weekly session payload read's p95 latency budget, in seconds.
+#
+# Derived from the figure the week view it composes already answers to: GET /weeks is budgeted at
+# p95 under 300 ms on a full week (`tests/test_week_view_integration.py` states and measures it),
+# and this read IS that view plus a bounded tail. The tail is two span reads over the reviewed
+# quarter, at most thirteen stored documents parsed beside them, the seven single-statement fact
+# reads `reviews/session_sources.py` composes, and three repository reads. Every one of those is a
+# single statement inside a bucket of `core/db_metrics.READ_BUCKETS`, so the whole tail is held to
+# one read bucket: 300 + 100 = 400 ms.
+#
+# One constant rather than figures spelled into prose, because three artifacts quote it: this file
+# derives it, `deployments/prometheus/alerts.yml`'s `WeeklySessionSlow` threshold states it, and
+# `docs/runbooks/weekly-session-slow.md` explains it. A retune moves the constant first.
+SESSION_P95_BUDGET_SECONDS: Final = 0.4
+
 # How many weeks the session's history window covers. A quarter, the same span the pie review reads,
 # so "the period a review rests on" has one length in this module. It bounds the two runs the
 # session computes: a chronic skip longer than the window is reported as the window, which is the
