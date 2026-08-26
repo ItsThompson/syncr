@@ -53,6 +53,16 @@ class TestARenameMovesTheSubjectAndNotTheSentence:
         assert maturity_rows(STORED) == maturity_rows(STORED)
 
 
+class TestTheRowGuardsTheFreshnessRecordRestsOn:
+    # A freshness assertion over a row that the reader should have dropped would prove nothing,
+    # so the guards that decide a row is readable are pinned alongside the rule they carry.
+    def test_a_row_whose_sample_count_is_negative_is_dropped(self) -> None:
+        assert maturity_rows(({**STORED[0], "samples": -14},)) == ()
+
+    def test_a_ready_row_without_its_figure_is_dropped(self) -> None:
+        assert maturity_rows(({**STORED[0], "value": None},)) == ()
+
+
 def test_the_sentence_survives_a_rename_because_nothing_rewrites_storage() -> None:
     renamed: dict[UUID, str] = {FITNESS: "Climbing"}
     row_before = maturity_rows(STORED)[0]
