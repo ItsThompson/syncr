@@ -51,6 +51,12 @@ export interface LedgerRowProps {
   readonly children?: ReactNode;
 }
 
+/** The chip when the Area carries a ramp step, the bare name where it does not. */
+function areaCell(area: LedgerRowArea): ReactNode {
+  if (area.pigment === undefined) return area.name;
+  return <AreaChip name={area.name} pigment={area.pigment} />;
+}
+
 export function LedgerRow({
   timeRange,
   duration,
@@ -65,13 +71,7 @@ export function LedgerRow({
       <Gutter>{mark}</Gutter>
       <span className="ledger__time">{timeRange}</span>
       <span className="ledger__duration">{duration}</span>
-      <span className="ledger__area">
-        {area === undefined ? null : area.pigment === undefined ? (
-          area.name
-        ) : (
-          <AreaChip name={area.name} pigment={area.pigment} />
-        )}
-      </span>
+      <span className="ledger__area">{area === undefined ? null : areaCell(area)}</span>
       <span className="ledger__title">{title}</span>
       <span className="ledger__outcome">{children}</span>
     </div>
