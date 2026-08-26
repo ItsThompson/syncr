@@ -24,10 +24,13 @@ either credential is verified.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
     from starlette.requests import Request
+
+    from syncr_api.core.principal import Principal
 
 AUTHORIZATION_HEADER: Final = "authorization"
 
@@ -67,3 +70,23 @@ def presented_credential(request: Request) -> CredentialKind:
     if read_bearer_token(request) is not None:
         return CredentialKind.BEARER
     return CredentialKind.SESSION
+
+
+class AccessTokenReader(Protocol):
+    """The principal a presented access token authenticates, or the bearer refusal raised.
+
+    Declared here rather than in the module that implements it so the perimeter that reads a
+    reader off ``app.state`` names no type of the module that built the state: the two halves of
+    the perimeter meet at this protocol and at nothing else.
+    """
+
+    def __call__(self, request: Request, transaction: AsyncSession) -> Principal: ...
+
+
+# What a request that needs the Authorization Server's state says when the process that built
+# the application never attached it. Named rather than generic, because the fix is one line in
+# whichever process built the app.
+OAUTH_STATE_NOT_ATTACHED: Final = (
+    "app.state.oauth is not set, so this application has OAuth routes and no signing keys. "
+    "Attach it with syncr_api.oauth.injection.build_oauth_state, the way the api entrypoint does."
+)

@@ -52,16 +52,15 @@ from syncr_api.accounts.session_tokens import (
     make_token_digest,
 )
 from syncr_api.core.clock import utc_now
-from syncr_api.core.credentials import CredentialKind, presented_credential
+from syncr_api.core.credentials import (
+    OAUTH_STATE_NOT_ATTACHED,
+    AccessTokenReader,
+    CredentialKind,
+    presented_credential,
+)
 from syncr_api.core.db import get_transaction
 from syncr_api.core.errors import OriginRejected, Unauthorized
 from syncr_api.core.principal import Principal
-
-# Runtime imports, because FastAPI evaluates this module's dependency annotations while the app is
-# being built. ``oauth.injection`` reaches nothing in this module, which is what lets the perimeter
-# here reach the bearer resolution there: the consent service, the one thing in that module that
-# needed a browser session, lives in ``oauth/consent_injection.py``.
-from syncr_api.oauth.injection import resolve_bearer_principal
 from syncr_common.logging import bind_tenant_id
 
 if TYPE_CHECKING:
@@ -172,8 +171,23 @@ async def require_client_principal(
     route delegates to is the one place either is checked.
     """
     if presented_credential(request) is CredentialKind.BEARER:
-        return _bind(resolve_bearer_principal(request, transaction))
+        return _bind(_bearer_principal(request, transaction))
     return _bind(await authenticator.resolve(require_session_token(request)))
+
+
+def _bearer_principal(request: Request, transaction: AsyncSession) -> Principal:
+    """The bearer half of the perimeter, read through this application's state.
+
+    The reader is read off ``app.state.oauth`` behind the protocol in ``core.credentials`` rather
+    than imported from the module that builds the state, so this package names no type of the
+    Authorization Server and the direction between the two halves is asserted by rule rather than
+    left to convention. It is reached only when a request presents a token, so an application built
+    with no OAuth state never takes this path and still serves a browser.
+    """
+    reader: AccessTokenReader | None = getattr(request.app.state, "oauth", None)
+    if reader is None:
+        raise RuntimeError(OAUTH_STATE_NOT_ATTACHED)
+    return reader(request, transaction)
 
 
 type ClientPrincipalDep = Annotated[Principal, Depends(require_client_principal)]

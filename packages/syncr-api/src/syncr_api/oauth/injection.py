@@ -2,10 +2,12 @@
 
 Four things are worth reading closely.
 
-**Nothing here imports ``accounts.injection``, and that is load-bearing.** The perimeter every
-product route declares lives there and reaches :func:`require_bearer_principal` below, so this
-module has to be the lower of the two. The consent service was the one thing in it that needed a
-browser session, and it now lives in ``consent_injection.py`` beside the routes that declare it.
+**Nothing here imports ``accounts.injection``, and nothing there imports this module.** The
+perimeter every product route declares lives there and reads the bearer resolution off
+``app.state.oauth`` through the protocol in ``core.credentials``, so neither half of the perimeter
+reaches the other by an import and the direction between them is asserted, not conventional. The
+consent service was the one thing in this module that needed a browser session, and it lives in
+``consent_injection.py`` beside the routes that declare it.
 
 **The token and revocation endpoints resolve nothing.** They are what produces a credential,
 so requiring one would make obtaining a token possible only while already holding one. The
@@ -37,7 +39,10 @@ from starlette.requests import Request  # noqa: TC002
 
 from syncr_api.accounts.repository import UserRepository
 from syncr_api.core.clock import utc_now
-from syncr_api.core.credentials import read_bearer_token
+from syncr_api.core.credentials import (
+    OAUTH_STATE_NOT_ATTACHED,
+    read_bearer_token,
+)
 from syncr_api.core.db import Database, get_transaction
 from syncr_api.core.principal import Principal
 from syncr_api.oauth.access_tokens import AccessTokenCodec
@@ -58,24 +63,25 @@ MISSING_BEARER_DETAIL = (
     "Nothing was changed."
 )
 
-# What a request to an OAuth route says when the entrypoint never attached the state. Named
-# rather than generic, because the fix is one line in whichever process built the app.
-_UNWIRED = (
-    "app.state.oauth is not set, so this application has OAuth routes and no signing keys. "
-    "Attach it with syncr_api.oauth.injection.build_oauth_state, the way the api entrypoint "
-    "does."
-)
-
 type TransactionDep = Annotated[AsyncSession, Depends(get_transaction)]
 
 
 @dataclass(frozen=True, slots=True)
 class OAuthState:
-    """The Authorization Server's process-wide state, carried on ``app.state.oauth``."""
+    """The Authorization Server's process-wide state, carried on ``app.state.oauth``.
+
+    Called as well as read: the perimeter in ``accounts/injection.py`` resolves a presented access
+    token through this object behind :class:`~syncr_api.core.credentials.AccessTokenReader`, which
+    is why that module names none of this package's types.
+    """
 
     config: OAuthConfig
     keys: SigningKeySet
     codec: AccessTokenCodec
+
+    def __call__(self, request: Request, transaction: AsyncSession) -> Principal:
+        """Resolve the presented access token with this application's own collaborators."""
+        return require_bearer_principal(request, get_token_service(request, transaction, self))
 
 
 def build_oauth_state(config: OAuthConfig, keys: SigningKeySet) -> OAuthState:
@@ -91,7 +97,7 @@ def get_oauth_state(request: Request) -> OAuthState:
     """The Authorization Server state this application was built with."""
     state: OAuthState | None = getattr(request.app.state, "oauth", None)
     if state is None:
-        raise RuntimeError(_UNWIRED)
+        raise RuntimeError(OAUTH_STATE_NOT_ATTACHED)
     return state
 
 
@@ -151,10 +157,11 @@ def scoped_repository_factory(transaction: AsyncSession) -> ScopedRepositoryFact
 def require_bearer_principal(request: Request, service: TokenServiceDep) -> Principal:
     """The principal a presented access token authenticates, or 401.
 
-    The whole of what a bearer-only route declares, and the resolution the perimeter in
-    ``accounts/injection.py`` reaches through :func:`resolve_bearer_principal`. It resolves the
-    subject, the tenant, and the scopes the grant was issued for; the service method the route
-    delegates to is where those scopes are then checked, which is why nothing is checked here.
+    The whole of what a bearer-only route declares, and the resolution the state object above
+    composes for the perimeter in ``accounts/injection.py``, which reads it off ``app.state``
+    rather than importing here. It resolves the subject, the tenant, and the scopes the grant was
+    issued for; the service method the route delegates to is where those scopes are then checked,
+    which is why nothing is checked here.
 
     The tenant is bound onto the logging context by the perimeter that calls this, in the one place
     both credential kinds pass through, so a bearer request's log lines carry the tenant that a
@@ -167,19 +174,3 @@ def require_bearer_principal(request: Request, service: TokenServiceDep) -> Prin
 
 
 type BearerPrincipalDep = Annotated[Principal, Depends(require_bearer_principal)]
-
-
-def resolve_bearer_principal(request: Request, transaction: AsyncSession) -> Principal:
-    """The same resolution, with the Authorization Server's state read rather than declared.
-
-    **Built for this request only when this request presents a token.** The perimeter every product
-    route declares would otherwise make ``app.state.oauth`` a dependency of every cookie request
-    too, so an application with no signing keys could no longer serve a browser, and a deployment
-    would fail on its first read rather than on the boot that could not load its keys.
-
-    One implementation either way: this composes what the dependency above would have been handed
-    and delegates to it, so there is one place a presented token becomes a principal.
-    """
-    return require_bearer_principal(
-        request, get_token_service(request, transaction, get_oauth_state(request))
-    )
