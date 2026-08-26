@@ -53,6 +53,7 @@ import {
 } from "../../src/ui/domain/week-grid/metrics.ts";
 import { COLUMN_READINGS_ID, weekColumns } from "./weekColumns.ts";
 import { LINE_READINGS_ID, lineWeightSection } from "./lineWeight.ts";
+import { VERDICT_READINGS_ID, VERDICT_SECTION } from "./verdictPanel.ts";
 
 /** The narrowest supported day column, `--col-min`, which is where a title is tightest. */
 export const COLUMN_PX = 137;
@@ -60,8 +61,14 @@ export const COLUMN_PX = 137;
 /** Wide enough that no title here wraps or truncates, so its first line is the untruncated one. */
 export const WIDE_COLUMN_PX = 900;
 
-/** How far apart the renderings of one case are placed, so no case's clipping reaches another. */
-const CASE_PITCH_PX = 220;
+/** How far apart the renderings of one case are placed, so no case's clipping reaches another.
+ *
+ * RAISED ABOVE THE VERDICT PANEL'S RESERVED HEIGHT, which is `--verdict-h` in the domain's own tokens (226px),
+ * because the slot this figure sizes below the columns is where the rendered verdict panel stands
+ * (`verdictPanel.ts`): a pitch at or under the panel's height would push the panel's lower edge past the window
+ * this page is shot at, and the gate would read a panel the product does not fully draw. Raising the pitch keeps
+ * every existing region where its arithmetic put it; widening the window another way would move them all. */
+const CASE_PITCH_PX = 230;
 
 /** Air around the widest thing the page holds, so nothing sits against the window's own edge. */
 const PAGE_MARGIN_PX = 40;
@@ -404,6 +411,7 @@ export function probePage({ bundleName, cases, scriptName }: PageRequest): strin
      makes every region's Y a figure this file computes rather than one the layout negotiates. */
   #column { position: relative; width: ${String(COLUMN_PX)}px; background: var(--paper-raised) }
   #wide { position: relative; width: ${String(WIDE_COLUMN_PX)}px; background: var(--paper-raised) }
+  ${VERDICT_SECTION.style}
   ${WEEK_SECTION.style}
 </style></head>
 <body>
@@ -413,11 +421,13 @@ ${narrow}
 <div id="wide" style="height:${String(stackTopPx(cases))}px">
 ${wide}
 </div>
+${VERDICT_SECTION.html}
 ${WEEK_SECTION.html}
 ${LINES_SECTION.html}
 <pre id="${READINGS_ID}"></pre>
 <pre id="${COLUMN_READINGS_ID}"></pre>
 <pre id="${LINE_READINGS_ID}"></pre>
+<pre id="${VERDICT_READINGS_ID}"></pre>
 ${scriptName === undefined ? "" : `<script src="./${scriptName}"></script>`}
 <script>
   const readings = [...document.querySelectorAll(".week-block")].map((block) => {
@@ -450,6 +460,7 @@ ${scriptName === undefined ? "" : `<script src="./${scriptName}"></script>`}
 </script>
 <script>${WEEK_SECTION.script}</script>
 <script>${LINES_SECTION.script}</script>
+<script>${VERDICT_SECTION.script}</script>
 </body></html>
 `;
 }

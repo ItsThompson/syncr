@@ -57,6 +57,7 @@ import {
   type RenderCase,
 } from "./page.ts";
 import { COLUMN_READINGS_ID } from "./weekColumns.ts";
+import { parseVerdictReport, VERDICT_READINGS_ID, verdictFindings } from "./verdictPanel.ts";
 
 export interface CheckRenderInput {
   /** The built stylesheet a browser downloads, by name and content, from the build the bundle gate reads. */
@@ -120,12 +121,14 @@ export async function checkRender({ bundleName, css }: CheckRenderInput): Promis
   const readings = parseReadings(shot.readings[READINGS_ID] ?? "");
   const columns = horizontalRead(shot.readings[COLUMN_READINGS_ID] ?? "");
   const weights = parseLineWeights(shot.readings[LINE_READINGS_ID] ?? "");
+  const verdict = parseVerdictReport(shot.readings[VERDICT_READINGS_ID] ?? "");
 
   const findings: Finding[] = [
     ...compiled.findings,
     ...columns.findings,
     ...channelTable(cases, readings),
     ...lineWeightFindings(weights),
+    ...verdictFindings(verdict),
   ];
   for (const [index, each] of cases.entries()) {
     findings.push(...cappedAgainstUncapped(image, each));
@@ -147,6 +150,7 @@ export async function checkRender({ bundleName, css }: CheckRenderInput): Promis
       ),
       ...channelNotes(cases, readings),
       ...columns.notes,
+      ...verdictNotes(verdict),
     ],
   };
 }
@@ -587,6 +591,22 @@ function lineWeightFindings(weights: LineWeightReading | null): Finding[] {
   return findings;
 }
 
+function verdictNotes(report: ReturnType<typeof parseVerdictReport>): string[] {
+  if (
+    report === null ||
+    report.error !== undefined ||
+    report.panelBottomPx === undefined ||
+    report.rows === undefined
+  ) {
+    return ["verdict panel: not measured"];
+  }
+  const fourth = report.rows.at(-1);
+  if (fourth === undefined) return ["verdict panel: drew no rows"];
+  return [
+    `verdict panel: the clip sits at ${report.panelBottomPx.toFixed(2)}px and the fourth row spans ` +
+      `${fourth.topPx.toFixed(2)}px to ${fourth.bottomPx.toFixed(2)}px`,
+  ];
+}
 
 function parseReadings(text: string): PageReading[] {
   if (text.trim() === "") return [];
