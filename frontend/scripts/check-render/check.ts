@@ -38,7 +38,7 @@ import type { CheckOutcome, Finding } from "../lib/findings.ts";
 import { BROWSER_ENV, findBrowser, screenshot } from "./browser.ts";
 import { buildDragRead, DRAG_READ_SCRIPT } from "./dragRead.ts";
 import { horizontalRead } from "./horizontalRead.ts";
-import { LINE_READINGS_ID, type LineWeightReading } from "./lineWeight.ts";
+import { LINE_READINGS_ID, type LineWeights, type LineWeightReading } from "./lineWeight.ts";
 import { frontendRoot } from "../lib/paths.ts";
 import { differencesBetween, imageOf, lastInkedColumn, sketch, type Region } from "./pixels.ts";
 import {
@@ -333,7 +333,10 @@ function topOffsetOf(each: CaseGeometry, index: number, readings: PageReading[])
  *
  * A MISSING READING IS A FINDING rather than a pass, for the same reason a blank region is: a gate that cannot see
  * must not report agreement. */
-function channelTable(cases: readonly CaseGeometry[], readings: readonly PageReading[]): Finding[] {
+export function channelTable(
+  cases: readonly CaseGeometry[],
+  readings: readonly PageReading[],
+): Finding[] {
   const findings: Finding[] = [];
   const readAt = (index: number): PageReading | undefined =>
     readings.find((one) => one.id === idOf(index, "capped"));
@@ -374,9 +377,14 @@ function channelTable(cases: readonly CaseGeometry[], readings: readonly PageRea
   }
 
   /* CONFLICT WINS THE LEFT RULE OVER SELECTED, AT THE WEIGHT BOTH SHARE. */
-  const conflict = soleCase(cases, { conflicted: true });
-  const selected = soleCase(cases, { selected: true });
-  const both = soleCase(cases, { conflicted: true, selected: true });
+  const conflict = soleCase(cases, { conflicted: true }, "conflicted alone", findings);
+  const selected = soleCase(cases, { selected: true }, "selected alone", findings);
+  const both = soleCase(
+    cases,
+    { conflicted: true, selected: true },
+    "conflicted and selected",
+    findings,
+  );
   const bothRead = both === -1 ? undefined : readAt(both);
   const conflictRead = conflict === -1 ? undefined : readAt(conflict);
   const selectedRead = selected === -1 ? undefined : readAt(selected);
@@ -414,8 +422,13 @@ function channelTable(cases: readonly CaseGeometry[], readings: readonly PageRea
   }
 
   /* A SPLIT BLOCK'S OWN HAIRLINE IS REPLACED BY THE STATE RULE, NOT ADDED TO IT. */
-  const splitRest = soleCase(cases, { split: true });
-  const splitSelected = soleCase(cases, { split: true, selected: true });
+  const splitRest = soleCase(cases, { split: true }, "split at rest", findings);
+  const splitSelected = soleCase(
+    cases,
+    { split: true, selected: true },
+    "split and selected",
+    findings,
+  );
   const splitRestRead = splitRest === -1 ? undefined : readAt(splitRest);
   const splitSelectedRead = splitSelected === -1 ? undefined : readAt(splitSelected);
   if (splitRestRead !== undefined) {
@@ -450,7 +463,7 @@ function channelTable(cases: readonly CaseGeometry[], readings: readonly PageRea
   }
 
   /* THE PROPOSAL TARGET: NO FILL, A DASHED BOTTOM RULE AS REDUNDANCY, AND EVERYTHING ELSE KEPT. */
-  const proposal = soleCase(cases, { proposalTarget: true });
+  const proposal = soleCase(cases, { proposalTarget: true }, "proposal target", findings);
   const proposalRead = proposal === -1 ? undefined : readAt(proposal);
   const restRead = readAt(0);
   if (proposalRead !== undefined) {
@@ -486,7 +499,10 @@ function channelTable(cases: readonly CaseGeometry[], readings: readonly PageRea
 
   /* THE ANCHOR'S HATCH RIDES THE IMAGE CHANNEL, SO HOVER'S COLOUR COMPOSES WITH IT RATHER THAN COMPETING. */
   const anchorIndex = cases.findIndex((each) => each.origin === "anchor");
-  const anchorRead = anchorIndex === -1 ? undefined : readAt(anchorIndex);
+  if (anchorIndex === -1) {
+    findings.push(missingCase("anchor block"));
+  }
+  const anchorRead = readAt(anchorIndex);
   if (anchorRead !== undefined && restRead !== undefined) {
     if (anchorRead.hatchBackgroundImage === null || anchorRead.hatchBackgroundImage === "none") {
       findings.push({
@@ -521,11 +537,33 @@ function channelTable(cases: readonly CaseGeometry[], readings: readonly PageRea
   return findings;
 }
 
-/** The index of the one case standing in exactly these states, or -1 when no case carries them. */
-function soleCase(cases: readonly CaseGeometry[], want: RenderCase["states"]): number {
-  return cases.findIndex(
+/** The index of the one case standing in exactly these states, or -1 after reporting the loss.
+ *
+ * A MISSING CASE IS A FINDING, not a silent skip: each lookup stands for composition rules the gate exists to
+ * measure, so a state shape that changes without its case would otherwise retire those assertions quietly while
+ * every remaining check stayed green. */
+function soleCase(
+  cases: readonly CaseGeometry[],
+  want: RenderCase["states"],
+  label: string,
+  findings: Finding[],
+): number {
+  const index = cases.findIndex(
     (each) => JSON.stringify(each.states ?? {}) === JSON.stringify(want ?? {}),
   );
+  if (index === -1) findings.push(missingCase(label));
+  return index;
+}
+
+function missingCase(label: string): Finding {
+  return {
+    file: path.join(frontendRoot, "scripts", "check-render", "page.ts"),
+    check: "rendered-channel",
+    message:
+      `${label}: no case stands in exactly this shape any more, so every composition rule that names it went ` +
+      "unmeasured while the rest of the gate stayed green. A state or origin changed without its case; restore " +
+      "the case the channel table looks up.",
+  };
 }
 
 /* What the channel table concluded, for the run's notes: one line per state case, in its own words. */
@@ -543,17 +581,34 @@ function channelNotes(cases: readonly CaseGeometry[], readings: readonly PageRea
   return lines.length === 0 ? [] : ["composed channels:"].concat(lines);
 }
 
-/* THE DRAG'S RE-WEIGHTING, READ FROM THE LINES SECTION. Resting quarters differ from hours; dragged quarters equal them. */
-function parseLineWeights(text: string): LineWeightReading | null {
+/* THE DRAG'S RE-WEIGHTING, READ FROM THE LINES SECTION. Resting quarters differ from hours; dragged quarters equal them.
+ *
+ * SHAPE-CHECKED RATHER THAN CAST: a reading missing either weighing answers null, which `lineWeightFindings`
+ * reports as an instrument fault, where an unchecked cast would crash the gate on `weights.dragging.quarter`. */
+export function parseLineWeights(text: string): LineWeightReading | null {
   if (text.trim() === "") return null;
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null && "atRest" in parsed
-      ? (parsed as LineWeightReading)
-      : null;
+    parsed = JSON.parse(text);
   } catch {
     return null;
   }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const report = parsed as { atRest?: unknown; dragging?: unknown };
+  return areWeights(report.atRest) && areWeights(report.dragging)
+    ? { atRest: report.atRest, dragging: report.dragging }
+    : null;
+}
+
+function areWeights(value: unknown): value is LineWeights {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "hour" in value &&
+    "quarter" in value &&
+    typeof (value as LineWeights).hour === "string" &&
+    typeof (value as LineWeights).quarter === "string"
+  );
 }
 
 function lineWeightFindings(weights: LineWeightReading | null): Finding[] {
