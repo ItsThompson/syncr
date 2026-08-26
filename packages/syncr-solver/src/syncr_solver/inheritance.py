@@ -24,10 +24,21 @@ a longer-than-usual commute is expressed. So a derived block whose binding is pi
 the pin's interval, which is the same precedence the checker's own immovable index takes. Composed
 the other way the pin would be refused by H11 for not being where it was derived.
 
-**A block the derivation refused and the user pinned is not resurrected.** Derivation refuses a
-buffer whose span was already spent, and nothing here has the buffer's Area to rebuild it from
-without a second derivation path. The pin is then not honored, which is exactly what
-``materialize`` already does with it, so this is a disclosed limit rather than a regression.
+**A block the derivation refused and the user pinned is honored, by lookup.** Derivation refuses a
+buffer or a concrete entry whose span was already spent, and such a binding is in none of the three
+sources above. The week still holds its content: the frame entry, anchor, buffer or concrete entry
+is in the inputs and only its span was refused. So the block is looked up across the four
+collections that spell one -- ``frame``, ``anchors``, ``shadow_blocks`` and ``template_entries`` --
+built by ``derivation``'s own builders, so its title and its ``bound`` clause are the ones
+derivation would have given it, and placed at the pin's interval through the same precedence every
+other pinned block takes. This is a lookup and not a second derivation path: nothing here re-checks
+spans or decides a placement.
+
+**A pin naming content the week holds nowhere at all is refused rather than dropped.** The
+assembler drops a pin whose occurrence a reduced cadence no longer produces, so a pin arriving here
+that names neither candidate content nor any of the four collections is a producer that answered
+wrongly, and silently ignoring it would leave a stored pin the plan never honors and nothing
+reporting why.
 
 ## A pinned block renders a pin glyph only when it can say what it replaced
 
@@ -48,6 +59,13 @@ from syncr_domain.plan import Block
 from syncr_domain.reasons import ReasonRecord
 from syncr_solver.attempt import Placed
 from syncr_solver.candidates import candidates_for
+from syncr_solver.derivation import (
+    anchor_blocks,
+    entry_blocks,
+    frame_blocks,
+    shadow_blocks,
+    zone_by_occurrence,
+)
 from syncr_solver.errors import SolveError
 from syncr_solver.reading import demand_key
 from syncr_solver.state import Sizing
@@ -137,27 +155,53 @@ def _is_immovable(block: Block, inputs: SolveInputs, pins: Mapping[BindingRef, P
 
 
 def _from_content(pin: Pin, inputs: SolveInputs) -> Placed:
-    """A block for content the user pinned that the live plan does not hold.
+    """A block for content the user pinned that no earlier source seeded.
 
-    Reachable from a first-ever pin on a task or an occurrence: the pin exists, no revision holds a
-    block for it, and the property that every pin appears at exactly its interval still has to hold.
-    The block is built from the same candidate the construction would have built, so its title and
-    its ``bound`` clause are the ones the solve would have given it.
+    Reachable two ways: a first-ever pin on a task or an occurrence, where no revision holds a
+    block for it and the block is built from the same candidate the construction would have built;
+    and a pin on content derivation REFUSED, where the block is looked up across the four
+    collections that spell one. Both carry the title and the ``bound`` clause the construction or
+    derivation would have given them, and both land at the pin's interval.
 
-    A pin naming content this week holds nowhere is refused rather than dropped. The assembler drops
-    a pin whose occurrence a reduced cadence no longer produces, so a pin arriving here that names
-    nothing is a producer that answered wrongly, and silently ignoring it would leave a stored pin
-    the plan never honors and nothing reporting why.
+    A pin naming content this week holds nowhere at all is refused rather than dropped. The
+    assembler drops a pin whose occurrence a reduced cadence no longer produces, so a pin arriving
+    here that names nothing is a producer that answered wrongly, and silently ignoring it would
+    leave a stored pin the plan never honors and nothing reporting why.
     """
     candidate = _content_named_by(pin.binding, inputs)
-    if candidate is None:
-        raise SolveError(
-            f"the pin on {pin.binding.kind.value!r} {pin.binding.entity_id} occurrence "
-            f"{pin.binding.occurrence_key!r} names content this week does not hold: the live plan "
-            "has no block for it and it is neither an eligible task nor a due occurrence, so there "
-            "is nothing to place at the interval the user chose"
-        )
-    return _placed(_block_for(candidate, pin.interval, inputs), pin)
+    if candidate is not None:
+        return _placed(_block_for(candidate, pin.interval, inputs), pin)
+    block = _derived_block_named_by(pin.binding, inputs)
+    if block is not None:
+        return _placed(block, pin)
+    raise SolveError(
+        f"the pin on {pin.binding.kind.value!r} {pin.binding.entity_id} occurrence "
+        f"{pin.binding.occurrence_key!r} names content this week does not hold: the live plan "
+        "has no block for it, it is neither an eligible task nor a due occurrence, and no routine "
+        "occurrence, anchor, buffer or concrete template entry names it, so there is nothing to "
+        "place at the interval the user chose"
+    )
+
+
+def _derived_block_named_by(binding: BindingRef, inputs: SolveInputs) -> Block | None:
+    """The block derivation spells for this binding, or nothing because none of them names it.
+
+    The four collections that spell a derived block -- the frame, the anchors, the buffers and the
+    concrete entries -- are rebuilt through ``derivation``'s own builders, so the block a pin here
+    resolves to carries the one ``bound`` clause derivation would have given it rather than a
+    second spelling of it. A slot is deliberately absent: it binds late and names no content, so a
+    pin on one falls through to the refusal in ``_from_content``. Nothing here checks spans either:
+    whether the refused span may now be occupied is the pin's own answer, which H4 already exempts.
+    """
+    zones = zone_by_occurrence(inputs.iso_week, inputs.zone_by_date)
+    spelled = (
+        *frame_blocks(inputs.frame, iso_week=inputs.iso_week, zones=zones),
+        *anchor_blocks(inputs.anchors, iso_week=inputs.iso_week),
+        *shadow_blocks(inputs.shadow_blocks, iso_week=inputs.iso_week),
+        *entry_blocks(inputs.template_entries, iso_week=inputs.iso_week, zones=zones),
+    )
+    wanted = demand_key(binding)
+    return next((block for block in spelled if demand_key(block.binding) == wanted), None)
 
 
 def _content_named_by(binding: BindingRef, inputs: SolveInputs) -> Candidate | None:
