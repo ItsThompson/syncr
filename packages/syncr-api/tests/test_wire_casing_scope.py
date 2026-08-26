@@ -97,7 +97,7 @@ HTTP_METHODS: Final = frozenset(
 # to re-measure rather than a casing that broke.
 PATHS_AT_LEAST: Final = 81
 PATH_PARAMETER_NAMES_AT_LEAST: Final = 21
-BODY_MEMBERS_AT_LEAST: Final = 781
+BODY_MEMBERS_AT_LEAST: Final = 780
 
 
 def is_camel_humped(name: str) -> bool:

@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Query
 
 from syncr_api.accounts.injection import PrincipalDep
-from syncr_api.budgets.schemas import PeriodSpan
 from syncr_api.concessions.schemas import AdjustmentResponse
+from syncr_api.core.schemas import WireSpan
 from syncr_api.plans.verdict_schemas import VerdictResponse
 from syncr_api.reviews.config import (
     APPLY_PATH,
@@ -100,7 +100,7 @@ async def read_weekly_session(
 def _as_session(reading: WeeklySessionReading) -> WeeklySessionResponse:
     return WeeklySessionResponse(
         iso_week=str(reading.iso_week),
-        span=PeriodSpan(start=reading.span.start, end=reading.span.end),
+        span=WireSpan(start=reading.span.start, end=reading.span.end),
         input_version=reading.input_version,
         retro=_as_retro(reading.retro),
         raised=[_as_raised(one) for one in reading.raised],
@@ -114,7 +114,7 @@ def _as_session(reading: WeeklySessionReading) -> WeeklySessionResponse:
 def _as_retro(retro: SessionRetro) -> SessionRetroResponse:
     return SessionRetroResponse(
         period=str(retro.iso_week),
-        span=PeriodSpan(start=retro.span.start, end=retro.span.end),
+        span=WireSpan(start=retro.span.start, end=retro.span.end),
         discretionary_minutes=retro.discretionary_minutes,
         days=_as_days(retro.days, statement=confirmed_day_statement(retro.days.confirmed)),
         off_plan_minutes=retro.off_plan.minutes,
@@ -155,7 +155,7 @@ def _as_promotion(named: NamedPromotion) -> PromotionCandidateResponse:
 def _as_review(reading: BudgetReviewReading) -> BudgetReviewResponse:
     return BudgetReviewResponse(
         period=str(reading.period),
-        span=PeriodSpan(start=reading.span.start, end=reading.span.end),
+        span=WireSpan(start=reading.span.start, end=reading.span.end),
         discretionary_minutes=reading.discretionary_minutes,
         unallocated_minutes=reading.unallocated_minutes,
         oversubscription_minutes=reading.oversubscription_minutes,

@@ -17,7 +17,8 @@ from fastapi import APIRouter, Query
 from syncr_api.accounts.injection import PrincipalDep
 from syncr_api.budgets.config import PERIOD_EXAMPLE, PERIOD_PARAMETER
 from syncr_api.budgets.injection import BudgetServiceDep
-from syncr_api.budgets.schemas import AreaBudgetReading, BudgetResponse, PeriodSpan
+from syncr_api.budgets.schemas import AreaBudgetReading, BudgetResponse
+from syncr_api.core.schemas import WireSpan
 
 if TYPE_CHECKING:
     from syncr_api.budgets.service import BudgetView
@@ -44,7 +45,7 @@ def _as_response(view: BudgetView) -> BudgetResponse:
     report = view.report
     return BudgetResponse(
         period=str(view.period),
-        span=PeriodSpan(start=view.span.start, end=view.span.end),
+        span=WireSpan(start=view.span.start, end=view.span.end),
         discretionary_minutes=report.discretionary_minutes,
         unallocated_minutes=report.unallocated_minutes,
         oversubscription_minutes=report.oversubscription_minutes,

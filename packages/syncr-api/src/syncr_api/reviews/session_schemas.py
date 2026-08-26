@@ -27,9 +27,8 @@ from pydantic import Field
 
 # Referenced from field annotations, which pydantic resolves at RUNTIME to build the model, so under
 # TYPE_CHECKING these would resolve to a NameError while the app is being constructed.
-from syncr_api.budgets.schemas import PeriodSpan  # noqa: TC001
 from syncr_api.concessions.schemas import AdjustmentResponse  # noqa: TC001
-from syncr_api.core.schemas import WireModel
+from syncr_api.core.schemas import WireModel, WireSpan
 from syncr_api.plans.verdict_schemas import VerdictResponse  # noqa: TC001
 from syncr_api.reviews.raised import RaisedKind  # noqa: TC001
 from syncr_api.reviews.schemas import CategoryReadingResponse, ReviewDayCounts  # noqa: TC001
@@ -113,7 +112,10 @@ class SessionRetroResponse(WireModel):
     """Last week: what each Area was allotted, what it held, and how much was answered for."""
 
     period: str = Field(description="The ISO week under review, which precedes the week planned.")
-    span: PeriodSpan
+    span: WireSpan = Field(
+        description="The half-open interval the reviewed week covers, ``[start, end)``. Present "
+        "because it is what the denominator was derived from."
+    )
     discretionary_minutes: int | None = Field(
         description="The reviewed week's own stored denominator, or null when it held no plan of "
         "record: a target divides a denominator such a week does not have."
@@ -149,7 +151,10 @@ class WeeklySessionResponse(WireModel):
     """
 
     iso_week: str = Field(description="The ISO week being planned, such as '2026-W07'.")
-    span: PeriodSpan
+    span: WireSpan = Field(
+        description="The half-open interval the planned week covers, ``[start, end)``. Present "
+        "because it is what the denominator was derived from."
+    )
     input_version: int = Field(
         description="The planned week's input version AS THIS PAYLOAD WAS COMPOSED. A client "
         "compares it with the week's own and says the session is stale when the two differ, which "

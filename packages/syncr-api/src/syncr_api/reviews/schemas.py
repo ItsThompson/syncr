@@ -31,12 +31,11 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import ConfigDict, Field
 
-# `PeriodSpan` and `ProposalBasis` are referenced from field annotations, which pydantic resolves at
-# RUNTIME to build the model, so under TYPE_CHECKING they would resolve to a NameError while the app
+# `ProposalBasis` is referenced from a field annotation, which pydantic resolves at
+# RUNTIME to build the model, so under TYPE_CHECKING it would resolve to a NameError while the app
 # is being constructed.
 from syncr_api.areas.config import BUDGET_PERCENT_MAX, BUDGET_PERCENT_MIN
-from syncr_api.budgets.schemas import PeriodSpan  # noqa: TC001
-from syncr_api.core.schemas import WireDecimal, WireInstant, WireModel
+from syncr_api.core.schemas import WireDecimal, WireInstant, WireModel, WireSpan
 from syncr_domain.budget_review import ProposalBasis  # noqa: TC001
 
 _AREA_DESCRIPTION = (
@@ -156,7 +155,10 @@ class BudgetReviewResponse(WireModel):
     """One period's pie review: the figures, the categories, the trend, and the proposal."""
 
     period: str = Field(description="The ISO week the review is anchored at, such as '2026-W07'.")
-    span: PeriodSpan
+    span: WireSpan = Field(
+        description="The half-open interval the review covers, ``[start, end)``. Present because "
+        "it is what the denominator was derived from."
+    )
     discretionary_minutes: int | None = Field(
         description="The denominator every share here is measured against, taken from the week's "
         "own plan of record, which is the figure the week was solved against. Null when the week "

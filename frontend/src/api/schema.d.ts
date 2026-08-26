@@ -2758,7 +2758,8 @@ export interface components {
              * @description The ISO week the report covers, such as '2026-W07'.
              */
             period: string;
-            span: components["schemas"]["PeriodSpan"];
+            /** @description The half-open interval the period covers, ``[start, end)``. Present because it is what the denominator was derived from. */
+            span: components["schemas"]["WireSpan"];
             /**
              * Unallocatedminutes
              * @description Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the shares sum to 100.
@@ -3632,7 +3633,7 @@ export interface components {
             cadence: components["schemas"]["CadenceResponse"];
             /** @description Read-only, with its provenance. Null for a habit that does not rotate: a fixed habit displays no cursor at all. There is no route that sets one. */
             cursor: components["schemas"]["CursorResponse"] | null;
-            /** @description Derived from the outcome log. Read-only. */
+            /** @description Restated by the outcome write. Read-only. */
             debt: components["schemas"]["DebtResponse"];
             /**
              * Debtcapperiods
@@ -4180,19 +4181,6 @@ export interface components {
              * @description The weight set that produced the candidate document, carried because an approved revision says which weights produced its plan.
              */
             weightSetVersion: number;
-        };
-        /**
-         * PeriodSpan
-         * @description The half-open interval the period covers, ``[start, end)``.
-         *
-         *     Present because it is what the denominator was derived from. It may be 167 or 169 hours
-         *     across a daylight-saving transition, and something else again in a zone whose transition is
-         *     not an hour, so a reader that needs the length reads these two instants rather than assuming
-         *     one.
-         */
-        PeriodSpan: {
-            end: components["schemas"]["WireInstant"];
-            start: components["schemas"]["WireInstant"];
         };
         /**
          * PinCreateRequest
@@ -5042,7 +5030,8 @@ export interface components {
              * @description The ISO week under review, which precedes the week planned.
              */
             period: string;
-            span: components["schemas"]["PeriodSpan"];
+            /** @description The half-open interval the reviewed week covers, ``[start, end)``. Present because it is what the denominator was derived from. */
+            span: components["schemas"]["WireSpan"];
             /**
              * Statement
              * @description How much of the period the figures rest on, always present. A period with no confirmed day says so rather than leaving a chart to render nothing.

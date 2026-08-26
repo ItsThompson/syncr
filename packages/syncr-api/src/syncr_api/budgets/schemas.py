@@ -25,20 +25,7 @@ from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
 
 from pydantic import Field
 
-from syncr_api.core.schemas import WireInstant, WireModel
-
-
-class PeriodSpan(WireModel):
-    """The half-open interval the period covers, ``[start, end)``.
-
-    Present because it is what the denominator was derived from. It may be 167 or 169 hours
-    across a daylight-saving transition, and something else again in a zone whose transition is
-    not an hour, so a reader that needs the length reads these two instants rather than assuming
-    one.
-    """
-
-    start: WireInstant
-    end: WireInstant
+from syncr_api.core.schemas import WireModel, WireSpan
 
 
 class AreaBudgetReading(WireModel):
@@ -69,7 +56,10 @@ class BudgetResponse(WireModel):
     """One period's discretionary time, and how the Areas divide it."""
 
     period: str = Field(description="The ISO week the report covers, such as '2026-W07'.")
-    span: PeriodSpan
+    span: WireSpan = Field(
+        description="The half-open interval the period covers, ``[start, end)``. Present because "
+        "it is what the denominator was derived from."
+    )
     discretionary_minutes: int = Field(
         description="Total time in the period minus the INTERVAL UNION of the circadian frame, "
         "external anchors, absolutely forbidden windows, and off-plan periods. This is the "

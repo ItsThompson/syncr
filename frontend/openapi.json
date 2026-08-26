@@ -1824,7 +1824,8 @@
             "type": "string"
           },
           "span": {
-            "$ref": "#/components/schemas/PeriodSpan"
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "The half-open interval the period covers, ``[start, end)``. Present because it is what the denominator was derived from."
           },
           "unallocatedMinutes": {
             "description": "Discretionary minutes covered by NO block carrying an Area. Never negative, and not zero merely because the shares sum to 100.",
@@ -3478,7 +3479,7 @@
           },
           "debt": {
             "$ref": "#/components/schemas/DebtResponse",
-            "description": "Derived from the outcome log. Read-only."
+            "description": "Restated by the outcome write. Read-only."
           },
           "debtCapPeriods": {
             "description": "The ceiling on outstanding debt, in cadence periods. One period is a week for a count-per-week habit, a day for a daily one, and the stated interval for an approximate one, so the cap is that many periods' worth of occurrences. A miss arriving at the cap is forgiven rather than added, and raises the habit in the weekly session.",
@@ -4636,23 +4637,6 @@
           "createdAt"
         ],
         "title": "PendingProposalResponse",
-        "type": "object"
-      },
-      "PeriodSpan": {
-        "description": "The half-open interval the period covers, ``[start, end)``.\n\nPresent because it is what the denominator was derived from. It may be 167 or 169 hours\nacross a daylight-saving transition, and something else again in a zone whose transition is\nnot an hour, so a reader that needs the length reads these two instants rather than assuming\none.",
-        "properties": {
-          "end": {
-            "$ref": "#/components/schemas/WireInstant"
-          },
-          "start": {
-            "$ref": "#/components/schemas/WireInstant"
-          }
-        },
-        "required": [
-          "start",
-          "end"
-        ],
-        "title": "PeriodSpan",
         "type": "object"
       },
       "PinCreateRequest": {
@@ -6110,7 +6094,8 @@
             "type": "string"
           },
           "span": {
-            "$ref": "#/components/schemas/PeriodSpan"
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "The half-open interval the reviewed week covers, ``[start, end)``. Present because it is what the denominator was derived from."
           },
           "statement": {
             "description": "How much of the period the figures rest on, always present. A period with no confirmed day says so rather than leaving a chart to render nothing.",
