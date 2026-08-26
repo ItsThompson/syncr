@@ -24,6 +24,7 @@ from hypothesis import strategies as st
 
 from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BindingRef
+from syncr_domain.reasons import Pinned, ReasonRecord
 from syncr_solver import solve
 from syncr_solver.budget import SolveBudget
 from syncr_solver.derivation import shadow_blocks
@@ -341,10 +342,14 @@ def test_the_pinned_block_derivation_refused_carries_derivations_own_bound_claus
     placed = blocks_titled(solved(week).document, "Leave for Uni")
     (built,) = shadow_blocks((transit,), iso_week=WEEK)
 
-    # The document appends the pin's own clause to every pinned block, so it is stripped beside
-    # the interval before the comparison: everything else must be derivation's own.
-    assert replace(placed[0], interval=built.interval, reason=built.reason) == built
-    assert placed[0].reason.clauses[:-1] == built.reason.clauses
+    # The document appends the pin's own clause to every pinned block, so the expected reason is
+    # derivation's clauses plus that one clause, spelled in full rather than stripped out of the
+    # comparison: every field, including the reason, is asserted against an expected value.
+    assert placed[0] == replace(
+        built,
+        interval=pin_interval,
+        reason=ReasonRecord((*built.reason.clauses, Pinned(pin_interval, week.pins[0].pinned_on))),
+    )
 
 
 def test_a_pin_on_a_concrete_template_entry_derivation_refused_is_honored_too() -> None:
