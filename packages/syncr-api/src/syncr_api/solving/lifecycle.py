@@ -97,8 +97,8 @@ class OperationLifecycle:
         """Create one pending operation, due now unless ``due_at`` says later.
 
         Due now is the default because it is the honest one for every caller that is not
-        debouncing: the horizon maintainer, a re-solve control and a tradeoff request each bypass
-        the debounce window, and the window itself belongs to the coordinator rather than here.
+        debouncing: a re-solve control and a tradeoff request each bypass the debounce window, and
+        the window itself belongs to the coordinator rather than here.
 
         ``session_mode_active`` carries what the caller stated about the weekly session. The
         solve coordinator passes its own caller's answer through; every other creator of an

@@ -48,12 +48,15 @@ from syncr_api.horizon.maintainer import HorizonPass, PlanHorizonMaintainer
 from syncr_api.horizon.metrics import HORIZON_WEEKS_WITHOUT_PLAN, MAINTAINER_TICK_DURATION
 from syncr_api.horizon.verdicts import TimeDrivenVerdicts, VerdictPass
 from syncr_api.horizon.weeks import next_local_midnight
+from syncr_api.solving.injection import debounce_window
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime, timedelta
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from syncr_api.core.clock import Clock
     from syncr_api.worker.main import WorkerContext
@@ -119,7 +122,7 @@ class PlanHorizonRunner:
             await self.record_transitions(context, planned.weeks, now=now)
 
     async def plan(self, context: WorkerContext, *, now: datetime) -> PlannedHorizon:
-        """Duty 1: one pass over every tenant's horizon, planning the weeks that hold no plan.
+        """Duty 1: one pass over every tenant's horizon, asking for the weeks that hold no plan.
 
         Answers when the next pass is due and which weeks it resolved, which is what duty 2 runs
         over.
@@ -184,7 +187,7 @@ class PlanHorizonRunner:
         """
         try:
             async with context.database.sessionmaker() as reader:
-                maintainer = PlanHorizonMaintainer(reader, tenant_id, self._clock)
+                maintainer = self._maintainer(reader, context, tenant_id)
                 zone = await maintainer.home_zone()
                 weeks = await maintainer.weeks_in_the_horizon(now=now, zone=zone)
         except Exception:  # noqa: BLE001 - one tenant's fault must not stop the others
@@ -208,9 +211,7 @@ class PlanHorizonRunner:
         """
         try:
             async with context.database.sessionmaker() as session, session.begin():
-                return await PlanHorizonMaintainer(session, tenant_id, self._clock).plan(
-                    iso_week, now=now
-                )
+                return await self._maintainer(session, context, tenant_id).plan(iso_week, now=now)
         except Exception:  # noqa: BLE001 - one week's fault must not stop the others
             _log.exception("horizon.week.failed", tenant_id=str(tenant_id), iso_week=str(iso_week))
             return HorizonPass(weeks=1, failed=1)
@@ -237,3 +238,14 @@ class PlanHorizonRunner:
                 "horizon.verdict.failed", tenant_id=str(tenant_id), iso_week=str(iso_week)
             )
             return VerdictPass(weeks=1, failed=1)
+
+    def _maintainer(
+        self, session: AsyncSession, context: WorkerContext, tenant_id: TenantId
+    ) -> PlanHorizonMaintainer:
+        """One tenant's maintainer, with this deployment's own debounce window."""
+        return PlanHorizonMaintainer(
+            session,
+            tenant_id,
+            self._clock,
+            debounce=debounce_window(context.settings.solve_debounce_ms),
+        )

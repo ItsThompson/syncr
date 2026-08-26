@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from syncr_api.approvals.injection import build_approval_service
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.outcomes.declarations import Recording
 from syncr_api.outcomes.injection import get_outcome_service
@@ -28,6 +29,7 @@ from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.solving.config import SOLVE
+from syncr_api.solving.injection import debounce_window
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.solving.runner import SolveRunner
 from syncr_domain.identity import BindingKind
@@ -51,14 +53,20 @@ class NothingWasPlaced(Exception):
 
 
 async def materialize(session: AsyncSession, tenant_id: TenantId, week: DrillWeek) -> bool:
-    """Bring the week into range through the maintainer's own duty. True when it planned one.
+    """Bring the week into range through the maintainer's own duty. True when it asked for one.
 
     Its first read is what makes a repeat run cheap: a week that already holds a plan creates
-    nothing.
+    nothing. Asking is all the step does now -- the solve itself is the next one, which the run's
+    own request joins and the drain that follows claims.
     """
-    planned = await PlanHorizonMaintainer(session, tenant_id, clock=lambda: week.planned_at).plan(
-        week.iso_week, now=week.planned_at
-    )
+    planned = await PlanHorizonMaintainer(
+        session,
+        tenant_id,
+        clock=lambda: week.planned_at,
+        # The run pulls the solve due itself on the very next step, so the shipped default window
+        # here is never waited out.
+        debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+    ).plan(week.iso_week, now=week.planned_at)
     return planned.planned == 1
 
 

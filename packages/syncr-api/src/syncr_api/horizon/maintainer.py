@@ -1,4 +1,4 @@
-"""Duty 1: keep every ISO week overlapping the projection horizon supplied with a live plan.
+"""Duty 1: ask for a solve of every ISO week overlapping the projection horizon that holds no plan.
 
 ```
 for each tenant:
@@ -8,27 +8,35 @@ for each tenant:
 
   for each week:
     has a live revision?                    ──▶ nothing to do
-    no live revision, minimum inputs exist? ──▶ produce one, reason horizon_advanced
-    no live revision, minimum inputs MISSING ──▶ nothing. Guessing at a plan without
-                                                Areas would be worse than showing why
-                                                one cannot exist
+    no live revision, minimum inputs exist? ──▶ track the week (bump) and request a solve,
+                                                due one debounce window later. The solve
+                                                produces the plan; this pass writes none
+    no live revision, minimum inputs MISSING ──▶ nothing. Asking for a solve without Areas
+                                                would fail at load time with less to say
+                                                than this pass can say now
 ```
 
+**The pass requests and does not produce.** A week entering the horizon becomes a ``solve``
+operation like any other trigger's, and the coordinator is what plans weeks. The bump travels with
+the request because tracking the week IS this trigger's write: without the row, every later
+backlog-wide mutation would enumerate past this week and leave its plan uninvalidated.
+
 **``now`` is read once and passed down.** A tick that read the clock per week could compute a
-horizon from one date and a week's inputs from another, and at 00:00 the two would differ by a day:
-the week brought in would not be the week planned. Every decision a tick makes is evaluated against
-one instant, and the assembler stamps that same instant onto its output, so a tick is reproducible.
+horizon from one date and a week's version stamp from another, and at 00:00 the two would differ by
+a day: the week brought in would not be the week tracked. Every decision a tick makes is evaluated
+against one instant, so a tick is reproducible.
 
-**Chronological order matters on first run.** Three weeks with no plan are planned oldest first, so
-the week the user is looking at exists before the two they are not.
+**Chronological order matters on first run.** Three weeks with no plan are asked for oldest first,
+so the week the user is looking at is due before the two they are not.
 
-**Idempotent, and cheaply so.** A week with a live revision is skipped by a read, so a second tick a
+**Idempotent, and cheaply so.** A week with a live revision is skipped by a read, and a week whose
+solve is already pending is joined by the coordinator rather than duplicated, so a second tick a
 second later creates no operation and appends no revision. That is what makes the fifteen-minute
 cadence free on the ordinary path: the pass costs one revision read per horizon week.
 
-**One transaction per week**, so one week's fault cannot lose another week's plan, and one failure
-boundary per week, so a week whose assembly raised does not stop the weeks after it. A week that
-failed is counted as without a plan, which is what the gauge exists to say.
+**One transaction per week**, so one week's fault cannot lose another week's request, and one
+failure boundary per week, so a week whose request raised does not stop the weeks after it. A week
+that failed is counted as without a plan, which is what the gauge exists to say.
 
 **A read never reaches this.** The maintainer is composed by the worker and by nothing else, and the
 one place it is constructed is the runner beside it.
@@ -43,22 +51,17 @@ from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.horizon.weeks import horizon_weeks
-from syncr_api.learned.repository import WeightSetRepository
-from syncr_api.plans.assembler import AssemblyCaller
-from syncr_api.plans.injection import build_week_assembler
-from syncr_api.plans.production import WeekProducer
 from syncr_api.plans.readiness import MinimumInputs
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.lifecycle import OperationLifecycle
-from syncr_api.solving.repository import OperationRepository
+from syncr_api.solving.injection import build_solve_coordinator
 from syncr_api.templates.repository import WeekPatternRepository
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.zone_reading import local_date
 from syncr_common.logging import get_logger
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -119,12 +122,18 @@ class HorizonPass:
 
 
 class PlanHorizonMaintainer:
-    """Plans every horizon week of one tenant that has no plan, in chronological order."""
+    """Asks for a solve of every horizon week of one tenant that has no plan, oldest first."""
 
-    def __init__(self, session: AsyncSession, tenant_id: TenantId, clock: Clock) -> None:
+    def __init__(
+        self, session: AsyncSession, tenant_id: TenantId, clock: Clock, *, debounce: timedelta
+    ) -> None:
         self._session = session
         self._tenant_id = tenant_id
         self._clock = clock
+        # This deployment's window, threaded from the composition root. The request is not urgent
+        # -- time passing is nobody's deadline -- so it is scheduled like any other trigger's and
+        # the window is what the coordinator schedules against.
+        self._debounce = debounce
 
     async def home_zone(self) -> ZoneId:
         """The zone this tenant's dates are resolved in, which is also what its midnight is."""
@@ -133,8 +142,8 @@ class PlanHorizonMaintainer:
     async def weeks_in_the_horizon(self, *, now: datetime, zone: ZoneId) -> tuple[IsoWeek, ...]:
         """Every ISO week overlapping this tenant's horizon, earliest first.
 
-        The horizon's length is the write target's, so a tenant who has widened it plans more weeks
-        on the next tick and their input versions are bumped as each is planned.
+        The horizon's length is the write target's, so a tenant who has widened it asks for more
+        weeks on the next tick and their input versions are bumped as each is requested.
         """
         sources = CalendarSourceRepository(self._session, self._tenant_id)
         return horizon_weeks(
@@ -142,7 +151,7 @@ class PlanHorizonMaintainer:
         )
 
     async def plan(self, iso_week: IsoWeek, *, now: datetime) -> HorizonPass:
-        """One week: skipped, planned, or left alone because a plan cannot exist for it yet.
+        """One week: skipped, asked for, or left alone because a plan cannot exist for it yet.
 
         The live-revision read is first and it is the whole of the idempotence: a week that has a
         plan costs one indexed read and creates nothing.
@@ -164,18 +173,28 @@ class PlanHorizonMaintainer:
             )
             return HorizonPass(weeks=1, not_ready=1)
 
-        await self._producer(revisions).advance_into(iso_week, now=now)
+        await self._request(iso_week, now=now)
         return HorizonPass(weeks=1, planned=1)
 
-    def _producer(self, revisions: PlanRepository) -> WeekProducer:
-        return WeekProducer(
-            assembler=build_week_assembler(
-                self._session, self._tenant_id, caller=AssemblyCaller.MAINTAINER
-            ),
-            revisions=revisions,
-            versions=WeekInputVersionRepository(self._session, self._tenant_id),
-            weights=WeightSetRepository(self._session, self._tenant_id),
-            operations=OperationLifecycle(
-                OperationRepository(self._session, self._tenant_id), self._clock
-            ),
+    async def _request(self, iso_week: IsoWeek, *, now: datetime) -> None:
+        """Track the week and ask the coordinator for its solve, in that order.
+
+        The bump is this trigger's own write, not an invalidation: a week entering the horizon has
+        no plan and no running solve, and version 1 is what creates the row later mutations and
+        backlog-wide bumps enumerate. It is handed to the request so the operation records the
+        input state the pass left rather than an untracked placeholder.
+        """
+        versions = WeekInputVersionRepository(self._session, self._tenant_id)
+        version = await versions.bump(iso_week, at=now)
+        coordinator = build_solve_coordinator(
+            self._session, self._tenant_id, clock=self._clock, debounce=self._debounce
+        )
+        # Time passing states nothing about the weekly session, and there is no caller to ask.
+        operation = await coordinator.request_solve(iso_week, version, session_mode_active=False)
+        _log.info(
+            "horizon.week.requested",
+            tenant_id=str(self._tenant_id),
+            iso_week=str(iso_week),
+            operation_id=str(operation.id),
+            input_version=version,
         )
