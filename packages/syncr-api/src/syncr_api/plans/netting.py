@@ -61,6 +61,7 @@ read as satisfied by time that does not exist.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
@@ -101,8 +102,9 @@ class Placement:
 
 
 # The empty index: a caller that supplies none asks for orphan pins to carry no Area, which is
-# what reading the arithmetic over literals does.
-NO_CONTENT_AREAS: Mapping[tuple[BindingKind, UUID], AreaId] = {}
+# what reading the arithmetic over literals does. Read-only, because a mutable module constant
+# bound as a default argument would let one caller corrupt every future use process-wide.
+NO_CONTENT_AREAS: Mapping[tuple[BindingKind, UUID], AreaId] = MappingProxyType({})
 
 
 if TYPE_CHECKING:
