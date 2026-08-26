@@ -46,8 +46,12 @@ from syncr_api.routines.records import RoutineRecord
 from syncr_api.routines.repository import RoutineRepository
 from syncr_api.tasks.records import TaskRecord
 from syncr_api.tasks.repository import TaskRepository
-from syncr_api.templates.records import TemplateEntryRecord, TemplateRecord
-from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
+from syncr_api.templates.records import DayTypeRecord, TemplateEntryRecord, TemplateRecord
+from syncr_api.templates.repository import (
+    DayTypeRepository,
+    TemplateRepository,
+    WeekPatternRepository,
+)
 from syncr_api.user_settings.config import ReviewCadence
 from syncr_api.user_settings.records import SettingsRecord, TravelOverrideRecord
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -266,6 +270,12 @@ def a_concrete_entry(
         area_id=area_id,
         binding_target=target,
         binding_ref=entity_id or uuid4(),
+    )
+
+
+def a_day_type(*, day_type_id: UUID | None = None, name: str = "Weekday") -> DayTypeRecord:
+    return DayTypeRecord(
+        id=day_type_id or uuid4(), tenant_id=TENANT, name=name, created_at=MONDAY_MIDNIGHT
     )
 
 
@@ -504,6 +514,14 @@ class FakeWeekPattern(WeekPatternRepository):
         return self._pattern
 
 
+class FakeDayTypes(DayTypeRepository):
+    def __init__(self, stored: DayTypeRecord | Sequence[DayTypeRecord] = ()) -> None:
+        self._stored = (stored,) if isinstance(stored, DayTypeRecord) else tuple(stored)
+
+    async def list_all(self) -> tuple[DayTypeRecord, ...]:
+        return self._stored
+
+
 class FakeTemplates(TemplateRepository):
     def __init__(self, stored: Sequence[TemplateRecord] = ()) -> None:
         self._stored = tuple(stored)
@@ -545,6 +563,12 @@ class FakeOutcomes:
     async def settled_within(
         self, habit_ids: Sequence[HabitId], *, span: Interval
     ) -> tuple[HabitOutcome, ...]:
+        """The window predicate restated over held rows, not re-derived from the statement.
+
+        The half-open bounds are pinned against real rows in
+        ``test_session_debt_window.py``'s stored-confirmation case, which is what catches the
+        mirror-the-bug failure mode: this filter agreeing with whatever the SQL got wrong.
+        """
         asked = set(habit_ids)
         return tuple(
             row
@@ -743,6 +767,7 @@ def an_assembler(
     routines: RoutineRepository | None = None,
     week_pattern: WeekPatternRepository | None = None,
     templates: TemplateRepository | None = None,
+    day_types: DayTypeRepository | None = None,
     habits: HabitRepository | None = None,
     outcomes: HabitOutcomeReader | None = None,
     tasks: TaskRepository | None = None,
@@ -765,6 +790,7 @@ def an_assembler(
         routines=routines or FakeRoutines(),
         week_pattern=week_pattern or FakeWeekPattern(),
         templates=templates or FakeTemplates(),
+        day_types=day_types or FakeDayTypes(),
         habits=habits or FakeHabits(),
         outcomes=outcomes or FakeOutcomes(),
         tasks=tasks or FakeTasks(),
