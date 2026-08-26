@@ -32,14 +32,15 @@ export interface LedgerSectionProps {
   readonly footer?: string | undefined;
 }
 
-/** The chip and the name, or nothing at all: an Area with no assigned pigment gets no chip. */
+/** The chip and the name, or the name alone when the ramp holds no step for it; nothing only where the block
+ * carries no Area at all. */
 function areaOf(
   row: DayRow,
   pigments: ReadonlyMap<string, AreaPigment>,
-): { readonly name: string; readonly pigment: AreaPigment } | undefined {
+): { readonly name: string; readonly pigment?: AreaPigment } | undefined {
   if (row.areaId === null || row.areaName === null) return undefined;
   const pigment = pigments.get(row.areaId);
-  return pigment === undefined ? undefined : { name: row.areaName, pigment };
+  return pigment === undefined ? { name: row.areaName } : { name: row.areaName, pigment };
 }
 
 export function LedgerSection({

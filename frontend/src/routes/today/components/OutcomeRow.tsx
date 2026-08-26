@@ -35,7 +35,7 @@ export interface OutcomeRowProps {
   readonly row: DayRow;
   readonly zone: string;
   readonly section: LedgerSectionKind;
-  /** Absent where the block carries no Area, and where the Area it names is gone. */
+  /** Absent where the block carries no Area at all; a named Area the ramp holds no step for arrives name-only. */
   readonly area?: LedgerRowArea | undefined;
   /** The form open on THIS row, or null when none is. */
   readonly form: OutcomeForm | null;

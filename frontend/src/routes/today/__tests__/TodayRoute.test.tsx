@@ -191,9 +191,9 @@ describe("a ledger row", () => {
     expect(row.querySelector(".ledger__area")).toBeEmptyDOMElement();
   });
 
-  /* An Area the list no longer holds gets no chip, because a chip without an assigned pigment would be a
-     colour this screen invented. The name is what identifies an Area past the ramp's twelve steps anyway. */
-  it("draws no chip for an Area the areas list does not hold", async () => {
+  /* An Area the list no longer holds keeps its name: a chip without an assigned pigment would be a colour
+     this screen invented, but the name is what identifies an Area past the ramp's twelve steps anyway. */
+  it("draws the name without a chip for an Area the areas list does not hold", async () => {
     await renderToday(
       onHostToday(
         buildDay({
@@ -207,6 +207,7 @@ describe("a ledger row", () => {
 
     const row = (await screen.findByText("Leetcode")).closest(".ledger__row") as HTMLElement;
     expect(row.querySelector(".ledger__area .area-chip")).toBeNull();
+    expect(row.querySelector(".ledger__area")).toHaveTextContent("Career");
   });
 
   it("shows the minutes a partial really took beside the planned figure", async () => {
