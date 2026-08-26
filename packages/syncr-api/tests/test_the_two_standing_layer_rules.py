@@ -71,8 +71,8 @@ REACHED_BEYOND_OAUTH = frozenset(
 # both directions, one apiece. When one moves, an edge moved with it: find that import, decide
 # whether it belongs, and record the new figure here in the change that caused it.
 MEASURED_PACKAGES = 32
-MEASURED_EDGES = 242
-MEASURED_MUTUAL_PAIRS = 32
+MEASURED_EDGES = 243
+MEASURED_MUTUAL_PAIRS = 33
 MUTUAL_PAIRS_PLANS_SITS_IN = 17
 
 
