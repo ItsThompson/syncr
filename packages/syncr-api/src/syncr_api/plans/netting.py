@@ -33,21 +33,27 @@ a past span sits before ``now`` and cannot hold new work, so returning it to cap
 make skipping work improve a verdict. What a placement attributes to the CONTENT it holds is the
 outcome's reading of it, and it comes from :func:`syncr_domain.outcomes.attributed_span`, which owns
 that table. A skipped hour therefore stays out of capacity and stops counting toward the task, which
-raises the demand by the hour the user said they did not work.
+raises the demand by the hour the user said they did not work, and stops crediting an Area's figures
+for the part of the hour that has already gone by.
 
 Which placements a figure nets and which span it counts of each are two separate choices, and the
 second is made per figure:
 
 ```
-own span             the time the placement occupies. What capacity and an Area's placed minutes
-                     count
-
+own span             the time the placement occupies. What capacity counts
 attributed span      the time the content was given, out of the table above. The probe's demand
                      counts it clipped at a deadline and split at ``now``; the solver's remaining
                      work counts the part of it at or before ``now``, so a confirmed skip stops
                      counting as work done; an Area's floor figure counts the part of it the
                      placement's own span holds, so a floor is honoured by work done in time the
                      plan holds and by nothing else
+
+area minutes         an Area's placed figure and its reservation's reading of one placement,
+                     split at ``now``: the outcome's answer for the part behind ``now``, and the
+                     placement's own span for the part still ahead of it. Behind ``now`` the
+                     attribution table is what says the work happened, so a skipped hour stops
+                     crediting the reservation; ahead of ``now`` the own span is what ``free``
+                     subtracts, so the reservation and free capacity keep counting one set
 ```
 
 **Immovability is decided against ``now``, and ``now`` is the assembler's stamp.** A block that
@@ -67,7 +73,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import BindingKind
-from syncr_domain.intervals import Interval, IntervalSet, has_started
+from syncr_domain.intervals import Interval, IntervalSet, has_elapsed, has_ended, has_started
 from syncr_domain.outcomes import attributed_span
 from syncr_domain.templates import TemplateEntryKind
 
@@ -227,7 +233,7 @@ class PlacedTime:
         self._immovable_by_task = _by_task(
             (item for item in placed if item.immovable), span=_attributed_span
         )
-        self._all_by_area = _by_area(placed, span=_own_span)
+        self._all_by_area = _by_area(placed, span=_area_span(self._now))
         self._immovable_by_area = _by_area(
             (item for item in placed if item.immovable), span=_worked_span
         )
@@ -248,7 +254,13 @@ class PlacedTime:
         return _minutes(_clipped_before(placed, self._now))
 
     def minutes_of_area(self, area_id: AreaId) -> int:
-        """Minutes placed in this Area by any block, pinned or not, past or future."""
+        """Minutes placed in this Area by any block, pinned or not, past or future.
+
+        The probe's set, read through the figure's split at ``now``. Behind ``now`` the outcome log
+        decides what counted, so a confirmed skip credits no reservation and lowers no placed figure
+        beside it; at or after ``now`` the placement's own span counts, because that is the part
+        ``free`` subtracts, so the reservation gives back exactly the minutes free loses.
+        """
         return _minutes(self._all_by_area.get(area_id))
 
     def immovable_minutes_of_area(self, area_id: AreaId) -> int:
@@ -301,17 +313,12 @@ def _placed(
     )
 
 
-def _own_span(placed: Placement) -> Interval | None:
-    """The time this placement occupies: what capacity and an Area's placed minutes count."""
-    return placed.interval
-
-
-def _attributed_span(placed: Placement) -> Interval | None:
+def _attributed_span(placed: Placement) -> Iterable[Interval]:
     """The time this placement counts toward its content, which an outcome decides."""
-    return placed.attributed
+    return () if placed.attributed is None else (placed.attributed,)
 
 
-def _worked_span(placed: Placement) -> Interval | None:
+def _worked_span(placed: Placement) -> Iterable[Interval]:
     """The time this placement gave its Area inside the span it occupies.
 
     The attributed span narrowed to the placement's own interval, because an Area's floor is
@@ -319,7 +326,35 @@ def _worked_span(placed: Placement) -> Interval | None:
     placement does not cover honours no floor here, so the solver still owes those minutes, which is
     the direction a floor may safely be wrong in.
     """
-    return None if placed.attributed is None else placed.attributed.clipped_to(placed.interval)
+    given = None if placed.attributed is None else placed.attributed.clipped_to(placed.interval)
+    return () if given is None else (given,)
+
+
+def _area_span(now: Instant) -> Callable[[Placement], Iterable[Interval]]:
+    """What an Area's placed figure counts of one placement, split at ``now``.
+
+    Built per index rather than taken as a bare strategy, because the split point is the reading:
+    behind ``now``, the attribution table answers whether the work happened, so a skipped hour
+    contributes nothing and cannot hold a reservation up; at or after ``now``, the placement's own
+    span answers, because that is the part ``free`` subtracts and the reservation must lose exactly
+    what free loses. A ``partial`` whose reported prefix ends before the block does leaves the
+    unreported stretch between the two pieces to neither reading, which is the point: no outcome
+    said it happened.
+    """
+
+    def read(placed: Placement) -> Iterable[Interval]:
+        pieces = []
+        if placed.attributed is not None and has_elapsed(placed.attributed, now):
+            past = placed.attributed.clipped_to(Interval(placed.attributed.start, now))
+            if past is not None:
+                pieces.append(past)
+        if not has_ended(placed.interval, now):
+            future = placed.interval.clipped_to(Interval(now, placed.interval.end))
+            if future is not None:
+                pieces.append(future)
+        return tuple(pieces)
+
+    return read
 
 
 def _placement_order(placed: Placement) -> tuple[Instant, Instant, str, str]:
@@ -333,7 +368,7 @@ def _placement_order(placed: Placement) -> tuple[Instant, Instant, str, str]:
 
 
 def _by_task(
-    placed: Iterable[Placement], *, span: Callable[[Placement], Interval | None]
+    placed: Iterable[Placement], *, span: Callable[[Placement], Iterable[Interval]]
 ) -> Mapping[UUID, IntervalSet]:
     """The placements of each task, unioned. A chunk of a divided task is that task's.
 
@@ -343,25 +378,28 @@ def _by_task(
     caller's reading contributes nothing.
     """
     return _grouped(
-        (item.binding.entity_id, taken)
+        (item.binding.entity_id, interval)
         for item in placed
-        if item.binding.kind is BindingKind.TASK and (taken := span(item)) is not None
+        if item.binding.kind is BindingKind.TASK
+        for interval in span(item)
     )
 
 
 def _by_area(
-    placed: Iterable[Placement], *, span: Callable[[Placement], Interval | None]
+    placed: Iterable[Placement], *, span: Callable[[Placement], Iterable[Interval]]
 ) -> Mapping[UUID, IntervalSet]:
     """The placements of each Area, unioned. The frame and an anchor carry none.
 
     ``span`` is the caller's reading of a placement, injected for the same reason ``_by_task`` takes
-    one: the Area's two figures ask opposite questions of one placement, and one asks what it
-    occupies while the other asks what the user gave the Area inside it.
+    one: the Area's two figures ask opposite questions of one placement, and one asks what the
+    outcome said happened behind ``now`` plus what the placement still holds ahead of it, while the
+    other asks what the user gave the Area inside the span it occupies.
     """
     return _grouped(
-        (item.area_id, taken)
+        (item.area_id, interval)
         for item in placed
-        if item.area_id is not None and (taken := span(item)) is not None
+        if item.area_id is not None
+        for interval in span(item)
     )
 
 
