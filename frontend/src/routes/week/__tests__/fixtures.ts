@@ -144,6 +144,8 @@ export function buildBlock(overrides: Partial<Block> = {}): Block {
     splitCount: null,
     supersededPlacement: null,
     objectiveDelta: null,
+    // A solver-placed block claims nothing about any feed, which null is the wire's way of saying.
+    anchorOrigin: null,
     reason: buildReason(),
     ...overrides,
   };
