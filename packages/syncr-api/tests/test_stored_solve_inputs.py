@@ -225,6 +225,7 @@ def a_week_holding_one_of_everything(**overrides: Any) -> SolveInputs:
                 remaining_minutes=180,
                 area_id=CAREER,
                 labels=("Leetcode",),
+                contributors=((A_TASK, 180),),
             ),
         ),
         # Both concessions, because each kind sets one of the two optional halves and leaves the
@@ -744,6 +745,10 @@ def _a_demand_below_zero(stored: JsonObject) -> None:
     stored["deadline_demands"][0]["remaining_minutes"] = -30
 
 
+def _a_demand_whose_pairs_do_not_add_up(stored: JsonObject) -> None:
+    stored["deadline_demands"][0]["contributors"][0][1] = 90
+
+
 def _a_concession_kind_nothing_produces(stored: JsonObject) -> None:
     stored["adjustments"][0]["kind"] = "work_the_weekend"
 
@@ -888,6 +893,12 @@ REFUSALS = [
     ),
     pytest.param(
         _a_demand_below_zero, "deadline_demands[0]", "outstanding", id="a demand below zero"
+    ),
+    pytest.param(
+        _a_demand_whose_pairs_do_not_add_up,
+        "deadline_demands[0]",
+        "adding",
+        id="a demand whose pairs disagree with its total",
     ),
     pytest.param(
         _a_concession_kind_nothing_produces,

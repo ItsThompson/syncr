@@ -87,6 +87,7 @@ from syncr_solver.inputs import (
 if TYPE_CHECKING:
     from collections.abc import Collection
     from typing import Protocol
+    from uuid import UUID
 
     from syncr_api.core.columns import JsonDocument
     from syncr_domain.plan import PlanDocument
@@ -387,6 +388,21 @@ def _read_deadline_demand(value: object, *, field: str) -> DeadlineDemand:
         remaining_minutes=held("remaining_minutes", read_whole_number),
         area_id=held("area_id", read_id),
         labels=held("labels", _every(read_text)),
+        contributors=held("contributors", _every(_read_contributor)),
+    )
+
+
+def _read_contributor(value: object, *, field: str) -> tuple[UUID, int]:
+    """One per-task pair, as the two-member array the walk stores a tuple as."""
+    held = read_list(value, field=field)
+    if len(held) != 2:
+        raise StoredDocumentCorrupt(
+            f"{field} holds {len(held)} members, and a per-task pair states two: the task and "
+            "the minutes it owes"
+        )
+    return (
+        read_id(held[0], field=f"{field}[0]"),
+        read_whole_number(held[1], field=f"{field}[1]"),
     )
 
 
