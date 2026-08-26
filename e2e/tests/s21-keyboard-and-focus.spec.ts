@@ -312,13 +312,11 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
     await page.goto(week());
     await page.waitForFunction("document.querySelectorAll('.week-block').length > 0");
 
-    /* THE SLIVER TIER IS ASSERTED, NOT REPORTED. The walk presses `z` until the level it started on
-     * comes round again, so every level the display offers is drawn exactly once, and the tiers seen
-     * across the walk are what the assertion below is held to. What the walk does NOT do is stop at
-     * the first level: a single reading would miss whichever shallower level draws the short blocks.
-     *
-     * A fixed press count would be a claim about this week's stored zoom rather than about the
-     * product; the wrap is the walk's own definition of "the whole range".
+    /* THE SLIVER TIER IS ASSERTED, NOT REPORTED. The walk presses `z`, sampling the tiers each
+     * level draws, and ends when a press moves nothing: the range's end is reached when the drawn
+     * level stops changing, whether that is a wrap to the shallowest level or a clamp holding the
+     * deepest one. A fixed press count would be a claim about this week's stored zoom rather than
+     * about the product; the unmoved press is the walk's own definition of "the whole range".
      */
     const firstLevel = (await page.evaluate(PICKED_LEVEL)) as string | null;
     expect(

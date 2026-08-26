@@ -137,7 +137,7 @@ export const seedReferenceWeek = async (client: ApiClient): Promise<void> => {
     minChunkMinutes: 30,
   });
 
-  // The three anchor types, with the geometry `block-states.html` and `screens.html` render. The
+  // The two anchor types, with the geometry `block-states.html` and `screens.html` render. The
   // Interview's numbers are S33's: prep 6h before, transit 60 minutes' lead over a 30-minute leg, no
   // return, and a 75-minute recovery forbidding Study only.
   await declareAnchorType(client, {
