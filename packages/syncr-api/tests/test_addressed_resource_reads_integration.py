@@ -79,7 +79,6 @@ RECORD_READS = (
     f"{OFF_PLAN_PREFIX}/{{period_id}}",
     f"{OPERATIONS_PREFIX}/{{operation_id}}",
 )
-THE_PROVIDER_READ = f"{CALENDAR_SOURCES_PREFIX}/{{source_id}}/remote-calendars"
 
 
 @pytest.fixture
@@ -241,13 +240,11 @@ def every_record_read(settings: ServiceSettings) -> list[str]:
     """Every read the published contribution derives, off the app's own route table.
 
     Read off the contribution rather than filtered here, which is what the consumption rule in
-    ``test_parameterized_read_census.py`` holds this module to.
+    ``test_parameterized_read_census.py`` holds this module to. Nothing is excluded by name:
+    the derivation's shape rule already keeps the provider-backed sub-collection out, and a
+    derivation widened to include it must redden the drive below rather than be absorbed.
     """
-    paths = [
-        path
-        for path in addressed_resource_reads(create_app(settings))
-        if path != f"{CALENDAR_SOURCES_PREFIX}/{{source_id}}/remote-calendars"
-    ]
+    paths = addressed_resource_reads(create_app(settings))
     assert paths, "no record read was found, so the guards below asserted nothing"
     return paths
 
@@ -266,9 +263,10 @@ def test_every_record_read_is_driven_here_and_answers_its_record(
     settings: ServiceSettings,
 ) -> None:
     """Named so the arrival or departure of a read is a diff, and so the walk is not empty."""
-    assert set(every_record_read(settings)) >= set(RECORD_READS)
+    reads = every_record_read(settings)
+    assert set(reads) >= set(RECORD_READS)
 
-    for path in every_record_read(settings):
+    for path in reads:
         answered = http.get(addressed(path, identifiers), headers=signed_in)
 
         assert answered.status_code == HTTPStatus.OK, (path, answered.text)
