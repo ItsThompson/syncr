@@ -9,6 +9,15 @@ trust surface: a screen that returns 500 because one of eleven rows is malformed
 nothing and hides the ten that are fine. What is NOT tolerated inside a row is a state that
 disagrees with its own value, because that is the gate as the user reads it: a row claiming to be
 ready with no figure would say the solver is applying something it is not.
+
+**One freshness rule for the two strings a row says about an Area.** The ``plain_language`` sentence
+is frozen at fit time: the fitter composes it once from that fit's figures, storage holds it
+verbatim, and this reader passes it through untouched, so renaming the Area leaves the sentence
+saying the name the fit knew. The subject follows the sentence rather than the rename for the same
+reason in mirror: the row carries only the Area's identifier, so its name cannot be spelled from
+storage at all and can only be resolved against the Areas the tenant holds when the row is read.
+The two strings may therefore disagree after a rename, and that is the rule working: the sentence
+reports the fit as it happened, the subject names what the row is about today.
 """
 
 from __future__ import annotations
