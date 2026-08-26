@@ -293,11 +293,13 @@ class AreaBudget:
     # it would let the solver under-place the floor by whatever the previous solve
     # happened to place. A PIN lowers this figure by exactly the pinned block's minutes.
     floor_minutes: int
-    # The declared floor less minutes placed in this Area by ANY block, pinned or not,
-    # past or future, clamped at zero. The PROBE's quantity, projected verbatim by
+    # The declared floor less the minutes the week's placements give this Area: what an outcome
+    # said happened before `now`, plus what each placement occupies from `now` on, clamped at
+    # zero. The PROBE's quantity, projected verbatim by
     # `for_probe()`: the probe compares against `free`, and `free` subtracts every
-    # placement, so a reservation netting only immovable placements would count a
-    # different set on each side of one comparison. A pin leaves this figure UNCHANGED.
+    # placement's future part, so a reservation netting a different set ahead of `now` would count
+    # two sets on one comparison. Behind `now` the attribution table decides instead, which is why
+    # a confirmed skip of a past hour RAISES this figure. A pin leaves it UNCHANGED.
     # The asymmetry between the two figures above has one reason: a quantity that did not
     # fall would make the solver place five hours on top of the pinned one and over-serve
     # the floor by an hour.
@@ -305,8 +307,9 @@ class AreaBudget:
     # The declared floor plus this Area's share of the remainder. GROSS, net of nothing,
     # because it is a reporting figure rather than a reservation.
     target_minutes: int
-    # EVERY placement in this Area, pinned or not, past or future, which is the same set
-    # the reservation above nets. Named here so the `floor` reason clause cannot disagree
+    # EVERY placement in this Area, pinned or not, past or future, read exactly the way the
+    # reservation above reads them: what an outcome said happened before `now`, and what each
+    # placement occupies from `now` on. Named here so the `floor` reason clause cannot disagree
     # with whichever reservation a reader compares it against.
     placed_minutes: int
     # Read by H8. From an AREA preference only, so no override can relax a hard cap.

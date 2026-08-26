@@ -7,8 +7,9 @@ same shape as the two task quantities in ``demand.py``.
                        floor_minutes                 floor_reservation_minutes
 reader                 the SOLVER, checking a floor  the PROBE, via for_probe()
 nets                   IMMOVABLE placements only     EVERY placement in the Area
-counts of each         what the user gave the Area   the time the placement occupies,
-                       inside the span it occupies   whatever the user said happened in it
+counts of each         what the user gave the Area   what the outcome said happened before
+                       inside the span it occupies   ``now``, plus what the placement occupies
+                                                     from ``now`` on
 ```
 
 **Merged into one field, the probe reports a floor shortfall on the normal healthy state of the
@@ -27,10 +28,14 @@ Pinning an already-placed block leaves the reservation UNCHANGED, which is what 
 improving a verdict, and it LOWERS ``floor_minutes`` by the pinned block's minutes, which is
 correct: the solver now has that much less to place in order to honour the floor.
 
-A confirmed skip is the same shape the other way up. The reservation is unchanged, because the hour
-is still committed time the probe's free capacity has already subtracted, and ``floor_minutes``
-RISES by it, because a floor is not honoured by an hour the user said they did not work. So neither
-a pin nor a skip can improve the verdict, and both move the figure the solver works to.
+A confirmed skip is the same shape the other way up. A skip of an hour still ahead of ``now``
+changes nothing here: the hour is committed time the probe's free capacity subtracts, so the
+reservation gives back exactly what free loses. A skip of an hour already gone by RAISES the
+reservation by it, because the attribution table stops crediting that hour while free never counted
+it: free is clipped at ``now`` before any placement is subtracted at all. Either way
+``floor_minutes`` rises, because a floor is not honoured by an hour the user said they did not work.
+So neither a pin nor a skip can improve the verdict, and each of these moves enlarges or holds the
+gap the probe reports.
 
 ``target_minutes`` nets nothing, because it is a reporting figure rather than a reservation.
 ``placed_minutes`` names its own set, which is the reservation's, so the ``floor`` reason clause
