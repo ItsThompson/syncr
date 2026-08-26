@@ -257,9 +257,10 @@ class PlacedTime:
         """Minutes placed in this Area by any block, pinned or not, past or future.
 
         The probe's set, read through the figure's split at ``now``. Behind ``now`` the outcome log
-        decides what counted, so a confirmed skip credits no reservation and lowers no placed figure
-        beside it; at or after ``now`` the placement's own span counts, because that is the part
-        ``free`` subtracts, so the reservation gives back exactly the minutes free loses.
+        decides what counted, so a skipped hour stops crediting the reservation and the placed
+        figure beside it alike; at or after ``now`` the placement's own span counts, because that
+        is the part ``free`` subtracts, so the reservation gives back exactly the minutes free
+        loses.
         """
         return _minutes(self._all_by_area.get(area_id))
 

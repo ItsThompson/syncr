@@ -582,8 +582,8 @@ def test_a_partial_across_now_leaves_the_unreported_stretch_to_no_reading() -> N
     # Two hours placed across `now`, thirty reported. The reported prefix is behind `now`, so it is
     # all the attribution table credits; the hour ahead of `now` is committed time `free` subtracts,
     # so the own span answers for it in full. The stretch between the report's end and `now` is
-    # claimed by neither: no outcome said it happened and it has already gone by. Thirty credited
-    # twice would be a double count; ninety is the two readings over their own halves.
+    # claimed by neither: no outcome said it happened and it has already gone by. Thirty reported
+    # + thirty unclaimed + the sixty still ahead make ninety.
     plan = a_plan(
         blocks=[
             a_task_block(
