@@ -619,10 +619,11 @@ class SolveInputs:
 
         **``shadow_blocks`` is deliberately absent.** A prep or transit block carries an Area, so
         it is discretionary time allocated to that Area rather than removed from the week, and the
-        probe sees it through ``placed`` once a plan holds it. Before a week is first solved it
-        holds none, so the probe counts that time as free: capacity arithmetic then over-credits
-        rather than over-reports, which is the only direction a check that may not prove
-        feasibility can safely err in.
+        probe sees it through ``placed`` once a plan holds it. Subtracting one would count it
+        twice over a whole week: out of every figure's denominator and against the Area's own
+        minutes at once. Before a week is first solved it holds none, so the probe counts that
+        time as free: capacity arithmetic then over-credits rather than over-reports, which is
+        the only direction a check that may not prove feasibility can safely err in.
         """
         return ProbeInputs(
             span=self.span,
