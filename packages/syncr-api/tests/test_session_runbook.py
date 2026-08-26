@@ -19,8 +19,10 @@ from tests.test_runbook_figures import alert_waits, minutes
 RUNBOOK: Final = Path("docs/runbooks/weekly-session-slow.md")
 ALERT: Final = "WeeklySessionSlow"
 
-# The budget in the units the prose states it in. Derived from the constant, never restated.
-BUDGET_MILLISECONDS: Final = int(SESSION_P95_BUDGET_SECONDS * 1000)
+# The budget in the units the prose states it in. Derived from the constant, never restated, and
+# rounded rather than truncated: a future retune whose product lands on x99.999... must not read
+# one millisecond low beside the prose.
+BUDGET_MILLISECONDS: Final = round(SESSION_P95_BUDGET_SECONDS * 1000)
 
 
 def read(runbook: Path) -> str:
