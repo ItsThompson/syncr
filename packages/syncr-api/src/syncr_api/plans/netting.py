@@ -21,6 +21,12 @@ pin's interval wins, because that is where the block is. Counted twice, a pinned
 twice out of every quantity that reads it, and the effect would be invisible: every figure would
 merely be lower than the truth.
 
+**An orphan pin takes its Area from its binding's entity.** A pin carries no Area of its own, so
+one whose binding the live plan no longer holds reads it through ``areas_of``, which answers from
+the tasks, habits, and template entries the assembler has already loaded. Its minutes are
+committed time whatever the re-solve that dropped the block did, so they stay minutes some Area's
+figures see rather than falling out of every one of them.
+
 **Attribution and capacity are two separate readings of one placement, and this module carries
 both.** A placement's own interval is what capacity counts, whatever the user said happened in it:
 a past span sits before ``now`` and cannot hold new work, so returning it to capacity is what would
@@ -60,12 +66,16 @@ from typing import TYPE_CHECKING
 from syncr_domain.identity import BindingKind
 from syncr_domain.intervals import Interval, IntervalSet, has_started
 from syncr_domain.outcomes import attributed_span
+from syncr_domain.templates import TemplateEntryKind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
+    from typing import Protocol
     from uuid import UUID
 
-    from syncr_domain.identifiers import AreaId, TaskId
+    from syncr_api.habits.records import HabitRecord
+    from syncr_api.tasks.records import TaskRecord
+    from syncr_domain.identifiers import AreaId, TaskId, TemplateEntryId
     from syncr_domain.identity import BindingRef
     from syncr_domain.intervals import Instant
     from syncr_domain.outcomes import RecordedOutcome
@@ -90,6 +100,50 @@ class Placement:
     attributed: Interval | None
 
 
+# The empty index: a caller that supplies none asks for orphan pins to carry no Area, which is
+# what reading the arithmetic over literals does.
+NO_CONTENT_AREAS: Mapping[tuple[BindingKind, UUID], AreaId] = {}
+
+
+if TYPE_CHECKING:
+
+    class AreaCarryingEntry(Protocol):
+        """What the index reads off a template entry: which one it is, and whose it is."""
+
+        @property
+        def entry_id(self) -> TemplateEntryId: ...
+
+        @property
+        def kind(self) -> TemplateEntryKind: ...
+
+        @property
+        def area_id(self) -> AreaId: ...
+
+
+def areas_of_content(
+    *,
+    tasks: Sequence[TaskRecord] = (),
+    habits: Sequence[HabitRecord] = (),
+    template_entries: Sequence[AreaCarryingEntry] = (),
+) -> Mapping[tuple[BindingKind, UUID], AreaId]:
+    """The Area each content entity carries, keyed the way an orphan pin looks its binding up.
+
+    A task, a habit, and a concrete template entry each carry an Area of their own, which is what
+    a pin left holding a binding the live plan no longer holds resolves its own Area from. The
+    frame and an anchor carry none by the document's own rule, so they are absent rather than
+    mapped: an orphaned pin over such content carries none, correctly.
+    """
+    return {
+        **{(BindingKind.TASK, task.id): task.area_id for task in tasks},
+        **{(BindingKind.HABIT, habit.id): habit.area_id for habit in habits},
+        **{
+            (BindingKind.TEMPLATE_ENTRY, entry.entry_id): entry.area_id
+            for entry in template_entries
+            if entry.kind is TemplateEntryKind.CONCRETE
+        },
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class AttributedMinutes:
     """Minutes placed for one task before one deadline, split at ``now``.
@@ -110,12 +164,13 @@ def placements(
     *,
     now: Instant,
     outcomes: Sequence[RecordedOutcome] = (),
+    areas_of: Mapping[tuple[BindingKind, UUID], AreaId] = NO_CONTENT_AREAS,
 ) -> tuple[Placement, ...]:
     """Every committed block of one week, one per binding, in binding order.
 
     A pin replaces the live-plan block of the same binding, at the pin's own interval. A pin
     naming a binding the plan does not hold is a placement of its own: the user's edit outlives
-    a re-solve that dropped the block.
+    a re-solve that dropped the block, and its Area is its entity's, read through ``areas_of``.
 
     An outcome is applied to the placement's FINAL interval, so a pinned block the user marked
     partial attributes its reported minutes from where the pin put it rather than from where the
@@ -139,12 +194,14 @@ def placements(
         committed[pin.binding] = _placed(
             binding=pin.binding,
             interval=pin.interval,
-            # A pin carries no Area of its own, so a pin whose binding the live plan no longer
-            # holds is committed time that NO Area figure sees: the task's remaining work nets it
-            # and the Area's placed minutes, floor, and reservation do not. That is a gap rather
-            # than a rule, and closing it needs an Area on the pin or a read of the binding's
-            # entity, neither of which exists while nothing writes a pin. Ticket 1251 owns it.
-            area_id=None if placed is None else placed.area_id,
+            # Paired, the block's own Area stands: the pin moves the block, not whose it is.
+            # Orphaned, the pin carries no Area and takes its binding entity's, so its minutes
+            # stay committed time some Area figure sees.
+            area_id=(
+                placed.area_id
+                if placed is not None
+                else areas_of.get((pin.binding.kind, pin.binding.entity_id))
+            ),
             immovable=True,
             outcome=recorded.get(pin.binding),
         )

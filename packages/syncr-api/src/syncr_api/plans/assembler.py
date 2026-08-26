@@ -98,7 +98,7 @@ from syncr_api.plans.materialization import (
     periods_of,
 )
 from syncr_api.plans.multipliers import DurationMultipliers
-from syncr_api.plans.netting import PlacedTime, placements
+from syncr_api.plans.netting import PlacedTime, areas_of_content, placements
 from syncr_api.plans.overhang import frame_overhang
 from syncr_api.plans.placements import constraining
 from syncr_api.plans.reservations import area_budgets
@@ -274,9 +274,6 @@ class WeekAssembler:
         # carrying one wedges the week. Applied here because the rule is a function of the instant
         # this assembly is stamped with, which is exactly what makes a placement immovable below.
         pins = constraining(held.pins, now=now)
-        placed = PlacedTime(
-            placements(held.live_plan, pins, now=now, outcomes=held.outcomes), now=now
-        )
         # Both weeks in one read. The inherited occurrence is judged against the periods of the
         # week that owns it, and reading only this week's would suppress it by a period this week
         # holds or fail to suppress it by one the week before does.
@@ -336,6 +333,23 @@ class WeekAssembler:
         tasks = await self._tasks.list_all()
         stored_preferences = await self._preferences.list_all()
         declared_areas = await self._areas.list_all()
+        # Built here rather than where the pins are read because an orphan pin resolves its Area
+        # through lists this method had not read yet: the same reads answer both questions, so
+        # closing the gap costs no repository read.
+        placed = PlacedTime(
+            placements(
+                held.live_plan,
+                pins,
+                now=now,
+                outcomes=held.outcomes,
+                areas_of=areas_of_content(
+                    tasks=tasks,
+                    habits=habits,
+                    template_entries=template_entries,
+                ),
+            ),
+            now=now,
+        )
         resolved = Concessions(
             frame=frame,
             eligible_tasks=eligible_tasks(tasks, placed=placed, multipliers=multipliers),
