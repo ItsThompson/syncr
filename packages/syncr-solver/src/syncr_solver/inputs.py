@@ -275,15 +275,20 @@ class AreaBudget:
     # user's words, and the probe resolves no identifier: it performs no lookup at all.
     name: str
     # NET of IMMOVABLE placements in this Area only, clamped at zero. The SOLVER's
-    # quantity, read by H9 and by nothing else: an unpinned block is about to be
-    # re-placed, so reserving against it would let the solver under-place the floor by
-    # whatever the previous solve happened to place.
+    # quantity, read by nothing else, because the rule it serves is that the solver never
+    # leaves an Area under a floor the week could still meet and only an approved breach
+    # may go under it: an unpinned block is about to be re-placed, so reserving against
+    # it would let the solver under-place the floor by whatever the previous solve
+    # happened to place. A PIN lowers this figure by exactly the pinned block's minutes.
     floor_minutes: int
     # The declared floor less minutes placed in this Area by ANY block, pinned or not,
     # past or future, clamped at zero. The PROBE's quantity, projected verbatim by
     # `for_probe()`: the probe compares against `free`, and `free` subtracts every
     # placement, so a reservation netting only immovable placements would count a
-    # different set on each side of one comparison.
+    # different set on each side of one comparison. A pin leaves this figure UNCHANGED.
+    # The asymmetry between the two figures above has one reason: a quantity that did not
+    # fall would make the solver place five hours on top of the pinned one and over-serve
+    # the floor by an hour.
     floor_reservation_minutes: int
     # The declared floor plus this Area's share of the remainder. GROSS, net of nothing,
     # because it is a reporting figure rather than a reservation.
