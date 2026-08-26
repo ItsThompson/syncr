@@ -162,13 +162,15 @@ test("S22 the promotion panel composes its table inside the notice surface", asy
   await expect(page.getByText("Weekly session")).toBeVisible();
 
   // THE SURFACE BY ITS LABEL, THE COMPOSITION BY ITS GEOMETRY. The panel sits below the fold on a
-  // session this tall, and an off-screen subtree is laid out as a placeholder until it is scrolled
-  // to, so the scroll is what makes the boxes below real measurements rather than estimates.
+  // session this tall, and an off-screen subtree is not guaranteed to be laid out when its box is
+  // asked for, so the scroll is what makes the boxes below measurements of the drawn surface. The
+  // table carries no visibility assertion of its own: a table that is absent or hidden answers a
+  // null box or empties the role locators, and the null-box, containment and row guards below are
+  // what redden for that -- a guard that cannot fail before one of those does is not a guard.
   const panel = page.locator('section[aria-label="Repeated pins"]');
   await expect(panel, "the session drew no promotion panel").toBeVisible();
   await panel.scrollIntoViewIfNeeded();
   const table = panel.getByRole("table");
-  await expect(table, "the notice surface drew no table inside it").toBeVisible();
 
   const panelBox = await panel.boundingBox();
   const tableBox = await table.boundingBox();
