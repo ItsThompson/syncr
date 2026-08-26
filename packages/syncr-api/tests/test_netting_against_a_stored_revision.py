@@ -19,8 +19,10 @@ arrive. If the filter ever stopped dropping such a pin, the pin tuple here would
 
 **A partial outcome attributes a prefix, not the block's span.** Recorded against the elapsed
 block through the outcome log the reader also reads, it parts the two remaining-work readings: the
-solver nets only the attributed prefix that has been lived, the probe nets the same minutes through
-its own split at ``now``, and a pin ahead of ``now`` nets nothing on the solver's side at all.
+solver nets only the attributed prefix that has been lived, and the Area figures net that same
+prefix for the probe -- behind ``now`` the attribution table answers there too, so a past partial
+credits ``placed_minutes`` and the reservation by its reported half alone. A pin ahead of ``now``
+nets nothing on the solver's side at all.
 """
 
 from __future__ import annotations
@@ -315,8 +317,12 @@ async def test_a_stored_week_nets_every_figure_through_the_production_reader(
     assert inputs.committed_occupancy().total_minutes() == 3 * BLOCK_MINUTES
 
     area = next(a for a in inputs.areas if a.area_id == AREA_ID)
-    assert area.placed_minutes == 3 * BLOCK_MINUTES
-    assert area.floor_reservation_minutes == DECLARED_FLOOR_MINUTES - 3 * BLOCK_MINUTES
+    # Behind `now`, the attribution table answers: Monday's hour credits its reported half only,
+    # while Thursday's pinned hour and Friday's unrecorded one still count whole, being ahead of
+    # `now` where each placement's own span is what counts and what `free` subtracts.
+    credited = 2 * BLOCK_MINUTES + PARTIAL_MINUTES
+    assert area.placed_minutes == credited
+    assert area.floor_reservation_minutes == DECLARED_FLOOR_MINUTES - credited
     # The solver's set nets IMMOVABLE placements only: the pinned hour in full and, of the
     # elapsed block, the prefix the partial outcome attributed inside its own span.
     assert area.floor_minutes == DECLARED_FLOOR_MINUTES - BLOCK_MINUTES - PARTIAL_MINUTES

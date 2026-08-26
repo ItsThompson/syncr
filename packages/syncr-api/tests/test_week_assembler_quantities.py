@@ -447,8 +447,11 @@ async def test_a_confirmed_skip_raises_the_floor_minutes_the_solver_must_still_p
     # the placement's own span, the floor reads as honoured by an hour the user said did not happen
     # and the solver never offers those minutes again.
     #
-    # The probe's reservation and the Area's placed minutes do not move, which is what keeps a pin
-    # from improving the verdict: both count committed time, and a skipped hour is still committed.
+    # The probe's figures move the way the attribution table points, because Tuesday is behind
+    # `now`: the reservation rises by the skipped hour too -- free never counted it, being clipped
+    # at `now` before anything is subtracted -- so skipping work enlarges the reported gap rather
+    # than closing it. Had the hour been ahead of `now`, both figures would hold: committed time
+    # free still subtracts.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     block = a_habit_block(habit_id=uuid4(), area_id=fitness.id, interval=between(9, 10, day=1))
     plan = a_plan(blocks=[block])
@@ -465,15 +468,17 @@ async def test_a_confirmed_skip_raises_the_floor_minutes_the_solver_must_still_p
     assert presumed.areas[0].floor_minutes == 4 * MINUTES_PER_HOUR
     assert confirmed.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
     assert presumed.areas[0].floor_reservation_minutes == 4 * MINUTES_PER_HOUR
-    assert confirmed.areas[0].floor_reservation_minutes == 4 * MINUTES_PER_HOUR
-    assert presumed.areas[0].placed_minutes == confirmed.areas[0].placed_minutes == MINUTES_PER_HOUR
+    assert confirmed.areas[0].floor_reservation_minutes == 5 * MINUTES_PER_HOUR
+    assert presumed.areas[0].placed_minutes == MINUTES_PER_HOUR
+    assert confirmed.areas[0].placed_minutes == 0
 
 
 async def test_the_floor_clause_a_reader_sees_states_the_figure_the_skip_moved() -> None:
     # The clause the user reads, composed from the same budgets: `floor` renders `floor_minutes` as
     # the floor the rule worked to, and `placed of of` over the reservation's set. So the skip moves
-    # the clause's own figure and leaves the pair around it alone, and a reader is not told a
-    # five-hour floor is a four-hour one because they skipped an hour.
+    # every figure the clause states: the past hour stops crediting `placed`, which raises `of`'s
+    # gap side by the same minutes, and the reader is told the truth about an hour they said did
+    # not happen rather than shown a floor quietly met.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     chosen = replace(
         a_habit_block(habit_id=uuid4(), area_id=fitness.id, interval=between(9, 10, day=1)),
@@ -494,7 +499,7 @@ async def test_the_floor_clause_a_reader_sees_states_the_figure_the_skip_moved()
         Floor(area_id=fitness.id, floor_minutes=4 * MINUTES_PER_HOUR, placed=60, of=300)
     ]
     assert _floor_clauses(plan, confirmed.areas) == [
-        Floor(area_id=fitness.id, floor_minutes=5 * MINUTES_PER_HOUR, placed=60, of=300)
+        Floor(area_id=fitness.id, floor_minutes=5 * MINUTES_PER_HOUR, placed=0, of=300)
     ]
 
 

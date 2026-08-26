@@ -11,9 +11,10 @@ work reads the same set but counts only what was attributed at or before ``now``
 figures part exactly at that instant.
 
 Which placements a figure nets and what span it counts of each are two separate questions, and the
-second one parts the figures from one another: an Area's placed minutes count the time a placement
-occupies, its floor reading counts the time the user gave the Area inside that span, and the
-solver's remaining work counts what the outcome log gave the task before ``now``.
+second one parts the figures from one another: an Area's placed minutes count what the outcome said
+happened behind ``now`` and what the placement still holds ahead of it, its floor reading counts the
+time the user gave the Area inside that span, and the solver's remaining work counts what the
+outcome log gave the task before ``now``.
 """
 
 from __future__ import annotations
@@ -497,8 +498,105 @@ def test_the_outcome_table_decides_what_the_solvers_figure_counts(
 
     placed = placed_time(live_plan=plan, outcomes=recorded)
 
-    assert placed.minutes_of_area(CAREER) == 60
     assert placed.immovable_minutes_of_task(TASK) == counted_minutes
+    # The uniform column is capacity's alone now. What an Area's figure sees of each state is the
+    # split reading's own table, asserted over the whole vocabulary beside this case.
+
+
+@pytest.mark.parametrize(
+    ("outcome", "credited_minutes"),
+    [
+        (None, 60),
+        (OutcomeState.PRESUMED, 60),
+        (OutcomeState.COMPLETED, 60),
+        (OutcomeState.PARTIAL, 20),
+        (MISS_STATE, 0),
+        (OutcomeState.MOVED, 0),
+    ],
+    ids=["no row", "presumed", "completed", "partial", "skipped", "moved"],
+)
+def test_the_outcome_table_decides_what_an_areas_figure_credits_behind_now(
+    outcome: OutcomeState | None, credited_minutes: int
+) -> None:
+    # The column of the outcome-state table an AREA's placed figure reads for the part of a block
+    # that has gone by, asserted over the whole vocabulary. The block is entirely behind ``now``, so
+    # only the attribution table answers: a skip credits nothing, which raises the reservation the
+    # probe compares against free by exactly the minutes free never counted, because free is clipped
+    # at ``now`` before anything is subtracted at all -- skipping work cannot improve a verdict. A
+    # move to Saturday has not happened either, so it credits nothing yet; it will once ``now``
+    # passes it, read the same way.
+    plan = a_past_task_hour()
+    recorded = (
+        []
+        if outcome is None
+        else [
+            an_outcome(
+                outcome,
+                actual_minutes=20 if outcome is OutcomeState.PARTIAL else None,
+                actual_interval=between(9, 10, day=5) if outcome is OutcomeState.MOVED else None,
+            )
+        ]
+    )
+
+    placed = placed_time(live_plan=plan, outcomes=recorded)
+
+    assert placed.minutes_of_area(CAREER) == credited_minutes
+
+
+def test_a_future_block_still_credits_its_area_whatever_the_outcome_said() -> None:
+    # The other half of the split. Thursday's hour is still ahead of ``now``, so the own span is
+    # what counts: it is committed time the probe's ``free`` subtracts, and the reservation must
+    # give back exactly the minutes free loses or the two sides of one comparison would net
+    # different sets. An outcome recorded on a block that has not happened yet cannot change that.
+    plan = a_plan(
+        blocks=[a_task_block(task_id=TASK, area_id=CAREER, interval=between(9, 10, day=3))]
+    )
+
+    skipped = placed_time(live_plan=plan, outcomes=[an_outcome(MISS_STATE)])
+    partial = placed_time(
+        live_plan=plan, outcomes=[an_outcome(OutcomeState.PARTIAL, actual_minutes=20)]
+    )
+
+    assert skipped.minutes_of_area(CAREER) == 60
+    assert partial.minutes_of_area(CAREER) == 60
+
+
+def test_a_block_straddling_now_counts_whole_under_the_split_reading() -> None:
+    # The two pieces meet at `now`: the attribution table answers for the elapsed half and the own
+    # span for the hour still ahead, so with no outcome the whole two hours credit the Area, exactly
+    # as the unsplit reading counted them.
+    plan = a_plan(
+        blocks=[
+            a_task_block(
+                task_id=TASK, area_id=CAREER, interval=Interval(NOW - AN_HOUR, NOW + AN_HOUR)
+            )
+        ]
+    )
+
+    placed = placed_time(live_plan=plan)
+
+    assert placed.minutes_of_area(CAREER) == 120
+
+
+def test_a_partial_across_now_leaves_the_unreported_stretch_to_no_reading() -> None:
+    # Two hours placed across `now`, thirty reported. The reported prefix is behind `now`, so it is
+    # all the attribution table credits; the hour ahead of `now` is committed time `free` subtracts,
+    # so the own span answers for it in full. The stretch between the report's end and `now` is
+    # claimed by neither: no outcome said it happened and it has already gone by. Thirty credited
+    # twice would be a double count; ninety is the two readings over their own halves.
+    plan = a_plan(
+        blocks=[
+            a_task_block(
+                task_id=TASK, area_id=CAREER, interval=Interval(NOW - AN_HOUR, NOW + AN_HOUR)
+            )
+        ]
+    )
+
+    placed = placed_time(
+        live_plan=plan, outcomes=[an_outcome(OutcomeState.PARTIAL, actual_minutes=30)]
+    )
+
+    assert placed.minutes_of_area(CAREER) == 90
 
 
 def test_a_movable_block_stays_offered_whatever_its_outcome_attributes() -> None:
@@ -555,20 +653,20 @@ def test_the_areas_floor_reading_counts_what_the_user_gave_it_inside_the_span(
     placed = placed_time(live_plan=plan, outcomes=[] if recorded is None else [recorded])
 
     assert placed.immovable_minutes_of_area(CAREER) == honoured_minutes
-    # The pair, on one row: the hour is committed time whatever the user said happened in it.
-    assert placed.minutes_of_area(CAREER) == 60
+    # The Area figure beside this one no longer holds the uniform column; what each state credits
+    # behind `now` is its own table, asserted over the whole vocabulary above.
 
 
 @pytest.mark.parametrize(
-    ("actual", "honoured_minutes"),
+    ("actual", "honoured_minutes", "credited_minutes"),
     [
-        (Interval(at(9.25, day=1), at(9.75, day=1)), 30),
-        (between(9.5, 10.5, day=1), 30),
+        (Interval(at(9.25, day=1), at(9.75, day=1)), 30, 30),
+        (between(9.5, 10.5, day=1), 30, 60),
     ],
     ids=["inside the hour", "half of it outside"],
 )
 def test_a_move_is_honoured_for_the_part_of_it_the_placement_still_holds(
-    actual: Interval, honoured_minutes: int
+    actual: Interval, honoured_minutes: int, credited_minutes: int
 ) -> None:
     # The rule is the part of the attributed span the placement holds rather than "a move counts
     # for nothing": half an hour reported inside the planned hour is half an hour of Career time
@@ -581,7 +679,9 @@ def test_a_move_is_honoured_for_the_part_of_it_the_placement_still_holds(
     )
 
     assert placed.immovable_minutes_of_area(CAREER) == honoured_minutes
-    assert placed.minutes_of_area(CAREER) == 60
+    # The placed figure reads the attribution table without the narrowing: where the work really
+    # happened is Career minutes gone by either way.
+    assert placed.minutes_of_area(CAREER) == credited_minutes
 
 
 def test_an_outcome_naming_a_binding_no_placement_holds_changes_nothing() -> None:
@@ -639,5 +739,8 @@ def test_a_move_onto_another_chunks_hour_is_counted_once_rather_than_twice() -> 
 
     assert before.attributed_to_task_before(TASK, FRIDAY_09).past == 120
     assert after.attributed_to_task_before(TASK, FRIDAY_09).past == 60
-    # Capacity is untouched, as it is for every outcome: both hours are still committed time.
-    assert after.minutes_of_area(CAREER) == 120
+    # Capacity is untouched, as it is for every outcome: both hours are still committed time, and
+    # `free` keeps subtracting both blocks' own spans. The Area figure now reads the attribution
+    # table behind `now`, so the moved hour collapses into the afternoon's and credits once --
+    # which lowers the credit and raises the reservation, the safe direction.
+    assert after.minutes_of_area(CAREER) == 60

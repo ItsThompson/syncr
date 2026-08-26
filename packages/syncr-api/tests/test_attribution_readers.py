@@ -62,6 +62,7 @@ MODULES_READING_THE_TABLE = frozenset({"syncr_api.plans.netting", "syncr_api.rev
 # and reaching either takes an import. So the chain is walked at every link rather than at the top.
 MODULES_BY_LINK = {
     "attributed_span": {"syncr_api.plans.netting", "syncr_api.reviews.coverage"},
+    "_area_span": {"syncr_api.plans.netting"},
     "_attributed_span": {"syncr_api.plans.netting"},
     "_worked_span": {"syncr_api.plans.netting"},
     # The declaring module is absent because a definition is not a reference, so this row holds the
@@ -87,20 +88,22 @@ THE_INDEX = "PlacedTime"
 NOT_INJECTED = "not injected"
 
 # The strategies that read what an OUTCOME attributed, as against the time a placement occupies.
-# Two of them, because the three consumers of the table clip it differently: the demand clips at a
-# deadline and splits at ``now``, an Area's floor reading clips to the span the placement holds,
-# and the solver's remaining work clips at ``now`` alone.
-ATTRIBUTING_SPANS = frozenset({"_attributed_span", "_worked_span"})
+# Three of them, because the four consumers of the table clip it differently: the demand clips at
+# a deadline and splits at ``now``, an Area's floor reading clips to the span the placement holds,
+# the solver's remaining work clips at ``now`` alone, and the Area's placed figure takes the
+# outcome's answer for the part behind ``now`` and the placement's own span for the part ahead of
+# it -- which is why its strategy is BUILT per index rather than named once.
+ATTRIBUTING_SPANS = frozenset({"_attributed_span", "_worked_span", "_area_span"})
 
 # Each public reading of the placement index and the strategy behind the index it reads, compared
-# against that index's constructor on every run. Three readings take an outcome's answer and one
-# takes the placement's own span, and every one of the three clips what it took differently: at a
-# deadline and at ``now``, to the span the placement holds, and at ``now`` alone.
+# against that index's constructor on every run. All four take the outcome's answer somewhere; no
+# reading is left with the own span alone any more, because capacity reads the placements directly
+# rather than through this index.
 SPAN_BY_READING = {
     "attributed_to_task_before": "_attributed_span",
     "immovable_minutes_of_area": "_worked_span",
     "immovable_minutes_of_task": "_attributed_span",
-    "minutes_of_area": "_own_span",
+    "minutes_of_area": "_area_span",
 }
 
 A_TASK = uuid4()
@@ -191,8 +194,15 @@ def _indexes_built_by(declared: ast.ClassDef) -> Mapping[str, str]:
 
 def _span_argument(call: ast.Call) -> str:
     for passed in call.keywords:
-        if passed.arg == "span" and isinstance(passed.value, ast.Name):
-            return passed.value.id
+        if passed.arg == "span":
+            value = passed.value
+            if isinstance(value, ast.Name):
+                return value.id
+            # A strategy built per index, parameterised by the instant the reading splits at, is
+            # still one strategy: the factory's name is what the register holds it under.
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+                return value.func.id
+            return NOT_INJECTED
     return NOT_INJECTED
 
 
@@ -411,22 +421,17 @@ def test_each_reading_of_the_placement_index_takes_the_span_the_register_names()
     )
 
 
-def test_the_readings_that_take_an_outcomes_answer_are_the_three_that_net_work_done() -> None:
-    # The claim the injected strategy exists to make checkable. Collapsing an attributing reading
+def test_the_readings_that_take_an_outcomes_answer_are_the_four_that_net_work_done() -> None:
+    # The claim the injected strategies exist to make checkable. Collapsing an attributing reading
     # onto the placement's own span is the shape three review iterations of this arithmetic found,
     # and it is invisible from either side alone: each reading is right for its own consumer, and
-    # the one reading left to the own span is the one no outcome may touch -- committed time.
+    # the fourth takes the outcome's answer for only half its question, which is exactly the kind
+    # of asymmetry a register over whole readings cannot see and this one spells out instead.
     derived = span_by_reading(the_index_source(), of=THE_INDEX)
 
     from_the_outcome = {name for name, span in derived.items() if span in ATTRIBUTING_SPANS}
-    from_the_placement = {name for name, span in derived.items() if span == "_own_span"}
 
-    assert from_the_outcome == {
-        "attributed_to_task_before",
-        "immovable_minutes_of_area",
-        "immovable_minutes_of_task",
-    }
-    assert from_the_placement == {"minutes_of_area"}
+    assert from_the_outcome == set(derived)
     assert set(derived) == set(SPAN_BY_READING)
 
 
@@ -438,29 +443,26 @@ class Indexed:
     def __init__(self, placed, *, now):
         self._now = now
         self._attributed = _by_task(placed, span=_attributed_span)
-        self._own = _by_task(placed, span=_own_span)
-        self._area = _by_area(placed)
+        self._split = _by_area(placed, span=_area_span(now))
+        self._bare = _by_area(placed)
 
     def attributes(self):
         return self._attributed.get(0)
 
-    def occupies(self):
-        return self._own.get(0)
+    def both_halves(self):
+        return self._split.get(0)
 
-    def of_area(self):
-        return self._area.get(0)
-
-    def _private(self):
-        return self._now
+    def unparameterised(self):
+        return self._bare.get(0)
 """
     derived = span_by_reading(synthetic, of="Indexed")
 
     assert derived == {
         "attributes": "_attributed_span",
-        "occupies": "_own_span",
-        "of_area": NOT_INJECTED,
+        "both_halves": "_area_span",
+        "unparameterised": NOT_INJECTED,
     }
-    assert derived["attributes"] != derived["occupies"]
+    assert derived["attributes"] != derived["both_halves"]
 
 
 def test_the_strategy_derivation_refuses_a_reading_that_nets_two_placement_sets() -> None:
