@@ -32,13 +32,18 @@ from typing import (
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from syncr_api.anchors.config import ANCHOR_TYPES_PREFIX, ANCHORS_PREFIX
 from syncr_api.areas.config import AREAS_PREFIX, PROJECTS_PREFIX
+from syncr_api.calendars.config import CALENDAR_SOURCES_PREFIX
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.principal import Principal
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.core.tenancy import IDENTITY_TABLES
 from syncr_api.habits.config import HABITS_PREFIX
+from syncr_api.offplan.config import OFF_PLAN_PREFIX
+from syncr_api.outcomes.config import DAYS_PREFIX
 from syncr_api.routines.config import ROUTINES_PREFIX
+from syncr_api.solving.config import OPERATIONS_PREFIX
 from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.templates.config import TEMPLATES_PREFIX
 
@@ -281,6 +286,41 @@ def content_resource_reads(app: FastAPI) -> list[str]:
     ]
 
 
+# The collection prefixes whose member read addresses exactly one record this api stored. A feed's
+# sub-collection of remote calendars is deliberately absent from what these name: that template
+# reaches past the record to the provider behind it, and stays exempt below with its reason.
+ADDRESSED_RESOURCE_PREFIXES = frozenset(
+    {
+        ANCHORS_PREFIX,
+        ANCHOR_TYPES_PREFIX,
+        CALENDAR_SOURCES_PREFIX,
+        DAYS_PREFIX,
+        OFF_PLAN_PREFIX,
+        OPERATIONS_PREFIX,
+    }
+)
+
+
+def addressed_resource_reads(app: FastAPI) -> list[str]:
+    """Every parameterized read whose template addresses one record of a collection.
+
+    Published beside the other contributions rather than filtered beside one guard, because a
+    filter reports what it matches and leaves the reads it does not match unaccounted for. The
+    shape does the selecting: ``/{id}`` names a record this api answers from its own tables, and
+    any template reaching deeper leaves the stored record behind -- which is how the one read
+    that leaves this api, the provider-backed sub-collection under a calendar source, stays out
+    of this derivation and in the exemption table with its reason. Derived from the route table
+    over the prefixes, so a record read a later feature module adds is driven with no edit here.
+    """
+    found = []
+    for path in read_paths(app, parameterized=True):
+        for prefix in ADDRESSED_RESOURCE_PREFIXES:
+            if path.startswith(f"{prefix}/") and PATH_PARAMETER.fullmatch(path[len(prefix) + 1 :]):
+                found.append(path)
+                break
+    return found
+
+
 type DrivenReads = Callable[[FastAPI], list[str]]
 
 # Every published contribution of driven parameterized reads. Each is a derivation over the
@@ -311,6 +351,7 @@ DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (
     week_addressed_reads,
     verdict_bearing_reads,
     content_resource_reads,
+    addressed_resource_reads,
 )
 
 # The parameterized reads no contribution drives, each naming the value a driver would have to
@@ -318,9 +359,9 @@ DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (
 # route the application stops declaring is reported here rather than sitting in the table forever,
 # and a route it starts declaring is reported rather than inherited unguarded.
 #
-# EACH REASON NAMES WHAT A DRIVER ASSERTING THE ROUTE'S OWN MEANING WOULD NEED, which is more than a
-# perimeter driver needs: the CLI perimeter guard reaches two of these with a value naming no stored
-# record, because all it asserts is that the answer is neither 401 nor 403. Those two say so.
+# EACH REASON NAMES WHY THE ROUTE CANNOT BE DRIVEN HERE and the value a driver asserting the route's
+# own meaning would need, because an exemption is the answer for a route no driver in this suite can
+# drive, never a relaxed dependency: silence is not an exemption.
 #
 # What a route here is exempt from is the drivers of this census: guards that take their paths FROM
 # the route table, which is what lets one cover a route nobody wrote it for. A feature's own
@@ -328,7 +369,9 @@ DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (
 # a test that spells its own path cannot cover a route it has never heard of.
 EXEMPT_PARAMETERIZED_READS: Mapping[str, str] = {
     f"{API_PREFIX}/calendar-sources/{{source_id}}/remote-calendars": (
-        "{source_id} names a declared feed, and this read reaches the provider behind it"
+        "{source_id} names a declared feed, and answering means reading the calendars the provider "
+        "behind it holds: a drive here would be an outbound call to a third party, not a request "
+        "this api answers from its own tables"
     ),
 }
 
