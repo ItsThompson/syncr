@@ -164,8 +164,14 @@ def every_content_resource_read(settings: ServiceSettings) -> list[str]:
 
 
 def addressed(path: str, identifiers: dict[str, str]) -> str:
-    """The template with each parameter replaced by the identifier that names it."""
+    """The template with each parameter replaced by the identifier that names it.
+
+    A parameter outside ``identifiers`` means a route arrived under these prefixes that this
+    module's fixture does not declare a record for; name it rather than raise bare ``KeyError``.
+    """
     for name in sorted(path_parameters(path)):
+        if name not in identifiers:
+            pytest.fail(f"{path} takes {{{name}}}, which the fixture declares no record for")
         path = path.replace(f"{{{name}}}", identifiers[name])
     return path
 
@@ -177,9 +183,10 @@ def test_every_content_resource_read_is_driven_here_and_answers_its_record(
     settings: ServiceSettings,
 ) -> None:
     """Named so the arrival or departure of a read is a diff, and so the walk is not empty."""
-    assert set(every_content_resource_read(settings)) >= set(CONTENT_READS)
+    paths = every_content_resource_read(settings)
+    assert set(paths) >= set(CONTENT_READS)
 
-    for path in every_content_resource_read(settings):
+    for path in paths:
         answered = http.get(addressed(path, identifiers), headers=signed_in)
 
         assert answered.status_code == HTTPStatus.OK, (path, answered.text)
