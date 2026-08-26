@@ -281,6 +281,7 @@ async def seed_pin(
                 superseded_placement=Interval(
                     start - timedelta(hours=6), start - timedelta(hours=5)
                 ),
+                objective_delta=0.1,
                 weight_set_version=1,
                 created_at=AT,
             )

@@ -12,8 +12,8 @@ Four claims, each of which a docstring in the pin write path states in prose:
 3. The price and the feature snapshot read the frame taken BEFORE the pin row exists.
 4. The verdict reads the frame taken AFTER it, and the version is bumped between the two.
 
-The pin's cost is priced by a second statement, so `pins.price` following the second assembly is
-part of the order asserted here: a write that becomes one statement moves this expectation.
+The row is written complete in one statement, so the delta travels on the `PinToHold` the service
+hands to `pins.hold`: a second pin statement would move this expectation.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.records import VerdictEventRecord
     from syncr_api.tasks.records import TaskRecord
     from syncr_domain.feasibility import Verdict
-    from syncr_domain.identifiers import AreaId, EditEventId, OperationId, PinId, TaskId
+    from syncr_domain.identifiers import AreaId, EditEventId, OperationId, TaskId
     from syncr_domain.intervals import Interval
     from syncr_domain.plan import PlanDocument
     from syncr_domain.weeks import IsoWeek
@@ -136,7 +136,6 @@ PRICED_THE_EDIT = "pin_price"
 BUMPED = "versions.bump"
 HELD = "pins.hold"
 PROBED = "probe.verdict_for"
-PRICED_THE_ROW = "pins.price"
 RECORDED = "verdicts.record"
 APPENDED = "edits.append"
 SOLVE_REQUESTED = "coordinator.request_solve"
@@ -156,7 +155,6 @@ THE_ORDER = (
     HELD,
     ASSEMBLED,
     PROBED,
-    PRICED_THE_ROW,
     RECORDED,
     APPENDED,
     SOLVE_REQUESTED,
@@ -239,13 +237,11 @@ class RecordingAreas(AreaRepository):
 
 
 class RecordingPins(PinRepository):
-    """The two statements a pin is written with, over one held record."""
+    """The statement a pin is written with, over the record that statement answered."""
 
     def __init__(self, log: list[str]) -> None:
         self._log = log
         self.held: list[PinToHold] = []
-        self.priced: list[float] = []
-        self._record: PinRecord | None = None
 
     async def for_week(self, iso_week: IsoWeek) -> tuple[PinRecord, ...]:
         self._log.append(PINS_HELD_READ)
@@ -254,7 +250,7 @@ class RecordingPins(PinRepository):
     async def hold(self, pin: PinToHold) -> PinRecord:
         self._log.append(HELD)
         self.held.append(pin)
-        self._record = PinRecord(
+        return PinRecord(
             id=uuid4(),
             tenant_id=TENANT,
             iso_week=pin.iso_week,
@@ -262,27 +258,9 @@ class RecordingPins(PinRepository):
             binding=pin.binding,
             interval=pin.interval,
             superseded_placement=pin.superseded_placement,
-            objective_delta=None,
+            objective_delta=pin.objective_delta,
             weight_set_version=pin.weight_set_version,
             created_at=pin.created_at,
-        )
-        return self._record
-
-    async def price(self, pin_id: PinId, *, objective_delta: float) -> PinRecord:
-        self._log.append(PRICED_THE_ROW)
-        self.priced.append(objective_delta)
-        assert self._record is not None, "priced a pin this fake was never asked to hold"
-        return PinRecord(
-            id=self._record.id,
-            tenant_id=self._record.tenant_id,
-            iso_week=self._record.iso_week,
-            block_id=self._record.block_id,
-            binding=self._record.binding,
-            interval=self._record.interval,
-            superseded_placement=self._record.superseded_placement,
-            objective_delta=objective_delta,
-            weight_set_version=self._record.weight_set_version,
-            created_at=self._record.created_at,
         )
 
 
@@ -514,23 +492,22 @@ async def drive_one_pin() -> Driven:
     )
 
 
-async def test_one_pin_request_holds_the_row_and_prices_it_at_the_figure_the_frame_produced() -> (
-    None
-):
+async def test_one_pin_request_holds_the_row_complete_at_the_figure_its_frame_produced() -> None:
     """The precondition every claim below rests on: the drive performs a pin, at a real price.
 
     Without it a wiring that refused the request early would leave every count at zero, every frame
     list empty, and each of the assertions below true of a request that did nothing. The price is
     asserted as an equality rather than as a sign, because the delta this fixture produces is the
     difference the deadline term measures and a re-sourced price is a different number rather than a
-    missing one.
+    missing one. The row carries the figure from the statement that wrote it: there is no second
+    statement, so an insert that wrote anything else would redden exactly here.
     """
     driven = await drive_one_pin()
 
     assert len(driven.pins.held) == 1, "no pin row was held, so this drive pinned nothing"
     assert driven.pins.held[0].interval == ACCEPTED
     assert driven.pins.held[0].superseded_placement == PROPOSED
-    assert driven.pins.priced == [THE_PRICE]
+    assert driven.pins.held[0].objective_delta == THE_PRICE
     assert len(driven.edits.appended) == 1, "no edit event was recorded beside the pin"
     recorded = driven.edits.appended[0]
     assert recorded.objective_delta == THE_PRICE

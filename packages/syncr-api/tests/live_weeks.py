@@ -446,6 +446,7 @@ def hold_a_pin(database_url: str, tenant_id: TenantId, iso_week: IsoWeek, block:
                         binding=block.binding,
                         interval=block.interval,
                         superseded_placement=block.interval,
+                        objective_delta=0.0,
                         weight_set_version=1,
                         created_at=datetime.now(UTC),
                     )

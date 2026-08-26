@@ -320,6 +320,7 @@ def seed_pins(database_url: str, tenant_id: TenantId, weeks: Sequence[IsoWeek]) 
                             superseded_placement=Interval(
                                 an_instant(monday, 7), an_instant(monday, 8)
                             ),
+                            objective_delta=0.1,
                             weight_set_version=1,
                             created_at=utc_now(),
                         )

@@ -440,6 +440,7 @@ class TestPinElapsedWedge:
                         datetime(2026, 2, 9, 10, 0, tzinfo=UTC),
                         datetime(2026, 2, 9, 11, 0, tzinfo=UTC),
                     ),
+                    objective_delta=0.1,
                     weight_set_version=1,
                     created_at=NOW - timedelta(days=2),
                 )
@@ -1230,6 +1231,39 @@ class TestObjectiveDeltaAndBreakdown:
         # The breakdown must record the pre-pin deadline_risk exactly: 5.625
         # (measured independently by the reviewer in a pre-pin frame evaluation)
         assert context["objective_breakdown"]["deadline_risk"] == pytest.approx(5.625, abs=0.01)
+
+    async def test_a_solver_pin_read_from_a_freshly_held_row_carries_a_float(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+    ) -> None:
+        """No reader of a fresh pin observes an absent cost.
+
+        The post-pin assembly reads the week's pins from the table ``hold`` writes, inside the
+        pin's own transaction, so before the delta traveled on the hold itself that read saw a row
+        with nothing priced yet. One statement now holds the row complete, and this is the read
+        that proves it: the solver Pin the assembler seeds carries a float, and the same figure
+        the held row answers with.
+        """
+        deadline = datetime(2026, 2, 13, 18, 0, tzinfo=UTC)
+        plan = a_plan(blocks=(a_block(14, 15, day_offset=3),))
+        await _seed_plan(sessions, owner.tenant_id, plan)
+        await _seed_area(sessions, owner.tenant_id, floor=0)
+        await _seed_task(sessions, owner.tenant_id, deadline=deadline, estimate=240)
+
+        result = await _pin(sessions, owner, datetime(2026, 2, 14, 10, 0, tzinfo=UTC))
+        assert isinstance(result.pin.objective_delta, float), "the held record answered no cost"
+
+        async with sessions() as session, session.begin():
+            assembler = build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.REQUEST
+            )
+            inputs = await assembler.assemble(WEEK, NOW)
+
+        assert len(inputs.pins) == 1
+        (held,) = inputs.pins
+        assert isinstance(held.objective_delta, float), (
+            "a solver Pin seeded from a freshly held row carries an absent cost"
+        )
+        assert held.objective_delta == pytest.approx(result.pin.objective_delta)
 
     async def test_the_measurement_delta_reprices_to_the_stored_delta_under_its_own_version(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord

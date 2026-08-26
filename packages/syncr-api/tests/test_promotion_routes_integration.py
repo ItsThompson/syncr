@@ -270,6 +270,7 @@ def seed_pins(
                                 an_instant(monday, superseded_hour),
                                 an_instant(monday, superseded_hour + 1),
                             ),
+                            objective_delta=0.1,
                             weight_set_version=1,
                             created_at=utc_now(),
                         )
