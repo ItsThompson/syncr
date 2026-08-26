@@ -77,6 +77,8 @@ describe("the band's zoom segment", () => {
     expect(onPickHours).toHaveBeenCalledWith(9);
   });
 
+  /* The counts are asserted alongside as well, because a band that rendered nothing at all would satisfy an
+   * absence on its own and would be a different defect. */
   it("states no level at all before the grid has reported one, and still states the counts", () => {
     renderBand({ drawnHours: null, reportedLevels: null });
 
@@ -85,7 +87,4 @@ describe("the band's zoom segment", () => {
     expect(screen.getByText(/91 blocks/)).toBeInTheDocument();
     expect(screen.getByText(/5 days unconfirmed/)).toBeInTheDocument();
   });
-
-  /* The counts are asserted alongside as well, because a band that rendered nothing at all would satisfy an
-   * absence on its own and would be a different defect. */
 });

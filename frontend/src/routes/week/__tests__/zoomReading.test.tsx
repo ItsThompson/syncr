@@ -15,7 +15,7 @@
  * and the cap is that display's own 16. That fallback is what makes these cases readable without a browser; the
  * measured-height cases live beside the grid, in `ui/domain/week-grid/__tests__/zoomReport.test.tsx`. */
 
-import { renderHook, screen } from "@testing-library/react";
+import { act, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -155,5 +155,31 @@ describe("the level the screen states before a grid has drawn one", () => {
 
     expect(result.current.drawnHours).toBeNull();
     expect(result.current.proposedHours).toBe(PROPOSED_HOURS);
+  });
+
+  /* A PRESS BEFORE THE FIRST ANSWER HAS NOTHING TO WALK, so it proposes nothing rather than reading levels off a
+   * report the grid never made. Dispatched by hand rather than through userEvent, so the dispatch is synchronous
+   * inside the assertion: what this case pins is the proposal surviving the press, which the walk's own cases
+   * hold directly against the guard in `zoomWalk.test.ts`. */
+  it("leaves the proposal alone when z lands before any grid has reported", () => {
+    installWeekReads(buildWeekView());
+    const { result } = renderHook(
+      () =>
+        useWeekScreenInteraction({
+          isoWeek: ISO_WEEK,
+          days: [],
+          view: null,
+          today: "2026-02-09",
+          visibleHours: PROPOSED_HOURS,
+        }),
+      { wrapper: HookHost },
+    );
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "z" }));
+    });
+
+    expect(result.current.proposedHours).toBe(PROPOSED_HOURS);
+    expect(result.current.reportedLevels).toBeNull();
   });
 });
