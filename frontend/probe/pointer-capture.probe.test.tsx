@@ -137,6 +137,20 @@ async function connectCdp(browser: string, run: string): Promise<CdpConnection> 
     ],
     { stdio: ["ignore", "ignore", "ignore"] },
   );
+  /* Any failure before the connection is returned would otherwise leave this headless Chrome running
+   * unowned, so every early exit kills it first. */
+  try {
+    return await openCdpSession(child, profileDir);
+  } catch (error) {
+    child.kill();
+    throw error;
+  }
+}
+
+async function openCdpSession(
+  child: ReturnType<typeof spawn>,
+  profileDir: string,
+): Promise<CdpConnection> {
   const port = await awaitDevtoolsPort(profileDir);
   const targets = (await (await fetch(`http://127.0.0.1:${String(port)}/json/list`)).json()) as {
     type: string;
@@ -160,6 +174,12 @@ async function connectCdp(browser: string, run: string): Promise<CdpConnection> 
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
+  /* A websocket that dies mid-run must not leave callers waiting forever on a response that will never
+   * come: a drop fails every outstanding call at once. */
+  const abandon = (reason: string): void => {
+    for (const settle of pending.values()) settle.reject(new Error(reason));
+    pending.clear();
+  };
   ws.addEventListener("message", (event) => {
     const message = JSON.parse(String(event.data)) as {
       id?: number;
@@ -173,11 +193,17 @@ async function connectCdp(browser: string, run: string): Promise<CdpConnection> 
     if (message.error !== undefined) settle.reject(new Error(message.error.message));
     else settle.resolve(message.result);
   });
+  ws.addEventListener("error", () => abandon("the DevTools websocket errored"));
+  ws.addEventListener("close", () => abandon("the DevTools websocket closed"));
 
   return {
     call(method, params) {
       const id = ++nextId;
       return new Promise((resolve, reject) => {
+        if (ws.readyState !== ws.OPEN) {
+          reject(new Error("the DevTools websocket is closed"));
+          return;
+        }
         pending.set(id, { resolve, reject });
         ws.send(JSON.stringify(params === undefined ? { id, method } : { id, method, params }));
       });
