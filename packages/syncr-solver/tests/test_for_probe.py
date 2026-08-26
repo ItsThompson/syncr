@@ -491,12 +491,13 @@ class PlacementState:
 
     @property
     def is_immovable(self) -> bool:
-        """Whether the solver's netting subtracts it: the user pinned it, or it already happened."""
+        """Whether the Area floor reading nets it: the user pinned it, or it already happened."""
         return self.pinned or self.past
 
 
-# Every state committed time comes in. The second is the one the two nettings disagree about, and
-# the property's non-vacuity assertion is what keeps a generator that stopped emitting it visible.
+# Every state committed time comes in. On the TASK figures the last three are the ones the two
+# nettings disagree about, and the property's non-vacuity assertion is what keeps a generator that
+# stopped emitting any of them visible; on the AREA pair only the second decides the difference.
 STATES = (
     PlacementState(reading="a block behind now", blocked=True, pinned=False, past=True),
     PlacementState(
@@ -586,13 +587,33 @@ def minutes_of(placements: Iterable[Placement]) -> int:
 
 
 def immovable(placements: Iterable[Placement]) -> tuple[Placement, ...]:
-    """What the SOLVER's netting subtracts: the pins, and everything already behind ``now``."""
+    """What the AREA floor figure subtracts: the pins, and everything already behind ``now``."""
     return tuple(one for one in placements if one.state.is_immovable)
 
 
+def lived(placements: Iterable[Placement]) -> tuple[Placement, ...]:
+    """What the SOLVER's remaining-work figure subtracts: the placements behind ``now``, whole.
+
+    The figure nets each immovable placement's attributed span clipped at ``now``, and this model
+    carries no outcome rows, so every attributed span is the placement's own interval and the clip
+    leaves exactly these.
+    """
+    return tuple(one for one in placements if one.state.past)
+
+
 def movable(placements: Iterable[Placement]) -> tuple[Placement, ...]:
-    """The unpinned placements ahead of ``now``: the whole difference between the two nettings."""
+    """The unpinned placements ahead of ``now``: the whole difference between the Area pair."""
     return tuple(one for one in placements if not one.state.is_immovable)
+
+
+def not_yet_lived(placements: Iterable[Placement]) -> tuple[Placement, ...]:
+    """Everything ahead of ``now``: the whole difference between the TASK pair.
+
+    The demand nets every placement whole and the solver's figure nets only what has been lived,
+    so a pinned hour ahead of ``now`` counts on the demand's side and nowhere on the solver's:
+    that is the work the plan keeps offering until it happens.
+    """
+    return tuple(one for one in placements if not one.state.past)
 
 
 def laid_out(start: Instant, minutes: Sequence[int]) -> tuple[Interval, ...]:
@@ -788,8 +809,7 @@ def weeks_holding_unpinned_placements(draw: st.DrawFn) -> GeneratedWeek:
             eligible_tasks=tuple(
                 EligibleTask(
                     binding=task.binding,
-                    remaining_minutes=task.estimate_minutes
-                    - minutes_of(immovable(task.placements)),
+                    remaining_minutes=task.estimate_minutes - minutes_of(lived(task.placements)),
                     priority=Priority.NORMAL,
                     min_chunk_minutes=15,
                     splittable=True,
@@ -943,9 +963,10 @@ def test_the_projection_agrees_field_by_field_on_a_week_holding_unpinned_placeme
             forbidden_here
         )
 
-    # 3. Each pair differs by exactly the unpinned future placements, per Area and per task. The
-    #    solver's figure is the larger one because it nets the narrower set, so the difference runs
-    #    this way round.
+    # 3. Each pair differs by exactly what one side nets and the other does not, per Area and per
+    #    task. The larger figure always nets the narrower set, so the difference runs this way
+    #    round: on the Area pair that is the movable placements, and on the task pair it is
+    #    everything that has not been lived yet, pinned or not.
     reserved = {
         reservation.area_id: reservation.reserved_minutes
         for reservation in projected.area_floor_reservations
@@ -957,13 +978,14 @@ def test_the_projection_agrees_field_by_field_on_a_week_holding_unpinned_placeme
     remaining = {task.binding: task.remaining_minutes for task in week.inputs.eligible_tasks}
     for task in week.tasks:
         difference = remaining[task.binding] - demanded[task.deadline]
-        assert difference == minutes_of(movable(task.placements)), task.title
+        assert difference == minutes_of(not_yet_lived(task.placements)), task.title
 
-    # 4. Non-vacuity. The right-hand side above is non-zero for the week, for at least one Area and
-    #    for at least one task, so no assertion here can pass by the two quantities of a pair being
-    #    equal on a week that holds nothing the solver may still move.
+    # 4. Non-vacuity. The right-hand sides above are non-zero for the week, for at least one Area
+    #    and for at least one task, so no assertion here can pass by the two quantities of a pair
+    #    being equal on a week that holds nothing the two nettings disagree about.
     assert minutes_of(movable(placements)) > 0
+    assert minutes_of(not_yet_lived(placements)) > 0
     assert any(
         minutes_of(movable(placements_in(week.tasks, area.area_id))) > 0 for area in week.areas
     )
-    assert any(minutes_of(movable(task.placements)) > 0 for task in week.tasks)
+    assert any(minutes_of(not_yet_lived(task.placements)) > 0 for task in week.tasks)
