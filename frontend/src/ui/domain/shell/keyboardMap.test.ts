@@ -72,6 +72,12 @@ const NAMED_KEYS = new Map<string, string>([
   ["PALETTE_KEY", PALETTE_KEY],
 ]);
 
+/** A row spells a modifier key as a reader says it; this is what each glyph registers as. */
+const GLYPH_KEYS = new Map<string, string>([
+  ["↑", "ArrowUp"],
+  ["↓", "ArrowDown"],
+]);
+
 const CHORD_HOST = /useScreenChords\(\s*SCREENS\s*\)/;
 const CHORD_ROW = /^g (\S)$/;
 const PLATFORM_MODIFIER = "Cmd/Ctrl";
@@ -107,7 +113,9 @@ function advertisedBy(keys: string): Advertised | null {
   return {
     /* A chord's letter is spelt as a reader says it, upper case, while the platform reports the unshifted value
      * the binding registers. */
-    key: withPlatformModifier ? spelling.toLowerCase() : spelling,
+    key:
+      GLYPH_KEYS.get(withPlatformModifier ? spelling.toLowerCase() : spelling) ??
+      (withPlatformModifier ? spelling.toLowerCase() : spelling),
     withPlatformModifier,
     withShift: modifiers.includes(SHIFT),
   };

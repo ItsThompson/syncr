@@ -169,7 +169,9 @@ describe("the help overlay", () => {
   });
 
   /* THE SCREEN A ROW ANSWERS ON, ASSERTED AT BOTH EDGES and against text this file spells out rather than reads
-   * back from the map: a row that answers everywhere and a row that answers on one screen. */
+   * back from the map: a row that answers everywhere and rows that answer on one screen. The `z` and `Enter`
+   * rows are spelled here because their words are the claim -- `z` promises the levels the display offers and
+   * the wrap, and `Enter` opens only on a selection -- and a paraphrase would promise something else. */
   it("says which screen a row answers on", async () => {
     const { baseElement } = render(<HelpOverlay />);
     await userEvent.keyboard(HELP_KEY);
@@ -179,6 +181,16 @@ describe("the help overlay", () => {
     expect(rows).toContainEqual({
       keys: "Escape",
       action: "Clear the selection and close the panel",
+      scope: "week",
+    });
+    expect(rows).toContainEqual({
+      keys: "z",
+      action: "Cycle visible hours through the available levels, wrapping",
+      scope: "week",
+    });
+    expect(rows).toContainEqual({
+      keys: "Enter",
+      action: "Open the detail panel on the selected block",
       scope: "week",
     });
   });
