@@ -23,7 +23,10 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
+
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.core.errors import NotFound
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
 from syncr_api.learned.repository import WeightSetRepository
@@ -490,6 +493,53 @@ async def drive_one_pin() -> Driven:
         priced_in=priced_in,
         snapshotted_in=snapshotted_in,
     )
+
+
+async def test_a_pin_naming_content_the_plan_does_not_hold_is_refused_with_its_reason() -> None:
+    # The route refuses the drag where it is read, before anything is assembled or written: a pin
+    # is a preference over a placement the week holds, and content the plan holds nowhere is
+    # nothing to prefer. Resolution does not loosen this: an orphan pin exists only because a
+    # re-solve dropped a block AFTER its pin was held.
+    log: list[str] = []
+    area = an_area(area_id=uuid4())
+    task = a_task(area_id=area.id, deadline=DEADLINE)
+    block = a_task_block(task_id=task.id, area_id=area.id, interval=PROPOSED)
+    plan = a_plan(blocks=(block,))
+    versions = RecordingVersions(log)
+    pins = RecordingPins(log)
+    service = PinService(
+        assembler=RecordingAssembler(
+            an_assembler(
+                areas=FakeAreas([area]),
+                tasks=FakeTasks([task]),
+                versions=versions,
+                placements=RecordingPlacements(pins, live_plan=plan),
+                caller=ASSEMBLY_CALLER,
+            ),
+            log,
+        ),
+        probe=RecordingProbe(log),
+        revisions=RecordingRevisions(_a_revision(plan)),
+        proposals=RecordingProposals(),
+        pins=pins,
+        edits=RecordingEdits(log),
+        verdicts=RecordingVerdicts(log),
+        versions=versions,
+        weights=RecordingWeights(log),
+        coordinator=RecordingCoordinator(log),
+        tasks=RecordingTasks(task, log),
+        areas=RecordingAreas(area, log),
+        clock=lambda: NOW,
+    )
+
+    with pytest.raises(NotFound, match="matches that identifier"):
+        await service.pin(
+            _a_principal(),
+            str(WEEK),
+            PinRequested(block_id="no-such-block", start=ACCEPTED.start),
+        )
+
+    assert pins.held == [], "nothing was held for a block the plan does not hold"
 
 
 async def test_one_pin_request_holds_the_row_complete_at_the_figure_its_frame_produced() -> None:

@@ -16,17 +16,19 @@ and its floor reading counts the time the user gave the Area inside that span.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
-from uuid import uuid4
+from typing import TYPE_CHECKING, NamedTuple
+from uuid import UUID, uuid4
 
 import pytest
 
-from syncr_api.plans.netting import PlacedTime, placements
-from syncr_domain.identity import BindingRef
+from syncr_api.plans.netting import NO_CONTENT_AREAS, PlacedTime, areas_of_content, placements
+from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import MISS_STATE, OutcomeState, RecordedOutcome
+from syncr_domain.templates import TemplateEntryKind
 from tests.assembly_fakes import (
     NOW,
+    a_habit,
     a_habit_block,
     a_pin,
     a_plan,
@@ -36,6 +38,8 @@ from tests.assembly_fakes import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from syncr_domain.plan import PlanDocument
     from syncr_solver.inputs import Pin
 
@@ -47,14 +51,32 @@ CAREER = uuid4()
 AN_HOUR = timedelta(hours=1)
 
 
+class _Entry(NamedTuple):
+    """The three facts the Area index reads off a template entry."""
+
+    entry_id: UUID
+    kind: TemplateEntryKind
+    area_id: UUID
+
+
 def placed_time(
     *,
     live_plan: PlanDocument | None = None,
     pins: tuple[Pin, ...] | list[Pin] = (),
     outcomes: tuple[RecordedOutcome, ...] | list[RecordedOutcome] = (),
     now: datetime = NOW,
+    areas_of: Mapping[tuple[BindingKind, UUID], UUID] | None = None,
 ) -> PlacedTime:
-    return PlacedTime(placements(live_plan, pins, now=now, outcomes=outcomes), now=now)
+    return PlacedTime(
+        placements(
+            live_plan,
+            pins,
+            now=now,
+            outcomes=outcomes,
+            areas_of=NO_CONTENT_AREAS if areas_of is None else areas_of,
+        ),
+        now=now,
+    )
 
 
 def test_a_block_that_has_not_started_is_movable_and_nets_from_neither_quantity() -> None:
@@ -155,17 +177,66 @@ def test_the_pins_interval_is_where_the_block_is_and_it_decides_what_falls_befor
     assert placed.immovable_minutes_of_task(TASK) == 120
 
 
-def test_a_pin_for_a_binding_the_plan_does_not_hold_is_a_placement_of_its_own() -> None:
-    # The user's edit outlives a re-solve that dropped the block.
+def test_an_orphan_pin_takes_its_area_from_the_entity_its_binding_names() -> None:
+    # The user's edit outlives a re-solve that dropped the block. The pin carries no Area of its
+    # own, so it takes its task's, and the hour stays committed time an Area figure sees.
+    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=3))
+
+    placed = placed_time(pins=[pin], areas_of={(BindingKind.TASK, TASK): FITNESS})
+
+    assert placed.immovable_minutes_of_task(TASK) == 60
+    assert placed.minutes_of_area(FITNESS) == 60
+    # Immovable, the pinned hour honours the floor too: the solver may not move it.
+    assert placed.immovable_minutes_of_area(FITNESS) == 60
+
+
+def test_an_orphan_pin_over_content_no_entity_answers_carries_no_area() -> None:
+    # A binding whose entity no longer exists resolves to nothing rather than to a guess.
     pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=3))
 
     placed = placed_time(pins=[pin])
 
     assert placed.immovable_minutes_of_task(TASK) == 60
-    # A GAP, pinned here so it is not read as a rule: the pin carries no Area, so this hour is
-    # committed time no Area figure sees. Closing it needs an Area on the pin or a read of the
-    # binding's entity, neither of which exists while nothing writes a pin.
     assert placed.minutes_of_area(FITNESS) == 0
+
+
+def test_a_paired_pin_keeps_the_blocks_area_rather_than_the_resolved_one() -> None:
+    # Pairing wins over resolution: the pin moves the block, not whose it is, so a stale index
+    # cannot move a pinned block's minutes to another Area.
+    plan = a_plan(
+        blocks=[a_task_block(task_id=TASK, area_id=CAREER, interval=between(9, 10, day=3))]
+    )
+    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(14, 15, day=3))
+
+    placed = placed_time(live_plan=plan, pins=[pin], areas_of={(BindingKind.TASK, TASK): FITNESS})
+
+    assert placed.minutes_of_area(CAREER) == 60
+    assert placed.minutes_of_area(FITNESS) == 0
+
+
+def test_an_orphan_habit_pin_takes_its_area_from_its_habit() -> None:
+    # A habit occurrence is pinnable content the same way a task block is, and its habit never
+    # moves between Areas: the index answers it like any other entity.
+    habit = a_habit(area_id=FITNESS)
+    pin = a_pin(binding=BindingRef.for_habit(habit.id, index=2), interval=between(9, 10, day=3))
+
+    placed = placed_time(pins=[pin], areas_of=areas_of_content(habits=[habit]))
+
+    assert placed.minutes_of_area(FITNESS) == 60
+
+
+def test_the_area_index_answers_a_concrete_entry_and_not_a_slot() -> None:
+    # A slot binds late and becomes no block of its own, so no pin can ever name one: mapping it
+    # would answer a binding nothing carries.
+    concrete_id, slot_id = uuid4(), uuid4()
+    entries = [
+        _Entry(entry_id=slot_id, kind=TemplateEntryKind.SLOT, area_id=FITNESS),
+        _Entry(entry_id=concrete_id, kind=TemplateEntryKind.CONCRETE, area_id=CAREER),
+    ]
+
+    areas = areas_of_content(template_entries=entries)
+
+    assert dict(areas) == {(BindingKind.TEMPLATE_ENTRY, concrete_id): CAREER}
 
 
 def test_two_blocks_of_one_area_covering_one_minute_contribute_that_minute_once() -> None:

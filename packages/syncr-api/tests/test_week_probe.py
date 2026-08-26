@@ -233,15 +233,41 @@ async def test_a_deadline_the_week_cannot_reach_names_the_task_and_honors_the_ot
     assert not verdict.feasible
 
 
-async def test_an_orphan_pin_takes_capacity_that_no_areas_reservation_nets() -> None:
-    # The floor asymmetry one level deeper, recorded rather than fixed. A pin whose binding the
-    # live plan no longer holds carries no Area, so the netting gives it `area_id=None` and no
-    # Area's reservation nets it, while the probe's free capacity loses the hour. The floor gap is
-    # therefore over-reported by the pinned minutes, which is the forbidden direction.
-    #
-    # Closing it needs an Area on the pin or a read of the binding's entity. This test states
-    # the direction so the next reader inherits a measurement instead of a surprise.
+async def test_an_orphan_pins_two_hours_move_each_area_figure_by_120_clamped_at_zero() -> None:
+    # The rule the two recorded gaps asked for. A pin whose binding the live plan no longer holds
+    # takes its Area from its task, so each Fitness figure moves by the pin's two hours and the
+    # clamps hold where the pinned minutes meet the declared floor.
+    fitness = an_area(name="Fitness", floor_hours=Decimal(2))
+    task = a_task(task_id=FITNESS_TASK, area_id=fitness.id)
+    orphan = FakePlacements(
+        live_plan=a_plan(blocks=[]),
+        pins=[a_pin(binding=BindingRef.for_task(FITNESS_TASK), interval=between(10, 12, day=2))],
+    )
+
+    inputs = await an_assembly(
+        areas=FakeAreas([fitness]), tasks=FakeTasks([task]), placements=orphan
+    )
+
+    budget = inputs.areas[0]
+    assert budget.placed_minutes == 2 * MINUTES_PER_HOUR
+    assert budget.floor_minutes == 0
+    assert budget.floor_reservation_minutes == 0
+
+    # The pair, on the week without the edit: nothing placed, both floors whole.
+    untouched = await an_assembly(areas=FakeAreas([fitness]), tasks=FakeTasks([task]))
+
+    assert untouched.areas[0].placed_minutes == 0
+    assert untouched.areas[0].floor_minutes == 2 * MINUTES_PER_HOUR
+    assert untouched.areas[0].floor_reservation_minutes == 2 * MINUTES_PER_HOUR
+
+
+async def test_an_orphan_pin_no_longer_over_reports_the_floor_gap() -> None:
+    # What the gap cost when it was open: free capacity lost the hour while no Area's reservation
+    # netted it, so a week whose floor exactly fit reported a shortfall of exactly the pinned
+    # hour. With the pin's Area resolved, the reservation nets the same hour the capacity gave
+    # back, and the verdict reads the week the user committed to.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
+    task = a_task(task_id=FITNESS_TASK, area_id=fitness.id)
     # A week tight enough for the hour to matter: five hours of capacity from the stamped instant
     # against a five-hour floor, so without the pin the floor exactly fits.
     tight = FakeOffPlan([an_off_plan_period(interval=between(14, 24 * 4 + 24, day=2))])
@@ -250,23 +276,15 @@ async def test_an_orphan_pin_takes_capacity_that_no_areas_reservation_nets() -> 
         pins=[a_pin(binding=BindingRef.for_task(FITNESS_TASK), interval=between(10, 11, day=2))],
     )
 
-    inputs = await an_assembly(areas=FakeAreas([fitness]), placements=orphan, off_plan=tight)
-    projected = inputs.for_probe()
-    verdict = probe(projected)
-
-    assert projected.placed.total_minutes() == MINUTES_PER_HOUR
-    assert projected.area_floor_reservations[0].reserved_minutes == 5 * MINUTES_PER_HOUR
-    assert inputs.areas[0].placed_minutes == 0
-    # The consequence the name claims: free capacity lost the hour and the reservation did not, so
-    # the floor gap is exactly the pinned hour. Asserted rather than described, so the direction is
-    # on record and a change to either side is visible.
-    floors = next(
-        gap for gap in verdict.shortfalls if gap.kind is ShortfallKind.FLOORS_EXCEED_CAPACITY
+    pinned = await an_assembly(
+        areas=FakeAreas([fitness]), tasks=FakeTasks([task]), placements=orphan, off_plan=tight
     )
-    unpinned = await an_assembly(areas=FakeAreas([fitness]), off_plan=tight)
+    unpinned = await an_assembly(
+        areas=FakeAreas([fitness]), tasks=FakeTasks([task]), off_plan=tight
+    )
 
-    assert floors.minutes == MINUTES_PER_HOUR
     assert probe(unpinned.for_probe()).shortfalls == ()
+    assert probe(pinned.for_probe()).shortfalls == ()
 
 
 async def test_a_verdict_carries_the_version_and_the_instant_its_assembly_was_built_against() -> (
