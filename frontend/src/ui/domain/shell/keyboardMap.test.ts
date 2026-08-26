@@ -72,7 +72,7 @@ const NAMED_KEYS = new Map<string, string>([
   ["PALETTE_KEY", PALETTE_KEY],
 ]);
 
-/** A row spells a modifier key as a reader says it; this is what each glyph registers as. */
+/** A row spells a key as a reader says it; this is what each glyph registers as. */
 const GLYPH_KEYS = new Map<string, string>([
   ["↑", "ArrowUp"],
   ["↓", "ArrowDown"],
@@ -110,12 +110,11 @@ function advertisedBy(keys: string): Advertised | null {
   if (modifiers.some((token) => token !== PLATFORM_MODIFIER && token !== SHIFT)) return null;
 
   const withPlatformModifier = modifiers.includes(PLATFORM_MODIFIER);
+  /* A chord's letter is spelt as a reader says it, upper case, while the platform reports the unshifted value
+   * the binding registers. */
+  const registered = withPlatformModifier ? spelling.toLowerCase() : spelling;
   return {
-    /* A chord's letter is spelt as a reader says it, upper case, while the platform reports the unshifted value
-     * the binding registers. */
-    key:
-      GLYPH_KEYS.get(withPlatformModifier ? spelling.toLowerCase() : spelling) ??
-      (withPlatformModifier ? spelling.toLowerCase() : spelling),
+    key: GLYPH_KEYS.get(registered) ?? registered,
     withPlatformModifier,
     withShift: modifiers.includes(SHIFT),
   };
