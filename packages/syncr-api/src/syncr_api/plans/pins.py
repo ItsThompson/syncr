@@ -79,20 +79,7 @@ class PinRepository(TenantScopedRepository):
         written = await self._session.scalars(
             insert(Pin)
             .values([self._row(pin)])
-            .on_conflict_do_update(
-                index_elements=list(_IDENTITY),
-                set_={
-                    "iso_week": str(pin.iso_week),
-                    "binding": stored_binding(pin.binding),
-                    "starts_at": pin.interval.start,
-                    "ends_at": pin.interval.end,
-                    "superseded_starts_at": pin.superseded_placement.start,
-                    "superseded_ends_at": pin.superseded_placement.end,
-                    "objective_delta": pin.objective_delta,
-                    "weight_set_version": pin.weight_set_version,
-                    "created_at": pin.created_at,
-                },
-            )
+            .on_conflict_do_update(index_elements=list(_IDENTITY), set_=self._columns(pin))
             .returning(Pin)
         )
         return _as_record(written.one())
@@ -164,8 +151,19 @@ class PinRepository(TenantScopedRepository):
         return {
             "id": uuid4(),
             TENANT_ID_COLUMN: self.tenant_id,
-            "iso_week": str(pin.iso_week),
             "block_id": pin.block_id,
+            **self._columns(pin),
+        }
+
+    def _columns(self, pin: PinToHold) -> dict[str, object]:
+        """Every column a hold states, keyed as both statements name them.
+
+        One spelling for the insert and for the re-pin's update: a second drag of one block has to
+        write exactly what a first one did, or the row a re-pin leaves behind would depend on which
+        arm of the upsert answered.
+        """
+        return {
+            "iso_week": str(pin.iso_week),
             "binding": stored_binding(pin.binding),
             "starts_at": pin.interval.start,
             "ends_at": pin.interval.end,
