@@ -17,7 +17,7 @@
  * a working system, and marking it in amber would ask them to attend to something they cannot act on. */
 
 import { MaturityMeter, Table, type TableColumn } from "../../../ui/domain";
-import { asShare, asValue, parameterName, progressLabel } from "../figures";
+import { asShare, asValue, progressLabel, rowLabel } from "../figures";
 import type { LearnedParameter } from "../../../api/hooks/useLearned";
 
 /** The state the api sends for a parameter below its gate, which is the one the footer counts. */
@@ -32,11 +32,11 @@ function StateCell({ state }: { readonly state: string }) {
   return <span className="text-eyebrow tracking-eyebrow uppercase text-text-muted">{state}</span>;
 }
 
-/** The name, with the sentence that says what the figure means underneath it. */
+/** The name, with what it is about and the sentence that says what the figure means underneath it. */
 function ParameterCell({ row }: { readonly row: LearnedParameter }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-ink">{parameterName(row.parameter)}</span>
+      <span className="text-ink">{rowLabel(row.parameter, row.subject)}</span>
       <span className="text-sm text-ink-soft">{row.plainLanguage}</span>
     </div>
   );
@@ -54,7 +54,7 @@ const COLUMNS: readonly TableColumn<LearnedParameter>[] = [
       <MaturityMeter
         value={row.samples}
         bound={row.threshold}
-        label={progressLabel(row.parameter)}
+        label={progressLabel(row.parameter, row.subject)}
       />
     ),
   },

@@ -29,6 +29,7 @@ import { countedHandler, jsonHandler, pendingHandler, readyz } from "../../../te
 import { renderAt } from "../../../testing/renderRoute";
 import {
   COLLECTING_IS_NORMAL,
+  FITNESS,
   ONLY_HAND_TUNED,
   THRESHOLDS_ARE_ESTIMATES,
   UNLOCKS_COUNT_VOLUME,
@@ -99,12 +100,92 @@ describe("the per-parameter table", () => {
     });
 
     const table = screen.getByRole("table", { name: /Every parameter syncr fits/ });
-    expect(within(table).getByText("Duration multiplier")).toBeVisible();
+    expect(within(table).getByText("Duration multiplier \u00b7 Fitness")).toBeVisible();
     expect(within(table).getByText("1.20")).toBeVisible();
     expect(within(table).getByText("14")).toBeVisible();
     expect(within(table).getByText("12")).toBeVisible();
     expect(within(table).getByText("ready")).toBeVisible();
     expect(within(table).getByText("collecting")).toBeVisible();
+  });
+
+  it("renders the served subject in the name column, so one parameter for two Areas reads as two rows", async () => {
+    /* The api resolves what a key names and sends it as `subject`; the client joins it to the humanised token
+     * rather than inventing a second name for an Area. Two rows carrying `duration_multiplier` for different
+     * Areas are then distinguishable from the name column alone. */
+    installReads(
+      buildLearned({
+        parameters: [
+          buildReadyParameter({ subject: "Fitness" }),
+          buildReadyParameter({
+            parameter: `duration_multiplier[${FITNESS}]`,
+            subject: "Recovery",
+          }),
+        ],
+      }),
+    );
+    renderAt(SCREEN);
+    const table = await screen.findByRole("table", { name: /Every parameter syncr fits/ });
+
+    expect(within(table).getByText("Duration multiplier \u00b7 Fitness")).toBeVisible();
+    expect(within(table).getByText("Duration multiplier \u00b7 Recovery")).toBeVisible();
+  });
+
+  it("gives twelve same-parameter meters twelve accessible names, not twelve copies of one", async () => {
+    /* The meter's label carries the subject, so a screen reader on a full account hears twelve distinct names.
+     * Without it every row's meter would announce the same string, and the column would read as one control
+     * repeated. */
+    const subjects = [
+      "Fitness",
+      "Recovery",
+      "Deep work",
+      "Admin",
+      "Reading",
+      "Exercise",
+      "Errands",
+      "Writing",
+      "Practice",
+      "Commute",
+      "Cooking",
+      "Rest",
+    ];
+    installReads(
+      buildLearned({
+        parameters: subjects.map((subject, index) =>
+          buildReadyParameter({
+            parameter: `duration_multiplier[${FITNESS}]#${index}`,
+            subject,
+          }),
+        ),
+      }),
+    );
+    renderAt(SCREEN);
+    await screen.findByRole("table", { name: /Every parameter syncr fits/ });
+
+    const names = screen.getAllByRole("meter").map((meter) => meter.getAttribute("aria-label"));
+    expect(names).toHaveLength(subjects.length);
+    expect(new Set(names).size).toBe(subjects.length);
+    for (const subject of subjects) {
+      expect(names).toContain(`Duration multiplier unlock progress for ${subject}`);
+    }
+  });
+
+  it("renders a keyless parameter's name alone, with no subject and no placeholder", async () => {
+    /* A parameter with no key is about the whole account rather than about an Area, so there is no subject to
+     * join and none is invented: neither a middle dot nor any stand-in appears in the name cell. */
+    installReads(buildLearned({ parameters: [buildCollectingParameter()] }));
+    renderAt(SCREEN);
+    const table = await screen.findByRole("table", { name: /Every parameter syncr fits/ });
+
+    const row = within(table)
+      .getAllByRole("row")
+      .find(
+        (candidate): candidate is HTMLTableRowElement =>
+          candidate.textContent?.includes("Objective weights") === true,
+      );
+    const nameCell = row?.cells[0];
+    expect(nameCell).toBeDefined();
+    expect(within(nameCell!).getByText("Objective weights")).toBeVisible();
+    expect(nameCell!.textContent).not.toContain("\u00b7");
   });
 
   it("carries a plain-language statement on every row, which is what builds trust", async () => {
@@ -168,7 +249,7 @@ describe("the bounded meter", () => {
     renderAt(SCREEN);
     await screen.findByRole("table", { name: /Every parameter syncr fits/ });
 
-    const meter = meterFor("Duration multiplier unlock progress");
+    const meter = meterFor("Duration multiplier unlock progress for Fitness");
     expect(meter).toHaveAttribute("aria-valuenow", "12");
     expect(meter).toHaveAttribute("aria-valuemax", "12");
     expect(meter.querySelectorAll(".meter__cell--empty")).toHaveLength(0);
