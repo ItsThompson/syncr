@@ -3220,7 +3220,7 @@ export interface components {
         };
         /**
          * DebtResponse
-         * @description What this habit's misses amount to under its policy. Derived, so also read-only.
+         * @description What this habit's misses amount to under its policy. Read-only.
          */
         DebtResponse: {
             /**
@@ -3235,12 +3235,12 @@ export interface components {
             forgivenAtCap: number;
             /**
              * Misses
-             * @description Confirmed skips the outcome log holds for this habit.
+             * @description Confirmed skips the outcome log holds for this habit, less the make-ups completed against them. Restated by the outcome write; not derivable over any route.
              */
             misses: number;
             /**
              * Outstanding
-             * @description Confirmed skips of this habit's occurrences, clamped to the cap, which the week assembler adds to a week as made-up occurrences. It falls only when the log stops recording an occurrence as missed, which is what correcting the day on Today does: performing a make-up does not currently reduce it. Always zero for forgive and for escalate, because only debt accumulates.
+             * @description Confirmed skips of this habit's occurrences, clamped to the cap, which the week assembler adds to a week as made-up occurrences. It falls when a completed make-up settles one of those skips, and it never falls because history aged out of any read: the count is restated on the habit row by every outcome write, so no window a reader takes can lower it. Always zero for forgive and for escalate, because only debt accumulates.
              */
             outstanding: number;
             /**
