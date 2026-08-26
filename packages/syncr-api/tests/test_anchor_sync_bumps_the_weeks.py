@@ -636,6 +636,41 @@ async def test_the_expansion_comes_from_the_tenants_types_rather_than_from_a_con
     assert with_a_lead.occupied_weeks == frozenset({PREVIOUS_WEEK, WEEK})
 
 
+async def test_a_partner_beyond_one_reach_but_within_the_widened_read_invalidates_the_week(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+) -> None:
+    """The second reach is on the writer's side as well, or the invalidation misses it.
+
+    `Exam` declares a 14-hour lead, so the read reaches 28 hours past the week's end. A commitment
+    starting 24 hours past that end casts nothing into the week, but the week's assembly loads it
+    all the same, because what its shadows collide with may live in the week. Its move therefore
+    has to invalidate the week too, and an envelope taken over one reach only would leave that
+    week's plan stale with every counter green.
+    """
+    await declare(sessions, tenant_id, EXAM)
+    await track(sessions, tenant_id, WEEK)
+
+    delta, _versions = await synced(
+        sessions,
+        tenant_id,
+        source,
+        a_read(
+            an_event(
+                title="Databases Exam",
+                # 24 hours past WEEK's end: inside the doubled reach (28 hours for `Exam`),
+                # outside a single one (14 hours).
+                start=MONDAY_0000 + timedelta(days=8),
+            )
+        ),
+    )
+
+    assert delta.created == 1
+    assert WEEK in delta.occupied_weeks
+    assert await version_of(sessions, tenant_id, WEEK) == FIRST_INPUT_VERSION + 1
+
+
 # --------------------------------------------------------------------------------
 # Every range is closed at both ends.
 # --------------------------------------------------------------------------------
