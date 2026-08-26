@@ -1,6 +1,6 @@
 """How much work one solve may do, and where a caller may ask it to stop.
 
-Two numbers and one predicate. The numbers are what keep a solve inside its two-second budget and
+Three numbers and one predicate. The numbers are what keep a solve inside its two-second budget and
 what make "the same input always consumes the same number of iterations" true; the predicate is
 what lets a worker stop a solve whose result nobody will read.
 
@@ -28,7 +28,9 @@ The window bound decides which windows are SCORED, not which are legal, and the 
 offered in puts a candidate's own preferred windows first. So a smaller bound produces a plan the
 objective likes less; it cannot produce one a rule refuses. The move bound is the same shape: the
 search accepts only a strict improvement, so stopping it early leaves a plan that is worse than the
-one it would have reached and better than the one it started from.
+one it would have reached and better than the one it started from. The rejection run is that bound
+read from the other end: it fires only after a stretch of refusals, so what it costs is at worst a
+late improvement, never a rule or a placement.
 
 ## Cancellation is an optimization and nothing else
 
@@ -66,6 +68,13 @@ MOVE_EVALUATIONS: Final = 200
 # question costs nothing measurable and a cancelled solve gives up inside a few milliseconds.
 CHECKPOINT_EVERY: Final = 50
 
+# How many moves the objective may refuse in a row before the search stops and returns the plan it
+# had, instead of spending the rest of its budget proving that nothing improves. Measured through
+# ``python -m tests.measure_solve yield``: the longest refusal run an accepted move sits behind is
+# 56 on the reference week, 91 on the dense and 38 on the saturated, so 120 keeps every acceptance
+# all three weeks make today while cutting the saturated week's tail from 161 iterations to 121.
+REJECTION_RUN: Final = 120
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SolveBudget:
@@ -73,6 +82,7 @@ class SolveBudget:
 
     scored_windows: int = SCORED_WINDOWS
     move_evaluations: int = MOVE_EVALUATIONS
+    rejection_run: int = REJECTION_RUN
     checkpoint_every: int = CHECKPOINT_EVERY
 
 
