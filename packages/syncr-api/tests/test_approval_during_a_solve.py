@@ -22,14 +22,12 @@ plan and the approved concession; and nothing proposes undoing the approval.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import pytest
 
 from syncr_api.approvals.injection import build_approval_service
-from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import Scope
@@ -39,7 +37,6 @@ from syncr_api.core.settings import (
     EnvSettings,
     build_service_settings,
 )
-from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.adjustments import WeekAdjustmentRepository
 from syncr_api.plans.authority import classify
 from syncr_api.plans.candidates import as_document
@@ -50,15 +47,11 @@ from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import SUCCEEDED, SUPERSEDED
 from syncr_api.solving.dispatch import SolveDispatch
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
-from syncr_api.tasks.repository import TaskRepository
-from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
 from syncr_domain.plan import AdjustmentKind
-from syncr_domain.tasks import Priority
-from syncr_domain.templates import WeekPattern
-from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_domain.weeks import IsoWeek
 from syncr_solver.inputs import WeekAdjustment
+from tests.live_minimums import AREA_FLOOR_HOURS, a_placeable_task, declare_the_minimum
 from tests.live_tenants import delete_tenant, seed_owner
 from tests.plan_documents import a_document
 
@@ -73,13 +66,11 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-LONDON = "Europe/London"
 WEEK = IsoWeek(2026, 7)
 # Wednesday morning of the week, so the week has a past and a future and the two solves have
 # somewhere to place work.
 NOW = datetime(2026, 2, 11, 9, 0, tzinfo=UTC)
 
-AREA_FLOOR_HOURS = Decimal(3)
 MINUTES_PER_HOUR = 60
 BREACH_MINUTES = 45
 
@@ -130,58 +121,6 @@ async def context(live_database_url: str) -> AsyncIterator[WorkerContext]:
     database = create_database(live_database_url)
     yield WorkerContext(settings=worker, database=database)
     await database.engine.dispose()
-
-
-async def declare_the_minimum(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
-) -> UUID:
-    """A home zone, one Area with a floor, a day shape, a weight set, and one task to place.
-
-    A third helper of this shape exists (the solve runner's and the maintainer's), and the task is
-    why this one is not either of them: without content the solver answers with an empty week, so
-    the follow-up solve would classify as nothing and the last of S30's four observations would be
-    asserting about a solve that adopted no plan.
-
-    Answers with the Area's identifier, because the concession this suite approves breaches its
-    floor and the assertion is a figure against it rather than the presence of a row.
-    """
-    async with sessions() as session, session.begin():
-        settings = SettingsRepository(session, tenant_id)
-        locked = await settings.lock(created_at=NOW)
-        await settings.write(
-            visible_hours=locked.visible_hours,
-            day_start=locked.day_start,
-            day_end=locked.day_end,
-            review_cadence=locked.review_cadence,
-            home_zone=LONDON,
-        )
-        area = await AreaRepository(session, tenant_id).create(
-            parent_id=None,
-            name="Career",
-            pigment_index=1,
-            budget_percent=Decimal(30),
-            floor_hours=AREA_FLOOR_HOURS,
-            created_at=NOW,
-        )
-        day_type = await DayTypeRepository(session, tenant_id).create(
-            name="Weekday", created_at=NOW
-        )
-        await WeekPatternRepository(session, tenant_id).replace(
-            WeekPattern(dict.fromkeys(Weekday, day_type.id))
-        )
-        await TaskRepository(session, tenant_id).create(
-            area_id=area.id,
-            project_id=None,
-            title="Interview preparation",
-            estimate_minutes=120,
-            deadline=None,
-            priority=Priority.NORMAL,
-            min_chunk_minutes=30,
-            splittable=True,
-            created_at=NOW,
-        )
-        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
-        return area.id
 
 
 async def seed_a_tradeoff_proposal(
@@ -279,7 +218,9 @@ class TestApprovingDuringARunningSolve:
         record is what the user assented to rather than a plan produced against the week as it was
         before they did.
         """
-        area_id = await declare_the_minimum(sessions, owner.tenant_id)
+        area_id = (
+            await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        ).area_id
         await seed_a_tradeoff_proposal(sessions, owner.tenant_id, area_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
@@ -323,7 +264,9 @@ class TestApprovingDuringARunningSolve:
         Nothing proposes undoing the approval: what the follow-up produces lands in space the
         approved plan left empty, so the authority rule applies it and the slot stays empty.
         """
-        area_id = await declare_the_minimum(sessions, owner.tenant_id)
+        area_id = (
+            await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        ).area_id
         conceded = await seed_a_tradeoff_proposal(sessions, owner.tenant_id, area_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
