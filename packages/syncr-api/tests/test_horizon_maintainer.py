@@ -435,6 +435,63 @@ async def test_the_weeks_input_version_is_bumped_because_the_week_is_now_tracked
 # --------------------------------------------------------------------------------
 
 
+async def test_an_answered_emptiness_is_not_asked_about_again(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """A week whose solve placed nothing is settled, not re-asked every cadence forever.
+
+    A minimum tenant has inputs but no content, so the solve adopts no plan and the week keeps no
+    revision. Without the settled guard the pass would bump and ask again on every tick for as long
+    as the tenant declares nothing. The moment a mutation moves the version, asking resumes -- which
+    is what the third pass here drives through a real Areas write.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+
+    await a_pass(context, clock)
+    clock.advance(DEBOUNCE)
+    assert await a_solve_tick(context, clock) == 2
+
+    async with sessions() as session, session.begin():
+        tally = await _maintainer(session, owner.tenant_id, clock).plan(THIS_WEEK, now=NOW)
+    assert tally == HorizonPass(weeks=1, settled=1)
+
+    await a_pass(context, clock)
+
+    asked = await solves_of(sessions, owner.tenant_id)
+    assert len(asked) == 2, "the settled week was asked about again"
+    async with sessions() as session:
+        versions = WeekInputVersionRepository(session, owner.tenant_id)
+        assert await versions.current(THIS_WEEK) == 1, "a settled week was bumped again"
+
+    # Content arrives, the version moves, and the next pass asks afresh.
+    async with sessions() as session, session.begin():
+        areas = AreaRepository(session, owner.tenant_id)
+        (area,) = [one for one in await areas.list_all() if one.name == "Career"]
+        await TaskRepository(session, owner.tenant_id).create(
+            area_id=area.id,
+            project_id=None,
+            title="Interview preparation",
+            estimate_minutes=120,
+            deadline=None,
+            priority=Priority.NORMAL,
+            min_chunk_minutes=30,
+            splittable=True,
+            created_at=NOW,
+        )
+    # The bump the task service would have performed inside its own transaction.
+    async with sessions() as session, session.begin():
+        await WeekInputVersionRepository(session, owner.tenant_id).bump(THIS_WEEK, at=NOW)
+    clock.advance(MAINTAINER_INTERVAL)
+    await a_pass(context, clock)
+
+    asked = await solves_of(sessions, owner.tenant_id)
+    assert len(asked) == 3
+    assert asked[-1].iso_week == str(THIS_WEEK)
+
+
 async def test_a_second_pass_creates_no_operation_and_appends_no_revision(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
