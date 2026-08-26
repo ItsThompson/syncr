@@ -222,6 +222,12 @@ def test_two_parts_of_one_project_sharing_a_deadline_are_one_demand_and_both_at_
     (demand,) = inputs.deadline_demands
     assert demand.remaining_minutes == 2 * ESTIMATE_MINUTES_MAX
     assert demand.labels == (ANOTHER_TITLE, A_TITLE)
+    # The grouping keeps the per-task figures the sum was taken over, so a stated recovery can
+    # name its contributors exactly: one pair per task, and the pairs add to the total.
+    assert demand.contributors == tuple(
+        sorted(((thesis.id, ESTIMATE_MINUTES_MAX), (appendix.id, ESTIMATE_MINUTES_MAX)))
+    )
+    assert sum(minutes for _, minutes in demand.contributors) == demand.remaining_minutes
     (gap,) = verdict.shortfalls
     assert gap.minutes == ESTIMATE_MINUTES_MAX
     assert gap.against == (ANOTHER_TITLE, A_TITLE)

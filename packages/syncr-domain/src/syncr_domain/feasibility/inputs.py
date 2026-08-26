@@ -70,7 +70,7 @@ from syncr_domain.intervals import IntervalSet, as_instant
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from syncr_domain.identifiers import AreaId
+    from syncr_domain.identifiers import AreaId, TaskId
     from syncr_domain.intervals import Instant, Interval
 
 
@@ -142,20 +142,44 @@ class DeadlineDemand:
     **This is the probe's demand.** The solver reads its own remaining-work figure, which nets a
     narrower set. Several tasks sharing one deadline in one Area are one demand, because they
     compete for the same capacity and two demands would each be checked against the whole of it.
+
+    | Field | The question it answers |
+    |---|---|
+    | `deadline` | before what instant must the work fit? the deadline check reads it |
+    | `remaining_minutes` | how much work is outstanding? the deadline check reads it |
+    | `area_id` | whose capacity does the work compete for? the deadline check reads it |
+    | `labels` | which tasks make it up, by name? what a shortfall renders from them |
+    | `contributors` | which task owes how much of it? **no check reads it** |
     """
 
     deadline: Instant
     remaining_minutes: int
     area_id: AreaId
     labels: tuple[str, ...]
+    # Per-task ``(task_id, remaining_minutes)`` pairs, projected verbatim from the producer's
+    # grouping: the identities and figures the sum was taken over, kept so a stated recovery can
+    # name its contributors exactly rather than only through their titles. No check reads them,
+    # so they may not widen any refusal; a demand that states them states ones that add up to
+    # ``remaining_minutes``, because a pair set disagreeing with the total would let a recovery
+    # be sized against a figure nothing owes.
+    contributors: tuple[tuple[TaskId, int], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "deadline", as_instant(self.deadline))
         object.__setattr__(self, "labels", tuple(self.labels))
+        object.__setattr__(self, "contributors", tuple(self.contributors))
         if self.remaining_minutes < 0:
             raise FeasibilityError(
                 f"a demand for {self.remaining_minutes} minutes is not work outstanding: a task "
                 "whose placements already cover its estimate demands nothing, which is zero"
+            )
+        stated = sum(minutes for _, minutes in self.contributors)
+        if self.contributors and stated != self.remaining_minutes:
+            raise FeasibilityError(
+                f"a demand of {self.remaining_minutes} minutes names pairs adding to {stated}: "
+                "the pairs are the tasks the total was summed over, so stating them is stating "
+                "the same figure twice, and two figures for one demand state a recovery exactly "
+                "against neither"
             )
         if not self.labels or not all(label.strip() for label in self.labels):
             raise FeasibilityError(

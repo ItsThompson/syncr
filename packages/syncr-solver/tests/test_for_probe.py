@@ -267,13 +267,16 @@ def test_the_projection_names_a_source_for_every_field_and_reads_nothing_else() 
 
 def test_a_demand_is_carried_forward_verbatim() -> None:
     # Identity rather than equality: the netted demand is the assembler's figure, and the one
-    # mistake this projection must not make is deriving it again.
+    # mistake this projection must not make is deriving it again. The demand states its per-task
+    # pairs so the identity covers a populated contributor set, which no check reads and so the
+    # projection must neither drop nor recompute.
     demands = (
         DeadlineDemand(
             deadline=at(9, day=4),
             remaining_minutes=60,
             area_id=FITNESS,
             labels=("F&F Past Papers",),
+            contributors=((uuid4(), 60),),
         ),
     )
 

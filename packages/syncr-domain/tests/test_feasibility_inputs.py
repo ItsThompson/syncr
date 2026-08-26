@@ -14,6 +14,7 @@ import importlib.util
 import re
 from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -196,6 +197,44 @@ def test_a_demand_naming_no_task_is_refused() -> None:
 def test_a_demand_for_less_than_nothing_is_refused() -> None:
     with pytest.raises(FeasibilityError):
         DeadlineDemand(deadline=NOW, remaining_minutes=-1, area_id=CAREER, labels=("Leetcode",))
+
+
+def test_a_demand_whose_pairs_do_not_add_to_its_total_is_refused() -> None:
+    # The pairs are the tasks the total was summed over, so stating them states the same figure
+    # twice. Two figures for one demand would let a stated recovery be sized against whichever
+    # one the reader reached for.
+    with pytest.raises(FeasibilityError):
+        DeadlineDemand(
+            deadline=NOW,
+            remaining_minutes=90,
+            area_id=CAREER,
+            labels=("Leetcode", "Review"),
+            contributors=((uuid4(), 60), (uuid4(), 60)),
+        )
+
+
+def test_a_demand_stating_pairs_that_add_up_carries_them_verbatim() -> None:
+    pairs = ((uuid4(), 40), (uuid4(), 50))
+
+    demand = DeadlineDemand(
+        deadline=NOW,
+        remaining_minutes=90,
+        area_id=CAREER,
+        labels=("Leetcode", "Review"),
+        contributors=pairs,
+    )
+
+    assert demand.contributors == pairs
+
+
+def test_a_demand_stating_no_pairs_is_not_refused_for_their_absence() -> None:
+    # A document written before the field existed states no key for it, and a literal-stated case
+    # in the probe suites names none: absence is what both of those mean, not a broken sum.
+    carried = DeadlineDemand(
+        deadline=NOW, remaining_minutes=60, area_id=CAREER, labels=("Leetcode",)
+    )
+
+    assert carried.contributors == ()
 
 
 def test_a_demand_of_no_minutes_is_carried_and_produces_nothing() -> None:

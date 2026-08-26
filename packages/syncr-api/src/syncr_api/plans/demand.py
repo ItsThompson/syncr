@@ -138,6 +138,9 @@ def deadline_demands(demands: Sequence[TaskDemand]) -> tuple[DeadlineDemand, ...
     One demand per pair, because the probe compares a demand against the capacity that Area has
     before that instant: two tasks due at one moment in one Area compete for the same capacity,
     and two demands would each be checked against the whole of it.
+
+    The per-task pairs travel with the sum, so a stated recovery can name its contributors exactly:
+    the identities and minutes the total was taken over, kept rather than collapsed into titles.
     """
     grouped: dict[tuple[Instant, AreaId], list[TaskDemand]] = {}
     for demand in demands:
@@ -148,6 +151,9 @@ def deadline_demands(demands: Sequence[TaskDemand]) -> tuple[DeadlineDemand, ...
             area_id=area_id,
             remaining_minutes=sum(demand.remaining_minutes for demand in members),
             labels=tuple(sorted(demand.title for demand in members)),
+            contributors=tuple(
+                sorted((demand.task_id, demand.remaining_minutes) for demand in members)
+            ),
         )
         for (deadline, area_id), members in sorted(grouped.items(), key=_demand_order)
     )
