@@ -84,4 +84,23 @@ describe("TimeRangeInput", () => {
     expect(screen.getByLabelText("Moved to, from")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Moved to, to")).toHaveAttribute("aria-invalid", "true");
   });
+
+  /* The handler sits on each end's input, the only place a bare key can be heard while a reader is typing
+     into it: a document binding yields to a field under the keyboard module's typing rule. */
+  it("hears a key pressed in either end through a forwarded key handler", () => {
+    const onKeyDown = vi.fn<(event: { key: string }) => void>();
+    render(
+      <TimeRangeInput
+        value={{ start: "13:00", end: "14:30" }}
+        onValueChange={vi.fn<(next: TimeRange) => void>()}
+        label="Moved to"
+        onKeyDown={onKeyDown}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByLabelText("Moved to, from"), { key: "Escape" });
+    fireEvent.keyDown(screen.getByLabelText("Moved to, to"), { key: "Escape" });
+
+    expect(onKeyDown).toHaveBeenCalledTimes(2);
+  });
 });

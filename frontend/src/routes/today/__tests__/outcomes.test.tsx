@@ -404,6 +404,27 @@ describe("the minutes a block really took", () => {
     );
   });
 
+  /* ESCAPE CANCELS FROM THE FIELD ITSELF, through the handler the stepper forwards onto its input: a bare
+     Escape yields to a field a reader is typing into, so no document binding could hear it here, and the
+     cancel control is what Tab used to have to reach. */
+  it("cancels on Escape inside the field and puts focus back on the row", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    const row = await focusRow(GYM);
+    const user = userEvent.setup();
+
+    await user.keyboard("{Shift>}X{/Shift}");
+    const field = await screen.findByLabelText(`actual minutes for ${GYM}`);
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByLabelText(`actual minutes for ${GYM}`)).not.toBeInTheDocument();
+    expect(sent.bodies).toEqual([]);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(row).getByRole("button", { name: /skip/ })),
+    );
+  });
+
   /* The common case in two keystrokes: open the stepper, step down once, record. */
   it("records the figure the stepper holds", async () => {
     await renderToday(onHostToday(buildDay()));
@@ -488,6 +509,26 @@ describe("the interval a block really ran in", () => {
     expect(start).toHaveValue("07:00");
     expect(screen.getByLabelText(`when ${GYM} really happened, to`)).toHaveValue("08:00");
     await waitFor(() => expect(document.activeElement).toBe(start));
+  });
+
+  /* Escape cancels from either end, through the handler the range control forwards onto its inputs, for the
+     reason the minutes form states: a bare Escape is heard only by the field a reader is typing into. */
+  it("cancels on Escape inside an end and puts focus back on the row", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    const row = await focusRow(GYM);
+    const user = userEvent.setup();
+
+    await user.keyboard("m");
+    const start = await screen.findByLabelText(`when ${GYM} really happened, from`);
+    await waitFor(() => expect(document.activeElement).toBe(start));
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByLabelText(`when ${GYM} really happened, from`)).not.toBeInTheDocument();
+    expect(sent.bodies).toEqual([]);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(row).getByRole("button", { name: /skip/ })),
+    );
   });
 
   it("records the interval as instants in the day's own zone, and creates no pin", async () => {

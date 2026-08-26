@@ -97,4 +97,16 @@ describe("TimeInput", () => {
 
     expect(screen.getByLabelText("Start")).toBeInTheDocument();
   });
+
+  /* The handler sits on the input, the only place a bare key can be heard while a reader is typing into it:
+     a document binding yields to a field under the keyboard module's typing rule. */
+  it("hears a key pressed inside the field through a forwarded key handler", () => {
+    const onKeyDown = vi.fn<(event: { key: string }) => void>();
+    const { container } = renderTime({ onKeyDown });
+
+    fireEvent.keyDown(timeField(container), { key: "Escape" });
+
+    expect(onKeyDown).toHaveBeenCalledTimes(1);
+    expect(onKeyDown.mock.calls[0][0].key).toBe("Escape");
+  });
 });
