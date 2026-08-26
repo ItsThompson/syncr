@@ -13,10 +13,9 @@ pin(week, blockId, start)
   │     ├── refuse a placement outside the assembled span
   │     ├── pinPrice(produced, block, accepted)       the delta, measured in that frame
   │     ├── weekVersion.bump()                     -> the version the response reports
-  │     ├── pins.hold(blockId, accepted, superseded)  the row, not yet priced
+  │     ├── pins.hold(blockId, accepted, superseded)  the row, priced in that frame
   │     ├── assembler.assemble(week, now)             POST-PIN frame. Reads the pin back
   │     ├── probe(post-pin inputs)                    provenance = probe
-  │     ├── pins.price(delta)                         the pin's second statement
   │     ├── verdicts.record(week, verdict)            only if it TRANSITIONED
   │     ├── editEvents.append(...)                    E1: the pair, or neither
   │     └── coordinator.request_solve(week, version, session_mode_active)
@@ -279,15 +278,17 @@ class PinService:
                 binding=block.binding,
                 interval=accepted,
                 superseded_placement=block.interval,
+                objective_delta=price.objective_delta,
                 weight_set_version=stored.version,
                 created_at=now,
             )
         )
 
-        # POST-PIN ASSEMBLY: the frame the verdict is computed in.
+        # POST-PIN ASSEMBLY: the frame the verdict is computed in. It reads the pin row back
+        # complete: one statement wrote it, so no reader inside this transaction can observe a pin
+        # without its cost.
         post_pin_inputs = await self._assembler.assemble(week, now)
         verdict = self._probe.verdict_for(post_pin_inputs)
-        priced = await self._pins.price(record.id, objective_delta=price.objective_delta)
         transition = await self._verdicts.record(week, verdict)
         event = await self._edits.append(
             EditToRecord(
@@ -314,7 +315,7 @@ class PinService:
         _log.info(
             "pins.pin.held",
             iso_week=str(week),
-            pin_id=str(priced.id),
+            pin_id=str(record.id),
             edit_event_id=str(event),
             block_id=block.id,
             input_version=version,
@@ -326,7 +327,7 @@ class PinService:
             verdict_event_id=None if transition is None else str(transition.id),
         )
         return PinnedWeek(
-            pin=priced,
+            pin=record,
             verdict=verdict,
             operation=await self._coordinator.request_solve(
                 week, version, session_mode_active=self._session_mode_active

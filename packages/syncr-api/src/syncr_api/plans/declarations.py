@@ -42,8 +42,9 @@ class PinToHold:
     record holds it. The two are equal for a pin that states "keep this here", which is what the
     ``p`` toggle and a partial rejection of a proposed move both are.
 
-    There is no objective delta here, and that is the shape of the write rather than an omission:
-    one statement holds the row and a second states its cost, inside one transaction.
+    ``objective_delta`` travels beside them because the caller measures it in the frame it takes
+    BEFORE this row is written, so the row is complete at insert: no reader inside the transaction
+    can observe a pin without its cost.
     """
 
     iso_week: IsoWeek
@@ -51,6 +52,7 @@ class PinToHold:
     binding: BindingRef
     interval: Interval
     superseded_placement: Interval
+    objective_delta: float
     weight_set_version: int
     created_at: datetime
 

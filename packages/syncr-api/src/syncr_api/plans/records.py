@@ -117,9 +117,8 @@ class PinRecord:
 
     Neither half of the counterfactual is optional once the pin is complete: a pin states the
     placement it replaced and what replacing it cost, so the reason panel renders both from the pin
-    rather than by walking the edit log. ``objective_delta`` is nullable here for one statement's
-    width: the row is held by one statement and priced by a second inside one transaction, so a
-    read between the two sees no cost yet.
+    rather than by walking the edit log. ``objective_delta`` stays nullable here because the
+    column does: every writer states the cost, so the nullability describes stored history only.
     """
 
     id: PinId

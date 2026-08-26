@@ -8,7 +8,7 @@ section 07 are one rule once the pair is read together:
 | Rule | What holds it |
 |---|---|
 | the record of a pin persists permanently | the edit event, which nothing here can reach |
-| every pin persists the placement it superseded | ``NOT NULL``, and :meth:`price` for the cost |
+| every pin persists the placement it superseded | ``NOT NULL``, and the delta the hold carries |
 | the objective delta is stored, never recomputed | no write here recomputes one |
 | releasing a pin retains its record as training data | :meth:`release`, whose event survives it |
 
@@ -23,12 +23,12 @@ rendered block, so a block id is the only handle a request carries; it is also a
 and the binding, so per-week uniqueness follows from it and the binding travels beside it for the
 readers that need an identity they can compare across weeks.
 
-**A pin is written in two statements, and the second states its cost.** :meth:`hold` writes the row
-and :meth:`price` writes the delta, both in the caller's transaction, so nothing outside it reads a
-pin without one. The delta is a difference of two objective evaluations over one assembly of the
-week, and the caller measures it in the assembly it takes BEFORE this row is written: what a pin
-cost is a fact about the state the user chose in, and a frame that already counts the pin cannot
-express it. So the caller holds the figure before it holds the row.
+**A pin is written complete in one statement.** :meth:`hold` writes the row with its cost already
+on it, in the caller's transaction. The delta is a difference of two objective evaluations over one
+assembly of the week, and the caller measures it in the assembly it takes BEFORE this row is
+written: what a pin cost is a fact about the state the user chose in, and a frame that already
+counts the pin cannot express it. So the caller holds the figure before it holds the row, and no
+reader inside the transaction can observe a pin without one.
 
 **Nothing here reads a clock or mints an interval.** Both instants and the created instant arrive
 from the caller, so a pin written while reproducing a past state is reproducible.
@@ -88,29 +88,11 @@ class PinRepository(TenantScopedRepository):
                     "ends_at": pin.interval.end,
                     "superseded_starts_at": pin.superseded_placement.start,
                     "superseded_ends_at": pin.superseded_placement.end,
-                    "objective_delta": None,
+                    "objective_delta": pin.objective_delta,
                     "weight_set_version": pin.weight_set_version,
                     "created_at": pin.created_at,
                 },
             )
-            .returning(Pin)
-        )
-        return _as_record(written.one())
-
-    async def price(self, pin_id: PinId, *, objective_delta: float) -> PinRecord:
-        """State what this pin's placement cost, which is what makes the row complete.
-
-        Separate from :meth:`hold` and in the same transaction as it, so the cost a pin stores is a
-        property of what commits. **The separation is vestigial**: the caller knows the delta
-        before it holds the row, so folding this into the insert would store the cost just as well
-        and would close the window in which a row exists without its cost. The row is returned
-        rather than the caller reusing what ``hold`` answered: a record carrying a null cost is one
-        nothing should read twice.
-        """
-        written = await self._session.scalars(
-            self.scoped_update(Pin)
-            .where(Pin.id == pin_id)
-            .values(objective_delta=objective_delta)
             .returning(Pin)
         )
         return _as_record(written.one())
@@ -189,7 +171,7 @@ class PinRepository(TenantScopedRepository):
             "ends_at": pin.interval.end,
             "superseded_starts_at": pin.superseded_placement.start,
             "superseded_ends_at": pin.superseded_placement.end,
-            "objective_delta": None,
+            "objective_delta": pin.objective_delta,
             "weight_set_version": pin.weight_set_version,
             "created_at": pin.created_at,
         }

@@ -17,7 +17,7 @@ modules stale once already, and an index a reader cannot trust is worse than non
 | ``adoption.py`` | the writes a classification names: the live plan, the slot, or nothing |
 | ``versions.py`` | the input-version counter and the conditional-write guard |
 | ``adjustments.py`` | approved tradeoff concessions, one per kind and target |
-| ``pins.py`` | ``PinRepository``: the live constraint a pin is, held, priced and released |
+| ``pins.py`` | ``PinRepository``: the live constraint a pin is, held and released |
 | ``edits.py`` | ``EditEventRepository``: the training corpus, appended and never pruned |
 | ``edit_context.py`` | the feature snapshot one edit carries, and what makes it a feature vector |
 | ``declarations.py`` | what a caller states when it writes a pin, its event, or a transition |
