@@ -2670,10 +2670,10 @@ export interface components {
             kind: "bound";
             /** Selected */
             selected: string;
-            /** @description How a habit's content was chosen, or what fixed a derived block outright. */
+            /** @description How a habit's content was chosen, what fixed a derived block outright, or a placement the solver chose. */
             source: components["schemas"]["BoundSource"];
         };
-        BoundSource: components["schemas"]["BindingSource"] | components["schemas"]["DerivationSource"];
+        BoundSource: components["schemas"]["BindingSource"] | components["schemas"]["DerivationSource"] | components["schemas"]["PlacedSource"];
         /**
          * BudgetApplyRequest
          * @description The shares to declare, whether they are the proposal's own or adjusted ones.
@@ -4281,6 +4281,17 @@ export interface components {
             /** @description The week's verdict as of this edit, from the capacity probe. Its provenance says so: arithmetic proves infeasibility and never feasibility. */
             verdict: components["schemas"]["VerdictResponse"];
         };
+        /**
+         * PlacedSource
+         * @description A placement the solver chose outright.
+         *
+         *     Read by the ``bound`` clause for a task the search placed itself. A habit occurrence whose
+         *     ``queue`` binding drew that same task keeps :class:`~syncr_domain.habits.BindingSource`'s
+         *     member, which names where the occurrence's CONTENT came from; this arm names a placement
+         *     nobody chose but the solver, so the two do not share a word on the wire.
+         * @enum {string}
+         */
+        PlacedSource: "solver";
         /** @enum {string} */
         PlanCurrency: "current" | "solving" | "stale";
         /**

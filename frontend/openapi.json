@@ -1696,7 +1696,7 @@
           },
           "source": {
             "$ref": "#/components/schemas/BoundSource",
-            "description": "How a habit's content was chosen, or what fixed a derived block outright."
+            "description": "How a habit's content was chosen, what fixed a derived block outright, or a placement the solver chose."
           }
         },
         "required": [
@@ -1714,6 +1714,9 @@
           },
           {
             "$ref": "#/components/schemas/DerivationSource"
+          },
+          {
+            "$ref": "#/components/schemas/PlacedSource"
           }
         ]
       },
@@ -4802,6 +4805,14 @@
         ],
         "title": "PinnedResponse",
         "type": "object"
+      },
+      "PlacedSource": {
+        "description": "A placement the solver chose outright.\n\nRead by the ``bound`` clause for a task the search placed itself. A habit occurrence whose\n``queue`` binding drew that same task keeps :class:`~syncr_domain.habits.BindingSource`'s\nmember, which names where the occurrence's CONTENT came from; this arm names a placement\nnobody chose but the solver, so the two do not share a word on the wire.",
+        "enum": [
+          "solver"
+        ],
+        "title": "PlacedSource",
+        "type": "string"
       },
       "PlanCurrency": {
         "enum": [
