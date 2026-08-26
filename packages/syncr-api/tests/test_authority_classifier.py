@@ -536,6 +536,29 @@ class TestWhatCollides:
         assert len(classification.proposal_diff.added) == 1
         assert classification.auto_applicable == ()
 
+    def test_a_conflict_over_a_begun_block_leaves_the_other_two_classes_alone(self) -> None:
+        # Which blocks are askable decides only the conflicts class: the fill beside it still
+        # fills, and a future displacing commitment still waits for assent.
+        begun = a_block_holding(GYM, between(9, 10))
+        planned = a_block_holding(LEETCODE, between(11, 12))
+        displacing = a_block_holding(BindingRef.for_anchor(uuid4()), between(11.5, 12.5))
+        filling = a_block_holding(_a_habit(0), between(14, 15))
+        live = a_week(begun, planned)
+        candidate = a_week(
+            begun,
+            planned,
+            a_block_holding(STANDUP, between(9, 10.5)),
+            displacing,
+            filling,
+        )
+
+        classification = classify(live, candidate, now=at(9.5))
+
+        assert [conflict.binding for conflict in classification.conflicts] == [GYM, LEETCODE]
+        assert classification.conflicts[0].overlap == between(9, 10)
+        assert [change.after for change in classification.auto_applicable] == [between(14, 15)]
+        assert [change.block_id for change in classification.proposal_diff.added] == [displacing.id]
+
     def test_a_commitment_over_another_commitment_is_not_a_conflict(self) -> None:
         other = BindingRef.for_anchor(uuid4())
         live = a_week(a_block_holding(STANDUP, between(9, 10)))
@@ -596,7 +619,20 @@ class TestWhatCollides:
             a_block_holding(GYM, between(16, 17)).id
         ]
 
-    def test_nothing_collides_with_a_block_that_has_started(self) -> None:
+    def test_nothing_collides_with_a_block_wholly_in_the_past(self) -> None:
+        live = a_week(a_block_holding(GYM, between(9, 12)))
+
+        found = detected_conflicts(
+            live,
+            anchors=(Anchor(anchor_id=INTERVIEW, interval=between(11, 12), title="Standup"),),
+            now=at(12),
+        )
+
+        assert found == ()
+
+    def test_a_commitment_over_a_block_that_has_begun_but_not_ended_still_collides(self) -> None:
+        # The narrowing's other half: the block's end is still ahead of ``now``, so an answer can
+        # still act on it and the collision raises like any other.
         live = a_week(a_block_holding(GYM, between(9, 12)))
 
         found = detected_conflicts(
@@ -605,7 +641,9 @@ class TestWhatCollides:
             now=at(10),
         )
 
-        assert found == ()
+        assert [conflict.block_id for conflict in found] == [
+            a_block_holding(GYM, between(9, 12)).id
+        ]
 
     def test_a_week_with_no_live_plan_collides_with_nothing(self) -> None:
         found = detected_conflicts(

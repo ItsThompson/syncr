@@ -34,11 +34,11 @@ the buffer's original span while the pin holds the same content somewhere else, 
 block at two placements rather than two blocks colliding, so the pair is exempt by its shared
 identity.
 
-**Anything over a block that has started.** What a resolution can do to a block is move it, free it
-by removing the pin holding it, or accept the overlap, and the first two cannot change a placement
-the week has already reached: the solver may not move such a block. Raising the one notification
-this product sends for a collision whose answers mostly cannot be applied is how a user learns to
-mute the channel. **The resolution path imposes no matching refusal**, and that asymmetry is
+**Anything over a block wholly in the past.** What a resolution can do to a block is move it, free
+it by removing the pin holding it, or accept the overlap, and none of that can reach a block whose
+every minute is behind ``now``. A block that has merely begun is different: its end is still ahead
+of the reading instant, so a collision with it names something an answer can still act on, and it
+raises like any other. **The resolution path imposes no matching refusal**, and that asymmetry is
 deliberate rather than an oversight: it answers a conflict raised while the block was still ahead of
 the week, by which time the two answers that still work are the useful ones.
 
@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_domain.identity import Origin, block_id
-from syncr_domain.intervals import has_started
+from syncr_domain.intervals import has_ended
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -128,17 +128,20 @@ def _overlaps(
     derived: Sequence[ShadowBlock],
     now: Instant,
 ) -> Iterator[DetectedConflict]:
-    """Both classes of overlap, over the blocks the week may still be asked about."""
-    revisable = tuple(block for block in live.blocks if not has_started(block.interval, now))
+    """Both classes of overlap, over the blocks a resolution could still act on."""
+    # A block wholly in the past asks a question no answer could act on: nothing a resolution does
+    # can move it or free it after its every minute is spent. A block that has merely begun still
+    # holds minutes ahead of ``now``, so a commitment landing on it is news worth raising.
+    askable = tuple(block for block in live.blocks if not has_ended(block.interval, now))
     for anchor in anchors:
-        for block in revisable:
+        for block in askable:
             if block.origin is Origin.ANCHOR:
                 continue
             found = _conflict(anchor.anchor_id, block, anchor.interval)
             if found is not None:
                 yield found
     for buffer in derived:
-        for block in revisable:
+        for block in askable:
             if not block.pinned or block.binding == buffer.binding:
                 continue
             found = _conflict(buffer.binding.entity_id, block, buffer.interval)

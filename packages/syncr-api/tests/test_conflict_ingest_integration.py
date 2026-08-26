@@ -13,7 +13,9 @@ Five groups.
 block, attributed to the commitment rather than to the leg, through a real anchor type.
 
 **What is not raised**: a week with no live plan, a week outside the projection horizon, a
-commitment that lands in empty space, and a commitment over a block that has already started.
+commitment that lands in empty space, and a commitment over a block wholly in the past. A
+block that has merely begun is not in that list: its end is still ahead, so a commitment
+landing on it raises, and the notice it feeds is published on the detecting transaction.
 
 **Raising is idempotent**, so the fifteen-minute poll does not ask the same question every tick.
 
@@ -22,6 +24,7 @@ commitment that lands in empty space, and a commitment over a block that has alr
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -36,6 +39,9 @@ from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.conflicts.ingest import IngestConflicts
 from syncr_api.core.db import create_db_engine, create_sessionmaker
+from syncr_api.events.channel import listening
+from syncr_api.events.config import CONFLICT
+from syncr_api.events.hub import EventHub
 from syncr_api.plans.conflicts import PlanConflictRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
@@ -71,12 +77,21 @@ LEETCODE = BindingRef.for_task(uuid4())
 COMMITMENT = between(16, 16.75)
 OUTBOUND_LEG = between(15, 15.5)
 
+# How long the notification waits before a missing delivery fails the assertion rather than
+# hanging the suite. Delivery is a round trip through Postgres' own protocol reader.
+DELIVERY_TIMEOUT = 5.0
+
 
 @pytest.fixture
 async def engine(live_database_url: str) -> AsyncIterator[AsyncEngine]:
     live = create_db_engine(live_database_url)
     yield live
     await live.dispose()
+
+
+@pytest.fixture
+def hub() -> EventHub:
+    return EventHub()
 
 
 @pytest.fixture
@@ -256,16 +271,38 @@ async def test_a_week_with_no_live_plan_raises_nothing(
     assert await detect(sessions, owner.tenant_id) == ()
 
 
-async def test_a_commitment_over_a_block_that_has_started_raises_nothing(
+async def test_a_commitment_over_a_block_that_has_begun_but_not_ended_raises_and_notifies(
+    engine: AsyncEngine,
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    hub: EventHub,
+) -> None:
+    # The block still holds minutes ahead of the reading instant, so an answer can still move it
+    # or free it by removing the pin holding it: this is the collision the notice exists for.
+    await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(16, 17)))
+    anchor_id = await add_commitment(sessions, owner.tenant_id)
+
+    async with listening(engine, hub), hub.subscribe(owner.tenant_id) as queue:
+        await asyncio.sleep(0.1)
+        (raised,) = await detect(sessions, owner.tenant_id, now=between(16, 17).start)
+        delivered = await asyncio.wait_for(queue.get(), timeout=DELIVERY_TIMEOUT)
+
+    assert raised.anchor_id == anchor_id
+    assert raised.binding == GYM
+    assert raised.overlap == COMMITMENT
+    assert delivered.type == CONFLICT
+
+
+async def test_a_commitment_over_a_block_wholly_in_the_past_raises_nothing(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord
 ) -> None:
-    # A resolution moves the block or removes the pin holding it, and neither is possible once the
-    # week has reached it, so raising the only notification this product sends would ask a question
-    # no answer could act on.
+    # Every minute of the block is behind the reading instant, so no answer could move it or free
+    # it, and raising the only notification this product sends would ask a question no answer
+    # could act on.
     await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(16, 17)))
     await add_commitment(sessions, owner.tenant_id)
 
-    assert await detect(sessions, owner.tenant_id, now=between(16, 17).start) == ()
+    assert await detect(sessions, owner.tenant_id, now=between(16, 17).end) == ()
 
 
 async def test_a_week_outside_the_projection_horizon_is_not_read(
