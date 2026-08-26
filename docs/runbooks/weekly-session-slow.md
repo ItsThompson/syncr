@@ -71,7 +71,9 @@ The review half's reads, all registered under their own names on the read histog
 `BlockOutcomeRepository.for_span` and `OffPlanPeriodRepository.for_span` (one statement each for
 the whole quarter), and the seven single-statement readers `reviews/session_sources.py` composes.
 
-## Still to be written
+## A known gap
 
-- A decomposition of the payload into its halves. Today one HTTP series covers both, so "the week
-  view got slower" and "the review half got slower" are separated by inference, not by a panel.
+One HTTP series covers both halves of the payload, so "the week view got slower" and "the review
+half got slower" are told apart by inference, not by a panel: read the comparison table above
+against `assembly-slow.md`. The budget is stated over the whole payload, and stays stated that way
+until a decomposition panel exists; nothing in this file promises one today.
