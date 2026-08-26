@@ -65,6 +65,52 @@ function navigationEntries(screens: readonly Screen[]): KeyBindingEntry[] {
   }));
 }
 
+/* THE WEEK SCREEN'S OWN ROWS, IN THE ORDER THE GRID'S GESTURES READ: move within a column, move across
+ * columns, move the whole view, reshape it, act on the selection. Each names what its handler really does,
+ * including what it refuses: `Enter` opens the panel on the selection and does nothing without one, and
+ * `Shift+↑`/`Shift+↓` pin fifteen minutes either way, which is the drag's own gesture spelled on keys.
+ *
+ * `z` CYCLES THE LEVELS THE DISPLAY OFFERS rather than a fixed ladder named here: the grid brings a proposed
+ * level inside the range its own measurement offers, so the row promises the wrap and the availability and
+ * leaves the count to the display. */
+const WEEK_ENTRIES: readonly KeyBindingEntry[] = [
+  { keys: "j", action: "Select the next block down the column", scope: "/week" },
+  { keys: "k", action: "Select the previous block up the column", scope: "/week" },
+  { keys: "l", action: "Select the next day column", scope: "/week" },
+  { keys: "h", action: "Select the previous day column", scope: "/week" },
+  { keys: "[", action: "Go to the previous week", scope: "/week" },
+  { keys: "]", action: "Go to the next week", scope: "/week" },
+  { keys: "T", action: "Go to the week holding today", scope: "/week" },
+  {
+    keys: "z",
+    action: "Cycle visible hours through the available levels, wrapping",
+    scope: "/week",
+  },
+  { keys: "p", action: "Pin or unpin the selected block", scope: "/week" },
+  { keys: "Enter", action: "Open the detail panel on the selected block", scope: "/week" },
+  { keys: "Shift+A", action: "Approve every pending proposal", scope: "/week" },
+  {
+    keys: "Shift+↑",
+    action: "Pin the selected block 15 minutes earlier",
+    scope: "/week",
+  },
+  {
+    keys: "Shift+↓",
+    action: "Pin the selected block 15 minutes later",
+    scope: "/week",
+  },
+  { keys: "Escape", action: "Clear the selection and close the panel", scope: "/week" },
+];
+
+/* THE TODAY SCREEN'S OWN ROWS. A ledger has no cursor: the row these keys land on is the one whose controls
+ * hold focus, so each action names the focused row rather than a selection. */
+const TODAY_ENTRIES: readonly KeyBindingEntry[] = [
+  { keys: "c", action: "Confirm the day", scope: "/today" },
+  { keys: "x", action: "Skip the focused row", scope: "/today" },
+  { keys: "Shift+X", action: "Open the partial form on the focused row", scope: "/today" },
+  { keys: "m", action: "Open the moved form on the focused row", scope: "/today" },
+];
+
 export const KEYBOARD_MAP: readonly KeyBindingEntry[] = [
   ...navigationEntries(SCREENS),
   {
@@ -75,5 +121,6 @@ export const KEYBOARD_MAP: readonly KeyBindingEntry[] = [
   { keys: CAPTURE_KEY, action: "Capture a task", scope: "global" },
   { keys: HELP_KEY, action: "Show this keyboard map", scope: "global" },
   { keys: "Escape", action: "Close an overlay", scope: "global" },
-  { keys: "Escape", action: "Clear the selection and close the panel", scope: "/week" },
+  ...WEEK_ENTRIES,
+  ...TODAY_ENTRIES,
 ];
