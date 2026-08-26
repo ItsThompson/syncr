@@ -14,14 +14,17 @@ binding, so the week cannot be recovered from the id, and the alternative is a w
 revision the tenant has stored. The 100 ms budget on the recording route is what makes that a
 decision rather than a preference.
 
-**Every write bumps the week input version from the current week onwards, and nothing projected is
-stored.** The rotation cursor and outstanding debt are derived from the log on every read, so
-correcting a past confirmation re-derives them with no step here: there is no stored value for a
-correction to disagree with. Both figures are inputs to weeks the user has NOT yet lived, so the
-range is the open-ended one and its floor is the week holding today's local date; a past week is
-deliberately not bumped, because its approved revision keeps the inputs it was computed with. What
-the bump buys is that a solve already running for a future week fails its conditional write.
-``BacklogWideBump`` is the one implementation of those four steps.
+**Every write bumps the week input version from the current week onwards, and the stored charge is
+restated in the same transaction.** The rotation cursor is still derived from the log on every read,
+so correcting a past confirmation re-derives it with no step here. Outstanding debt is different:
+it lives on the habit row as ``charged_misses``, and every write below restates the affected
+habits' counts through :mod:`syncr_api.habits.charged`, so the stored figure cannot fall behind the
+log that produced it nor move when any window a reader takes excludes old rows. Both figures are
+inputs to weeks the user has NOT yet lived, so the bump's range is the open-ended one and its floor
+is the week holding today's local date; a past week is deliberately not bumped, because its
+approved revision keeps the inputs it was computed with. What the bump buys is that a solve already
+running for a future week fails its conditional write. ``BacklogWideBump`` is the one implementation
+of those four steps.
 
 ``require_scope`` maps the writes to ``plan:write`` and the reads to ``plan:read``. Recording an
 outcome is an act on a week rather than plan configuration, which is what separates it from a
@@ -38,6 +41,7 @@ from syncr_api.core.errors import NotFound
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
+from syncr_api.habits.charged import ChargedMissesMaintainer, habit_ids_of
 from syncr_api.outcomes.config import BLOCK_RESOURCE, ISO_WEEK_FIELD, UNCONFIRMED_LOOKBACK_DAYS
 from syncr_api.outcomes.days import ONE_DAY
 from syncr_api.outcomes.ledger import (
@@ -96,6 +100,7 @@ class OutcomeService:
         plans: PlanRepository,
         days: PlannedDayReader,
         outcomes: BlockOutcomeRepository,
+        charged: ChargedMissesMaintainer,
         areas: AreaRepository,
         settings: SettingsRepository,
         overrides: TravelOverrideRepository,
@@ -105,6 +110,7 @@ class OutcomeService:
         self._plans = plans
         self._days = days
         self._outcomes = outcomes
+        self._charged = charged
         self._areas = areas
         self._settings = settings
         self._overrides = overrides
@@ -140,6 +146,8 @@ class OutcomeService:
             occurred_at=block.interval.start,
             make_up=block.make_up,
         )
+        # The charge restates before anything reads it, in the transaction that moved the log.
+        await self._charged.refresh(habit_ids_of(block.binding))
         _log.info(
             "outcomes.outcome.recorded",
             tenant_id=str(principal.tenant_id),
@@ -261,10 +269,17 @@ class OutcomeService:
         )
 
     async def _settle(self, planned: Sequence[PlannedDay], *, at: datetime) -> int:
-        """Record every block of these days, and answer how many rows it settled."""
-        return await self._outcomes.settle(
-            [one for day in planned for one in day.presumptions()], at=at
-        )
+        """Record every block of these days, restate their habits' charges, and answer the count."""
+        presumptions = [one for day in planned for one in day.presumptions()]
+        settled = await self._outcomes.settle(presumptions, at=at)
+        # Presumptions carry each block's binding denormalized, which is what keys the walk.
+        touched = {
+            habit_id
+            for presumption in presumptions
+            for habit_id in habit_ids_of(presumption.binding)
+        }
+        await self._charged.refresh(sorted(touched))
+        return settled
 
     async def _unconfirmed_days(self, profile: ZoneProfile, now: datetime) -> int:
         """How many days behind ``now`` hold blocks and have not been answered for.

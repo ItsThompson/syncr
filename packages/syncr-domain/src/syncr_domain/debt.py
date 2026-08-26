@@ -51,8 +51,12 @@ completion would report a backlog of nothing while four occurrences are still ou
 **Two further things the log settles on its own, and neither is a discharge.** A corrected
 confirmation says the occurrence was not missed after all, and the charge disappears because
 the derivation reads the log from scratch. A made-up occurrence the user skips again is a miss
-of its own and charges as one. Nothing here holds state between readings, which is what keeps a
-stored cursor by another name out of the module.
+of its own and charges as one. The walk holds no state between readings, which is what keeps a
+stored cursor by another name out of the module. The one figure stored anywhere is the walked
+count itself, maintained by the outcome write through :func:`charged_misses` and read back
+through :func:`stored_reading`: it is a cache of this module's own arithmetic over the same
+rows, so a reader that cannot afford the log's whole history does not answer with a narrower
+walk instead.
 
 **No date arithmetic happens here.** ``as_of`` clips the log to occurrences that have already
 come due, which is an absolute-instant comparison and needs no zone, so a daylight-saving
@@ -122,7 +126,18 @@ def outstanding_debt(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Inst
 
 def debt_reading(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> DebtReading:
     """Every figure a habit's misses produce, over one log and one policy."""
-    misses = _misses(habit, outcomes, as_of)
+    return stored_reading(habit, charged_misses(habit, outcomes, as_of))
+
+
+def stored_reading(habit: Habit, misses: int) -> DebtReading:
+    """Every figure a habit's misses produce, from a count taken beside the log.
+
+    The same policy table :func:`debt_reading` walks, stated over the count rather than over the
+    rows. It is what a stored charge reads through: the outcome write maintains the walked count on
+    the habit row, so a reader that cannot afford the log's whole history still answers with the
+    figures this module defines, and the count is exact wherever the log is because it is the same
+    walk, run where the rows were written.
+    """
     cap = debt_cap(habit)
     match habit.miss_policy:
         case MissPolicy.FORGIVE:
@@ -141,7 +156,7 @@ def debt_reading(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant)
             assert_never(habit.miss_policy)
 
 
-def _misses(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> int:
+def charged_misses(habit: Habit, outcomes: Sequence[HabitOutcome], as_of: Instant) -> int:
     """What this habit's log still charges by ``as_of``: confirmed skips, less the make-ups done.
 
     Walked oldest-due first rather than counted, because a completed make-up settles a charge the

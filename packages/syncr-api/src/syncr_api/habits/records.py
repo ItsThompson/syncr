@@ -58,6 +58,9 @@ class HabitRecord:
     binding_source: BindingSource
     variants: tuple[str, ...]
     debt_cap_periods: int
+    # The walked charge the outcome write restates. Read beside the row rather than derived from
+    # the log, so a reader without the log's whole history still answers with this figure.
+    charged_misses: int
     created_at: datetime
 
     def cadence(self) -> Cadence:

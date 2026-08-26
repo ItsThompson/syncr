@@ -25,6 +25,15 @@ polymorphic and may be this habit. A column here would be a second home for the 
 ``syncr_domain.cursor``. There is no column for it to drift from, which is what makes desync
 impossible rather than merely unlikely.
 
+One projection IS stored, and the asymmetry with ``cursor`` is the point.
+
+``charged_misses``: the walked count of confirmed misses less the make-ups completed against
+them, restated on the habit row by the outcome write every time a row of the log changes. A
+cursor survives no window: dropping one completion moves every later week onto the wrong
+variant, so it stays derived over the whole log. The charge is different: what makes it exact
+is the walk, not the rows, and the walk runs where the rows are written. Storing its answer is
+what keeps the figure from falling when history ages out of any read a request can afford.
+
 Every bound below is imported from ``syncr_domain.habits``, so the database and the entity
 cannot disagree about what a cadence or a duration is. A MIGRATION spells them out instead,
 because a revision describes the schema at its own point in the chain.
@@ -35,7 +44,16 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, SmallInteger, String
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -147,6 +165,7 @@ class HabitRow(Base, TenantScoped):
             f"debt_cap_periods BETWEEN {MIN_DEBT_CAP_PERIODS} AND {MAX_DEBT_CAP_PERIODS}",
             name="a_debt_cap_is_a_count_of_periods",
         ),
+        CheckConstraint("charged_misses >= 0", name="charged_misses_is_a_count"),
         # Every list read is "this tenant's habits, in the order they were declared".
         Index(f"ix_{HABITS_TABLE}_{TENANT_ID_COLUMN}_created_at", TENANT_ID_COLUMN, "created_at"),
         # The week assembler and the preference chain both read one Area's habits.
@@ -173,4 +192,8 @@ class HabitRow(Base, TenantScoped):
     # Ordered, and non-empty exactly for `rotation`. The cursor is an index into it.
     variants: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     debt_cap_periods: Mapped[int] = mapped_column(SmallInteger(), nullable=False)
+    # The walked charge the outcome write restates: confirmed skips, less the make-ups completed
+    # against them, floored per credit. Derived nowhere at read time, so no window a reader takes
+    # can lower it; see the module docstring's paragraph on the two projections.
+    charged_misses: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

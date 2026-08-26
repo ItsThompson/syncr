@@ -141,19 +141,22 @@ class CursorResponse(WireModel):
 
 
 class DebtResponse(WireModel):
-    """What this habit's misses amount to under its policy. Derived, so also read-only."""
+    """What this habit's misses amount to under its policy. Read-only."""
 
     outstanding: int = Field(
         description="Confirmed skips of this habit's occurrences, clamped to the cap, which the "
-        "week assembler adds to a week as made-up occurrences. It falls only when the log stops "
-        "recording an occurrence as missed, which is what correcting the day on Today does: "
-        "performing a make-up does not currently reduce it. Always zero for forgive and for "
-        "escalate, because only debt accumulates."
+        "week assembler adds to a week as made-up occurrences. It falls when a completed make-up "
+        "settles one of those skips, and it never falls because history aged out of any read: the "
+        "count is restated on the habit row by every outcome write, so no window a reader takes "
+        "can lower it. Always zero for forgive and for escalate, because only debt accumulates."
     )
     cap: int = Field(
         description="The ceiling: debtCapPeriods times the occurrences one cadence period holds."
     )
-    misses: int = Field(description="Confirmed skips the outcome log holds for this habit.")
+    misses: int = Field(
+        description="Confirmed skips the outcome log holds for this habit, less the make-ups "
+        "completed against them. Restated by the outcome write; not derivable over any route."
+    )
     forgiven_at_cap: int = Field(
         description="Misses that arrived while debt was already at the cap. Each was forgiven "
         "rather than added."
@@ -186,7 +189,7 @@ class HabitResponse(WireModel):
         description="Read-only, with its provenance. Null for a habit that does not rotate: a "
         "fixed habit displays no cursor at all. There is no route that sets one."
     )
-    debt: DebtResponse = Field(description="Derived from the outcome log. Read-only.")
+    debt: DebtResponse = Field(description="Restated by the outcome write. Read-only.")
 
 
 class HabitsResponse(WireModel):

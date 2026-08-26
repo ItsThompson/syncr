@@ -1,12 +1,18 @@
-"""Persistence for habits. Tenant-scoped, and it holds no cursor and no debt figure.
+"""Persistence for habits. Tenant-scoped.
 
 Every statement is built from the scoped base, so the tenant predicate is applied by the base
 rather than remembered per method, and a repository cannot be constructed without a tenant to
 scope to.
 
-There is no ``write_cursor`` and no ``write_debt``, and the absence is the design rather than
-an omission. Both are projections of the outcome log, so a column to write would be a value
-that can disagree with the log that produced it.
+The rotation cursor has no write path and no column, and the absence is the design rather than
+an omission: it is a projection of the outcome log, so a column to write would be a value that
+can disagree with the log that produced it.
+
+``charged_misses`` is the one stored projection, and :meth:`write_charged_misses` is its only
+writer: the walked count of confirmed misses less the make-ups completed against them, restated
+by the outcome write inside the transaction that changed the log, never by a route or an edit.
+The lock-and-write pair ``hold`` and ``write_charged_misses`` exist for that one maintainer; a
+second caller would be a second answer to what the log charges.
 
 The write path replaces every editable value rather than taking a field at a time, for the same
 reason the Area write does: a partial update is validated as a set, so the caller already holds
@@ -26,6 +32,7 @@ from syncr_api.habits.records import HabitRecord, columns_of
 from syncr_domain.habits import CadenceKind
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
 
     from syncr_domain.habits import Habit
@@ -111,6 +118,31 @@ class HabitRepository(TenantScopedRepository):
             )
         )
 
+    async def hold(self, habit_ids: Sequence[HabitId]) -> tuple[HabitRecord, ...]:
+        """These habits' rows, locked against concurrent writes until this transaction ends.
+
+        The charged-misses maintainer locks BEFORE it reads the log. Two transactions confirming
+        days for the same habit would otherwise both walk a log missing the other's rows and the
+        later write would restate a stale count over fresher ones. With the row locked first, the
+        second writer's walk runs after the first has committed, so the value each transaction
+        leaves behind is computed from every row committed before it plus its own.
+        """
+        found = await self._session.scalars(
+            self.scoped_select(HabitRow)
+            .where(HabitRow.id.in_(list(habit_ids)))
+            .order_by(HabitRow.id)
+            .with_for_update()
+        )
+        return tuple(_as_record(row) for row in found)
+
+    async def write_charged_misses(self, habit_id: HabitId, *, charged: int) -> None:
+        """Restate one habit's walked charge. The outcome write's step, not an edit."""
+        await self._session.execute(
+            self.scoped_update(HabitRow)
+            .where(HabitRow.id == habit_id)
+            .values(charged_misses=charged)
+        )
+
     async def remove(self, habit_id: HabitId) -> None:
         """Delete one habit. Its recorded outcomes are retained, because they are facts.
 
@@ -135,5 +167,6 @@ def _as_record(row: HabitRow) -> HabitRecord:
         binding_source=row.binding_source,
         variants=tuple(row.variants),
         debt_cap_periods=row.debt_cap_periods,
+        charged_misses=row.charged_misses,
         created_at=row.created_at,
     )

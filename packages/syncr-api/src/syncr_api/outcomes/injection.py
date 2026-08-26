@@ -14,9 +14,11 @@ user is, and resolving that in a second place would let two surfaces disagree ab
 "today" covers.
 
 ``BacklogWideBump`` is the one implementation of the open-ended version bump, floored at the week
-holding today's local date. A confirmation moves the rotation cursor and outstanding debt, which are
-inputs to weeks the user has not yet lived, and a past week's approved revision keeps the inputs it
-was computed with.
+holding today's local date. A confirmation moves the rotation cursor, which is a solve input for
+weeks the user has not yet lived, and a past week's approved revision keeps the inputs it was
+computed with. ``StoredChargedMisses`` restates each affected habit's stored charge in the same
+transaction, from the log this module already composes, so the figure a habit response answers
+with never falls behind the rows it came from.
 """
 
 from __future__ import annotations
@@ -31,8 +33,11 @@ from fastapi import Depends
 from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.habits.charged import StoredChargedMisses
+from syncr_api.habits.repository import HabitRepository
 from syncr_api.outcomes.planned_days import PlannedDayReader
 from syncr_api.outcomes.service import OutcomeService
+from syncr_api.plans.habit_log import HabitOutcomeLog
 from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -50,6 +55,11 @@ def get_outcome_service(
         plans=plans,
         days=PlannedDayReader(plans),
         outcomes=BlockOutcomeRepository(transaction, principal.tenant_id),
+        charged=StoredChargedMisses(
+            habits=HabitRepository(transaction, principal.tenant_id),
+            outcomes=HabitOutcomeLog(transaction, principal.tenant_id),
+            clock=utc_now,
+        ),
         areas=AreaRepository(transaction, principal.tenant_id),
         settings=settings,
         overrides=TravelOverrideRepository(transaction, principal.tenant_id),
