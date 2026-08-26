@@ -205,7 +205,7 @@ def test_the_composition_is_the_one_the_fixtures_table_states() -> None:
         Origin.PREP.value: 1,
         Origin.TRANSIT.value: 2,
         Origin.HABIT.value: 15,
-        Origin.TASK.value: 5,
+        Origin.TASK.value: 8,
     }
 
 

@@ -36,19 +36,20 @@ from tests.search_yield import Acceptance, Yield, constructed, descend
 SHIPPED = SolveBudget()
 
 # The reference week's descent, measured through `python -m tests.measure_solve yield` and
-# reproduced by the cases below. 184 iterations rather than the budget's 200, because this week
-# reaches a local optimum: the generator is exhausted with nothing left that improves the plan.
+# reproduced by the cases below. The budget's 200 rather than the descent's own end, because this
+# week now reaches its optimum past the budget: the generator is cut short with the plan already
+# at the total a longer budget confirms it keeps.
 A_REFERENCE_PROFILE = (
-    pytest.param(RELOCATE, 121, 7, id="relocate"),
-    pytest.param(SWAP, 43, 1, id="swap"),
-    pytest.param(RESIZE, 16, 0, id="resize"),
-    pytest.param(RESPLIT, 4, 1, id="re_split"),
+    pytest.param(RELOCATE, 125, 6, id="relocate"),
+    pytest.param(SWAP, 45, 0, id="swap"),
+    pytest.param(RESIZE, 26, 0, id="resize"),
+    pytest.param(RESPLIT, 4, 2, id="re_split"),
 )
 
 # The reference week's last acceptance. A budget of this many moves stops the search on the move it
 # would accept, one more buys it, and the whole budget buys nothing further.
-LAST_ACCEPTANCE = 135
-ACCEPTANCES = 9
+LAST_ACCEPTANCE = 175
+ACCEPTANCES = 8
 
 
 @pytest.fixture(scope="module")
@@ -100,7 +101,9 @@ def test_the_instrument_runs_the_descent_the_shipped_loop_runs() -> None:
     assert measured.total == shipped.breakdown.total()
     # The control on the arm above: a descent that agreed on nothing but zero would satisfy it.
     assert measured.accepted == ACCEPTANCES
-    assert measured.iterations < SHIPPED.move_evaluations
+    # The budget is what stops this descent now: the week's optimum sits past its 200th move, so
+    # the shipped exit is the cut-short one and the exhausted-pass case is the test below.
+    assert measured.iterations == SHIPPED.move_evaluations
 
 
 def test_the_instrument_runs_the_descent_the_budget_cuts_short() -> None:
@@ -108,7 +111,7 @@ def test_the_instrument_runs_the_descent_the_budget_cuts_short() -> None:
 
     ``improve`` counts a move as an iteration and then returns without scoring it, which is a figure
     the exhausted pass above cannot see. Fifty moves rather than the shipped two hundred, because
-    this week reaches its optimum at 184 and a budget above that never takes this exit.
+    this week's optimum sits past 200 and a budget above that never takes this exit.
     """
     weights = hand_tuned_weights()
     budget = SolveBudget(move_evaluations=50)
@@ -124,6 +127,8 @@ def test_the_instrument_runs_the_descent_the_budget_cuts_short() -> None:
     assert measured.accepted == 4
 
 
+
+
 # --------------------------------------------------------------------------------------
 # Each kind's own column
 # --------------------------------------------------------------------------------------
@@ -136,12 +141,12 @@ def test_each_move_kind_holds_the_column_the_reference_week_gives_it(
     """One kind, its own moves offered and its own moves taken, keyed by the generator's name.
 
     Four cases rather than one over the sums, because a profile that attributed every kind's work to
-    one column would sum to the same 184 iterations and the same 9 acceptances. Every count here is
+    one column would sum to the same 200 iterations and the same 8 acceptances. Every count here is
     distinct from every other, so a column read under the wrong name is red rather than plausible.
 
-    Resize offers sixteen moves and the objective takes none of them. That is the measured zero this
-    week has, and it is asserted rather than skipped: a kind that stopped being offered at all would
-    otherwise read the same as a kind the objective refused.
+    Resize offers twenty-six moves and the objective takes none of them. That is the measured zero
+    this week has, and it is asserted rather than skipped: a kind that stopped being offered at all
+    would otherwise read the same as a kind the objective refused.
     """
     column = descended.of_kind(kind)
 
@@ -157,7 +162,7 @@ def test_the_kinds_columns_account_for_every_iteration_and_every_acceptance(
     admit a fifth move nobody counted: the sums cross the columns against the totals ``improve``
     also reports, which is what makes the split a split.
 
-    The order is the third reading and the counts cannot see it. Nine acceptances of these three
+    The order is the third reading and the counts cannot see it. Eight acceptances of these three
     kinds in any other sequence satisfy both sums, and the sequence is what says which kind was
     buying improvements late in the descent rather than early.
     """
@@ -167,12 +172,11 @@ def test_the_kinds_columns_account_for_every_iteration_and_every_acceptance(
         RELOCATE,
         RELOCATE,
         RELOCATE,
-        SWAP,
+        RELOCATE,
         RESPLIT,
         RELOCATE,
         RELOCATE,
-        RELOCATE,
-        RELOCATE,
+        RESPLIT,
     ]
 
 
@@ -202,7 +206,7 @@ def test_the_last_acceptance_is_the_iteration_the_final_total_needs() -> None:
 def test_the_last_acceptance_the_instrument_reports_is_that_iteration(descended: Yield) -> None:
     """The instrument's own reading of the crossing above, which is the figure the mode prints."""
     assert descended.last_acceptance == LAST_ACCEPTANCE
-    assert descended.tail == 49
+    assert descended.tail == 25
 
 
 # --------------------------------------------------------------------------------------
@@ -231,11 +235,13 @@ def test_the_dense_weeks_whole_budget_is_spent_inside_the_first_kind() -> None:
 
 
 def test_a_week_with_nothing_unallocated_offers_no_relocation_at_all() -> None:
-    """With no gap left, the first kind offers nothing and the second spends the whole budget.
+    """With no gap left, the first kind offers nothing and the second stops on the rejection bound.
 
     A relocation needs a gap that can hold the block, and this week has no gap at all: that is what
     ``unallocated 0`` means, and it is why the kind that dominates the other weeks is empty here.
-    The swaps take the budget, accept once, and the 161 iterations after that buy nothing.
+    The swaps accept once, at 39, and the bound then ends the descent one move past the run it
+    tolerates: the 121 iterations after the acceptance are all the proof of nothing improving this
+    week buys, where the move budget alone would have bought 161.
 
     The empty gap tuple is the precondition rather than a second assertion of the same thing: a week
     that stopped being saturated would offer relocations again, and the columns below would be a
@@ -259,8 +265,13 @@ def test_a_week_with_nothing_unallocated_offers_no_relocation_at_all() -> None:
 
     assert attempt.gaps() == ()
     assert found.of_kind(RELOCATE).considered == 0
-    assert found.of_kind(SWAP).considered == SHIPPED.move_evaluations
-    assert (found.accepted, found.last_acceptance, found.tail) == (1, 39, 161)
+    assert found.of_kind(SWAP).considered == 39 + SHIPPED.rejection_run + 1
+    assert found.iterations == found.of_kind(SWAP).considered
+    assert (found.accepted, found.last_acceptance, found.tail) == (
+        1,
+        39,
+        SHIPPED.rejection_run + 1,
+    )
     assert [taken.kind for taken in found.acceptances] == [SWAP]
     # The same iteration, reached without the instrument: 39 stops on the move it would accept and
     # 40 buys it, for a strictly cheaper plan.
