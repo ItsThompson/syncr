@@ -19,10 +19,14 @@ change bumps too, and that is deliberate rather than an oversight: a title reach
 the occurrence's own label, so unlike an Area rename there is no reading under which the solver
 cannot see it.
 
-**Nothing here writes a cursor or a debt figure, and there is no method that could.** Both are
-derived on read, from the outcome log, through the pure functions in ``syncr_domain``. The
-repository has no write path for either, so "no API path sets the cursor" is a property of the
-shape rather than a rule a reviewer has to check per route.
+**Nothing here writes a cursor, and no method could.** It is derived on read, from the outcome
+log, through the pure functions in ``syncr_domain``, and it stays that way: a cursor survives no
+window, so dropping one completion from any read would move every later week onto the wrong
+variant. The debt figure is different: it is stored on the habit row as ``charged_misses`` and
+restated by the outcome write (:mod:`syncr_api.habits.charged`), so a response answers with what
+the log supports without walking its whole history. Neither has a write path in this module, so
+"no API path sets either by hand" is a property of the shape rather than a rule a reviewer has
+to check per route.
 
 ``authorize_tenant`` is called on the one row a caller addresses by identifier. Every row these
 methods touch was fetched through a repository scoped to the principal's own tenant, so its
@@ -50,11 +54,10 @@ from syncr_api.habits.rules import stated_rejection, unknown_area_for_a_habit
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 from syncr_domain.cursor import CursorReading, cursor_reading
-from syncr_domain.debt import DebtReading, debt_reading
+from syncr_domain.debt import DebtReading, stored_reading
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import datetime
 
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
@@ -72,10 +75,12 @@ _log = get_logger("syncr.habits")
 
 @dataclass(frozen=True, slots=True)
 class ReadHabit:
-    """One habit, with the two figures derived from the outcome log beside it.
+    """One habit, with the two figures a response renders beside it.
 
-    Both are computed from the same log in the same call, so a response cannot show a cursor
-    from one read and a debt figure from another.
+    Both are answered in one call over one set of stored facts, so a response cannot show a
+    cursor from one read and a debt figure from another. They differ in where each lives: the
+    cursor derives from the log here, and the debt reads the stored charge the outcome write
+    maintains.
     """
 
     habit: HabitRecord
@@ -198,22 +203,26 @@ class HabitService:
         await self._bump.from_the_week_holding(now)
 
     async def _read_all(self, habits: Sequence[HabitRecord]) -> tuple[ReadHabit, ...]:
-        """Each habit with its cursor and its debt, over one read of the outcome log."""
+        """Each habit with its cursor and its debt.
+
+        The log is read only when a habit rotates, because the cursor is the one figure left that
+        derives here: a tenant whose habits all bind fixed content answers both figures without
+        touching ``block_outcomes`` at all. Debt comes off the rows' stored charge, so it never
+        widens the read.
+        """
         if not habits:
             return ()
-        log = await self._outcomes.read([record.id for record in habits])
-        as_of = self._clock()
-        return tuple(self._read_one(record, log, as_of) for record in habits)
+        rotating = [record.id for record in habits if record.as_habit().rotates]
+        log = await self._outcomes.read(rotating) if rotating else ()
+        return tuple(self._read_one(record, log) for record in habits)
 
-    def _read_one(
-        self, record: HabitRecord, log: Sequence[HabitOutcome], as_of: datetime
-    ) -> ReadHabit:
+    def _read_one(self, record: HabitRecord, log: Sequence[HabitOutcome]) -> ReadHabit:
         with stated_rejection():
             habit = record.as_habit()
         return ReadHabit(
             habit=record,
             cursor=cursor_reading(habit, log),
-            debt=debt_reading(habit, log, as_of),
+            debt=stored_reading(habit, record.charged_misses),
         )
 
     async def _require_habit(self, principal: Principal, habit_id: HabitId) -> HabitRecord:

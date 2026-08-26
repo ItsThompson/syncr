@@ -107,6 +107,7 @@ from syncr_api.plans.stored_documents import plan_document
 from syncr_api.user_settings.zone_reading import as_domain, zone_profile
 from syncr_common.logging import get_logger
 from syncr_common.metrics import REGISTRY, measured
+from syncr_domain.debt import stored_reading
 from syncr_domain.discretionary import discretionary_time
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.plan import AdjustmentKind
@@ -315,14 +316,18 @@ class WeekAssembler:
 
         multipliers = DurationMultipliers.of(await self._weights.active())
         habit_ids = [record.id for record in habits]
+        outcomes = await self._outcomes.read(habit_ids)
         occurrences = habit_occurrences(
             habits,
-            outcomes=await self._outcomes.read(habit_ids),
+            outcomes=outcomes,
+            owed={
+                record.id: stored_reading(record.as_habit(), record.charged_misses).outstanding
+                for record in habits
+            },
             last_recorded=await self._outcomes.latest(
                 habit_ids, since=log_window(habits, span=span)
             ),
             span=span,
-            now=now,
             multipliers=multipliers,
         )
 

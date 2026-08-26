@@ -1,9 +1,10 @@
-"""How this module acquires the outcome log the cursor and the debt are derived from.
+"""How this module acquires the outcome log the cursor is derived from and the charge restated from.
 
-The two derivations are pure functions of a habit and a sequence of outcomes, so what the
-service needs is that sequence and nothing else. It is a protocol for the same reason the budget
-report's occupancy reader is one: the concern that produces these rows owns its own storage, and
-a habit response should acquire their answers rather than reach into another module's table.
+The rotation cursor and the walked charge are pure functions of a habit and a sequence of
+outcomes, so what the service needs is that sequence and nothing else. It is a protocol for the
+same reason the budget report's occupancy reader is one: the concern that produces these rows owns
+its own storage, and a habit response should acquire their answers rather than reach into another
+module's table.
 
 ``NoRecordedOutcomes`` answers with an empty log. It is kept for the ONE suite that still needs it:
 ``tests/test_habits_service.py`` asserts that a habit with no recorded outcome reads as sitting on
@@ -12,7 +13,7 @@ that. Production wires :class:`syncr_api.plans.habit_log.HabitOutcomeLog`, which
 real.
 
 The seam earns its keep in the suite as well as in the wiring. The service tests supply a real log
-and assert both derivations through the service, with the real domain functions throughout, without
+and assert the cursor through the service, with the real domain functions throughout, without
 reaching a database.
 
 What a reader owes this module is the projection in ``syncr_domain.outcomes``: the habit the binding
@@ -28,12 +29,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from syncr_domain.identifiers import HabitId
-    from syncr_domain.intervals import Instant
+    from syncr_domain.intervals import Instant, Interval
     from syncr_domain.outcomes import HabitOutcome
 
 
 class HabitOutcomeReader(Protocol):
-    """What a habit response asks for the log its cursor and its debt are derived from."""
+    """What a habit response asks for the log its cursor derives from."""
 
     async def read(self, habit_ids: Sequence[HabitId]) -> tuple[HabitOutcome, ...]:
         """Every recorded outcome whose binding names one of ``habit_ids``.
@@ -62,6 +63,18 @@ class HabitOutcomeReader(Protocol):
         One call for a list of habits rather than one per habit, so rendering a collection is a
         single read. The order is not part of the contract: both derivations are counts, and a
         count does not depend on the order it is taken in.
+        """
+        ...
+
+    async def settled_within(
+        self, habit_ids: Sequence[HabitId], *, span: Interval
+    ) -> tuple[HabitOutcome, ...]:
+        """The outcomes of these habits whose day was confirmed inside ``span``.
+
+        Half-open like every span in this product: a confirmation at ``span.start`` is inside and
+        one at ``span.end`` belongs to whatever holds that instant. This is the bounded read the
+        weekly session takes for an ``escalate`` habit, which is raised for a miss the week under
+        review settled and never for the whole log behind it.
         """
         ...
 
@@ -98,3 +111,8 @@ class NoRecordedOutcomes:
         self, habit_ids: Sequence[HabitId], *, since: Instant
     ) -> Mapping[HabitId, Instant | None]:
         return {}
+
+    async def settled_within(
+        self, habit_ids: Sequence[HabitId], *, span: Interval
+    ) -> tuple[HabitOutcome, ...]:
+        return ()

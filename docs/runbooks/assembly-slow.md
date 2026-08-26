@@ -108,10 +108,12 @@ series the read histogram registers, so a row of the panel above is a row of thi
   panel shows its statements under their own names rather than under the seam: `PlanRepository.latest`,
   `SettingsRepository.read`, `PinRepository.for_week` and `BlockOutcomeRepository.for_span`. So
   `SettingsRepository.read` is observed twice in one assembly, at row 1 and again inside row 5.
-- **Row 13 is bounded by the habits, not by the week.** It reads every outcome the tenant's habits
-  hold, because outstanding debt accumulates over the whole log, so its rows grow with the tenant's
-  history while its statement count stays at one. It is the same read the habit routes perform, and
-  a tenant with no habits reaches it without a statement.
+- **Row 13 is bounded by the habits, not by the week, and the cursor owns what remains of it.** It
+  reads every outcome the tenant's habits hold, because the rotation cursor counts completions over
+  the whole log and survives no narrower read -- and whether a habit ever recorded anything feeds
+  the interval due rule whatever its binding source. Outstanding debt no longer derives here at
+  all: it is stored on the habit row (``habits.charged_misses``) and restated by the outcome write,
+  so the figure a week's make-ups come from does not grow with the tenant's history.
 - **Row 14 asks one question and reads recent history only.** The interval cadence's due rule needs
   when each habit last occurred, which no occurrence older than the longest declared interval can
   answer, so the read carries an `occurred_at` window beside the habits predicate row 13 states.

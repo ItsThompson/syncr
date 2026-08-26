@@ -7,7 +7,7 @@ package rather than a second time:
 | Reading | Where |
 |---|---|
 | the rotation cursor | :func:`syncr_domain.cursor.derive_cursor`, over the outcome log |
-| outstanding debt, capped | :func:`syncr_domain.debt.outstanding_debt` |
+| outstanding debt, capped | :func:`syncr_domain.debt.stored_reading`, over the stored charge |
 | the keys the occurrences take | :func:`syncr_domain.identity.habit_occurrence_keys` |
 
 **An occurrence carries no date.** Placement inside the week is free, so what a cadence produces
@@ -46,7 +46,6 @@ from math import ceil
 from typing import TYPE_CHECKING, assert_never
 
 from syncr_domain.cursor import derive_cursor
-from syncr_domain.debt import outstanding_debt
 from syncr_domain.habits import Daily, EveryApproxDays, TimesPerWeek
 from syncr_domain.identity import BindingRef
 from syncr_domain.weeks import Weekday
@@ -135,19 +134,19 @@ def habit_occurrences(
     habits: Sequence[HabitRecord],
     *,
     outcomes: Sequence[HabitOutcome],
+    owed: Mapping[HabitId, int],
     last_recorded: Mapping[HabitId, Instant | None],
     span: Interval,
-    now: Instant,
     multipliers: DurationMultipliers,
 ) -> tuple[HabitOccurrence, ...]:
     """Every occurrence this week holds, fresh ones then made-up ones, per habit.
 
-    ``outcomes`` is the whole log and feeds the two derivations that accumulate over history: the
-    rotation cursor and outstanding debt. ``last_recorded`` is the bounded per-habit reading the
-    due rule needs, keyed by habit id with ``None`` where the window holds no row. ``now`` is the
-    assembler's stamp and it clips the debt derivation to occurrences that have already come due:
-    a session still ahead of the user has not been missed, so charging it would owe them work they
-    have not yet had the chance to do.
+    ``outcomes`` is the whole log and feeds the rotation cursor, which accumulates over history and
+    survives no narrower read. ``owed`` is each habit's outstanding debt as its stored charge
+    answers it, capped by policy before it arrives: the walk that produces the charge runs beside
+    the rows on the outcome write, so this expansion never re-walks the tenant's history to place
+    make-ups. ``last_recorded`` is the bounded per-habit reading the due rule needs, keyed by habit
+    id with ``None`` where the window holds no row.
     """
     expanded: list[HabitOccurrence] = []
     recorded_ever = {outcome.habit_id for outcome in outcomes}
@@ -159,10 +158,10 @@ def habit_occurrences(
             has_recorded=record.id in recorded_ever,
             span=span,
         )
-        owed = outstanding_debt(habit, outcomes, now)
-        variants = _variant_sequence(habit, outcomes, fresh + owed)
+        owed_count = owed.get(record.id, 0)
+        variants = _variant_sequence(habit, outcomes, fresh + owed_count)
         duration = multipliers.scale_duration(habit.duration, area_id=record.area_id)
-        for index in range(fresh + owed):
+        for index in range(fresh + owed_count):
             expanded.append(
                 HabitOccurrence(
                     binding=BindingRef.for_habit(record.id, index=index),

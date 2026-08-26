@@ -28,23 +28,26 @@ make the composer decide again which suppressions are still in force, which is t
 question.
 
 **The debt reading is taken over the log the raise is about, which is not one log.** A habit at its
-cap is an ACCUMULATED figure and needs the whole log; an ``escalate`` habit is raised for a miss the
-week under review settled, because "raised in the next weekly session" is about the week that just
-happened. Passing the whole log to an ``escalate`` habit raises it forever after one miss, which is
-a nag rather than an escalation. So the log is chosen per policy, from one read, and the choice is
-made here because this is where both logs exist.
+cap is an ACCUMULATED figure; an ``escalate`` habit is raised for a miss the week under review
+settled, because "raised in the next weekly session" is about the week that just happened. Passing
+the whole log to an ``escalate`` habit raises it forever after one miss, which is a nag rather than
+an escalation. So the two figures come from different homes: the accumulated figure reads the
+stored charge on the habit row, which the outcome write keeps equal to the walk over the whole log,
+and the ``escalate`` slice takes :meth:`HabitOutcomeReader.settled_within`, a read bounded to the
+reviewed week rather than to nothing. The choice is made here because this is where both exist.
 
 **The week a miss belongs to is the week its day was CONFIRMED in, not the week it came due.** A day
 is settled whenever the user answers for it, which can be any number of weeks after the occurrence,
-so a miss can come due long before the first session that could know about it. See
-:func:`_was_settled_in` for why one of the two dates a row carries decides rather than either."""
+so a miss can come due long before the first session that could know about it. The bounded read for
+an ``escalate`` habit takes the confirmation alone as its window predicate, which is why one of the
+two dates a row carries decides rather than either."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from syncr_domain.debt import debt_reading
+from syncr_domain.debt import debt_reading, stored_reading
 from syncr_domain.habits import MissPolicy
 from syncr_domain.promotion import PinPlacement
 from syncr_domain.tasks import TaskStatus
@@ -137,11 +140,11 @@ class SessionSources:
         entirely, exactly as a chronic skip and a repeated pin do.
         """
         habits = await self._habits.list_all()
-        log = await self._outcomes.read([habit.id for habit in habits])
+        span = week_span(reviewed[-1], profile)
         return SessionFacts(
             open_tasks=await self._tasks.list_all(status=TaskStatus.OPEN),
             habits=habits,
-            debt=self._debt(habits, log, reviewed[-1], profile=profile, now=now),
+            debt=self._debt(habits, settled=await self._settled(habits, span), now=now),
             arriving=await self._arriving(planned, reviewed[-1], profile=profile),
             conflicts=await self._conflicts.for_weeks((*reviewed, planned)),
             pins=await self._placements(reviewed, home_zone=home_zone),
@@ -151,28 +154,46 @@ class SessionSources:
     def _debt(
         self,
         habits: Sequence[HabitRecord],
-        log: Sequence[HabitOutcome],
-        reviewed: IsoWeek,
         *,
-        profile: ZoneProfile,
+        settled: Mapping[HabitId, Sequence[HabitOutcome]],
         now: Instant,
     ) -> Mapping[HabitId, DebtReading]:
-        """One reading per habit, over the log its own policy's raise is about.
+        """One reading per habit, from the home its own policy's raise answers out of.
 
-        The two logs are one read filtered two ways, so nothing is fetched twice and the two figures
-        a reading carries are still stated over one set of outcomes, which is the precondition
-        ``syncr_domain.debt`` states.
+        An ``escalate`` habit reads the rows the reviewed week settled, which is what makes the
+        raise about one week. Every other policy reads the stored charge on its own row, which the
+        outcome write restates from the whole log and which therefore accumulates exactly as the
+        cap expects -- whatever windows the session's other reads take.
         """
-        span = week_span(reviewed, profile)
-        settled = [one for one in log if _was_settled_in(one, span)]
         readings = {}
         for habit in habits:
-            about_the_week = habit.miss_policy is MissPolicy.ESCALATE
-            outcomes = [
-                one for one in (settled if about_the_week else log) if one.habit_id == habit.id
-            ]
-            readings[habit.id] = debt_reading(habit.as_habit(), outcomes, now)
+            entity = habit.as_habit()
+            readings[habit.id] = (
+                debt_reading(entity, settled.get(habit.id, ()), now)
+                if habit.miss_policy is MissPolicy.ESCALATE
+                else stored_reading(entity, habit.charged_misses)
+            )
         return readings
+
+    async def _settled(
+        self, habits: Sequence[HabitRecord], span: Interval
+    ) -> Mapping[HabitId, Sequence[HabitOutcome]]:
+        """The reviewed week's settled rows per escalating habit, from one bounded read.
+
+        Only escalating habits reach the log at all: their raise is the one question here whose
+        answer lives in rows rather than in a stored count. Habits of the other policies answer
+        from their stored charge, so a tenant with none skips this read entirely.
+        """
+        escalating = [
+            habit.id for habit in habits if habit.miss_policy is MissPolicy.ESCALATE
+        ]
+        if not escalating:
+            return {}
+        rows = await self._outcomes.settled_within(escalating, span=span)
+        settled: dict[HabitId, list[HabitOutcome]] = {habit_id: [] for habit_id in escalating}
+        for row in rows:
+            settled[row.habit_id].append(row)
+        return settled
 
     async def _arriving(
         self, planned: IsoWeek, reviewed: IsoWeek, *, profile: ZoneProfile
@@ -202,19 +223,3 @@ class SessionSources:
             )
             for pin in await self._pins.for_weeks(weeks)
         )
-
-
-def _was_settled_in(outcome: HabitOutcome, span: Interval) -> bool:
-    """Whether ``span`` holds the day this outcome was settled on.
-
-    The confirmation, because that is the day the outcome became a miss or a completion: an
-    occurrence comes due on one day and the user answers for it on another, and until they do it is
-    neither. A day nobody has confirmed is settled on no day at all, and charges nothing under any
-    policy, so leaving it out of the window costs no figure.
-
-    **One of the two dates decides rather than either.** A row admitted by the day it came due AND
-    by the day it was settled falls inside two weeks whenever those days sit in different ones,
-    which is one miss raised in two consecutive sessions.
-    """
-    settled = outcome.confirmed_at
-    return settled is not None and span.start <= settled < span.end
