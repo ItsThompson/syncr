@@ -17,6 +17,7 @@ that reads either date admits such a row twice, in two sessions, which is one mi
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -38,6 +39,7 @@ from syncr_api.reviews.session_sources import SessionSources
 from syncr_domain.habits import MissPolicy
 from syncr_domain.identity import BindingRef, index_occurrence_key
 from syncr_domain.outcomes import HabitOutcome, OutcomeState, RecordedOutcome
+from syncr_domain.weeks import week_span
 from syncr_domain.weeks import IsoWeek
 from syncr_domain.zones import ZoneProfile
 from tests.assembly_fakes import FakeAnchors, FakeHabits, FakeOutcomes, FakeTasks, a_habit
@@ -325,26 +327,21 @@ class TestTheWindowIsHalfOpenLikeEverySpanInThisProduct:
 class TestADebtHabitAtItsCapIsRaisedWhicheverWeekTheSessionCovers:
     async def test_a_backlog_settled_three_weeks_back_is_raised_in_both_sessions(self) -> None:
         # A `debt` habit's cap is an accumulated figure over the whole log, so the window the
-        # `escalate` raise takes must not narrow it. One a week capped at one period owes at most
-        # one session, and two misses put it over.
-        habit = a_habit(
-            area_id=AREA,
-            title="Anki",
-            miss_policy=MissPolicy.DEBT,
-            times_per_week=1,
-            debt_cap_periods=1,
+        # `escalate` raise takes must not narrow it. The charge reads off the row the outcome write
+        # restated -- here carried past every session's window as a stored count of two, from two
+        # misses three weeks back that no window either session covers. One a week capped at one
+        # period owes at most one session, and two misses put it over.
+        habit = replace(
+            a_habit(
+                area_id=AREA,
+                title="Anki",
+                miss_policy=MissPolicy.DEBT,
+                times_per_week=1,
+                debt_cap_periods=1,
+            ),
+            charged_misses=2,
         )
-        stored = FakeOutcomes(
-            [
-                a_confirmed_skip(
-                    habit.id,
-                    due=on(THREE_WEEKS_BACK, day=day, hour=9),
-                    confirmed=on(THREE_WEEKS_BACK, day=day, hour=21),
-                    index=index,
-                )
-                for index, day in enumerate((0, 3))
-            ]
-        )
+        stored = FakeOutcomes()
 
         assert await raised_habits(planned=FIRST_SESSION, habits=[habit], outcomes=stored) == [
             "Anki"
@@ -352,6 +349,43 @@ class TestADebtHabitAtItsCapIsRaisedWhicheverWeekTheSessionCovers:
         assert await raised_habits(planned=NEXT_SESSION, habits=[habit], outcomes=stored) == [
             "Anki"
         ]
+
+
+
+@pytest.mark.integration
+async def test_the_settled_read_is_half_open_over_stored_confirmations(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    """The bounded read's window is ``start <= confirmed_at < end``, against real rows.
+
+    A confirmation at the reviewed week's first instant is inside it; a confirmation at the
+    instant the week ends belongs to the session that follows, not to this one.
+    """
+    habit = a_habit(area_id=AREA, title="Gym", miss_policy=MissPolicy.ESCALATE)
+    binding = BindingRef.for_habit(habit.id, index=0)
+    await store_a_confirmed_skip(
+        sessions,
+        owner.tenant_id,
+        binding=binding,
+        week=THREE_WEEKS_BACK,
+        confirmed=on(REVIEWED, day=0, hour=0),
+    )
+    await store_a_confirmed_skip(
+        sessions,
+        owner.tenant_id,
+        binding=BindingRef.for_habit(habit.id, index=1),
+        week=THREE_WEEKS_BACK,
+        confirmed=on(FIRST_SESSION, day=0, hour=0),
+    )
+
+    async with sessions() as session:
+        log = HabitOutcomeLog(session, owner.tenant_id)
+        found = await log.settled_within(
+            [habit.id], span=week_span(REVIEWED, ZoneProfile(HOME_ZONE))
+        )
+
+    keys = {row.occurrence_key for row in found}
+    assert keys == {index_occurrence_key(0)}, "the end instant belongs to the next week"
 
 
 @pytest.fixture

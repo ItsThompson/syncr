@@ -175,6 +175,7 @@ def a_habit(
     binding_source: BindingSource = BindingSource.FIXED,
     variants: tuple[str, ...] = (),
     debt_cap_periods: int = 2,
+    charged_misses: int = 0,
 ) -> HabitRecord:
     span = duration or Duration.fixed(60)
     return HabitRecord(
@@ -191,6 +192,7 @@ def a_habit(
         binding_source=binding_source,
         variants=variants,
         debt_cap_periods=debt_cap_periods,
+        charged_misses=charged_misses,
         created_at=MONDAY_MIDNIGHT,
     )
 
@@ -539,6 +541,18 @@ class FakeOutcomes:
                 if seen is None or row.occurred_at > seen:
                     latest_seen[row.habit_id] = row.occurred_at
         return latest_seen
+
+    async def settled_within(
+        self, habit_ids: Sequence[HabitId], *, span: Interval
+    ) -> tuple[HabitOutcome, ...]:
+        asked = set(habit_ids)
+        return tuple(
+            row
+            for row in self._stored
+            if row.habit_id in asked
+            and row.confirmed_at is not None
+            and span.start <= row.confirmed_at < span.end
+        )
 
 
 class FakeTasks(TaskRepository):

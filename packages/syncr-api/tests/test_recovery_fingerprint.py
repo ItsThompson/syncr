@@ -355,9 +355,9 @@ async def _seed_a_confirmed_rotation(
         text(
             "INSERT INTO habits (id, area_id, title, cadence_kind, cadence_times_per_week, "
             "duration_min_minutes, duration_max_minutes, miss_policy, binding_source, variants, "
-            "debt_cap_periods, created_at, tenant_id) "
+            "debt_cap_periods, charged_misses, created_at, tenant_id) "
             "VALUES (:id, :area, 'Gym', 'times_per_week', 4, 60, 90, 'debt', "
-            "cast(:source as varchar), cast(:variants as jsonb), 2, now(), :tenant)"
+            "cast(:source as varchar), cast(:variants as jsonb), 2, 0, now(), :tenant)"
         ),
         {
             "id": _HABIT,

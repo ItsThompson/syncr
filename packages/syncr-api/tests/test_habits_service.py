@@ -41,6 +41,7 @@ from syncr_api.habits.service import HabitService
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.identity import index_occurrence_key
+from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.weeks import IsoWeek
 from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
@@ -96,6 +97,7 @@ class FakeHabitRepository(HabitRepository):
             binding_source=habit.binding_source,
             variants=habit.variants,
             debt_cap_periods=habit.debt_cap_periods,
+            charged_misses=0,
             created_at=created_at,
         )
         self.rows.append(created)
@@ -159,6 +161,11 @@ class RecordedOutcomes:
                 if seen is None or row.occurred_at > seen:
                     latest_seen[row.habit_id] = row.occurred_at
         return latest_seen
+
+    async def settled_within(
+        self, habit_ids: Sequence[HabitId], *, span: Interval
+    ) -> tuple[HabitOutcome, ...]:
+        return ()
 
 
 def outcome(
@@ -403,18 +410,19 @@ async def test_a_skip_leaves_the_cursor_where_it_was() -> None:
 
 
 async def test_the_current_debt_figure_is_visible_on_the_habit() -> None:
+    """The charge reads off the row the outcome write restates, not off a walk taken here."""
     fixture = Fixture()
     read = await fixture.service.create(
         fixture.principal, declaration(fixture.area.id, miss_policy=MissPolicy.DEBT)
     )
-    fixture.outcomes.log = tuple(
-        outcome(read.habit.id, MISS_STATE, index=index) for index in range(3)
-    )
+    fixture.habits.rows = [replace(read.habit, charged_misses=3)]
 
     owed = await fixture.service.read(fixture.principal, read.habit.id)
 
     assert (owed.debt.outstanding, owed.debt.cap, owed.debt.misses) == (3, 8, 3)
     assert not owed.debt.raised_in_weekly_session
+    # Nothing was read to answer it: the figure is the row's own.
+    assert fixture.outcomes.reads == []
 
 
 async def test_a_miss_at_the_cap_is_forgiven_and_raises_the_habit_for_the_weekly_session() -> None:
@@ -424,9 +432,7 @@ async def test_a_miss_at_the_cap_is_forgiven_and_raises_the_habit_for_the_weekly
         declaration(fixture.area.id, miss_policy=MissPolicy.DEBT, cadence=DAILY),
     )
     # A daily habit capped at two periods owes at most two days, so the third miss is forgiven.
-    fixture.outcomes.log = tuple(
-        outcome(read.habit.id, MISS_STATE, index=index) for index in range(3)
-    )
+    fixture.habits.rows = [replace(read.habit, charged_misses=3)]
 
     owed = await fixture.service.read(fixture.principal, read.habit.id)
 
@@ -437,9 +443,17 @@ async def test_a_miss_at_the_cap_is_forgiven_and_raises_the_habit_for_the_weekly
 async def test_a_list_reads_the_outcome_log_once_for_the_whole_collection(
     fixture: Fixture,
 ) -> None:
-    """One read per response rather than one per habit, so twenty habits are one query."""
+    """One read per response rather than one per habit, so twenty rotations are one query."""
     for title in ("Gym", "Anki", "Laundry"):
-        await fixture.service.create(fixture.principal, declaration(fixture.area.id, title=title))
+        await fixture.service.create(
+            fixture.principal,
+            declaration(
+                fixture.area.id,
+                title=title,
+                binding_source=BindingSource.ROTATION,
+                variants=(title,),
+            ),
+        )
     fixture.outcomes.reads.clear()
 
     found = await fixture.service.list_all(fixture.principal)
@@ -447,6 +461,41 @@ async def test_a_list_reads_the_outcome_log_once_for_the_whole_collection(
     assert len(found) == 3
     assert len(fixture.outcomes.reads) == 1
     assert len(fixture.outcomes.reads[0]) == 3
+
+
+async def test_a_collection_of_nothing_rotating_reads_the_outcome_log_not_at_all(
+    fixture: Fixture,
+) -> None:
+    """The cursor is the one figure that derives here, so no rotation means no read.
+
+    This is the bound stated where the read lives: a tenant whose habits all bind fixed content
+    answers both figures without touching ``block_outcomes`` at all.
+    """
+    for title in ("Gym", "Anki", "Laundry"):
+        await fixture.service.create(fixture.principal, declaration(fixture.area.id, title=title))
+    fixture.outcomes.reads.clear()
+
+    found = await fixture.service.list_all(fixture.principal)
+
+    assert len(found) == 3
+    assert fixture.outcomes.reads == []
+
+
+async def test_the_charge_stands_when_nothing_of_the_log_is_reached() -> None:
+    """A charge the log's whole history cannot answer still reads in full.
+
+    Whatever leaves any window a reader takes, the figure a user acts on comes off the row the
+    outcome write restated, so it cannot fall because rows aged out of somebody's reach.
+    """
+    fixture = Fixture(log=())
+    read = await fixture.service.create(
+        fixture.principal, declaration(fixture.area.id, miss_policy=MissPolicy.DEBT)
+    )
+    fixture.habits.rows = [replace(read.habit, charged_misses=3)]
+
+    owed = await fixture.service.read(fixture.principal, read.habit.id)
+
+    assert (owed.debt.misses, owed.debt.outstanding, owed.debt.cap) == (3, 3, 8)
 
 
 async def test_a_list_can_be_narrowed_to_one_area(fixture: Fixture) -> None:
@@ -476,8 +525,7 @@ async def test_editing_a_habit_changes_future_occurrences_and_leaves_the_past_un
     read = await fixture.service.create(
         fixture.principal, declaration(fixture.area.id, miss_policy=MissPolicy.DEBT)
     )
-    recorded = tuple(outcome(read.habit.id, MISS_STATE, index=index) for index in range(3))
-    fixture.outcomes.log = recorded
+    fixture.habits.rows = [replace(read.habit, charged_misses=3)]
 
     changed = await fixture.service.update(
         fixture.principal,
@@ -487,8 +535,9 @@ async def test_editing_a_habit_changes_future_occurrences_and_leaves_the_past_un
 
     assert changed.habit.cadence_kind is CadenceKind.DAILY
     assert changed.habit.title == "Gym, mornings"
-    # The log is the same object it was: nothing here rewrote a recorded occurrence.
-    assert fixture.outcomes.log == recorded
+    # The edit restates what the user authored, and the charge is not one of those values: the
+    # walk that produced it belongs to the outcome write alone.
+    assert changed.habit.charged_misses == 3
     # The cap moved because the cadence did, and the same three misses are still counted.
     assert (changed.debt.misses, changed.debt.cap, changed.debt.outstanding) == (3, 2, 2)
 

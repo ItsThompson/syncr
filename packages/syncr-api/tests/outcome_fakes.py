@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.reality import Presumption
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_api.user_settings.solve_inputs import WeekRange
-    from syncr_domain.identifiers import PlanRevisionId
+    from syncr_domain.identifiers import HabitId, PlanRevisionId
     from syncr_domain.identity import BlockId
     from syncr_domain.intervals import Interval
     from syncr_domain.outcomes import RecordedOutcome
@@ -214,6 +214,7 @@ def a_service(
             plans=stored_plans,
             days=PlannedDayReader(stored_plans),
             outcomes=kept,
+            charged=NoCharges(),
             areas=areas or FakeAreas(),
             settings=settings_repository,
             overrides=overrides or FakeOverrides(),
@@ -229,3 +230,15 @@ def a_service(
 def rebuilt(revision: PlanRevisionRecord) -> PlanDocument:
     """The document a stored revision holds, for a test asserting on a block's derived id."""
     return plan_document(revision.document)
+
+
+class NoCharges:
+    """The charge maintainer the outcome service tests answer with: nothing to restate.
+
+    The stored charge is maintained by the wiring over real repositories, and its walk is pinned
+    by ``tests/test_charged_misses.py``; a service test here has no habit rows to restate.
+    """
+
+    async def refresh(self, habit_ids: Sequence[HabitId]) -> None:
+        return None
+

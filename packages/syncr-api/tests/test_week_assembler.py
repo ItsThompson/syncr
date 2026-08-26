@@ -18,6 +18,8 @@ the figures two consumers read differently.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import ast
 import inspect
 from collections import Counter
@@ -677,13 +679,16 @@ async def test_an_interval_of_a_week_or_less_expands_every_week_whatever_the_log
     assert len(inputs.habit_occurrences) == expected
 
 
-async def test_the_derivations_still_read_misses_and_completions_older_than_the_window() -> None:
-    # The bounded read serves the due rule alone. Debt accumulates over the whole log and the
-    # cursor counts every completion, so a skip ninety days back still owes its occurrence and a
-    # completion ninety days back still advances its rotation, though neither is recent enough to
-    # make any interval due.
+async def test_the_derivations_still_answer_figures_older_than_any_window() -> None:
+    # The bounded read serves the due rule alone. The charge is the stored figure the outcome write
+    # restated from the whole log, and the cursor counts every completion, so a miss ninety days
+    # back still owes its occurrence and a completion ninety days back still advances its rotation,
+    # though neither is recent enough to make any interval due.
     area = an_area()
-    owing = a_habit(area_id=area.id, times_per_week=1, miss_policy=MissPolicy.DEBT, title="Anki")
+    owing = replace(
+        a_habit(area_id=area.id, times_per_week=1, miss_policy=MissPolicy.DEBT, title="Anki"),
+        charged_misses=1,
+    )
     rotating = a_habit(
         area_id=area.id,
         times_per_week=1,
@@ -692,13 +697,6 @@ async def test_the_derivations_still_read_misses_and_completions_older_than_the_
     )
     long_ago = MONDAY_MIDNIGHT - timedelta(days=90)
     log = [
-        HabitOutcome(
-            habit_id=owing.id,
-            occurrence_key=index_occurrence_key(0),
-            state=OutcomeState.SKIPPED,
-            occurred_at=long_ago,
-            confirmed_at=long_ago,
-        ),
         an_interval_outcome(rotating.id, occurred_at=long_ago),
     ]
 
@@ -809,25 +807,13 @@ async def test_every_occurrence_carries_the_binding_source_its_own_habit_declare
 
 async def test_outstanding_debt_adds_made_up_occurrences_after_the_fresh_ones() -> None:
     area = an_area()
-    habit = a_habit(
-        area_id=area.id,
-        times_per_week=2,
-        miss_policy=MissPolicy.DEBT,
-        debt_cap_periods=2,
+    habit = replace(
+        a_habit(area_id=area.id, times_per_week=2, miss_policy=MissPolicy.DEBT, debt_cap_periods=2),
+        charged_misses=3,
     )
-    log = [
-        HabitOutcome(
-            habit_id=habit.id,
-            occurrence_key=index_occurrence_key(index),
-            state=OutcomeState.SKIPPED,
-            occurred_at=at(9, day=index),
-            confirmed_at=at(21, day=index),
-        )
-        for index in range(3)
-    ]
 
     inputs = await an_assembler(
-        areas=FakeAreas([area]), habits=FakeHabits([habit]), outcomes=FakeOutcomes(log)
+        areas=FakeAreas([area]), habits=FakeHabits([habit]), outcomes=FakeOutcomes()
     ).assemble(WEEK, NOW)
 
     assert [entry.is_debt for entry in inputs.habit_occurrences] == [False, False, True, True, True]
@@ -838,22 +824,15 @@ async def test_outstanding_debt_adds_made_up_occurrences_after_the_fresh_ones() 
 
 async def test_debt_is_capped_so_a_month_of_misses_does_not_fill_a_week() -> None:
     area = an_area()
-    habit = a_habit(
-        area_id=area.id, times_per_week=2, miss_policy=MissPolicy.DEBT, debt_cap_periods=1
+    # Six misses stand in the log; the cap is one cadence period, which for a twice-weekly habit is
+    # two occurrences, and the stored charge reads through that clamp.
+    habit = replace(
+        a_habit(area_id=area.id, times_per_week=2, miss_policy=MissPolicy.DEBT, debt_cap_periods=1),
+        charged_misses=6,
     )
-    log = [
-        HabitOutcome(
-            habit_id=habit.id,
-            occurrence_key=index_occurrence_key(index),
-            state=OutcomeState.SKIPPED,
-            occurred_at=at(9, day=index % 7),
-            confirmed_at=at(21, day=index % 7),
-        )
-        for index in range(6)
-    ]
 
     inputs = await an_assembler(
-        areas=FakeAreas([area]), habits=FakeHabits([habit]), outcomes=FakeOutcomes(log)
+        areas=FakeAreas([area]), habits=FakeHabits([habit]), outcomes=FakeOutcomes()
     ).assemble(WEEK, NOW)
 
     # The cap is one cadence period, which for a twice-weekly habit is two occurrences.

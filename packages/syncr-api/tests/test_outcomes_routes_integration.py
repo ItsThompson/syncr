@@ -35,7 +35,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX
@@ -637,6 +637,87 @@ def test_correcting_an_outcome_after_a_confirmation_keeps_the_stored_confirmatio
     assert stored[first.id].state == "skipped"
     assert stored[first.id].confirmed_at is not None
     assert read_day(http, signed_in, YESTERDAY)["confirmedAt"] == settled_at_first
+
+
+
+def seed_a_debt_habit(database_url: str, tenant_id: TenantId, habit_id: UUID, area_id: AreaId) -> None:
+    """One ``debt``-policy habit row behind the blocks the suite binds, charge at zero."""
+    async def write() -> None:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                await session.execute(
+                    text(
+                        "INSERT INTO habits (id, tenant_id, area_id, title, cadence_kind, "
+                        "cadence_times_per_week, duration_min_minutes, duration_max_minutes, "
+                        "miss_policy, binding_source, variants, debt_cap_periods, "
+                        "charged_misses, created_at) VALUES (:id, :tenant, :area, 'Gym', "
+                        "'times_per_week', 4, 60, 90, 'debt', 'fixed', cast('[]' as jsonb), "
+                        "2, 0, now())"
+                    ),
+                    {"id": habit_id, "tenant": tenant_id, "area": area_id},
+                )
+        finally:
+            await database.engine.dispose()
+
+    run(write())
+
+
+@pytest.mark.integration
+def test_recording_a_skip_restates_the_stored_charge_the_habit_route_answers_from(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    """The figure a habit response answers is the row the outcome write restated.
+
+    The skip is recorded over HTTP and the debt read back from the habit resource in a second
+    request. Nothing walks the log to answer it: the count was restated inside the recording's
+    own transaction, which is what keeps it standing whatever windows later readers take.
+    """
+    # The day is settled FIRST, so the recording lands as a correction onto an already-confirmed
+    # row: the charge moves through the recording act alone, not through the day's confirmation.
+    area_id = declare_area(http, signed_in)
+    block = a_gym_block(on=YESTERDAY, hour=9, index=0, area_id=area_id)
+    seed_plan(live_database_url, owner.tenant_id, a_week([block]))
+    seed_a_debt_habit(live_database_url, owner.tenant_id, GYM, area_id)
+    confirmed, _ = confirm(http, signed_in, YESTERDAY)
+    assert confirmed == HTTPStatus.OK
+
+    status, _ = record(http, signed_in, block.id, {"state": "skipped"})
+    assert status == HTTPStatus.OK
+
+    answered = http.get(f"{HABITS_PREFIX}/{GYM}", headers=signed_in)
+    assert answered.status_code == HTTPStatus.OK
+    debt = answered.json()["debt"]
+    assert (debt["misses"], debt["outstanding"]) == (1, 1)
+
+
+@pytest.mark.integration
+def test_confirming_a_day_sets_what_its_recorded_skips_charge(
+    http: TestClient,
+    signed_in: dict[str, str],
+    planned: tuple[Block, Block],
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    """A recorded-but-unconfirmed skip charges nothing until the day is settled."""
+    first, _ = planned
+    area_id = first.area_id
+    assert area_id is not None
+    seed_a_debt_habit(live_database_url, owner.tenant_id, GYM, area_id)
+    status, _ = record(http, signed_in, first.id, {"state": "skipped"})
+    assert status == HTTPStatus.OK
+
+    before = http.get(f"{HABITS_PREFIX}/{GYM}", headers=signed_in).json()["debt"]
+    assert (before["misses"], before["outstanding"]) == (0, 0)
+
+    confirmed, _ = confirm(http, signed_in, YESTERDAY)
+    assert confirmed == HTTPStatus.OK
+
+    after = http.get(f"{HABITS_PREFIX}/{GYM}", headers=signed_in).json()["debt"]
+    assert (after["misses"], after["outstanding"]) == (1, 1)
 
 
 def test_a_backfill_over_a_range_the_zone_does_not_hold_settles_nothing(

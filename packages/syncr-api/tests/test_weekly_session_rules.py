@@ -167,6 +167,7 @@ def a_habit(*, title: str) -> HabitRecord:
         binding_source=BindingSource.FIXED,
         variants=(),
         debt_cap_periods=2,
+        charged_misses=0,
         created_at=CONFIRMED_AT,
     )
 

@@ -385,6 +385,7 @@ def _a_habit_record(tenant_id: TenantId, habit_id: HabitId) -> HabitRecord:
         binding_source=BindingSource.FIXED,
         variants=(),
         debt_cap_periods=2,
+        charged_misses=0,
         created_at=NOW,
     )
 
