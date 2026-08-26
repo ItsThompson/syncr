@@ -67,7 +67,7 @@ digest of the week and the binding, so a rename or a re-filing into another Area
 deliberately: refusing it would stop a week's solving for the rest of that week, which is worse
 than the drift.
 
-**The drift passing costs is answered here rather than left open.** An elapsed hour is attributed
+**The drift's cost is stated as an answer rather than left open.** An elapsed hour is attributed
 to the Area the block names in whichever revision is the plan of record, so a mid-week re-file does
 move hours between Areas. Only a week the solver rewrites can drift, because a user edit reaches
 the record only through a solve that adopts it, and it drifts forward only, because revisions are
