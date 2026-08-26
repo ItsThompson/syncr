@@ -120,7 +120,7 @@ export const seedReferenceWeek = async (client: ApiClient): Promise<void> => {
     areaId: areas.Career!,
     estimateMinutes: 240,
     deadline: utcMidnightOn(dateIn(subject, FRIDAY)),
-    minChunkMinutes: 50,
+    minChunkMinutes: 45,
     priority: "high",
   });
   await declareTask(client, {
