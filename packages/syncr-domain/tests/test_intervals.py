@@ -14,6 +14,7 @@ from syncr_domain.intervals import (
     IntervalSet,
     as_instant,
     has_elapsed,
+    has_ended,
     has_started,
 )
 from syncr_domain.zones import to_instant
@@ -279,7 +280,7 @@ class TestBeforeAndAfterAnInstant:
 
 
 class TestTheBoundaryPredicates:
-    """``has_started`` and ``has_elapsed``, and the one instant that keeps both of them."""
+    """The boundary predicates, and the instants that keep each of them honest."""
 
     SPAN = between(9, 10)
 
@@ -318,6 +319,14 @@ class TestTheBoundaryPredicates:
         # nothing here answers it.
         assert has_started(self.SPAN, at(23)) is True
         assert has_elapsed(self.SPAN, at(23)) is True
+
+    def test_a_span_wholly_behind_has_ended_and_one_still_running_has_not(self) -> None:
+        # The far-bound reading the two start predicates deliberately do not answer. Inclusive of
+        # the end, because a half-open span holds no minute at 10:00: there is nothing left ahead.
+        assert has_ended(self.SPAN, at(10)) is True
+        assert has_ended(self.SPAN, at(23)) is True
+        assert has_ended(self.SPAN, at(9, 30)) is False
+        assert has_ended(self.SPAN, at(8)) is False
 
 
 class TestGaps:
