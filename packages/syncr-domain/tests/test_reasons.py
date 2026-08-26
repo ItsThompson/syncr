@@ -11,10 +11,10 @@ kinds describe a decision, and materializing a week makes none. Widening ``bound
 a derivation source is what keeps the vocabulary at six kinds and keeps a block's reason
 non-optional, so the four derivation sources are asserted alongside the three habit ones.
 
-**The seven sources are stated once each.** ``BoundSource`` is the union of the habit binding
-sources and the derivation sources, so the two halves are asserted to be disjoint and to
-cover the seven the interface renders. A restatement of the three habit sources here would be
-a second definition to drift.
+**The eight sources are stated once each.** ``BoundSource`` is the union of the habit binding
+sources, the derivation sources, and the placed source, so the three are asserted to be disjoint
+and to cover the eight the interface renders. A restatement of the three habit sources here would
+be a second definition to drift.
 
 **A record has one reading order.** The clauses come out in the budget's own key order
 whatever order they went in, so two surfaces rendering one record draw the same rows in the
@@ -46,6 +46,7 @@ from syncr_domain.reasons import (
     Floor,
     InsteadOf,
     Pinned,
+    PlacedSource,
     ReasonError,
     ReasonRecord,
 )
@@ -142,11 +143,13 @@ class TestTheClauseVocabulary:
         assert MAX_CLAUSES == 7
 
 
-class TestTheSevenBoundSources:
-    def test_the_union_covers_the_seven_the_interface_renders(self) -> None:
-        sources = {source.value for source in BindingSource} | {
-            source.value for source in DerivationSource
-        }
+class TestTheEightBoundSources:
+    def test_the_union_covers_the_eight_the_interface_renders(self) -> None:
+        sources = (
+            {source.value for source in BindingSource}
+            | {source.value for source in DerivationSource}
+            | {source.value for source in PlacedSource}
+        )
 
         assert sources == {
             "fixed",
@@ -156,13 +159,17 @@ class TestTheSevenBoundSources:
             "template_entry",
             "anchor",
             "anchor_type",
+            "solver",
         }
 
-    def test_the_two_halves_are_disjoint(self) -> None:
-        """A value in both halves would make the source of a clause ambiguous."""
-        assert not {source.value for source in BindingSource} & {
-            source.value for source in DerivationSource
-        }
+    def test_the_three_vocabularies_are_disjoint(self) -> None:
+        """A value in two vocabularies would make the source of a stored clause ambiguous."""
+        spelled = [
+            {source.value for source in vocabulary}
+            for vocabulary in (BindingSource, DerivationSource, PlacedSource)
+        ]
+
+        assert sum(len(words) for words in spelled) == len(set().union(*spelled))
 
     def test_the_habit_sources_are_not_restated_here(self) -> None:
         """The three live on the habit, which is what resolves them. One statement, two readers."""
@@ -175,8 +182,8 @@ class TestTheSevenBoundSources:
 
     @pytest.mark.parametrize(
         "source",
-        [*BindingSource, *DerivationSource],
-        ids=[source.value for source in (*BindingSource, *DerivationSource)],
+        [*BindingSource, *DerivationSource, *PlacedSource],
+        ids=[source.value for source in (*BindingSource, *DerivationSource, *PlacedSource)],
     )
     def test_a_bound_clause_accepts_every_one_of_them(self, source: BoundSource) -> None:
         assert Bound(source, "Legs").source is source

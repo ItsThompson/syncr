@@ -15,6 +15,11 @@ one-clause minimum with a single ``bound`` clause naming its determinant, and th
 panel has real content for the frame, anchor, prep, and transit blocks that are about 45% of
 a solved week.
 
+**Three vocabularies, not two overloaded ones.** A task the search places outright is neither
+a binding nor a derivation: its content was never drawn from anywhere and nothing determined
+it but the search itself. It names :class:`PlacedSource`, so neither existing vocabulary has
+to hold a member it cannot hold honestly.
+
 **The budget is a bound on storage, not a style.** A revision document lives in an
 append-only store forever, so recording every rejected candidate for every block would bloat
 it without end. Two rejected windows are the most any block reports, and one of each other
@@ -66,10 +71,23 @@ class DerivationSource(StrEnum):
     ANCHOR_TYPE = "anchor_type"
 
 
-type BoundSource = BindingSource | DerivationSource
-"""What a ``bound`` clause names: a habit's binding source, or a derivation.
+class PlacedSource(StrEnum):
+    """A placement the solver chose outright.
 
-A union of the two vocabularies rather than a third list of seven strings.
+    Read by the ``bound`` clause for a task the search placed itself. A habit occurrence whose
+    ``queue`` binding drew that same task keeps :class:`~syncr_domain.habits.BindingSource`'s
+    member, which names where the occurrence's CONTENT came from; this arm names a placement
+    nobody chose but the solver, so the two do not share a word on the wire.
+    """
+
+    SOLVER = "solver"
+
+
+type BoundSource = BindingSource | DerivationSource | PlacedSource
+"""What a ``bound`` clause names: a habit's binding source, a derivation, or a placement the
+solver chose.
+
+A union of the three vocabularies rather than one list of eight strings.
 :class:`~syncr_domain.habits.BindingSource` already states ``fixed``, ``rotation``, and
 ``queue``, and restating them here would leave two definitions of one set to drift.
 """
@@ -165,9 +183,10 @@ class Dominant:
 class Bound:
     """What determined this block's content, or its whole placement.
 
-    One clause kind serves both because the two are distinguished by the source rather than
-    by a second kind: a habit's binding source names how the content was chosen, and a
-    derivation source names what fixed the block outright.
+    One clause kind serves both because the kinds are distinguished by the source rather than
+    by more kinds: a habit's binding source names how the content was chosen, a derivation
+    source names what fixed the block outright, and a placed source names a placement the
+    solver chose.
     """
 
     source: BoundSource
