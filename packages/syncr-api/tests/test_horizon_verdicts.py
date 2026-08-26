@@ -207,9 +207,7 @@ async def declared(
         )
 
 
-def _producer(
-    session: AsyncSession, tenant_id: TenantId
-) -> WeekProducer:
+def _producer(session: AsyncSession, tenant_id: TenantId) -> WeekProducer:
     """The week producer, as the maintainer suite composes it, for one appended revision."""
     from syncr_api.solving.lifecycle import OperationLifecycle
     from syncr_api.solving.repository import OperationRepository as Ops
