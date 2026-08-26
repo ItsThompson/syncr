@@ -65,8 +65,14 @@ refused for the same reason, so it moves the wedge rather than removing it.
 What is compared is where each bound block sits and nothing about what it says. A block id is a
 digest of the week and the binding, so a rename or a re-filing into another Area passes
 deliberately: refusing it would stop a week's solving for the rest of that week, which is worse
-than the drift. What the drift costs is that an elapsed hour can be re-attributed, and the Area is
-what the retro and the unallocated figure read.
+than the drift.
+
+**The drift passing costs is answered here rather than left open.** An elapsed hour is attributed
+to the Area the block names in whichever revision is the plan of record, so a mid-week re-file does
+move hours between Areas. Only a week the solver rewrites can drift, because a user edit reaches
+the record only through a solve that adopts it, and it drifts forward only, because revisions are
+appended and never rewritten: from approval onward the retro and the unallocated figure read the
+re-filed Area, and every revision before it keeps the attribution the week actually lived.
 
 The comparison is symmetric, because both directions rewrite history: a block missing from the
 candidate is one the week lived and the plan no longer places, and one the candidate holds in the
