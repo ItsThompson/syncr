@@ -100,6 +100,18 @@ class Shortfall:
     ``against`` names what cannot be satisfied and ``honoring`` names the constraints that were
     respected while computing it. ``deadline`` is present only for a gap measured against one,
     and ``area_id`` only for a gap that belongs to one Area.
+
+    | Field | The question it answers |
+    |---|---|
+    | `kind` | which check produced this gap? |
+    | `minutes` | how much cannot fit? what a tradeoff must recover |
+    | `against` | what cannot be satisfied, by name? |
+    | `honoring` | which of the user's own constraints took the capacity? |
+    | `deadline` | against what instant was this measured, where one applies? |
+    | `area_id` | whose gap is this, where it belongs to one Area? |
+    | `honored_floor_minutes` | what did each honored floor take? no check reads it |
+    The last row is reporting only, like a target on the probe's inputs: it exists so a stated
+    recovery can be exact, and no check reads it.
     """
 
     kind: ShortfallKind
@@ -108,10 +120,16 @@ class Shortfall:
     honoring: tuple[str, ...]
     deadline: Instant | None = None
     area_id: AreaId | None = None
+    # Per honored floor, ``(label, minutes)``: the part of that floor the check read as competing
+    # inside the window, which the honoring phrase does not state because it names the floor at its
+    # DECLARED size. Carried so a stated recovery can be exact; no check reads it, so a producer
+    # that states none states nothing a refusal depends on.
+    honored_floor_minutes: tuple[tuple[str, int], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "against", tuple(self.against))
         object.__setattr__(self, "honoring", tuple(self.honoring))
+        object.__setattr__(self, "honored_floor_minutes", tuple(self.honored_floor_minutes))
         if self.deadline is not None:
             object.__setattr__(self, "deadline", as_instant(self.deadline))
         if self.minutes <= 0:

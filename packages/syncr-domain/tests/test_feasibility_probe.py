@@ -14,6 +14,7 @@ from __future__ import annotations
 import dataclasses
 from datetime import timedelta
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 
@@ -552,6 +553,56 @@ def test_another_areas_floor_that_must_fit_early_is_discounted_the_same_way() ->
     )
 
     assert probe(week).shortfalls == ()
+
+
+def test_a_deadline_shortfall_states_what_each_honored_floor_took_from_its_window() -> None:
+    # Friday 18:00 splits the empty week's 10080 free minutes into 6840 before it and 3240 after.
+    # Fitness reserves 3840, so 600 of its floor cannot wait past Friday; Study reserves 3640, so
+    # 400 of its floor cannot either. Career owes 6500 of the 6840, which leaves 5840 once the two
+    # competitors take theirs: a gap of 660, carried per floor at what it ACTUALLY took, beside an
+    # honoring phrase that still names each floor at its declared size.
+    week = a_week(
+        now=WEEK.start,
+        area_floor_reservations=(a_reservation(FITNESS, 3840), a_reservation(STUDY, 3640)),
+        deadline_demands=(a_demand(CAREER, 6500, at(18, day=4), label="Leetcode"),),
+    )
+
+    gap, fitness_row, study_row = probe(week).shortfalls
+
+    assert gap.kind is ShortfallKind.DEADLINE_CAPACITY
+    assert gap.minutes == 660
+    assert gap.honored_floor_minutes == (("Fitness", 600), ("Study", 400))
+    assert "the Fitness floor of 64h" in gap.honoring
+    assert fitness_row.kind is ShortfallKind.AREA_FLOOR_UNREACHABLE
+    assert fitness_row.minutes == 260
+    assert fitness_row.honored_floor_minutes == ()
+    assert study_row.honored_floor_minutes == ()
+
+
+def test_a_floor_that_fits_after_the_deadline_took_nothing_and_carries_no_take() -> None:
+    # The same window, with a competitor floor small enough to fit entirely after Friday: nothing
+    # is honored for it, so there is no take to carry and no phrase naming it either.
+    week = a_week(
+        now=WEEK.start,
+        area_floor_reservations=(a_reservation(FITNESS, 300),),
+        deadline_demands=(a_demand(CAREER, 7000, at(18, day=4), label="Leetcode"),),
+    )
+
+    (gap,) = probe(week).shortfalls
+
+    assert gap.kind is ShortfallKind.DEADLINE_CAPACITY
+    assert gap.minutes == 7000 - 6840
+    assert gap.honored_floor_minutes == ()
+    assert not any("floor" in entry for entry in gap.honoring)
+
+
+def test_no_check_reads_a_demand_s_per_task_pairs() -> None:
+    # Reporting only, asserted rather than stated: the pairs exist so a recovery can name its
+    # contributors exactly, and a check reading them would be deriving a second demand.
+    week = a_week(deadline_demands=(a_demand(CAREER, 240, FRIDAY_MORNING),))
+    named = dataclasses.replace(week.deadline_demands[0], contributors=((uuid4(), 240),))
+
+    assert probe(week) == probe(dataclasses.replace(week, deadline_demands=(named,)))
 
 
 # --- what a shortfall says -------------------------------------------------------------------

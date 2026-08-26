@@ -220,6 +220,7 @@ def _demands_against_their_deadlines(week: _Week) -> tuple[Shortfall, ...]:
                     against=demand.labels,
                     deadline=demand.deadline,
                     area_id=demand.area_id,
+                    honored_floor_minutes=competition.takes,
                     honoring=(
                         *competition.labels,
                         *claimed_labels,
@@ -279,11 +280,14 @@ class _Competition:
     The labels are empty when the figure is, so a shortfall never honors a floor that took nothing
     from it. A floor is named at its DECLARED size rather than at the part of it that had to come
     early: the constraint the user holds is the whole floor, and apportioning it would state a split
-    nothing computed.
+    nothing computed. ``takes`` carries that per-floor early part beside the name it is honored
+    under, so a shortfall can state what each honored floor actually took without the honoring text
+    having to carry two figures for one constraint.
     """
 
     minutes: int
     labels: tuple[str, ...]
+    takes: tuple[tuple[str, int], ...]
 
 
 def _competition_before(
@@ -314,6 +318,7 @@ def _competition_before(
     }
     minutes = claimed.get(for_area, 0)
     labels: list[str] = []
+    takes: list[tuple[str, int]] = []
     for area_id in _competing_areas(reserved_by_area, claimed, for_area=for_area):
         reservation = reserved_by_area.get(area_id)
         early = 0 if reservation is None else max(0, reservation.reserved_minutes - absorbed_later)
@@ -324,7 +329,8 @@ def _competition_before(
                     label=reservation.label, reserved_minutes=reservation.reserved_minutes
                 )
             )
-    return _Competition(minutes=minutes, labels=tuple(labels))
+            takes.append((reservation.label, early))
+    return _Competition(minutes=minutes, labels=tuple(labels), takes=tuple(takes))
 
 
 def _competing_areas(
