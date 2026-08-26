@@ -62,7 +62,6 @@ from syncr_solver.reading import demand_key
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
-    from datetime import timedelta
 
     from syncr_domain.intervals import Instant
     from syncr_solver.candidates import Candidate
@@ -138,18 +137,16 @@ def _relocations(
     a question a relocation does not change the answer to, and it cost 1.2 s of a 2.5 s solve.
 
     The start is ONE per block per pass, which is the size the move budget was measured against.
-    For a block that sits outside every window its content declares, the starts of ITS OWN windows
-    inside each gap come before the gap's opening -- :func:`starts_in` orders them so -- so the
-    first relocation found is the one INTO its window when one exists: that is how a declared
-    window strictly inside a roomy gap gets reached rather than only wherever the gap happens to
-    open. A block already inside one of its windows reads the openings alone. Either way the pass
-    holds one relocation candidate per block, and the descent spends the move budget on exactly
-    as many of them as it did before.
+    Each roomy gap is read through :func:`starts_in`, which puts the starts of the block's OWN
+    windows inside the gap ahead of the gap's opening -- so the first relocation found is the one
+    INTO its window when one exists, and a declared window strictly inside a roomy gap gets
+    reached rather than only wherever the gap happens to open. Either way the pass holds one
+    relocation candidate per block, and the descent spends the move budget on exactly as many of
+    them as it did before.
     """
     for held in chosen:
         rest = _without(attempt, (held,))
-        duration = held.block.interval.duration
-        moved = _first_legal_relocation(held, rest, duration, preferences)
+        moved = _first_legal_relocation(held, rest, preferences)
         if moved is not None:
             yield Move(kind=RELOCATE, attempt=rest.adding(moved))
 
@@ -157,49 +154,25 @@ def _relocations(
 def _first_legal_relocation(
     held: Placed,
     rest: Attempt,
-    duration: timedelta,
     preferences: ResolvedPreferences,
 ) -> Placed | None:
     """This block at the first start the rules accept, or nothing.
 
-    The candidate starts are, in order: for a block outside its own windows, the starts of those
-    windows inside each roomy gap FIRST and that gap's opening after them (:func:`starts_in`
-    returns each gap's starts in that order); for a block already inside one of its windows, the
-    openings alone. The gaps run in :func:`_windows_around`'s order, the content's preferred ones
-    first.
+    The candidate starts are each roomy gap's own first grid point plus the starts of the block's
+    own preferred windows inside it (:func:`starts_in`, window starts first), and the gaps run in
+    :func:`_windows_around`'s order, the content's preferred ones first.
     """
-    outside = _outside_its_windows(held, preferences)
+    duration = held.block.interval.duration
     for window in _windows_around(held, rest, preferences):
-        if outside:
-            candidates = starts_in(
-                held.block.binding, held.block.area_id, window, preferences=preferences
-            )
-        else:
-            candidates = (window.start,)
-        for start in candidates:
+        for start in starts_in(
+            held.block.binding, held.block.area_id, window, preferences=preferences
+        ):
             if start + duration > window.end:
                 continue
             moved = _moved_to(held, start, rest)
             if moved is not None:
                 return moved
     return None
-
-
-def _outside_its_windows(held: Placed, preferences: ResolvedPreferences) -> bool:
-    """Whether no window this block's content declares holds all of it.
-
-    A block with no Area resolves no preference and so is outside nothing, which reads as false:
-    the gaps it is offered are the openings alone, as they have always been.
-    """
-    area_id = held.block.area_id
-    if area_id is None:
-        return False
-    span = held.block.interval
-    return not any(
-        window.start <= span.start and span.end <= window.end
-        for preference in preferences.applying_to(held.block.binding, area_id)
-        for window in preference.windows
-    )
 
 
 def _swaps(attempt: Attempt, chosen: Sequence[Placed]) -> Iterator[Move]:
