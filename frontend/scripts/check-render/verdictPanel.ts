@@ -18,12 +18,15 @@
  * product does not ship. The headline and provenance wordings come from the domain's own module rather than being
  * restated, because they are import-free and therefore reachable from a script. */
 
+import path from "node:path";
+
 import {
   provenanceReading,
   verdictHeadline,
   type PanelVerdict,
   type VerdictTradeoff,
 } from "../../src/ui/domain/verdict-panel/verdict.ts";
+import { frontendRoot } from "../lib/paths.ts";
 import type { Finding } from "../lib/findings.ts";
 
 /** Where the page reports what it measured about the panel and its rows. */
@@ -41,8 +44,9 @@ export const ROW_COUNT = 4;
  * fluid; pinning the record's width here keeps the measured rendering the one the record describes. */
 export const PANEL_WIDTH_PX = 404;
 
-/** The sheet that owns the height rule, which is where a failed finding points. */
-const SHEET = "frontend/src/ui/domain/verdict-panel/verdict.css";
+/** The sheet that owns the height rule, which is where a failed finding points. Absolute, which is what the
+ * reporter relativises against the repository root. */
+const SHEET = path.join(frontendRoot, "src", "ui", "domain", "verdict-panel", "verdict.css");
 
 /** The four offers the case enumerates, in the api's own per-kind wording. */
 const OFFERS: readonly VerdictTradeoff[] = [
@@ -84,10 +88,15 @@ export const CASE_VERDICT: PanelVerdict = {
 };
 
 function verdictSectionRow(offer: VerdictTradeoff): string {
+  /* THE SAME SHAPE `TradeoffRow` WRITES: the recovery span exists only where the reading sized one, rather than
+   * rendering an empty promise beside an unsized offer. */
+  const gap =
+    offer.recovers === null
+      ? ""
+      : `<span class="verdict-panel__gap">recovers ${offer.recovers}</span>`;
   return (
     `<div class="verdict-panel__row">` +
-    `<p class="verdict-panel__statement">${offer.label}` +
-    `<span class="verdict-panel__gap">recovers ${offer.recovers ?? ""}</span></p>` +
+    `<p class="verdict-panel__statement">${offer.label}${gap}</p>` +
     `</div>`
   );
 }
