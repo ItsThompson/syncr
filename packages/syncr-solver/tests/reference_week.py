@@ -14,9 +14,9 @@ a test asserts against it.
 | a depth-3 overlap | two overlapping Friday lectures inside the Friday night frame |
 | a pinned habit | ``Gym`` occurrence 00, pinned to Tuesday 06:30 |
 | a queue binding | ``Leetcode`` draws its content from the Career backlog |
-| 61 timed blocks | the composition table below |
+| 64 timed blocks | the composition table below |
 
-## The 61, and how it is composed
+## The 64, and how it is composed
 
 ```
    7  Sleep, one per night                                     routine
@@ -31,9 +31,9 @@ a test asserts against it.
    4  Leetcode, content drawn from the Career backlog          habit, queue
    2  Reading, elastic between 30 and 90 minutes               habit
    4  Walk, one of them a make-up for an earlier miss          habit
-   5  three tasks and the pieces they divide into              task
+   8  three tasks and the pieces they divide into              task
   ---
-  61
+  64
 ```
 
 Thursday's ``Wake Up`` and ``Shower`` are the anchor conflict: that morning's lecture opens at 06:30
@@ -112,7 +112,7 @@ ADMIN: Final = UUID("cccccccc-0000-4000-8000-0000000000c3")
 INTERVIEW: Final = UUID("cccccccc-0000-4000-8000-0000000000d1")
 
 # How many timed blocks this week holds, which the suite asserts against the solved document.
-TIMED_BLOCKS: Final = 61
+TIMED_BLOCKS: Final = 64
 
 
 def at(hour: float, *, day: int) -> datetime:

@@ -1,15 +1,17 @@
 week 2026-W07  discretionary 5895m  unallocated 3630m  oversubscription 0m
-blocks 61  slots 0  windows 1  blocked 11
+blocks 64  slots 0  windows 1  blocked 11
 
 BLOCKS
   Mon 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
   Mon 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Mon 07:00-07:30   habit           Fitness  Walk                               bound fixed · Walk
   Mon 07:30-08:45   habit           Fitness  Gym · Pull                         bound rotation · Pull
-  Mon 13:45-14:45   task            Career   Placement Admin                    bound queue · Placement Admin
-  Mon 14:45-15:30   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
-  Mon 15:30-20:45   task            Study    F&F Past Papers                    bound queue · F&F Past Papers
+  Mon 13:00-13:45   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
+  Mon 16:00-17:30   habit           Study    Reading                            bound fixed · Reading
+  Mon 17:30-19:00   habit           Study    Reading                            bound fixed · Reading
+  Mon 19:00-20:45   task            Study    F&F Past Papers                    bound solver · F&F Past Papers
   Mon 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
+  Mon 21:00-23:00   task            Study    F&F Past Papers                    bound solver · F&F Past Papers
   Mon 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
   Tue 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
   Tue 06:30-07:45   habit           Fitness  Gym · Push                         bound rotation · Push
@@ -18,10 +20,11 @@ BLOCKS
   Tue 08:30-09:15   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
   Tue 09:15-10:00   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
   Tue 10:00-12:00   anchor          -        Systems Programming                bound anchor · Systems Programming
+  Tue 12:00-13:00   task            Career   Placement Admin                    bound solver · Placement Admin
   Tue 14:00-16:00   anchor          -        Formal Methods                     bound anchor · Formal Methods
-  Tue 16:00-20:00   task            Career   Placement Admin                    bound queue · Placement Admin
+  Tue 16:00-20:00   task            Career   Placement Admin                    bound solver · Placement Admin
   Tue 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
-  Tue 21:00-22:30   habit           Study    Reading                            bound fixed · Reading
+  Tue 21:00-23:00   task            Study    F&F Past Papers                    bound solver · F&F Past Papers
   Tue 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
   Wed 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
   Wed 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
@@ -32,19 +35,19 @@ BLOCKS
   Wed 10:30-10:45   transit         Career   Go Home                            bound anchor_type · Go Home · transit back, 15m
   Wed 14:00-16:00   anchor          -        Databases                          bound anchor · Databases
   Wed 16:30-18:00   anchor          -        Networks                           bound anchor · Networks
-  Wed 18:00-19:30   habit           Study    Reading                            bound fixed · Reading
+  Wed 18:00-20:15   task            Study    F&F Past Papers                    bound solver · F&F Past Papers
   Wed 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
+  Wed 21:00-23:00   task            Study    Lab Report                         bound solver · Lab Report
   Wed 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
   Thu 06:30-08:00   anchor          -        Formal Methods                     bound anchor · Formal Methods
   Thu 14:00-16:00   anchor          -        Databases                          bound anchor · Databases
-  Thu 16:00-18:45   task            Study    F&F Past Papers                    bound queue · F&F Past Papers
+  Thu 16:00-19:00   task            Study    Lab Report                         bound solver · Lab Report
   Thu 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Thu 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
   Fri 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
   Fri 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Fri 07:00-08:15   habit           Fitness  Gym · Pull                         bound rotation · Pull
   Fri 08:15-08:45   habit           Fitness  Walk                               bound fixed · Walk
-  Fri 08:45-13:45   task            Study    Lab Report                         bound queue · Lab Report
   Fri 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Fri 22:30-23:30   anchor          -        Networks                           bound anchor · Networks
   Fri 23:00-23:45   anchor          -        Compilers                          bound anchor · Compilers
@@ -81,27 +84,27 @@ BLOCKED
   below_min_chunk        Placement Admin is placed in 60m at least, and this is 45m
 
 REASONS
-  bound          61   at most 1 per block
+  bound          64   at most 1 per block
   pinned          1   at most 1 per block
   instead of      1   at most 1 per block
-  blocked        12   at most 2 per block
-  dominant       20   at most 1 per block
-  floor          20   at most 1 per block
-  clauses       115   over 61 blocks
+  blocked        15   at most 2 per block
+  dominant       23   at most 1 per block
+  floor          23   at most 1 per block
+  clauses       127   over 64 blocks
   widest          5   Gym · Pull, Gym · Push, Placement Admin
 
 OBJECTIVE
   deadline_risk        0.000000
   budget_deviation     0.550000
-  time_of_day_misfit   0.127451
-  fragmentation        0.000000
+  time_of_day_misfit   0.102397
+  fragmentation        0.003817
   churn                0.000000
   context_switch       0.000679
   staleness            0.000000
-  TOTAL                0.678130
+  TOTAL                0.656892
   dominant budget_deviation
 
 VERDICT
   solver  feasible=True  shortfalls=0
 
-ITERATIONS 184
+ITERATIONS 200
