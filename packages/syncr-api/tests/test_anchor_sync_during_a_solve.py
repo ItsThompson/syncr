@@ -32,7 +32,6 @@ adapter here would put a feed parse between the assertion and what it is about.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -41,7 +40,6 @@ from sqlalchemy import select
 from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
-from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.events import FetchOutcome, RawEvent
 from syncr_api.calendars.repository import CalendarSourceRepository
@@ -52,7 +50,6 @@ from syncr_api.core.settings import (
     EnvSettings,
     build_service_settings,
 )
-from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.authority import classify
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -60,15 +57,11 @@ from syncr_api.solving.config import PENDING, SUCCEEDED, SUPERSEDED
 from syncr_api.solving.dispatch import SolveDispatch
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
 from syncr_api.solving.models import Operation
-from syncr_api.tasks.repository import TaskRepository
-from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
-from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_api.worker.main import WorkerContext
 from syncr_domain.intervals import Interval
-from syncr_domain.tasks import Priority
-from syncr_domain.templates import WeekPattern
-from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_domain.weeks import IsoWeek
+from tests.live_minimums import a_placeable_task, declare_the_minimum
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -140,53 +133,6 @@ async def context(live_database_url: str) -> AsyncIterator[WorkerContext]:
     database = create_database(live_database_url)
     yield WorkerContext(settings=worker, database=database)
     await database.engine.dispose()
-
-
-async def declare_the_minimum(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
-) -> None:
-    """A home zone, one Area, a day shape, a weight set, and one task the solver can place.
-
-    The task is what makes the write reachable: a week with an Area and no content solves to an
-    empty document, which classifies as nothing and appends no revision, so the control would be
-    asserting about a solve that had nothing to write either way.
-    """
-    async with sessions() as session, session.begin():
-        settings = SettingsRepository(session, tenant_id)
-        locked = await settings.lock(created_at=NOW)
-        await settings.write(
-            visible_hours=locked.visible_hours,
-            day_start=locked.day_start,
-            day_end=locked.day_end,
-            review_cadence=locked.review_cadence,
-            home_zone=LONDON,
-        )
-        area = await AreaRepository(session, tenant_id).create(
-            parent_id=None,
-            name="Career",
-            pigment_index=1,
-            budget_percent=Decimal(30),
-            floor_hours=Decimal(3),
-            created_at=NOW,
-        )
-        day_type = await DayTypeRepository(session, tenant_id).create(
-            name="Weekday", created_at=NOW
-        )
-        await WeekPatternRepository(session, tenant_id).replace(
-            WeekPattern(dict.fromkeys(Weekday, day_type.id))
-        )
-        await TaskRepository(session, tenant_id).create(
-            area_id=area.id,
-            project_id=None,
-            title="Interview preparation",
-            estimate_minutes=120,
-            deadline=None,
-            priority=Priority.NORMAL,
-            min_chunk_minutes=30,
-            splittable=True,
-            created_at=NOW,
-        )
-        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
 
 
 async def a_source(
@@ -333,7 +279,7 @@ class TestASyncLandingDuringARunningSolve:
         statement the write is made under: the version the solve stamped when it loaded is no longer
         the version the row holds, so the write transaction carries no revision at all.
         """
-        await declare_the_minimum(sessions, owner.tenant_id)
+        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
         source = await a_source(sessions, owner.tenant_id)
         await synced(sessions, owner.tenant_id, source, lecture_at=LECTURE_AT, clock=clock)
         await a_first_bump(sessions, owner, clock)
@@ -372,7 +318,7 @@ class TestASyncLandingDuringARunningSolve:
         fired on every attempt would pass the test above, and a fifteen-minute poll would hold every
         week of the plan superseded forever while every counter read healthy.
         """
-        await declare_the_minimum(sessions, owner.tenant_id)
+        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
         source = await a_source(sessions, owner.tenant_id)
         await synced(sessions, owner.tenant_id, source, lecture_at=LECTURE_AT, clock=clock)
         await a_first_bump(sessions, owner, clock)
@@ -411,7 +357,7 @@ class TestASyncLandingDuringARunningSolve:
         the plan it produces is against the occupancy the timetable now publishes. A second
         supersession here would be the loop the closed range exists to prevent.
         """
-        await declare_the_minimum(sessions, owner.tenant_id)
+        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
         source = await a_source(sessions, owner.tenant_id)
         await synced(sessions, owner.tenant_id, source, lecture_at=LECTURE_AT, clock=clock)
         await a_first_bump(sessions, owner, clock)

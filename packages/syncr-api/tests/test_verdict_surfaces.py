@@ -125,7 +125,8 @@ from tests.boundaries import (
     verdict_bearing_reads,
 )
 from tests.conftest import TEST_SERVICE
-from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking, declare_the_minimum
+from tests.live_horizons import LATE_IN_THE_WEEK, THIS_WEEK, Ticking
+from tests.live_minimums import declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.plan_documents import a_block, a_document, between
 from tests.test_authorization_boundary import accepts_a_cli_credential

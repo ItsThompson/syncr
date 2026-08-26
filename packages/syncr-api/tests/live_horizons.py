@@ -1,25 +1,19 @@
-"""What both maintainer suites declare before a tick: a clock, a tenant's minimum, a write target.
+"""What both maintainer suites declare before a tick: a clock and a write target.
 
 The plan horizon maintainer has two duties and a suite each, and both drive the real runner against
 a real Postgres. So the declarations they share live here rather than in either suite: duty 2 probes
-exactly the weeks duty 1 resolved, and two spellings of "the least a plan can exist from" would let
-the two suites drive different tenants while claiming to drive one.
+exactly the weeks duty 1 resolved. The tenant minimum both suites declare lives in
+:mod:`tests.live_minimums`, alongside the one copy every driver suite shares.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.repository import CalendarSourceRepository
-from syncr_api.learned.repository import WeightSetRepository
-from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
-from syncr_api.user_settings.repository import SettingsRepository
-from syncr_domain.templates import WeekPattern
-from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -44,12 +38,6 @@ THIS_WEEK = IsoWeek(2026, 7)
 NEXT_WEEK = IsoWeek(2026, 8)
 THIRD_WEEK = IsoWeek(2026, 9)
 
-# The Area every declaration below creates, and the floor it declares. Named because duty 2's suite
-# makes a week impossible by leaving less capacity than this floor, and the arithmetic has to be
-# readable from the test rather than from the fixture.
-AREA_NAME = "Career"
-AREA_FLOOR_HOURS = Decimal(3)
-
 
 class Ticking:
     """A clock that advances a millisecond per read, as a real one does.
@@ -73,42 +61,6 @@ class Ticking:
 
     def advance(self, by: timedelta) -> None:
         self.at += by
-
-
-async def declare_the_minimum(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, home_zone: str = LONDON
-) -> None:
-    """Areas, a day shape, a weight set, and a home zone: the least a plan can exist from.
-
-    Deliberately less than a declared week. What the maintainer decides is whether a week HAS a
-    plan and whether one CAN exist, and a fuller week would make this suite a second test of the
-    assembler's resolutions.
-    """
-    async with sessions() as session, session.begin():
-        settings = SettingsRepository(session, tenant_id)
-        locked = await settings.lock(created_at=NOW)
-        await settings.write(
-            visible_hours=locked.visible_hours,
-            day_start=locked.day_start,
-            day_end=locked.day_end,
-            review_cadence=locked.review_cadence,
-            home_zone=home_zone,
-        )
-        await AreaRepository(session, tenant_id).create(
-            parent_id=None,
-            name=AREA_NAME,
-            pigment_index=1,
-            budget_percent=Decimal(30),
-            floor_hours=AREA_FLOOR_HOURS,
-            created_at=NOW,
-        )
-        day_type = await DayTypeRepository(session, tenant_id).create(
-            name="Weekday", created_at=NOW
-        )
-        await WeekPatternRepository(session, tenant_id).replace(
-            WeekPattern(dict.fromkeys(Weekday, day_type.id))
-        )
-        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
 
 
 async def declare_a_write_target(
