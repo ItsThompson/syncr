@@ -11,15 +11,14 @@ Each row states two things: whether it bumps the week's input version, and wheth
 solve. A row is either WIRED, meaning the code performs what the row says, or it is EXCLUDED with a
 named owner. There is no third state: a row that is neither fails.
 
-**What the enumeration found, and it is the reason it was asked for.** Thirteen of the twenty rows
+**What the enumeration found, and it is the reason it was asked for.** Twelve of the twenty rows
 that ask for a solve reach none. `kind = "solve"` is created only through
-``SolveCoordinator.request_solve``, whose eight call sites are in `pins`, `learned`, `plans`,
-`conflicts`, `concessions` and `calendars`, and the horizon maintainer enqueues ``materialize``
-rather than ``solve``. So the debounce, the coalescing and the supersession machinery are driven by
-those call sites, two of which bypass the debounce window by design: the re-solve control asks for
-an immediate pass, and so does a tradeoff request.
+``SolveCoordinator.request_solve``, whose call sites are in `pins`, `learned`, `plans`, `conflicts`,
+`concessions`, `calendars` and the horizon maintainer, so the debounce, the coalescing and the
+supersession machinery are driven by those call sites, two of which bypass the debounce window by
+design: the re-solve control asks for an immediate pass, and so does a tradeoff request.
 
-That is not a defect in any one of the thirteen: each bumps correctly, and a bump is what makes a
+That is not a defect in any one of the twelve: each bumps correctly, and a bump is what makes a
 running solve's conditional write fail. What is missing is the request that follows it. The
 exclusions below name the owner that owes each one.
 
@@ -225,8 +224,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         "a week enters the projection horizon",
         bumps=True,
         solves=True,
-        module="plans/production.py",
-        owner="1400",
+        module="horizon/maintainer.py",
     ),
     Trigger(
         "projection horizon length changed",
@@ -532,7 +530,7 @@ class TestTheTriggerTable:
 
 
 class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
-    """Thirteen rows ask for a solve and reach none. Named here so the gap is countable.
+    """Twelve rows ask for a solve and reach none. Named here so the gap is countable.
 
     Building this enumeration is what made them visible, and BOTH directions are guarded, which is
     what makes the table's own claim true: a row that loses its bump fails the walk above, and a row
@@ -543,16 +541,11 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
-        """Thirteen rows ask for a solve and reach none.
-
-        Twelve of them are mutations a person makes. The thirteenth is the horizon maintainer,
-        which is not a mutation at all, because time passing is what triggers it, and which
-        materializes instead of solving.
-        """
+        """Twelve rows ask for a solve and reach none, all twelve a person's own mutation."""
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 13
+        assert len(unwired) == 12
         assert len(by_a_person) == 12
 
     @pytest.mark.parametrize(
@@ -581,15 +574,17 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         for one in TRIGGER_TABLE:
             if one.owner is None:
                 continue
-            assert one.owner in {"1400", "1403"}, one.row
+            assert one.owner == "1403", one.row
 
-    def test_only_seven_rows_reach_the_coordinator_today(self) -> None:
-        # The seven live triggers, one of which bypasses the debounce by design. The burst of pins
-        # the window was measured against is the first, which is now wired. The calendar sync is the
-        # one trigger here that no person performs: a poll asks for the weeks its own read moved.
+    def test_only_eight_rows_reach_the_coordinator_today(self) -> None:
+        # The eight live triggers, one of which bypasses the debounce by design. The burst of pins
+        # the window was measured against is the first, which is now wired. The calendar sync and
+        # the week entering the horizon are the two triggers here that no person performs: a poll
+        # asks for the weeks its own read moved, and time passing asks for the weeks it brought in.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
         assert sorted(wired) == [
+            "a week enters the projection horizon",
             "anchor delta from a calendar sync",
             "conflict resolved as moved or retyped",
             "pin, unpin, drag, keyboard move",
