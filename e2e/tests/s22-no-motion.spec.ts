@@ -9,19 +9,22 @@
  * The states are exercised rather than assumed: every one of the shell's routes, both weekly-session
  * modes, a week whose plan is beyond the horizon and therefore empty, and a route that does not exist.
  *
- * WHICH OF THE TWO AMBER NOTICE SURFACES THIS FILE REACHES, because the answer is one of each. The
- * prediction worth stating is that the PROMOTION panel is the likeliest place a browser pass finds
- * something, since it puts a `Table` inside a notice surface and nothing else in the product does. That
- * panel is NOT reached: it returns null on an empty candidate list and no fixture here raises a
- * promotion. The RAISED panel is, and the case at the foot of this file asserts both facts, so the day
- * a fixture raises a promotion it reddens. The composition itself waits on a fixture that raises one.
+ * WHICH OF THE TWO AMBER NOTICE SURFACES THIS FILE REACHES, because the answer is one of each, and
+ * now on one fixture each. The file's fixture is `repeated_pins`: the reference week plus one content
+ * pinned to one local time in three consecutive weeks beyond it, which is what makes a promotion
+ * candidate exist at all. The RAISED panel is read on the plan week's session, whose review window
+ * ends before any pin was made. The PROMOTION panel -- the one composition that puts a `Table`
+ * inside a notice surface, and so the likeliest place a browser pass finds something -- is read on
+ * the later week whose window holds the pins, and it is measured from the boxes the two compose
+ * rather than from a class list.
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
 import type { Page } from "@playwright/test";
 import { beyondHorizonWeek, planWeek } from "../src/harness/subject-weeks.ts";
+import { promotionSessionWeek } from "../src/seed/fixtures/repeated-pins.ts";
 
-usingFixture("reference_week");
+usingFixture("repeated_pins");
 
 /* What a spinner, a skeleton or a progress bar is called, in the vocabularies something might use. A
  * match is a finding rather than a false positive: this product has no loading indicator of any kind. */
@@ -57,8 +60,10 @@ const MOTION = `(() => {
 const routes = (): readonly { readonly what: string; readonly path: string }[] => [
   { what: "a week that holds a plan", path: `/week?week=${planWeek()}` },
   { what: "a week beyond the horizon", path: `/week?week=${beyondHorizonWeek()}` },
-  // The weekly session, where both amber notice surfaces live. The raised panel renders here and
-  // is asserted below; the promotion panel does not, because no fixture raises a promotion.
+  // The weekly session of the PLAN week. Both amber notice surfaces live in session mode; this
+  // route's review window ends before any pin was made, so the raised panel renders here and is
+  // asserted below, and the promotion panel does not. The case that reads that panel opens the
+  // session four weeks past the plan week, where the pins fall inside the window.
   { what: "the weekly session", path: `/week?week=${planWeek()}&mode=session` },
   { what: "the areas screen in weekly mode", path: "/areas?mode=weekly" },
   { what: "today", path: "/today" },
@@ -102,25 +107,15 @@ for (const route of routes()) {
   });
 }
 
-/* WHICH OF THE TWO AMBER NOTICE SURFACES THESE CASES ACTUALLY REACH, asserted rather than assumed.
- *
- * The promotion panel is PREDICTED to be the likeliest place a browser pass finds something, because it
- * puts a `Table` INSIDE a notice surface and nothing else in the product does. Adding the session route
- * to the list above does not reach that composition: `PromotionPanel` returns null on an empty
- * candidate list, and no fixture here raises a promotion, which needs repeated pins across three weeks.
- * Measured on this fixture's session payload: `promotions: 0`, `raised: 1`.
- *
- * So this case states which is which, and it is written to fail if either fact changes: the day a fixture
- * raises a promotion, its second half goes red and the gap table has to be corrected. */
-test("the weekly session renders the raised panel, and not the promotion panel, which no fixture raises", async ({
-  api,
-  page,
-}) => {
+/* WHICH OF THE TWO AMBER NOTICE SURFACES THESE CASES ACTUALLY REACH, asserted rather than assumed,
+ * and on which session. The raised panel is read on the plan week's session: its review window ends
+ * before any pin was made, so the api guard below constrains exactly the input that makes its amber
+ * section the only thing the surface could be. The promotion panel is read on a later session whose
+ * window holds all three pins, and it is read from rendered geometry: a class list states what an
+ * element is called, not whether the table was drawn inside the surface holding it. */
+test("the weekly session renders the raised panel", async ({ api, page }) => {
   const week = planWeek();
-  const session = await api.get<{
-    raised: readonly unknown[];
-    promotions: readonly unknown[];
-  }>(`/api/v1/reviews/week/${week}`);
+  const session = await api.get<{ raised: readonly unknown[] }>(`/api/v1/reviews/week/${week}`);
 
   await render(page, `/week?week=${week}&mode=session`);
   await expect(page.getByText("Weekly session")).toBeVisible();
@@ -137,10 +132,68 @@ test("the weekly session renders the raised panel, and not the promotion panel, 
   await expect(
     page.locator('section[aria-label="Raised in this session"].notice--amber'),
   ).toBeVisible();
+});
 
+/* THE PROMOTION PANEL, READ FROM THE PIXELS. The api guard runs first, so the candidate exists on the
+ * wire before any pixel is read: if the payload arrived empty, the case would be about a screen that
+ * correctly draws nothing rather than about the composition it exists to bound.
+ *
+ * The composition is then asserted over rendered geometry -- the table's box inside the notice
+ * surface's box, and the candidate's own row inside both -- because the claim here is about LAYOUT:
+ * whether the one `Table`-inside-a-notice-surface composition in the product actually composes when a
+ * real browser lays it out. A class list states what an element is called, which bounds nothing about
+ * where it landed; boxes do. The row assertions keep the geometry honest: containment over an empty
+ * table passes, so the row the api named must be among the things contained. */
+test("S22 the promotion panel composes its table inside the notice surface", async ({
+  api,
+  page,
+}) => {
+  const week = promotionSessionWeek();
+  const session = await api.get<{
+    promotions: readonly { readonly title: string; readonly consecutiveWeeks: number }[];
+  }>(`/api/v1/reviews/week/${week}`);
+  const [candidate] = session.promotions;
   expect(
-    session.promotions.length,
-    "a promotion is raised now, so the promotion panel renders and this case's second half is stale",
-  ).toBe(0);
-  await expect(page.getByLabel("Repeated pins")).toHaveCount(0);
+    candidate,
+    "the fixture pins one content across three consecutive weeks, so the session names a candidate",
+  ).toBeDefined();
+
+  await render(page, `/week?week=${week}&mode=session`);
+  await expect(page.getByText("Weekly session")).toBeVisible();
+
+  // THE SURFACE BY ITS LABEL, THE COMPOSITION BY ITS GEOMETRY. The panel sits below the fold on a
+  // session this tall, and an off-screen subtree is laid out as a placeholder until it is scrolled
+  // to, so the scroll is what makes the boxes below real measurements rather than estimates.
+  const panel = page.locator('section[aria-label="Repeated pins"]');
+  await expect(panel, "the session drew no promotion panel").toBeVisible();
+  await panel.scrollIntoViewIfNeeded();
+  const table = panel.getByRole("table");
+  await expect(table, "the notice surface drew no table inside it").toBeVisible();
+
+  const panelBox = await panel.boundingBox();
+  const tableBox = await table.boundingBox();
+  expect(panelBox, "the promotion panel rendered with no box to measure").not.toBeNull();
+  expect(tableBox, "the table rendered with no box to measure").not.toBeNull();
+  // COMPOSED: every edge of the table lies within the edges of the surface holding it, which is the
+  // whole of what "inside" means once the layout has been computed.
+  expect(tableBox!.x).toBeGreaterThanOrEqual(panelBox!.x);
+  expect(tableBox!.y).toBeGreaterThanOrEqual(panelBox!.y);
+  expect(tableBox!.x + tableBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width);
+  expect(tableBox!.y + tableBox!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height);
+
+  // THE ROW IS THE CANDIDATE THE API NAMED, drawn within the same box, so the geometry above cannot
+  // pass on a table that renders empty. The row is matched on the binding AND the week figure:
+  // the refusal sentence this api renders beside the answer also names the binding, so a match on
+  // the title alone could be satisfied by prose instead of by the candidate's own cells.
+  const row = panel
+    .getByRole("row")
+    .filter({ hasText: candidate!.title })
+    .filter({ hasText: `${candidate!.consecutiveWeeks} weeks` });
+  await expect(row, "the table drew no row for the candidate the api named").toHaveCount(1);
+  const rowBox = await row.boundingBox();
+  expect(rowBox, "the candidate's row rendered with no box to measure").not.toBeNull();
+  expect(rowBox!.x).toBeGreaterThanOrEqual(tableBox!.x);
+  expect(rowBox!.x + rowBox!.width).toBeLessThanOrEqual(tableBox!.x + tableBox!.width);
+  expect(rowBox!.y).toBeGreaterThanOrEqual(tableBox!.y);
+  expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(tableBox!.y + tableBox!.height);
 });
