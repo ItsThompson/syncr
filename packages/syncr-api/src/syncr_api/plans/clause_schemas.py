@@ -98,7 +98,10 @@ class BoundClause(WireModel):
 
     kind: Literal["bound"] = "bound"
     source: BoundSource = Field(
-        description="How a habit's content was chosen, or what fixed a derived block outright."
+        description=(
+            "How a habit's content was chosen, what fixed a derived block outright, or a "
+            "placement the solver chose."
+        )
     )
     selected: str
     cursor: str | None

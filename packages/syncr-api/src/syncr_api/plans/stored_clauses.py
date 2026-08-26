@@ -5,11 +5,12 @@ says which of the six a stored object is, the record that holds them, and the cl
 :mod:`syncr_api.plans.stored_reasons`, so the dispatch is stated once and this module is six
 independent pairs a reader can check one at a time.
 
-**A ``bound`` clause's source spans two vocabularies.** ``BoundSource`` is a habit's binding
-source or a derivation source, and a stored clause holds one string, so reading one has to decide
-which vocabulary the string belongs to. The two are disjoint, which is what makes that decidable
-at all, and a test asserts the disjointness rather than trusting it: a member added to either that
-collided with the other would make one stored clause name two sources.
+**A ``bound`` clause's source spans three vocabularies.** ``BoundSource`` is a habit's binding
+source, a derivation source, or a placement the solver chose, and a stored clause holds one
+string, so reading one has to decide which vocabulary the string belongs to. The three are
+disjoint, which is what makes that decidable at all, and a test asserts the disjointness rather
+than trusting it: a member added to any of them that collided with another would make one stored
+clause name two sources.
 
 Three of the six carry an arithmetic invariant of their own -- a share within the whole, a finite
 objective delta, minute counts that are not negative -- and each is re-checked because each
@@ -48,6 +49,7 @@ from syncr_domain.reasons import (
     Floor,
     InsteadOf,
     Pinned,
+    PlacedSource,
 )
 
 if TYPE_CHECKING:
@@ -79,9 +81,9 @@ PINNED_ON = "pinned_on"
 PLACEMENT = "placement"
 OBJECTIVE_DELTA = "objective_delta"
 
-# The two vocabularies a `bound` clause's source spans, in the order a stored word is read
+# The three vocabularies a `bound` clause's source spans, in the order a stored word is read
 # against them. Disjoint, which is what makes one string decidable, and asserted to be.
-BOUND_SOURCES: Final = (DerivationSource, BindingSource)
+BOUND_SOURCES: Final = (DerivationSource, BindingSource, PlacedSource)
 
 
 def stored_blocked(clause: Blocked) -> JsonObject:
@@ -154,7 +156,8 @@ def _read_bound_source(value: object, *, field: str) -> BoundSource:
     named = ", ".join(sorted(member.value for source in BOUND_SOURCES for member in source))
     raise StoredDocumentCorrupt(
         f"{field} names {word!r}, which determines nothing: a bound clause names how a habit's "
-        f"content was chosen or what fixed a derived block, and those are {named}"
+        f"content was chosen, what fixed a derived block, or a placement the solver chose, and "
+        f"those are {named}"
     )
 
 

@@ -78,6 +78,7 @@ from syncr_domain.reasons import (
     Floor,
     InsteadOf,
     Pinned,
+    PlacedSource,
     ReasonRecord,
 )
 from syncr_domain.weeks import IsoWeek
@@ -613,18 +614,20 @@ def test_the_stored_words_are_distinct() -> None:
     assert len(set(CLAUSE_KIND.values())) == len(CLAUSE_KIND)
 
 
-def test_the_two_vocabularies_a_bound_source_spans_are_disjoint() -> None:
+def test_the_three_vocabularies_a_bound_source_spans_are_disjoint() -> None:
     """One stored word has to name exactly one source, and nothing else makes that decidable."""
-    derivations = {member.value for member in DerivationSource}
-    bindings = {member.value for member in BindingSource}
+    spelled = [
+        {member.value for member in vocabulary}
+        for vocabulary in (DerivationSource, BindingSource, PlacedSource)
+    ]
 
-    assert not derivations & bindings
+    assert sum(len(words) for words in spelled) == len(set().union(*spelled))
 
 
 @pytest.mark.parametrize(
     "source",
-    [*DerivationSource, *BindingSource],
-    ids=[member.value for member in (*DerivationSource, *BindingSource)],
+    [*DerivationSource, *BindingSource, *PlacedSource],
+    ids=[member.value for member in (*DerivationSource, *BindingSource, *PlacedSource)],
 )
 def test_every_bound_source_round_trips_to_its_own_vocabulary(source: Any) -> None:
     document = a_document(

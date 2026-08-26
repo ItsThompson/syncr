@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Final
 from syncr_api.calendars.projection import ProjectedEvent
 from syncr_domain.habits import BindingSource
 from syncr_domain.identity import Origin
-from syncr_domain.reasons import Bound, DerivationSource
+from syncr_domain.reasons import Bound, DerivationSource, PlacedSource
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -90,7 +90,7 @@ OFF_PLAN_WITH_FRAME_DESCRIPTION: Final = (
 )
 
 # What a `bound` clause's source says in the words a reader sees on their phone. Total over
-# `BoundSource`, which is a union of two vocabularies, so a source with no phrase would render a
+# `BoundSource`, which is a union of three vocabularies, so a source with no phrase would render a
 # description naming a value from the code.
 #
 # `anchor` is unreachable today and is stated anyway: an anchor block does not project, so nothing
@@ -104,6 +104,7 @@ _PHRASE_BY_BOUND_SOURCE: Final[Mapping[BoundSource, str]] = {
     BindingSource.FIXED: "A habit on a fixed day",
     BindingSource.ROTATION: "Chosen by the rotation",
     BindingSource.QUEUE: "Taken from the queue",
+    PlacedSource.SOLVER: "Placed by syncr",
 }
 
 

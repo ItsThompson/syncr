@@ -62,6 +62,7 @@ from syncr_domain.reasons import (
     DerivationSource,
     Dominant,
     Pinned,
+    PlacedSource,
     ReasonRecord,
 )
 from syncr_domain.weeks import IsoWeek
@@ -100,9 +101,13 @@ A_WIDE_HORIZON = Interval(datetime(2026, 2, 1, tzinfo=UTC), datetime(2026, 3, 1,
 
 PERIOD = uuid4()
 
-# Both vocabularies a ``bound`` clause's source spans, so "every source has a phrase" is stated over
-# the union rather than over whichever half a test remembered.
-_EVERY_BOUND_SOURCE: tuple[BoundSource, ...] = (*DerivationSource, *BindingSource)
+# All three vocabularies a ``bound`` clause's source spans, so "every source has a phrase" is
+# stated over the union rather than over whichever half a test remembered.
+_EVERY_BOUND_SOURCE: tuple[BoundSource, ...] = (
+    *DerivationSource,
+    *BindingSource,
+    *PlacedSource,
+)
 
 
 def keys(events: tuple[ProjectedEvent, ...]) -> set[str]:
@@ -550,6 +555,7 @@ def test_the_description_renders_the_bound_clause() -> None:
         BindingSource.FIXED,
         BindingSource.ROTATION,
         BindingSource.QUEUE,
+        PlacedSource.SOLVER,
     ],
 )
 def test_every_bound_source_renders_a_phrase_in_words(source: BoundSource) -> None:
