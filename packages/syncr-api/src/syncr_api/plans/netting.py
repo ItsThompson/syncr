@@ -39,13 +39,15 @@ Which placements a figure nets and which span it counts of each are two separate
 second is made per figure:
 
 ```
-own span             the time the placement occupies. What capacity, an Area's placed minutes and
-                     the solver's remaining work count
+own span             the time the placement occupies. What capacity and an Area's placed minutes
+                     count
 
 attributed span      the time the content was given, out of the table above. The probe's demand
-                     counts it clipped at a deadline and split at ``now``; an Area's floor figure
-                     counts the part of it the placement's own span holds, so a floor is honoured
-                     by work done in time the plan holds and by nothing else
+                     counts it clipped at a deadline and split at ``now``; the solver's remaining
+                     work counts the part of it at or before ``now``, so a confirmed skip stops
+                     counting as work done; an Area's floor figure counts the part of it the
+                     placement's own span holds, so a floor is honoured by work done in time the
+                     plan holds and by nothing else
 ```
 
 **Immovability is decided against ``now``, and ``now`` is the assembler's stamp.** A block that
@@ -223,7 +225,7 @@ class PlacedTime:
         self._now = now
         self._all_by_task = _by_task(placed, span=_attributed_span)
         self._immovable_by_task = _by_task(
-            (item for item in placed if item.immovable), span=_own_span
+            (item for item in placed if item.immovable), span=_attributed_span
         )
         self._all_by_area = _by_area(placed, span=_own_span)
         self._immovable_by_area = _by_area(
@@ -231,14 +233,19 @@ class PlacedTime:
         )
 
     def immovable_minutes_of_task(self, task_id: TaskId) -> int:
-        """Minutes placed for this task the solver cannot re-place. The SOLVER's set.
+        """Minutes of this task the solver is not offered again. The SOLVER's set.
 
-        Taken over each placement's OWN span rather than over what it attributes, so an outcome
-        does not change this figure. Whether it should is not settled: a skipped past block is
-        time the solver cannot re-place AND work that was not done, so the two readings disagree
-        and only one of them is the probe's. Ticket 1320 owns the question.
+        Membership is immovability and attribution decides how much of each member counts: taken
+        over each placement's ATTRIBUTED span, clipped at ``now``, so only the part of the work
+        that was actually done and has already been lived nets out of the offered remaining work.
+        A confirmed skip attributes nothing and raises the figure by its minutes; an hour moved to
+        a span ahead of ``now`` contributes nothing until it is lived, so the plan keeps offering
+        it rather than ending the task over a pin it also holds.
         """
-        return _minutes(self._immovable_by_task.get(task_id))
+        placed = self._immovable_by_task.get(task_id)
+        if placed is None:
+            return 0
+        return _minutes(_clipped_before(placed, self._now))
 
     def minutes_of_area(self, area_id: AreaId) -> int:
         """Minutes placed in this Area by any block, pinned or not, past or future."""

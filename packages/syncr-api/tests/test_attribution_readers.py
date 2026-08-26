@@ -87,18 +87,19 @@ THE_INDEX = "PlacedTime"
 NOT_INJECTED = "not injected"
 
 # The strategies that read what an OUTCOME attributed, as against the time a placement occupies.
-# Two of them, because the two consumers of the table clip it differently: the demand clips at a
-# deadline and splits at ``now``, and an Area's floor reading clips to the span the placement holds.
+# Two of them, because the three consumers of the table clip it differently: the demand clips at a
+# deadline and splits at ``now``, an Area's floor reading clips to the span the placement holds,
+# and the solver's remaining work clips at ``now`` alone.
 ATTRIBUTING_SPANS = frozenset({"_attributed_span", "_worked_span"})
 
 # Each public reading of the placement index and the strategy behind the index it reads, compared
-# against that index's constructor on every run. Two readings take an outcome's answer and two take
-# the placement's own span, and each pair holds one task reading and one Area reading: the split is
-# by what the figure is FOR, not by what it is indexed by.
+# against that index's constructor on every run. Three readings take an outcome's answer and one
+# takes the placement's own span, and every one of the three clips what it took differently: at a
+# deadline and at ``now``, to the span the placement holds, and at ``now`` alone.
 SPAN_BY_READING = {
     "attributed_to_task_before": "_attributed_span",
     "immovable_minutes_of_area": "_worked_span",
-    "immovable_minutes_of_task": "_own_span",
+    "immovable_minutes_of_task": "_attributed_span",
     "minutes_of_area": "_own_span",
 }
 
@@ -410,17 +411,22 @@ def test_each_reading_of_the_placement_index_takes_the_span_the_register_names()
     )
 
 
-def test_the_readings_that_take_an_outcomes_answer_are_the_two_that_net_work_done() -> None:
-    # The claim the injected strategy exists to make checkable. Collapsing the two strategies onto
-    # one reading is the shape three review iterations of this arithmetic found, and it is invisible
-    # from either side alone: each reading is right for its own consumer.
+def test_the_readings_that_take_an_outcomes_answer_are_the_three_that_net_work_done() -> None:
+    # The claim the injected strategy exists to make checkable. Collapsing an attributing reading
+    # onto the placement's own span is the shape three review iterations of this arithmetic found,
+    # and it is invisible from either side alone: each reading is right for its own consumer, and
+    # the one reading left to the own span is the one no outcome may touch -- committed time.
     derived = span_by_reading(the_index_source(), of=THE_INDEX)
 
     from_the_outcome = {name for name, span in derived.items() if span in ATTRIBUTING_SPANS}
     from_the_placement = {name for name, span in derived.items() if span == "_own_span"}
 
-    assert from_the_outcome == {"attributed_to_task_before", "immovable_minutes_of_area"}
-    assert from_the_placement == {"immovable_minutes_of_task", "minutes_of_area"}
+    assert from_the_outcome == {
+        "attributed_to_task_before",
+        "immovable_minutes_of_area",
+        "immovable_minutes_of_task",
+    }
+    assert from_the_placement == {"minutes_of_area"}
     assert set(derived) == set(SPAN_BY_READING)
 
 

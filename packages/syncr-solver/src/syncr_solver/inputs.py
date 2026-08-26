@@ -20,9 +20,11 @@ work still to do     EligibleTask                DeadlineDemand
 floor to reserve     AreaBudget                  AreaBudget
                        .floor_minutes              .floor_reservation_minutes
 
-nets                 IMMOVABLE placements        EVERY placement, pinned or not,
-                     only: past blocks and       past or future
-                     pins
+nets                 the attributed span of      EVERY placement, pinned or not,
+                     every immovable placement,  past or future
+                     clipped at ``now``: what
+                     was done of each block the
+                     solver cannot re-place
 
 why                  it DISCARDS and re-places   its `free` already subtracts every
                      unpinned future blocks,     placement, so a quantity netting a
@@ -247,9 +249,13 @@ class EligibleTask:
     """One open task the solver may place, and how much of it is left to place.
 
     ``remaining_minutes`` is the estimate, corrected by the active duration multiplier,
-    less recorded minutes, less IMMOVABLE placements only, where immovable means a past
-    block or a pin. It does NOT net an unpinned future block, because the solver discards
-    and re-places those and netting them would permanently under-schedule the task.
+    less recorded minutes, less the attributed span of each immovable placement clipped
+    at ``now``, where immovable means a past block or a pin: only what the outcome log
+    says was actually done of the blocks the solver cannot re-place nets out of the
+    figure. A confirmed skip therefore raises it by its minutes, and a pinned block
+    ahead of ``now`` nets nothing until it is lived, because the solver discards and
+    re-places what has not happened and netting it would permanently under-schedule the
+    task.
 
     **This is the SOLVER's quantity.** It is read by construction and by local search, and
     by nothing else. The probe reads ``DeadlineDemand.remaining_minutes``, which nets a
