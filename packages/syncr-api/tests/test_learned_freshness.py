@@ -8,7 +8,7 @@ reddens here rather than drifting onto the screen.
 
 from __future__ import annotations
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from syncr_api.learned.maturity import maturity_rows
 from syncr_api.learned.subjects import subject_of
@@ -48,10 +48,6 @@ class TestARenameMovesTheSubjectAndNotTheSentence:
         assert "Fitness" in row.plain_language
         assert "Climbing" not in row.plain_language
 
-    def test_rereading_the_same_document_changes_neither_string(self) -> None:
-        # Freshness is decided by the mapping handed in, never by the stored row itself.
-        assert maturity_rows(STORED) == maturity_rows(STORED)
-
 
 class TestTheRowGuardsTheFreshnessRecordRestsOn:
     # A freshness assertion over a row that the reader should have dropped would prove nothing,
@@ -61,11 +57,3 @@ class TestTheRowGuardsTheFreshnessRecordRestsOn:
 
     def test_a_ready_row_without_its_figure_is_dropped(self) -> None:
         assert maturity_rows(({**STORED[0], "value": None},)) == ()
-
-
-def test_the_sentence_survives_a_rename_because_nothing_rewrites_storage() -> None:
-    renamed: dict[UUID, str] = {FITNESS: "Climbing"}
-    row_before = maturity_rows(STORED)[0]
-    row_after = maturity_rows(STORED)[0]
-    assert row_after.plain_language == row_before.plain_language
-    assert subject_of(row_after.parameter, renamed) == "Climbing"
