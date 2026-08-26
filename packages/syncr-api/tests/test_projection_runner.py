@@ -41,12 +41,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
 
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import GOOGLE, HORIZON_DAYS_DEFAULT, ICS
 from syncr_api.calendars.google_events import DELETE, PATCH, POST, SYNCR_KEY_PROPERTY
 from syncr_api.calendars.injection import build_adapters
@@ -77,7 +79,9 @@ from syncr_api.google_account.notices import (
 )
 from syncr_api.google_account.repository import GoogleCredentialRepository
 from syncr_api.horizon.runner import PlanHorizonRunner
+from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.routines.repository import RoutineRepository
 from syncr_api.solving.config import (
     MAX_ATTEMPTS,
     PENDING,
@@ -88,9 +92,13 @@ from syncr_api.solving.config import (
 )
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
+from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
+from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import RUNNERS, WorkerContext
 from syncr_common.metrics import REGISTRY
 from syncr_domain.intervals import Interval
+from syncr_domain.templates import WeekPattern
+from syncr_domain.weeks import Weekday
 from syncr_domain.zones import ZoneProfile
 from tests.fake_google import (
     ACCESS_TOKEN,
@@ -101,7 +109,6 @@ from tests.fake_google import (
     TEST_ENCRYPTION_KEY,
     events_page,
 )
-from tests.live_minimums import a_routine_frame, declare_the_minimum
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -306,10 +313,51 @@ async def declare_a_planned_week(
     The plan is produced by the horizon maintainer rather than inserted, so what is projected is a
     document production code wrote, and the projections in the queue are the ones it enqueued.
     """
-    await declare_the_minimum(sessions, tenant_id, content=a_routine_frame)
+    await declare_the_minimum(sessions, tenant_id)
     await declare_a_write_target(sessions, tenant_id, horizon_days=horizon_days, provider=provider)
     await store_a_grant(sessions, tenant_id)
     await PlanHorizonRunner(clock=clock_at()).plan(context, now=NOW)
+
+
+async def declare_the_minimum(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> None:
+    """Areas, a day shape, a weight set and a home zone: the least a plan can exist from."""
+    async with sessions() as session, session.begin():
+        settings = SettingsRepository(session, tenant_id)
+        locked = await settings.lock(created_at=NOW)
+        await settings.write(
+            visible_hours=locked.visible_hours,
+            day_start=locked.day_start,
+            day_end=locked.day_end,
+            review_cadence=locked.review_cadence,
+            home_zone=LONDON,
+        )
+        await AreaRepository(session, tenant_id).create(
+            parent_id=None,
+            name="Career",
+            pigment_index=1,
+            budget_percent=Decimal(30),
+            floor_hours=Decimal(3),
+            created_at=NOW,
+        )
+        day_type = await DayTypeRepository(session, tenant_id).create(
+            name="Weekday", created_at=NOW
+        )
+        await WeekPatternRepository(session, tenant_id).replace(
+            WeekPattern(dict.fromkeys(Weekday, day_type.id))
+        )
+        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
+        # One routine, so the materialized week holds blocks at all: a frame block projects, and its
+        # Sunday-night occurrence is the span that crosses the ISO week boundary in real life.
+        await RoutineRepository(session, tenant_id).create(
+            title="Sleep",
+            target_time=time(23, 0),
+            duration_minutes=8 * 60,
+            min_duration_minutes=6 * 60,
+            flex_band_minutes=60,
+            created_at=NOW,
+        )
 
 
 async def declare_a_write_target(
@@ -474,7 +522,7 @@ async def test_a_span_reaching_into_the_horizon_from_the_previous_week_is_kept(
     it: every Monday morning the in-progress sleep event would leave the phone while the live plan
     still held it. The week list therefore reaches one week back.
     """
-    await declare_the_minimum(sessions, owner.tenant_id, content=a_routine_frame)
+    await declare_the_minimum(sessions, owner.tenant_id)
     await declare_a_write_target(sessions, owner.tenant_id)
     await store_a_grant(sessions, owner.tenant_id)
     # Plan last week as well as this one, by running the maintainer a week earlier: only a week that
@@ -521,7 +569,7 @@ async def test_an_empty_queue_writes_nothing_and_reads_nothing(
     context: WorkerContext,
     calendar: FakeCalendar,
 ) -> None:
-    await declare_the_minimum(sessions, owner.tenant_id, content=a_routine_frame)
+    await declare_the_minimum(sessions, owner.tenant_id)
     await declare_a_write_target(sessions, owner.tenant_id)
 
     performed = await drain(context, calendar)
@@ -542,7 +590,7 @@ async def test_a_tenant_with_no_write_target_drains_its_queue_without_writing(
     calendar: FakeCalendar,
 ) -> None:
     """Nothing happened, by the user's own instruction: the answer an excluded source gets."""
-    await declare_the_minimum(sessions, owner.tenant_id, content=a_routine_frame)
+    await declare_the_minimum(sessions, owner.tenant_id)
     await PlanHorizonRunner(clock=clock_at()).plan(context, now=NOW)
 
     performed = await drain(context, calendar)
@@ -909,7 +957,7 @@ async def test_the_arming_state_is_exported_whether_or_not_anything_is_due(
     ``ProjectionFailing`` be stated as "failures AND writes enabled" instead of choosing between an
     alert that never fires and one that always does.
     """
-    await declare_the_minimum(sessions, owner.tenant_id, content=a_routine_frame)
+    await declare_the_minimum(sessions, owner.tenant_id)
 
     await drain(
         WorkerContext(settings=worker_settings(writes=False), database=context.database), calendar

@@ -35,6 +35,7 @@ substituted for the seam.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -43,6 +44,7 @@ from sqlalchemy import select
 from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.events import FetchOutcome, RawEvent
 from syncr_api.calendars.repository import CalendarSourceRepository
@@ -85,6 +87,9 @@ from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.maintenance import maintenance_for
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
+from syncr_api.tasks.repository import TaskRepository
+from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
+from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
@@ -93,11 +98,12 @@ from syncr_domain.identity import BindingKind, date_occurrence_key
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.tasks import Priority
+from syncr_domain.templates import WeekPattern
+from syncr_domain.weeks import IsoWeek, Weekday
 from syncr_solver.objective import ObjectiveBreakdown
 from syncr_solver.solve import SolveResult
 from tests.anchor_specifications import STANDUP
-from tests.live_minimums import a_placeable_task, declare_the_minimum
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -177,6 +183,57 @@ async def context(live_database_url: str) -> AsyncIterator[WorkerContext]:
     database = create_database(live_database_url)
     yield WorkerContext(settings=worker, database=database)
     await database.engine.dispose()
+
+
+async def declare_the_minimum(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, with_task: bool = True
+) -> None:
+    """Areas, a day shape, a weight set, a home zone, and one task the solver can place.
+
+    The task is what makes the authority path reachable: a week with an Area and no content solves
+    to an empty document, which classifies as nothing and writes nothing, so a suite without it
+    would assert about a solve that adopted no plan. The started-block tests pass
+    ``with_task=False``, because a chosen placement in the week's future would give the second
+    solve a move to propose, and what those tests need is a disagreement about the PAST alone.
+    """
+    async with sessions() as session, session.begin():
+        settings = SettingsRepository(session, tenant_id)
+        locked = await settings.lock(created_at=NOW)
+        await settings.write(
+            visible_hours=locked.visible_hours,
+            day_start=locked.day_start,
+            day_end=locked.day_end,
+            review_cadence=locked.review_cadence,
+            home_zone=LONDON,
+        )
+        area = await AreaRepository(session, tenant_id).create(
+            parent_id=None,
+            name="Career",
+            pigment_index=1,
+            budget_percent=Decimal(30),
+            floor_hours=Decimal(3),
+            created_at=NOW,
+        )
+        day_type = await DayTypeRepository(session, tenant_id).create(
+            name="Weekday", created_at=NOW
+        )
+        await WeekPatternRepository(session, tenant_id).replace(
+            WeekPattern(dict.fromkeys(Weekday, day_type.id))
+        )
+        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
+        if not with_task:
+            return
+        await TaskRepository(session, tenant_id).create(
+            area_id=area.id,
+            project_id=None,
+            title="Interview preparation",
+            estimate_minutes=120,
+            deadline=None,
+            priority=Priority.NORMAL,
+            min_chunk_minutes=30,
+            splittable=True,
+            created_at=NOW,
+        )
 
 
 def a_dispatch(
@@ -274,7 +331,7 @@ class TestASolveOfAWeekWithNoPlan:
         discarded solve on a week nothing had referenced; the follow-up reads the row this write
         created and adopts.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
 
         finished = await a_solve(sessions, context, owner, clock)
 
@@ -295,7 +352,7 @@ class TestASolveOfAWeekWithNoPlan:
         clock: Ticking,
     ) -> None:
         """Which is what makes failing closed on a missing row cost one solve, not the week."""
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await a_solve(sessions, context, owner, clock)
 
         claim = await claimed(sessions, owner, clock)
@@ -317,7 +374,7 @@ class TestASolveOfAWeekWithNoPlan:
         the worker loads anything. Stamped at creation it would be guarded on the version it was
         created against and superseded with no concurrency involved at all.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         await bump(sessions, owner, clock)
@@ -343,7 +400,7 @@ class TestASolveOfAWeekWithNoPlan:
         destructive calendar reconciliations during one session would be slow and visible on the
         user's phone, and it falls out of this condition rather than a session-specific case.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
 
         finished = await a_solve(sessions, context, owner, clock)
@@ -367,7 +424,7 @@ class TestAVersionMismatchDiscardsBeforeAnyWrite:
         The bump is performed while the operation is running, which is exactly the case the whole
         mechanism exists for. Nothing is rebased and nothing is applied partially.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim = await claimed(sessions, owner, clock)
@@ -391,7 +448,7 @@ class TestAVersionMismatchDiscardsBeforeAnyWrite:
         owner: UserRecord,
         clock: Ticking,
     ) -> None:
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim = await claimed(sessions, owner, clock)
@@ -422,7 +479,7 @@ class TestFailure:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _raising)
 
         finished = await a_solve(sessions, context, owner, clock)
@@ -445,7 +502,7 @@ class TestFailure:
         ``failed`` and a retried row is ``pending``. So a snapshot arriving is also the assertion
         that this was the last attempt.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _raising)
 
         finished = await spent(sessions, context, owner, clock)
@@ -463,7 +520,7 @@ class TestFailure:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """So the horizon is never left with a hole, and the history says which path produced it."""
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _raising)
 
         await spent(sessions, context, owner, clock)
@@ -481,7 +538,7 @@ class TestFailure:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # The plan it has is better than a derived-only one, and it is still projected.
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await materialized(sessions, owner, clock)
         held = await revisions_of(sessions, owner.tenant_id)
         assert held, "the fixture has to leave a live revision for this rule to be about one"
@@ -519,7 +576,7 @@ class TestTheTwoShapesThatUsedToWedgeTheWeek:
         owner: UserRecord,
         clock: Ticking,
     ) -> None:
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await materialized(sessions, owner, clock)
 
         for _ in range(3):
@@ -539,11 +596,11 @@ class TestTheTwoShapesThatUsedToWedgeTheWeek:
 
         The plan of record holds the commitment where the feed said it stood before ``now`` passed
         its start. The correction lands after, so live plan and candidate hold one ANCHOR block at
-        two spans: derivation restates the fact, the guard binds only what the solve chose, and the
-        solve adopts instead of refusing. Before the narrowing every solve of such a week failed
-        until the week left the horizon.
+        two spans: derivation restates the fact, the guard binds only what the solve chose, and
+        the solve adopts instead of refusing. Before the narrowing every solve of such a week
+        failed until the week left the horizon.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id, with_task=False)
         source = await a_calendar_source(sessions, owner.tenant_id)
         await a_sync(sessions, owner.tenant_id, source, start=BEGAN_AT, clock=clock)
         # The counter row itself: a week with no version row is a mismatch by definition, which is
@@ -580,7 +637,7 @@ class TestTheTwoShapesThatUsedToWedgeTheWeek:
         FRAME origin's time its source fixes, so the disagreement passes: nothing is proposed and
         nothing is refused, which is the second shape that used to wedge the week for good.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id, with_task=False)
         sleep_ = await a_sleep_routine(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
 
@@ -810,7 +867,7 @@ class TestTheAdoptionBranch:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -832,7 +889,7 @@ class TestTheAdoptionBranch:
     ) -> None:
         # The live plan IS a solve input, so appending a revision has to move the counter a later
         # mutation and a later assembly both read.
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         held = await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -852,7 +909,7 @@ class TestTheAdoptionBranch:
         # The true side of the condition whose false side the case above drives. Both are the same
         # `if`, so a change that enqueued unconditionally would redden one and a change that never
         # enqueued would redden the other.
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -871,7 +928,7 @@ class TestTheAdoptionBranch:
     ) -> None:
         # What is stored is the plan of record, so a document that could be written and not read
         # back would be a week nothing can render.
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -896,7 +953,7 @@ class TestTheAdoptionBranch:
         product may not make on its own, so it lands in the pending slot and the live plan is left
         exactly where it was.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
         await a_solve(sessions, context, owner, clock)
@@ -1012,7 +1069,7 @@ class TestALeaseExpiringMidSolve:
         clock: Ticking,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -1032,7 +1089,7 @@ class TestALeaseExpiringMidSolve:
     ) -> None:
         # The containment half, which is the important one: the guard is what stops the write, so a
         # solve whose row moved on cannot leave a revision, a projection or a moved version behind.
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         held = await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -1060,7 +1117,7 @@ class TestALeaseExpiringMidSolve:
         taken, and a lost claim is a row skipped before any of that. The other edge of that pair is
         driven in ``test_tradeoff_during_a_solve.py``.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
         taken_over = _sample("syncr_solve_taken_over_total")
@@ -1088,7 +1145,7 @@ class TestALeaseExpiringMidSolve:
         row to the queue as pending, which is a retry rather than an ending, so counting them would
         report one solve three times.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         before = _sample("syncr_solve_total", {"outcome": FAILED})
 
         for _ in range(MAX_ATTEMPTS):
@@ -1161,7 +1218,7 @@ class TestTheVerdictTransition:
         episode definition depends on: the FIRST row of an episode decides whether it was caught
         early, so a confirming row claiming a session was open would report a miss as a catch.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
 
@@ -1188,7 +1245,7 @@ class TestTheVerdictTransition:
         A row for a discarded solve would tell the product metric that a week was confirmed by a
         result nobody adopted, and the plan it was about is not the plan the week holds.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
         await requested(sessions, owner, clock)
@@ -1223,7 +1280,7 @@ class TestTheVerdictTransition:
         is why the unit is the episode: both figures are asserted, because the one that must not be
         used is the one a later reader would reach for first.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await _a_pin_warns_the_week_is_short(sessions, owner, clock)
         monkeypatch.setattr("syncr_api.solving.dispatch.solve", _confirming_the_shortfall)

@@ -37,11 +37,13 @@ two different events: a row skipped before any work, and a whole write thrown aw
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from sqlalchemy import select
 
+from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
 from syncr_api.core.settings import (
     DEFAULT_SOLVE_DEBOUNCE_MS,
@@ -49,6 +51,7 @@ from syncr_api.core.settings import (
     EnvSettings,
     build_service_settings,
 )
+from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.authority import classify
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.verdict_events import VerdictEventRepository
@@ -69,10 +72,14 @@ from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.models import Operation
 from syncr_api.solving.outcomes import Superseded
 from syncr_api.solving.repository import OperationRepository
+from syncr_api.tasks.repository import TaskRepository
+from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
+from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
-from syncr_domain.weeks import IsoWeek
-from tests.live_minimums import a_placeable_task, declare_the_minimum
+from syncr_domain.tasks import Priority
+from syncr_domain.templates import WeekPattern
+from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import delete_tenant, seed_owner
 from tests.test_solve_coordinator import StaleQueue
 from tests.test_solve_runner_integration import _placing_one_block
@@ -162,6 +169,48 @@ def solver_places_one_block(monkeypatch: pytest.MonkeyPatch) -> None:
     nothing to write either way, and the discarded case would be indistinguishable from it.
     """
     monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+
+
+async def declare_the_minimum(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> None:
+    """A home zone, one Area, a day shape, a weight set, and one task the solver can place."""
+    async with sessions() as session, session.begin():
+        settings = SettingsRepository(session, tenant_id)
+        locked = await settings.lock(created_at=NOW)
+        await settings.write(
+            visible_hours=locked.visible_hours,
+            day_start=locked.day_start,
+            day_end=locked.day_end,
+            review_cadence=locked.review_cadence,
+            home_zone=LONDON,
+        )
+        area = await AreaRepository(session, tenant_id).create(
+            parent_id=None,
+            name="Career",
+            pigment_index=1,
+            budget_percent=Decimal(30),
+            floor_hours=Decimal(3),
+            created_at=NOW,
+        )
+        day_type = await DayTypeRepository(session, tenant_id).create(
+            name="Weekday", created_at=NOW
+        )
+        await WeekPatternRepository(session, tenant_id).replace(
+            WeekPattern(dict.fromkeys(Weekday, day_type.id))
+        )
+        await TaskRepository(session, tenant_id).create(
+            area_id=area.id,
+            project_id=None,
+            title="Interview preparation",
+            estimate_minutes=120,
+            deadline=None,
+            priority=Priority.NORMAL,
+            min_chunk_minutes=30,
+            splittable=True,
+            created_at=NOW,
+        )
+        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
 
 
 def a_coordinator(session: AsyncSession, owner: UserRecord, clock: Ticking) -> SolveCoordinator:
@@ -319,7 +368,7 @@ class TestTheRequestClosesTheRowFirst:
         operation's own terminal step applying to no row, which is the last statement of the
         transaction the other three writes are in.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         held = await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim, dispatch, loaded, solved = await a_solve_that_has_loaded_and_run(
@@ -354,7 +403,7 @@ class TestTheRequestClosesTheRowFirst:
         projection is enqueued. So the four absences above are a write that was discarded rather
         than a write that was never reachable.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         held = await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim, dispatch, loaded, solved = await a_solve_that_has_loaded_and_run(
@@ -383,7 +432,7 @@ class TestTheRequestClosesTheRowFirst:
         break: the replacement IS the follow-up, and it carries the concession the request asked
         about.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim, dispatch, loaded, solved = await a_solve_that_has_loaded_and_run(
@@ -414,7 +463,7 @@ class TestTheWorkerCommitsFirst:
         supersede. The request therefore creates its own operation and the reader is told to follow
         it, which is the same answer they get on a quiet week.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         held = await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim, dispatch, loaded, solved = await a_solve_that_has_loaded_and_run(
@@ -449,7 +498,7 @@ class TestTheWorkerCommitsFirst:
         Left to raise, this is a 500 on a request that changed nothing and a reader told the product
         broke when what happened is that their answer arrived.
         """
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim, dispatch, loaded, solved = await a_solve_that_has_loaded_and_run(
@@ -491,7 +540,7 @@ class TestTheTwoRacesAreCountedApart:
         clock: Ticking,
         solver_places_one_block: None,
     ) -> None:
-        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await declare_the_minimum(sessions, owner.tenant_id)
         await bump(sessions, owner, clock)
         await requested(sessions, owner, clock)
         claim, dispatch, loaded, solved = await a_solve_that_has_loaded_and_run(
