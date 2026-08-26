@@ -136,7 +136,7 @@ class TimeDrivenVerdicts:
             tenant_id=str(self._tenant_id),
             iso_week=str(iso_week),
             direction=direction.value,
-            shortfall_minutes=written.shortfall_minutes,
+            largest_gap_minutes=written.largest_gap_minutes,
             input_version=written.input_version,
         )
         return VerdictPass(

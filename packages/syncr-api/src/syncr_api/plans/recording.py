@@ -99,7 +99,7 @@ class VerdictRecorder:
             surface=written.surface.value,
             provenance=written.provenance.value,
             feasible=written.feasible,
-            shortfall_minutes=written.shortfall_minutes,
+            largest_gap_minutes=written.largest_gap_minutes,
             shortfall_kinds=[one.value for one in written.shortfall_kinds],
             session_mode_active=written.session_mode_active,
             input_version=written.input_version,

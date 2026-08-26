@@ -14,14 +14,15 @@ that found none says so, a solver verdict says what it proved, and the episode a
 therefore an episode the user was told about. The translation is here, once, because it is the one
 place the domain's epistemics and the metric's substrate meet.
 
-## What ``shortfall_minutes`` is
+## What ``largest_gap_minutes`` is
 
 The LARGEST single gap, not the sum. Shortfalls can measure the same minutes twice: a deadline gap
 and the floor gap of the Area the deadline belongs to are the same capacity seen two ways, so their
 sum is not a duration the week is short by and can exceed the week itself. The largest gap is a real
-quantity, and the figure the episode ratio reads is neither: it counts episodes.
+quantity, so the column names itself largest rather than one an aggregate reads as totalable, and
+the figure the episode ratio reads is neither: it counts episodes.
 
-``feasible`` and ``shortfall_minutes`` are derived here independently, and what requires them to
+``feasible`` and ``largest_gap_minutes`` are derived here independently, and what requires them to
 agree is the ``feasible_has_no_shortfall`` check constraint: a verdict reporting no gap has no
 minutes to name, and one reporting a gap is not a week that holds its commitments.
 """
@@ -54,7 +55,7 @@ def as_recorded(
         occurred_at=verdict.computed_at,
         provenance=verdict.provenance,
         feasible=_was_reported_able_to_hold_its_commitments(verdict),
-        shortfall_minutes=_largest_gap(verdict),
+        largest_gap_minutes=_largest_gap(verdict),
         shortfall_kinds=_kinds(verdict),
         surface=surface,
         session_mode_active=session_mode_active,

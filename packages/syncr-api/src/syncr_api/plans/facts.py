@@ -353,7 +353,11 @@ class VerdictEvent(Base, TenantScoped):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     provenance: Mapped[str] = mapped_column(String(STATE_LENGTH), nullable=False)
     feasible: Mapped[bool] = mapped_column(nullable=False)
-    shortfall_minutes: Mapped[int] = mapped_column(nullable=False)
+    # The largest single gap of the verdict, not the sum: shortfalls can measure the same minutes
+    # twice (a deadline gap and the floor gap of the Area that deadline belongs to are one capacity
+    # shortage seen two ways), so a total is not a duration and can exceed the week. The name says
+    # "largest" so no reader writes SUM over it by accident.
+    largest_gap_minutes: Mapped[int] = mapped_column(nullable=False)
     shortfall_kinds: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     surface: Mapped[str] = mapped_column(String(STATE_LENGTH), nullable=False)
     # Supplied by the caller, because only the caller knows whether the weekly session is
@@ -367,9 +371,11 @@ class VerdictEvent(Base, TenantScoped):
     __table_args__ = (
         CheckConstraint(values_in("provenance", VERDICT_PROVENANCES), name="provenance_is_known"),
         CheckConstraint(values_in("surface", VERDICT_SURFACES), name="surface_is_known"),
-        CheckConstraint("shortfall_minutes >= 0", name="shortfall_is_not_negative"),
+        CheckConstraint("largest_gap_minutes >= 0", name="shortfall_is_not_negative"),
         # A feasible week has no shortfall to quantify, so the two columns cannot disagree.
-        CheckConstraint("NOT feasible OR shortfall_minutes = 0", name="feasible_has_no_shortfall"),
+        CheckConstraint(
+            "NOT feasible OR largest_gap_minutes = 0", name="feasible_has_no_shortfall"
+        ),
         Index(
             "ix_verdict_events_tenant_id_iso_week_occurred_at",
             TENANT_ID_COLUMN,

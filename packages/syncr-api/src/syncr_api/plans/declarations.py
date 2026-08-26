@@ -100,7 +100,7 @@ class VerdictToRecord:
     occurred_at: datetime
     provenance: Provenance
     feasible: bool
-    shortfall_minutes: int
+    largest_gap_minutes: int
     shortfall_kinds: tuple[ShortfallKind, ...]
     surface: VerdictSurface
     session_mode_active: bool

@@ -7,6 +7,11 @@ answers nothing: the reading "no week has changed verdict" and the reading "this
 recorded one yet" have to be different, and they are only different if the vocabulary is exported up
 front.
 
+**What this family is not.** It is the operational read, not the product metric. The early-catch
+ratio's numerator is the EPISODE count -- episodes begun in the period, each counted once however
+many rows it holds -- and the ``largest_gap_minutes`` column on those rows is read by no metric:
+a gap's size says how large a shortage was, never whether anyone was told in time.
+
 **Seeded over the reachable pairs rather than over every combination.** A surface reaches a verdict
 one way, which :data:`~syncr_api.plans.surfaces.REACHABLE_PAIRS` states, so twelve series exist
 rather than twenty-four. A series for ``surface="solve", provenance="probe"`` would be one an

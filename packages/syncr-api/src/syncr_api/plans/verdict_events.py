@@ -63,7 +63,7 @@ class VerdictEventRepository(TenantScopedReader):
                         "occurred_at": transition.occurred_at,
                         "provenance": transition.provenance.value,
                         "feasible": transition.feasible,
-                        "shortfall_minutes": transition.shortfall_minutes,
+                        "largest_gap_minutes": transition.largest_gap_minutes,
                         "shortfall_kinds": [one.value for one in transition.shortfall_kinds],
                         "surface": transition.surface.value,
                         "session_mode_active": transition.session_mode_active,
@@ -127,7 +127,7 @@ def _as_record(event: VerdictEvent) -> VerdictEventRecord:
         # validated: a value outside it cannot be stored while the check constraint holds.
         provenance=Provenance(event.provenance),
         feasible=event.feasible,
-        shortfall_minutes=event.shortfall_minutes,
+        largest_gap_minutes=event.largest_gap_minutes,
         shortfall_kinds=tuple(
             # The column is JSONB, which no constraint reaches, so a member outside the vocabulary
             # is a stated refusal rather than a `ValueError` from an enum call.
