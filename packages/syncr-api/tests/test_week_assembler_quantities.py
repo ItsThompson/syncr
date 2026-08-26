@@ -946,9 +946,10 @@ async def test_an_approved_concession_is_carried_so_a_reason_can_cite_it() -> No
 
 async def test_a_stored_concession_and_a_candidate_on_one_target_compound() -> None:
     # The storage index makes two STORED concessions on one kind and target unreachable, and it does
-    # not cover a candidate, which is an argument rather than a row. So the two apply in turn. This
-    # pins the shipped semantics rather than endorsing them: whether the enumerator offers an
-    # increment or an absolute figure is its own question, and it is open.
+    # not cover a candidate, which is an argument rather than a row. So the two apply in turn:
+    # ``delta_minutes`` is an INCREMENT against the figure as it stands, computed over an
+    # already-folded assembly, so a second concession on one target lowers what the first left.
+    # Compounding is therefore correct arithmetic rather than a defect.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     stored = an_adjustment(
         kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=60

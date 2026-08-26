@@ -5635,7 +5635,7 @@ export interface components {
         TradeoffResponse: {
             /**
              * Deltaminutes
-             * @description What approving it would recover, as an UPPER bound rather than an exact figure. Null where the enumerator could not size the gap it closes.
+             * @description How much approving it lowers the figure it names, against that figure as it stands: an INCREMENT rather than an absolute target, and an UPPER bound on how far the gap closes rather than an exact figure. Null where the enumerator could not size the gap it closes.
              */
             deltaMinutes: number | null;
             /** @description The concession this tradeoff becomes if it is approved. */
