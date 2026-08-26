@@ -586,12 +586,14 @@ async def test_a_daily_cap_comes_from_an_area_preference_and_travels_on_the_budg
 
 def test_the_area_budget_carries_both_floor_quantities_and_nothing_has_merged_them() -> None:
     # Bounded by the inventory of what an Area budget may carry, so merging the pair fails here
-    # rather than turning up as a shortfall on a healthy week.
+    # rather than turning up as a shortfall on a healthy week. The declared floor is the third
+    # quantity: it nets no placement set, which is what keeps it from merging with either.
     assert {field.name for field in dataclasses.fields(AreaBudget)} == {
         "area_id",
         "name",
         "floor_minutes",
         "floor_reservation_minutes",
+        "declared_floor_minutes",
         "target_minutes",
         "placed_minutes",
         "max_per_day_minutes",
