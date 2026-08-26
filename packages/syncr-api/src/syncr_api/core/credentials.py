@@ -17,8 +17,8 @@ turns out to be good.** Deciding by the header rather than by the outcome keeps 
 every reader: a request that presents a token this deployment refuses is still a request that was
 never a browser's, so it is answered as a bad token rather than falling back to a cookie.
 
-This module reads headers and names values. It resolves nothing, so it holds no dependency on how
-either credential is verified.
+This module reads headers, names values, and declares the one interface the bearer half is read
+through. It resolves nothing, so it holds no dependency on how either credential is verified.
 """
 
 from __future__ import annotations

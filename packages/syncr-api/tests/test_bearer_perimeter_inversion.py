@@ -48,6 +48,7 @@ if TYPE_CHECKING:
 # as a sub-dependency, so one request exercises both declarations that share one session read.
 DAY_TYPES_ROUTE = DAY_TYPES_PREFIX
 MUTATION_BODY = {"name": "Weekday"}
+MUTATION_IDEMPOTENCY_KEY = "inversion-probe"
 
 BEARER_REJECTED_EVENT = "oauth.bearer.rejected"
 REFUSAL_DETAIL = "That access token is not valid for this API"
@@ -63,19 +64,24 @@ def oauth_reach(source: str) -> list[str]:
     return sorted(name for name in imported_modules(source) if name.startswith("syncr_api.oauth"))
 
 
-def test_no_module_in_accounts_imports_anything_from_oauth(source_root: Path) -> None:
-    modules = sorted((source_root / "accounts").glob("*.py"))
-    assert modules, "no accounts module was found to examine"
-
-    violations = {
-        module.relative_to(source_root).as_posix(): reach
+def oauth_violations(root: Path) -> dict[str, list[str]]:
+    """Every file under ``root``'s ``accounts`` package importing ``syncr_api.oauth``, by path."""
+    modules = sorted((root / "accounts").glob("*.py"))
+    return {
+        module.relative_to(root).as_posix(): reach
         for module in modules
         if (reach := oauth_reach(module.read_text(encoding="utf-8")))
     }
 
-    assert violations == {}, (
-        f"{violations}. The two halves of the perimeter meet at app.state.oauth behind the "
-        "protocol in core.credentials, never at an import between the packages."
+
+def test_no_module_in_accounts_imports_anything_from_oauth(source_root: Path) -> None:
+    # The walk has to find the real package before the rule can say anything about it, so an
+    # empty walk fails loudly instead of passing vacuously.
+    assert any((source_root / "accounts").glob("*.py")), "no accounts module was found to examine"
+
+    assert oauth_violations(source_root) == {}, (
+        "The two halves of the perimeter meet at app.state.oauth behind the protocol in "
+        "core.credentials, never at an import between the packages."
     )
 
 
@@ -97,6 +103,21 @@ def test_no_module_in_accounts_imports_anything_from_oauth(source_root: Path) ->
 )
 def test_the_rule_reddens_when_the_import_is_restored(source: str, expected: list[str]) -> None:
     assert oauth_reach(source) == expected
+
+
+def test_the_rule_walk_reddens_on_a_planted_tree(tmp_path: Path) -> None:
+    # The detector's own control above proves the reading bites; this one proves the WALK does.
+    # A planted tree with the same shape as the real package, holding exactly the import this
+    # ticket removed, must be reported by the full rule and not just by the helper it calls.
+    (tmp_path / "accounts").mkdir()
+    (tmp_path / "accounts" / "injection.py").write_text(
+        "from syncr_api.core.credentials import AccessTokenReader\n", encoding="utf-8"
+    )
+    (tmp_path / "accounts" / "restored.py").write_text(
+        "from syncr_api.oauth.injection import resolve_bearer_principal\n", encoding="utf-8"
+    )
+
+    assert oauth_violations(tmp_path) == {"accounts/restored.py": ["syncr_api.oauth.injection"]}
 
 
 def test_the_refusal_and_its_log_line_are_defined_in_one_place(source_root: Path) -> None:
@@ -160,7 +181,11 @@ def _one_mutation(http: TestClient, cookie: dict[str, str]) -> httpx.Response:
     answered: httpx.Response = http.post(
         DAY_TYPES_ROUTE,
         json=MUTATION_BODY,
-        headers={**cookie, "Origin": BROWSER_ORIGIN, IDEMPOTENCY_KEY_HEADER: "inversion-probe"},
+        headers={
+            **cookie,
+            "Origin": BROWSER_ORIGIN,
+            IDEMPOTENCY_KEY_HEADER: MUTATION_IDEMPOTENCY_KEY,
+        },
     )
     return answered
 
