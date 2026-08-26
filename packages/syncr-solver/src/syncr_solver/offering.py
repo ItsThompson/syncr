@@ -12,12 +12,14 @@ window, and this chooses nothing -- but a solve may only score a bounded number 
 candidate, so the order decides which windows get scored at all. Ordered by span alone, a preferred
 Saturday morning would never be reached on a week whose Monday has room.
 
-## One offer per length, at the earliest start the window allows
+## One offer per length, at the starts the window owes the candidate
 
-A candidate's length comes from :mod:`syncr_solver.elastic`, and its start is the first point of
-the grid the window holds. Trying every start inside a window is the relocate move's job, and doing
-it here would multiply the objective evaluations a construction spends by the number of grid steps
-in a week.
+A candidate's length comes from :mod:`syncr_solver.elastic`. Its starts are the window's own first
+grid point and the first grid point at or after each of the candidate's OWN applicable preferred
+windows that falls inside the window: a declared window strictly inside a roomy gap is otherwise
+never offered anywhere, and no rule ever prices it. The added offers are bounded by the candidate's
+declared windows rather than by the grid, so the evaluation count cannot grow with the grid steps;
+trying every length beyond the first legal one at a start remains the relocate move's job.
 
 ## A piece too short to be legal is offered anyway
 
@@ -83,26 +85,67 @@ class Scored:
     total: float
 
 
-def offers_in(candidate: Candidate, window: Interval, *, attempt: Attempt) -> Iterator[Offer]:
-    """Every placement of this candidate the window could hold, longest first.
+def offers_in(
+    candidate: Candidate,
+    window: Interval,
+    *,
+    attempt: Attempt,
+    preferences: ResolvedPreferences,
+) -> Iterator[Offer]:
+    """Every placement of this candidate the window could hold, longest first within each start.
 
-    The window is a gap or a slot's declared span. A length longer than the window holds is not
+    The starts are :func:`starts_in`: the window's own first grid point, then the first grid point
+    at or after each of the candidate's own applicable preferred windows that falls inside. The
+    window is a gap or a slot's declared span. A length longer than the window holds is not
     offered, except for the one case the module docstring states: a task is offered the largest
     piece the window can hold, so a piece below its minimum chunk reaches the rule that names it.
     """
-    start = _first_grid_point_at_or_after(window.start)
-    room = _minutes_between(start, window.end)
-    if room < SNAP_MINUTES:
-        return
-    for minutes in sizes_for(candidate, attempt):
-        length = (
-            _usable(candidate, min(minutes, room)) if _packs_to_the_window(candidate) else minutes
-        )
-        if length < SNAP_MINUTES or length > room:
+    for start in starts_in(candidate.binding, candidate.area_id, window, preferences=preferences):
+        room = _minutes_between(start, window.end)
+        if room < SNAP_MINUTES:
             continue
-        yield offer_at(
-            candidate, Interval(start, start + timedelta(minutes=length)), attempt=attempt
-        )
+        for minutes in sizes_for(candidate, attempt):
+            length = (
+                _usable(candidate, min(minutes, room))
+                if _packs_to_the_window(candidate)
+                else minutes
+            )
+            if length < SNAP_MINUTES or length > room:
+                continue
+            yield offer_at(
+                candidate, Interval(start, start + timedelta(minutes=length)), attempt=attempt
+            )
+
+
+def starts_in(
+    binding: BindingRef,
+    area_id: AreaId | None,
+    window: Interval,
+    *,
+    preferences: ResolvedPreferences,
+) -> tuple[Instant, ...]:
+    """The starts this content is offered in one window, each the first grid point of a span.
+
+    For content whose preference applies -- the caller decides what to make of the order -- the
+    first grid point at or after each applicable preferred window's start comes first, but only
+    where that point falls inside the window, so a preference for a morning never drops a start
+    into an afternoon gap. The window's own first grid point comes last, and duplicates are
+    dropped: a preferred window that opens at the gap's own start adds nothing.
+
+    The result is bounded by one plus the content's declared windows, whatever the grid does,
+    which is what keeps the evaluation count off the grid step.
+    """
+    found = []
+    if area_id is not None:
+        for preference in preferences.applying_to(binding, area_id):
+            for preferred in preference.windows:
+                offered = _first_grid_point_at_or_after(preferred.start)
+                if window.start <= offered < window.end and offered not in found:
+                    found.append(offered)
+    start = _first_grid_point_at_or_after(window.start)
+    if start not in found:
+        found.append(start)
+    return tuple(found)
 
 
 def offer_at(candidate: Candidate, interval: Interval, *, attempt: Attempt) -> Offer:

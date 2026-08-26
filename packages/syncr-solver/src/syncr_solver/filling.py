@@ -15,13 +15,15 @@ Progress is guaranteed because a round either places something, which reduces wh
 or gives up on one candidate, which reduces the candidates. So the loop terminates on the inputs
 rather than on a step count, and it consumes the same number of rounds for the same inputs.
 
-## Why only a bounded number of windows are scored, and why that cannot make a plan wrong
+## Why only a bounded number of starts are scored, and why that cannot make a plan wrong
 
 Scoring is a whole-plan objective evaluation, measured at 1.5 ms on the week this product is sized
 against, so scoring every gap for every candidate would spend a solve's whole budget on
-construction. The bound is on how many LEGAL windows are scored, the illegal ones cost a constraint
-check and are recorded, and the windows are offered with the candidate's own preferred ones first.
-A tighter bound therefore produces a plan the objective likes less rather than one a rule refuses.
+construction. The bound is on how many scored evaluations a candidate spends, the illegal ones cost
+a constraint check and are recorded, and the windows are offered with the candidate's own preferred
+ones first and each window with its own start plus the starts of the candidate's declared windows
+inside it. A tighter bound therefore produces a plan the objective likes less rather than one a
+rule refuses.
 
 ## A piece the rules refuse is the packing failure the verdict names
 
@@ -41,6 +43,7 @@ from syncr_solver.preferred import ResolvedPreferences
 
 if TYPE_CHECKING:
     from syncr_domain.identity import BindingRef
+    from syncr_domain.intervals import Instant
     from syncr_solver.attempt import Attempt
     from syncr_solver.budget import SolveBudget
     from syncr_solver.candidates import Candidate
@@ -97,9 +100,12 @@ def _place(
     for a candidate nothing could hold: the log is where the rule and the window that refused it
     survive, and a candidate that vanished without a row would be a gap in the plan with no reason.
 
-    Within one window the offers run longest first, so the first the rules accept is the largest
+    Within one start the offers run longest first, so the first the rules accept is the largest
     length that fits. That is the elastic rule's own first condition, and for a task it is the
-    largest piece of what is left.
+    largest piece of what is left. The budget counts SCORED WINDOWS, and it stays that: a window's
+    extra starts -- the ones the candidate's own declared windows add -- are priced on top of the
+    first scored start of a window the budget already pays for, so a declared window strictly
+    inside a gap reaches the objective without the count growing with the grid.
     """
     refusals: list[BlockedCandidate] = []
     best: Scored | None = None
@@ -107,16 +113,22 @@ def _place(
     for window in windows_for(candidate, attempt.gaps(), preferences):
         if scored_windows >= budget.scored_windows:
             break
-        for offer in offers_in(candidate, window, attempt=attempt):
+        priced_start: Instant | None = None
+        for offer in offers_in(candidate, window, attempt=attempt, preferences=preferences):
+            if offer.interval.start == priced_start:
+                # This start is already priced; the longer piece of it won, so the shorter ones
+                # are not checked and are not scored either.
+                continue
             refusal = refusal_of(offer, attempt)
             if refusal is not None:
                 refusals.append(refusal)
                 continue
             found = scored(offer, attempt, weights)
-            scored_windows += 1
+            priced_start = offer.interval.start
             if best is None or found.total < best.total:
                 best = found
-            break
+        if priced_start is not None:
+            scored_windows += 1
     attempt = attempt.with_blocked(refusals)
     if best is None:
         return (attempt, False)

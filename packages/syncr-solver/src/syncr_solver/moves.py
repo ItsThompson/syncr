@@ -49,12 +49,20 @@ from syncr_domain.identity import BindingKind
 from syncr_domain.intervals import Interval
 from syncr_solver.attempt import Attempt, Placed
 from syncr_solver.candidates import candidates_for
-from syncr_solver.offering import CHECK, offers_in, preferred_first, refusal_of, windows_for
+from syncr_solver.offering import (
+    CHECK,
+    offers_in,
+    preferred_first,
+    refusal_of,
+    starts_in,
+    windows_for,
+)
 from syncr_solver.ordering import block_key
 from syncr_solver.reading import demand_key
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
+    from datetime import timedelta
 
     from syncr_domain.intervals import Instant
     from syncr_solver.candidates import Candidate
@@ -87,7 +95,7 @@ def moves(attempt: Attempt, preferences: ResolvedPreferences) -> Iterator[Move]:
     chosen = _chosen(attempt)
     yield from _relocations(attempt, chosen, preferences)
     yield from _swaps(attempt, chosen)
-    yield from _resizes(attempt, chosen)
+    yield from _resizes(attempt, chosen, preferences)
     yield from _resplits(attempt, chosen, preferences)
 
 
@@ -123,20 +131,75 @@ def _chosen(attempt: Attempt) -> tuple[Placed, ...]:
 def _relocations(
     attempt: Attempt, chosen: Sequence[Placed], preferences: ResolvedPreferences
 ) -> Iterator[Move]:
-    """Each chosen block offered at the start of every other gap of the week it leaves behind.
+    """Each chosen block offered at one start of every other gap of the week it leaves behind.
 
     A relocation moves a block and keeps it: the content and the length are unchanged, so nothing
     here rebuilds a candidate. Re-deriving one would ask the week what a demand still owes, which is
     a question a relocation does not change the answer to, and it cost 1.2 s of a 2.5 s solve.
+
+    The start is ONE per block per pass, which is the size the move budget was measured against.
+    For a block that sits outside every window its content declares, the starts of ITS OWN windows
+    inside each gap come before the gap's opening -- :func:`starts_in` orders them so -- so the
+    first relocation found is the one INTO its window when one exists: that is how a declared
+    window strictly inside a roomy gap gets reached rather than only wherever the gap happens to
+    open. A block already inside one of its windows reads the openings alone. Either way the pass
+    holds one relocation candidate per block, and the descent spends the move budget on exactly
+    as many of them as it did before.
     """
     for held in chosen:
         rest = _without(attempt, (held,))
-        for window in _windows_around(held, rest, preferences):
-            moved = _moved_to(held, window.start, rest)
-            if moved is None:
-                continue
+        duration = held.block.interval.duration
+        moved = _first_legal_relocation(held, rest, duration, preferences)
+        if moved is not None:
             yield Move(kind=RELOCATE, attempt=rest.adding(moved))
-            break
+
+
+def _first_legal_relocation(
+    held: Placed,
+    rest: Attempt,
+    duration: timedelta,
+    preferences: ResolvedPreferences,
+) -> Placed | None:
+    """This block at the first start the rules accept, or nothing.
+
+    The candidate starts are, in order: for a block outside its own windows, the starts of those
+    windows inside each roomy gap FIRST and that gap's opening after them (:func:`starts_in`
+    returns each gap's starts in that order); for a block already inside one of its windows, the
+    openings alone. The gaps run in :func:`_windows_around`'s order, the content's preferred ones
+    first.
+    """
+    outside = _outside_its_windows(held, preferences)
+    for window in _windows_around(held, rest, preferences):
+        if outside:
+            candidates = starts_in(
+                held.block.binding, held.block.area_id, window, preferences=preferences
+            )
+        else:
+            candidates = (window.start,)
+        for start in candidates:
+            if start + duration > window.end:
+                continue
+            moved = _moved_to(held, start, rest)
+            if moved is not None:
+                return moved
+    return None
+
+
+def _outside_its_windows(held: Placed, preferences: ResolvedPreferences) -> bool:
+    """Whether no window this block's content declares holds all of it.
+
+    A block with no Area resolves no preference and so is outside nothing, which reads as false:
+    the gaps it is offered are the openings alone, as they have always been.
+    """
+    area_id = held.block.area_id
+    if area_id is None:
+        return False
+    span = held.block.interval
+    return not any(
+        window.start <= span.start and span.end <= window.end
+        for preference in preferences.applying_to(held.block.binding, area_id)
+        for window in preference.windows
+    )
 
 
 def _swaps(attempt: Attempt, chosen: Sequence[Placed]) -> Iterator[Move]:
@@ -208,14 +271,18 @@ def _windows_around(
     """The gaps this block could move into, its own preferred ones first, long enough to hold it.
 
     A gap shorter than the block cannot hold it whatever else is true, so it is dropped before the
-    checker is asked: the check is the expensive half.
+    checker is asked: the check is the expensive half. Where the block lands inside a gap is the
+    caller's question -- :func:`_relocations` takes the gap's start plus the block's own preferred
+    starts from each window this returns.
     """
     minutes = held.block.interval.total_minutes()
     roomy = tuple(gap for gap in rest.gaps() if gap.total_minutes() >= minutes)
     return preferred_first(held.block.binding, held.block.area_id, roomy, preferences)
 
 
-def _resizes(attempt: Attempt, chosen: Sequence[Placed]) -> Iterator[Move]:
+def _resizes(
+    attempt: Attempt, chosen: Sequence[Placed], preferences: ResolvedPreferences
+) -> Iterator[Move]:
     """Each elastic occurrence at every other length its range allows, in the window it holds.
 
     The window is the gap the block's own start falls in once the block is out of the way, so a
@@ -229,7 +296,7 @@ def _resizes(attempt: Attempt, chosen: Sequence[Placed]) -> Iterator[Move]:
         if candidate is None or candidate.min_minutes == candidate.max_minutes:
             continue
         for window in _around(held, rest):
-            for offer in offers_in(candidate, window, attempt=rest):
+            for offer in offers_in(candidate, window, attempt=rest, preferences=preferences):
                 if offer.interval == held.block.interval:
                     continue
                 if refusal_of(offer, rest) is None:
@@ -278,7 +345,7 @@ def _repacked(
             (
                 found
                 for window in windows_for(current, rebuilt.gaps(), preferences)
-                for found in offers_in(current, window, attempt=rebuilt)
+                for found in offers_in(current, window, attempt=rebuilt, preferences=preferences)
                 if refusal_of(found, rebuilt) is None
             ),
             None,
