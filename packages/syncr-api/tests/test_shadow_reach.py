@@ -178,7 +178,7 @@ def test_the_widest_reach_covers_every_declaration_a_tenant_holds() -> None:
     )
 
 
-def test_the_widened_reach_covers_the_widest_reach_twice_over() -> None:
+def test_the_casting_reach_covers_the_widest_reach_twice_over() -> None:
     # One reach covers what can cast into the week; the second is added to it, so it covers what
     # can collide with those products. Stated over the halves rather than through `widened`,
     # because a reach widened with itself would keep its own halves and add nothing.

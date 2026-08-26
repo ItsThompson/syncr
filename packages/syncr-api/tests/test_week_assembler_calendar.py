@@ -565,9 +565,10 @@ async def test_a_chain_of_three_collisions_still_resolves_differently_at_the_edg
         anchor_type=preps,
         title="Interview",
     )
+    reader = FakeAnchors([far, away, interview])
     assembler = an_assembler(
         settings=FakeSettings(LONDON),
-        anchors=FakeAnchors([far, away, interview]),
+        anchors=reader,
         anchor_types=FakeAnchorTypes([returns, preps]),
     )
 
@@ -584,6 +585,9 @@ async def test_a_chain_of_three_collisions_still_resolves_differently_at_the_edg
     # the half hour BEFORE draws up to the edge is time WEEK holds free. Nothing survives into
     # WEEK at all, because the away journey home ends before Monday starts.
     assert [(block.title, block.interval) for block in after.shadow_blocks] == []
+    # The channel as well: WEEK's read reaches back by the trailing reach taken twice (2 x 240
+    # minutes past Sunday midnight), which loads `away` and keeps `far` out of its set.
+    assert reader.asked_for[-1].start == on_sunday(16, 0)
 
 
 # --------------------------------------------------------------------------------
