@@ -385,8 +385,8 @@ def test_the_census_reports_a_reason_that_names_another_routes_parameter(
     """A reason describing a route addressed by a different value, which is what it can catch.
 
     What a token comparison cannot catch is a reason pasted between two routes that take the SAME
-    parameter, and eight of the exemptions are such pairs: a resource and its preference or its
-    sub-collection. Those are the two cases a reader has to tell apart, and only the first is
+    parameter. The remaining exemptions hold one such pair, the feed and the remote calendars it
+    reaches into; those are the two cases a reader has to tell apart, and only the first is
     mechanical.
     """
     exempt, *_ = sorted(EXEMPT_PARAMETERIZED_READS)

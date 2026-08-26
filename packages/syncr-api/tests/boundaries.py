@@ -32,10 +32,15 @@ from typing import (
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from syncr_api.areas.config import AREAS_PREFIX, PROJECTS_PREFIX
 from syncr_api.concessions.config import WEEKS_PREFIX
 from syncr_api.core.principal import Principal
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.core.tenancy import IDENTITY_TABLES
+from syncr_api.habits.config import HABITS_PREFIX
+from syncr_api.routines.config import ROUTINES_PREFIX
+from syncr_api.tasks.config import TASKS_PREFIX
+from syncr_api.templates.config import TEMPLATES_PREFIX
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -245,6 +250,37 @@ def verdict_bearing_reads(app: FastAPI) -> list[str]:
     return sorted(paths)
 
 
+# The prefixes under which this api serves one declared record at a time. A tenant's Areas,
+# Projects, habits, routines, tasks and week templates are the records a client addresses by an
+# identifier it created through the declaring route, and the preference reads are sub-resources
+# mounted inside three of these collections, so one prefix names the whole family.
+CONTENT_RESOURCE_PREFIXES = frozenset(
+    {
+        AREAS_PREFIX,
+        HABITS_PREFIX,
+        PROJECTS_PREFIX,
+        ROUTINES_PREFIX,
+        TASKS_PREFIX,
+        TEMPLATES_PREFIX,
+    }
+)
+
+
+def content_resource_reads(app: FastAPI) -> list[str]:
+    """Every parameterized read under a content resource's own prefix.
+
+    Published as this suite's third contribution rather than filtered beside one guard, because a
+    filter reports what it matches and leaves the reads it does not match unaccounted for. Derived
+    from the route table over the prefixes, so a read added beside these is driven with no edit
+    here.
+    """
+    return [
+        path
+        for path in read_paths(app, parameterized=True)
+        if any(path.startswith(f"{prefix}/") for prefix in CONTENT_RESOURCE_PREFIXES)
+    ]
+
+
 type DrivenReads = Callable[[FastAPI], list[str]]
 
 # Every published contribution of driven parameterized reads. Each is a derivation over the
@@ -271,7 +307,11 @@ type DrivenReads = Callable[[FastAPI], list[str]]
 # route table, in either the intersecting or the read-then-answer form, because both answer nothing
 # for an empty table: no single-input probe can separate those from a derivation. Both stay pinned
 # to the table, so neither outlives its route, and each covers only the path it names.
-DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads, verdict_bearing_reads)
+DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (
+    week_addressed_reads,
+    verdict_bearing_reads,
+    content_resource_reads,
+)
 
 # The parameterized reads no contribution drives, each naming the value a driver would have to
 # invent to address it. Written out and crossed against the route table in BOTH directions, so a
@@ -287,38 +327,9 @@ DRIVEN_READ_CONTRIBUTIONS: tuple[DrivenReads, ...] = (week_addressed_reads, verd
 # integration test addressing one of these with a record it created is not a contribution, because
 # a test that spells its own path cannot cover a route it has never heard of.
 EXEMPT_PARAMETERIZED_READS: Mapping[str, str] = {
-    f"{API_PREFIX}/anchor-types/{{anchor_type_id}}": (
-        "{anchor_type_id} names a declared anchor type"
-    ),
-    f"{API_PREFIX}/anchors/{{anchor_id}}": "{anchor_id} names a stored anchor",
-    f"{API_PREFIX}/areas/{{area_id}}": "{area_id} names a declared area",
-    f"{API_PREFIX}/areas/{{area_id}}/preference": (
-        "{area_id} names a declared area, and the preference is the one stored against it"
-    ),
-    f"{API_PREFIX}/calendar-sources/{{source_id}}": "{source_id} names a declared feed",
     f"{API_PREFIX}/calendar-sources/{{source_id}}/remote-calendars": (
         "{source_id} names a declared feed, and this read reaches the provider behind it"
     ),
-    f"{API_PREFIX}/days/{{date}}": (
-        "{date} is a date the tenant's plan has blocks on, for a driver reading the ledger; the "
-        "CLI perimeter guard reaches this route with a date that has none"
-    ),
-    f"{API_PREFIX}/habits/{{habit_id}}": "{habit_id} names a declared habit",
-    f"{API_PREFIX}/habits/{{habit_id}}/preference": (
-        "{habit_id} names a declared habit, and the preference is the one stored against it"
-    ),
-    f"{API_PREFIX}/off-plan/{{period_id}}": "{period_id} names a declared off-plan period",
-    f"{API_PREFIX}/operations/{{operation_id}}": (
-        "{operation_id} names an enqueued operation, for a driver reading its outcome; the CLI "
-        "perimeter guard reaches this route with an identifier that names nothing"
-    ),
-    f"{API_PREFIX}/projects/{{project_id}}": "{project_id} names a declared project",
-    f"{API_PREFIX}/routines/{{routine_id}}": "{routine_id} names a declared routine",
-    f"{API_PREFIX}/tasks/{{task_id}}": "{task_id} names a declared task",
-    f"{API_PREFIX}/tasks/{{task_id}}/preference": (
-        "{task_id} names a declared task, and the preference is the one stored against it"
-    ),
-    f"{API_PREFIX}/templates/{{template_id}}": "{template_id} names a declared week template",
 }
 
 
