@@ -16,13 +16,22 @@ H10 is time: a block that has begun cannot be moved because the moment has passe
 either the user placed it, or derivation determined it. Both are immovable to the solver, and they
 differ in everything else, so the checker treats them alike and the reason clause names the sense.
 
-**One binding gets one answer, and when both rules could give one, H10's wins.** A pin on a block
-that has already begun would otherwise leave the content placeable nowhere: H10 refuses it at the
-pin and H11 refuses it where it began, so the block is dropped from the week entirely. That is the
-same fault the two allocation rules had, between the two rules whose whole job is preservation. Time
-outranks authority here because the past is not a placement anybody can choose, and refusing the
-move is what the user is told. Whether a pin on a started block should be REJECTED where the user
-makes it is the pin route's rule rather than the checker's, and no route writes a pin yet.
+**One binding gets one answer, and when both rules could give one, H10's wins inside the checker.**
+A pin on a block that has already begun would otherwise leave the content placeable nowhere: H10
+refuses it at the pin and H11 refuses it where it began, so the block is dropped from the week
+entirely. That is the same fault the two allocation rules had, between the two rules whose whole job
+is preservation. Time outranks authority here because the past is not a placement anybody can
+choose, and refusing the move is what the user is told.
+
+**A started-and-pinned binding is nonetheless held at the pin, not where it began.** Whether a pin
+on a started block should be REJECTED where the user makes it is the pin route's rule rather than
+the checker's, and the route exercises it: a placement the week has reached is refused in both
+directions, so the boundary never produces one. The seeding is the safety net for a state the
+boundary does not produce -- rows written before that refusal stood, or a producer answering
+wrongly -- and it holds such a binding at the pin's interval, with the ``pinned`` clause naming
+that span: :func:`syncr_solver.inheritance.inherited` seeds the block there unconditionally and
+``state._immovable`` indexes it there. One solver test asserts the placed span and the clause agree
+on the pin's interval.
 
 ## H12 excepts a pin, and needs no rule of its own for a mostly-off week
 
