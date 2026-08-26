@@ -30,7 +30,7 @@ directions, so the boundary never produces one. The seeding is the safety net fo
 boundary does not produce -- rows written before that refusal stood, or a producer answering
 wrongly -- and it holds such a binding at the pin's interval, with the ``pinned`` clause naming
 that span: :func:`syncr_solver.inheritance.inherited` seeds the block there unconditionally and
-``state._immovable`` indexes it there. One solver test asserts the placed span and the clause agree
+``state._immovable`` indexes it there. A solver test asserts the placed span and the clause agree
 on the pin's interval.
 
 ## H12 excepts a pin, and needs no rule of its own for a mostly-off week
