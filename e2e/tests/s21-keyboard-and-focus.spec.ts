@@ -111,6 +111,11 @@ const TIERS_PRESENT = `[...document.querySelectorAll('.week-block')]
   .map((element) => element.getAttribute('data-tier'))
   .filter((tier) => tier !== null)`;
 
+/* The level the band's zoom segment states as drawn, which is the grid's own answer after its clamp. */
+const PICKED_LEVEL = `document.querySelector('[aria-label="Visible hours"] [aria-pressed="true"]')?.textContent ?? null`;
+
+const FOCUSED_TIER = `document.activeElement && document.activeElement.getAttribute('data-tier')`;
+
 const SCREENS = [
   { what: "the week", path: "" },
   { what: "today", path: "/today" },
@@ -287,6 +292,15 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
     page,
   }) => {
     const isoWeek = planWeek();
+
+    /* THE VIEWPORT IS THE REFERENCE DISPLAY, because which tiers render is a function of the height
+     * the grid measures, and the suite's own default measures too shallow to draw any tier below the
+     * compact one: at 1280x720 the grid's offered height puts the zoom cap at a single level where
+     * even the fifteen-minute frame blocks fall under 8px. On the 1440x900 display whose arithmetic
+     * `tokens.css` documents, the cap leaves several levels available and the shallowest of them
+     * draws those same blocks in the 8-to-13px band. Pinning it here is what makes the sliver tier a
+     * state this session can reach rather than one it reads about. */
+    await page.setViewportSize({ width: 1440, height: 900 });
     await render(page, "/today");
 
     /* NAVIGATION IS A CHORD, and `g` then `w` is what the shell binds. Reaching the week this way is the first
@@ -298,43 +312,58 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
     await page.goto(week());
     await page.waitForFunction("document.querySelectorAll('.week-block').length > 0");
 
-    /* EVERY TIER THE SHIPPED GRID RENDERS IS REACHED BY THE KEYBOARD, and the set is read off the grid rather
-     * than named here: what tiers a week produces depends on its own block lengths and on the zoom, so a list
-     * would be a claim about a fixture rather than about the product. `z` walks the ladder first, so whatever
-     * tiers this week can produce at any zoom are the ones the traversal is then held to.
+    /* THE SLIVER TIER IS ASSERTED, NOT REPORTED. The walk presses `z` until the level it started on
+     * comes round again, so every level the display offers is drawn exactly once, and the tiers seen
+     * across the walk are what the assertion below is held to. What the walk does NOT do is stop at
+     * the first level: a single reading would miss whichever shallower level draws the short blocks.
      *
-     * WHAT THIS FIXTURE DOES NOT REACH is the sliver tier: no seeded week holds a block short enough to fall
-     * below 13px at any available zoom, so the 8-to-13px case is exercised against the real component in
-     * `frontend/src/ui/domain/week-grid/__tests__/block.test.tsx`, by role, at that exact height. No fixture here
-     * brings it into a browser. */
-    const LADDER_STEPS = 6;
+     * A fixed press count would be a claim about this week's stored zoom rather than about the
+     * product; the wrap is the walk's own definition of "the whole range".
+     */
+    const firstLevel = (await page.evaluate(PICKED_LEVEL)) as string | null;
+    expect(
+      firstLevel,
+      "the band stated no drawn level, so there is nothing to walk",
+    ).not.toBeNull();
     const tiersPresent = new Set<string>();
-    for (let step = 0; step < LADDER_STEPS; step += 1) {
+    let level = firstLevel;
+    for (let step = 0; step < 24 && level !== null; step += 1) {
       for (const tier of (await page.evaluate(TIERS_PRESENT)) as string[]) {
         tiersPresent.add(tier);
       }
       await page.keyboard.press("z");
+      /* Wait for the DRAWN LEVEL to move rather than for a painted guess: a press that changed
+       * nothing would read the same tiers twice and hide the wrap forever. A press that moves
+       * nothing at all means this display offers one level; the walk ends there and the assertion
+       * below says what was missed, because a shallow display is exactly the case that hides the
+       * short tiers. */
+      const moved = await page
+        .waitForFunction(
+          `document.querySelector('[aria-label="Visible hours"] [aria-pressed="true"]')?.textContent !== ${JSON.stringify(level)}`,
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!moved) break;
+      level = (await page.evaluate(PICKED_LEVEL)) as string | null;
     }
     expect(
-      tiersPresent.size,
-      "no block rendered at any zoom, so no tier was exercised",
-    ).toBeGreaterThan(0);
+      [...tiersPresent],
+      "no zoom level offered by this display drew a block below the compact tier; " +
+        "the display the session runs at measures too shallow for the short blocks",
+    ).toContain("sliver");
 
     /* Traversal by `j` moves selection AND focus, which is what makes a small block operable: the ring lands on
-     * it and a screen reader reads its name. */
-    const reached = new Set<string>();
+     * it and a screen reader reads its name. The walk ends on the tier the scenario names: focus is
+     * asserted to LAND on a block drawn in the 8-to-13px band, not merely to pass over the tiers on
+     * its way down the column. */
+    let focusedTier: string | null = null;
     for (let press = 0; press < 80; press += 1) {
       await page.keyboard.press("j");
-      const tier = await page.evaluate(
-        `document.activeElement && document.activeElement.getAttribute('data-tier')`,
-      );
-      if (typeof tier === "string") reached.add(tier);
-      if (reached.size === tiersPresent.size) break;
+      focusedTier = (await page.evaluate(FOCUSED_TIER)) as string | null;
+      if (focusedTier === "sliver") break;
     }
 
-    expect([...reached].toSorted(), "j did not reach every tier the grid rendered").toEqual(
-      [...tiersPresent].toSorted(),
-    );
+    expect(focusedTier, "j did not land focus on a sliver-tier block").toBe("sliver");
 
     /* PIN WITH Shift+Down, which moves the focused block by fifteen minutes and pins it there. The pin is read
      * back over the api rather than from the glyph, because what the reader is promised is a stored pin. */
