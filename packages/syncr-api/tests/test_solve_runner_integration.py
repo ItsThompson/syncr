@@ -34,14 +34,20 @@ substituted for the seam.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from sqlalchemy import select
 
+from syncr_api.anchors.reconcile import AnchorReconciler
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
+from syncr_api.calendars.events import FetchOutcome, RawEvent
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
 from syncr_api.core.settings import (
     DEFAULT_SOLVE_DEBOUNCE_MS,
@@ -61,6 +67,7 @@ from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdict_events import VerdictEventRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.routines.repository import RoutineRepository
 from syncr_api.solving.config import (
     FAILED,
     LEASE,
@@ -83,9 +90,11 @@ from syncr_api.solving.repository import OperationRepository
 from syncr_api.tasks.repository import TaskRepository
 from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
 from syncr_api.user_settings.repository import SettingsRepository
+from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
 from syncr_domain.feasibility import Provenance, Shortfall, ShortfallKind, Verdict
+from syncr_domain.identity import BindingKind, date_occurrence_key
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import Bound, DerivationSource, ReasonRecord
@@ -94,6 +103,7 @@ from syncr_domain.templates import WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
 from syncr_solver.objective import ObjectiveBreakdown
 from syncr_solver.solve import SolveResult
+from tests.anchor_specifications import STANDUP
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -102,7 +112,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.calendars.records import CalendarSourceRecord
     from syncr_api.plans.records import VerdictEventRecord
+    from syncr_api.routines.records import RoutineId, RoutineRecord
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.identifiers import TenantId
 
@@ -113,6 +125,19 @@ WEEK = IsoWeek(2026, 7)
 # Wednesday morning of the week, so the week has a past and a future and the started-block rules
 # have something to be decided against.
 NOW = datetime(2026, 2, 11, 9, 0, tzinfo=UTC)
+
+# The commitment the correction test moves: it began at seven and the feed republishes it half an
+# hour later while it is running, which is a correction to a block the week has reached.
+STANDUP_UID = "standup@example.ac.uk"
+BEGAN_AT = datetime(2026, 2, 11, 7, 0, tzinfo=UTC)
+CORRECTED_TO = BEGAN_AT + timedelta(minutes=30)
+
+# The Tuesday whose night occurrence is running when the routine is edited: it began at 23:00 the
+# evening before NOW and was still holding at the span the first solve recorded.
+TUESDAY = WEEK.monday() + timedelta(days=1)
+TUESDAY_NIGHT = Interval(
+    datetime(2026, 2, 10, 23, 0, tzinfo=UTC), datetime(2026, 2, 11, 7, 0, tzinfo=UTC)
+)
 
 
 class Ticking:
@@ -161,13 +186,15 @@ async def context(live_database_url: str) -> AsyncIterator[WorkerContext]:
 
 
 async def declare_the_minimum(
-    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, with_task: bool = True
 ) -> None:
     """Areas, a day shape, a weight set, a home zone, and one task the solver can place.
 
     The task is what makes the authority path reachable: a week with an Area and no content solves
     to an empty document, which classifies as nothing and writes nothing, so a suite without it
-    would assert about a solve that adopted no plan.
+    would assert about a solve that adopted no plan. The started-block tests pass
+    ``with_task=False``, because a chosen placement in the week's future would give the second
+    solve a move to propose, and what those tests need is a disagreement about the PAST alone.
     """
     async with sessions() as session, session.begin():
         settings = SettingsRepository(session, tenant_id)
@@ -193,6 +220,9 @@ async def declare_the_minimum(
         await WeekPatternRepository(session, tenant_id).replace(
             WeekPattern(dict.fromkeys(Weekday, day_type.id))
         )
+        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
+        if not with_task:
+            return
         await TaskRepository(session, tenant_id).create(
             area_id=area.id,
             project_id=None,
@@ -204,7 +234,6 @@ async def declare_the_minimum(
             splittable=True,
             created_at=NOW,
         )
-        await WeightSetRepository(session, tenant_id).seed_hand_tuned(at=NOW)
 
 
 def a_dispatch(
@@ -534,6 +563,10 @@ class TestTheTwoShapesThatUsedToWedgeTheWeek:
     assertion is there, from literals, and its guard is bite-checked: an exempt origin at two spans
     passes while a habit or task at two spans is refused. What this adds is that the runner pairs
     the producer with the guard over a week that holds a plan, repeatedly, without failing.
+
+    The two cases below drive each shape through its production mutation path, so the inputs
+    genuinely disagree with the stored past rather than merely moving the version counter: a
+    commitment corrected over a poll of its feed, and a routine written shorter mid-week.
     """
 
     async def test_a_week_whose_inputs_keep_moving_keeps_solving(
@@ -551,6 +584,76 @@ class TestTheTwoShapesThatUsedToWedgeTheWeek:
             finished = await a_solve(sessions, context, owner, clock)
             assert finished.status == SUCCEEDED, finished.error_message
             assert finished.error_code is None
+
+    async def test_a_commitment_corrected_after_it_began_keeps_solving(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+    ) -> None:
+        """The feed moves a meeting that is in progress, and the week solves over the disagreement.
+
+        The plan of record holds the commitment where the feed said it stood before ``now`` passed
+        its start. The correction lands after, so live plan and candidate hold one ANCHOR block at
+        two spans: derivation restates the fact, the guard binds only what the solve chose, and
+        the solve adopts instead of refusing. Before the narrowing every solve of such a week
+        failed until the week left the horizon.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id, with_task=False)
+        source = await a_calendar_source(sessions, owner.tenant_id)
+        await a_sync(sessions, owner.tenant_id, source, start=BEGAN_AT, clock=clock)
+        # The counter row itself: a week with no version row is a mismatch by definition, which is
+        # what stops two concurrent first solves from both committing.
+        await bump(sessions, owner, clock)
+        await materialized(sessions, owner, clock)
+
+        (held,) = await revisions_of(sessions, owner.tenant_id)
+        assert the_commitment_block(plan_document(held.document)).interval == Interval(
+            BEGAN_AT, BEGAN_AT + timedelta(hours=1)
+        )
+
+        clock.advance(timedelta(hours=1))
+        await a_sync(sessions, owner.tenant_id, source, start=CORRECTED_TO, clock=clock)
+        corrected = await a_solve(sessions, context, owner, clock)
+
+        assert corrected.status == SUCCEEDED, corrected.error_message
+        assert corrected.error_code is None
+        # A started block is reported in no class, so the correction reaches no revision: the record
+        # keeps the hour where the week lived it, which is the drift the exemption accepts.
+        assert [one.id for one in await revisions_of(sessions, owner.tenant_id)] == [held.id]
+
+    async def test_a_routine_edited_mid_week_whose_occurrence_has_begun_keeps_solving(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+    ) -> None:
+        """Sleep shortens while Tuesday's occurrence is running, and the week still solves.
+
+        The frame re-derives at the routine's CURRENT span on every solve, started or not, so the
+        candidate carries Tuesday night ending at 06:30 while the plan of record holds 07:00. A
+        FRAME origin's time its source fixes, so the disagreement passes: nothing is proposed and
+        nothing is refused, which is the second shape that used to wedge the week for good.
+        """
+        await declare_the_minimum(sessions, owner.tenant_id, with_task=False)
+        sleep_ = await a_sleep_routine(sessions, owner.tenant_id)
+        await bump(sessions, owner, clock)
+
+        finished = await a_solve(sessions, context, owner, clock)
+        assert finished.status == SUCCEEDED, finished.error_message
+        (held,) = await revisions_of(sessions, owner.tenant_id)
+        tuesday = the_night_occurrence(plan_document(held.document), sleep_.id, on=TUESDAY)
+        assert tuesday.interval == TUESDAY_NIGHT
+
+        clock.advance(timedelta(hours=1))
+        await shortened_mid_week(sessions, owner, sleep_.id, clock)
+        edited = await a_solve(sessions, context, owner, clock)
+
+        assert edited.status == SUCCEEDED, edited.error_message
+        assert edited.error_code is None
+        assert [one.id for one in await revisions_of(sessions, owner.tenant_id)] == [held.id]
 
 
 async def materialized(
@@ -571,6 +674,127 @@ async def materialized(
             weights=WeightSetRepository(session, owner.tenant_id),
             operations=OperationLifecycle(OperationRepository(session, owner.tenant_id), clock),
         ).advance_into(WEEK, now=clock())
+
+
+async def a_calendar_source(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> CalendarSourceRecord:
+    """One subscribed feed and one anchor type that casts nothing.
+
+    Nothing, so the commitment is the only block the feed contributes to the week.
+    """
+    async with sessions() as session, session.begin():
+        source = await CalendarSourceRepository(session, tenant_id).create(
+            provider=ICS,
+            role=ANCHOR_SOURCE,
+            display_name="Work calendar",
+            external_id=f"https://example.ac.uk/{tenant_id}.ics",
+            included=True,
+            horizon_days=None,
+            created_at=NOW,
+        )
+        await AnchorTypeRepository(session, tenant_id).create(
+            rule_order=0,
+            specification=STANDUP,
+            created_at=NOW,
+        )
+        return source
+
+
+def a_standup(*, start: datetime) -> RawEvent:
+    return RawEvent(
+        uid=STANDUP_UID,
+        series_uid=None,
+        title="Standup",
+        interval=Interval(start, start + timedelta(hours=1)),
+        location="Room 4",
+        sequence=0,
+        all_day=False,
+    )
+
+
+async def a_sync(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    source: CalendarSourceRecord,
+    *,
+    start: datetime,
+    clock: Ticking,
+) -> None:
+    """One poll of the feed, composed the way both of production's compositions are.
+
+    Reconciling the SAME uid at a new interval is what a calendar correction is on the wire, and it
+    carries its own invalidation: a pass that moved occupancy bumps the weeks it moved it in.
+    """
+    events = (a_standup(start=start),)
+    async with sessions() as session, session.begin():
+        reconciler = AnchorReconciler(
+            AnchorRepository(session, tenant_id),
+            AnchorTypeRepository(session, tenant_id),
+            versions=TrackedWeekInputVersions(
+                WeekInputVersionRepository(session, tenant_id), clock=clock
+            ),
+            home_zone=LONDON,
+        )
+        await reconciler.reconcile(
+            source,
+            FetchOutcome(events=events, events_read=1, placed=1),
+        )
+
+
+async def a_sleep_routine(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> RoutineRecord:
+    """The nightly frame, eight hours from 23:00, declared before anything has begun."""
+    async with sessions() as session, session.begin():
+        return await RoutineRepository(session, tenant_id).create(
+            title="Sleep",
+            target_time=time(23, 0),
+            duration_minutes=8 * 60,
+            min_duration_minutes=6 * 60,
+            flex_band_minutes=30,
+            created_at=NOW,
+        )
+
+
+async def shortened_mid_week(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    routine_id: RoutineId,
+    clock: Ticking,
+) -> None:
+    """The mid-week edit to six and a half hours, with the version bump every mutation performs."""
+    async with sessions() as session, session.begin():
+        await RoutineRepository(session, owner.tenant_id).write(
+            routine_id,
+            title="Sleep",
+            target_time=time(23, 0),
+            duration_minutes=6 * 60 + 30,
+            min_duration_minutes=6 * 60,
+            flex_band_minutes=30,
+        )
+        await WeekInputVersionRepository(session, owner.tenant_id).bump(WEEK, at=clock())
+
+
+def the_commitment_block(document: PlanDocument) -> Block:
+    """The document's one commitment block, read back out of a stored revision."""
+    found = [one for one in document.blocks if one.binding.kind is BindingKind.ANCHOR]
+    assert len(found) == 1
+    return found[0]
+
+
+def the_night_occurrence(document: PlanDocument, routine_id: RoutineId, *, on: date) -> Block:
+    """The routine's occurrence that materializes on ``on``, read out of a stored revision."""
+    key = date_occurrence_key(on)
+    found = [
+        one
+        for one in document.blocks
+        if one.binding.kind is BindingKind.ROUTINE
+        and one.binding.entity_id == routine_id
+        and one.binding.occurrence_key == key
+    ]
+    assert len(found) == 1
+    return found[0]
 
 
 async def spent(
