@@ -57,7 +57,7 @@ So there are twelve Area pigments, and they are the single break with one ink. T
 | Context | Carrier |
 |---|---|
 | Proportional surfaces (the week grid) | the block's 2px top rule, and nothing else |
-| Ledger surfaces (Today, Backlog, Templates, budget tables) | a filled circular chip up to 10px in the row gutter |
+| Ledger surfaces (Today, Backlog, Templates, budget tables) | the row's Area column: a filled circular chip up to 10px beside the Area's name, and the name alone where the ramp holds no step for the named Area |
 | Charts | a pie wedge fill or a stacked bar fill |
 
 **Illegal everywhere:** as text, as a block or row fill, as a control border, in navigation, on a heading, on a time-series line, and as the only encoding of anything.
