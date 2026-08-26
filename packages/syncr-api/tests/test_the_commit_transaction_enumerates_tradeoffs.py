@@ -68,7 +68,7 @@ from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.test_solve_runner_integration import _NO_COST, _one_block_at, _placing_one_block
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -93,7 +93,7 @@ DEADLINE = datetime(MONDAY.year, MONDAY.month, MONDAY.day, 9, tzinfo=UTC) + time
 
 TASK_TITLE = "Deep work"
 TASK_ESTIMATE_MINUTES = 120
-AFTER_THE_MUTATION = 30
+MUTATED_ESTIMATE_MINUTES = 30
 
 # What the packing failure leaves unplaced, and the chunk nothing can place it in. The recovery a
 # drop offer states is min(gap, remaining): the whole gap before the mutation, and the reduced
@@ -126,17 +126,25 @@ def sessions(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 
 
 @pytest.fixture
-async def owner(sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[UserRecord]:
-    account = await seed_owner(sessions)
-    yield account
-    await delete_tenant(sessions, account.tenant_id)
+async def owners(
+    sessions: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[Callable[[], Awaitable[UserRecord]]]:
+    """A maker of tenants, each deleted with everything that cascades from it.
 
+    The packing-failure cases and the feasible control each need their own tenant on the week, and
+    the fixture body would otherwise be written twice. Every tenant made here is torn down whether
+    or not its test reached the read.
+    """
+    made: list[UserRecord] = []
 
-@pytest.fixture
-async def other_owner(sessions: async_sessionmaker[AsyncSession]) -> AsyncIterator[UserRecord]:
-    account = await seed_owner(sessions)
-    yield account
-    await delete_tenant(sessions, account.tenant_id)
+    async def make() -> UserRecord:
+        account = await seed_owner(sessions)
+        made.append(account)
+        return account
+
+    yield make
+    for account in made:
+        await delete_tenant(sessions, account.tenant_id)
 
 
 @pytest.fixture
@@ -267,7 +275,7 @@ async def run_the_commit_transaction(
     clock: Ticking,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    second_solver: Any,
+    second_solver: Callable[..., SolveResult],
 ) -> UUID:
     """One fill solve to give the week a plan, then one moving solve with ``second_solver``.
 
@@ -364,11 +372,12 @@ class TestACommitTimeEnumerationFrozenInTheSlot:
         self,
         sessions: async_sessionmaker[AsyncSession],
         context: WorkerContext,
-        owner: UserRecord,
+        owners: Callable[[], Awaitable[UserRecord]],
         clock: Ticking,
         http: TestClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        owner = await owners()
         task_id = await run_the_commit_transaction(
             sessions,
             context,
@@ -393,7 +402,7 @@ class TestACommitTimeEnumerationFrozenInTheSlot:
         self,
         sessions: async_sessionmaker[AsyncSession],
         context: WorkerContext,
-        owner: UserRecord,
+        owners: Callable[[], Awaitable[UserRecord]],
         clock: Ticking,
         http: TestClient,
         monkeypatch: pytest.MonkeyPatch,
@@ -405,6 +414,7 @@ class TestACommitTimeEnumerationFrozenInTheSlot:
         enumeration over the mutated week WOULD recover less -- asserted beside, so the test cannot
         pass on a mutation that never moved anything.
         """
+        owner = await owners()
         task_id = await run_the_commit_transaction(
             sessions,
             context,
@@ -425,7 +435,7 @@ class TestACommitTimeEnumerationFrozenInTheSlot:
                 task_id,
                 project_id=held.project_id,
                 title=held.title,
-                estimate_minutes=AFTER_THE_MUTATION,
+                estimate_minutes=MUTATED_ESTIMATE_MINUTES,
                 deadline=held.deadline,
                 priority=held.priority,
                 min_chunk_minutes=held.min_chunk_minutes,
@@ -450,16 +460,18 @@ class TestACommitTimeEnumerationFrozenInTheSlot:
         self,
         sessions: async_sessionmaker[AsyncSession],
         context: WorkerContext,
-        other_owner: UserRecord,
+        owners: Callable[[], Awaitable[UserRecord]],
         clock: Ticking,
         http: TestClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        owner = await owners()
+
         await run_the_commit_transaction(
-            sessions, context, other_owner, clock, monkeypatch, second_solver=_moving_and_feasible
+            sessions, context, owner, clock, monkeypatch, second_solver=_moving_and_feasible
         )
 
-        served = read_the_week(http, sign_in(http, other_owner.email))["verdict"]
+        served = read_the_week(http, sign_in(http, owner.email))["verdict"]
 
         assert served["provenance"] == "solver"
         assert served["shortfalls"] == []
