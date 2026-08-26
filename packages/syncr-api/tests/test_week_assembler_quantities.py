@@ -406,8 +406,12 @@ async def test_pinning_an_already_placed_block_cannot_improve_the_verdict() -> N
     ).assemble(WEEK, NOW)
 
     assert unpinned.areas[0].floor_reservation_minutes == pinned.areas[0].floor_reservation_minutes
-    assert unpinned.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
-    assert pinned.areas[0].floor_minutes == 4 * MINUTES_PER_HOUR
+    # The delta is asserted against the pinned block's own minutes rather than against two
+    # literals, so a reservation arithmetic that nets the wrong set reddens here instead of
+    # passing because both sides happened to be re-derived from the same wrong figure.
+    assert (
+        unpinned.areas[0].floor_minutes - pinned.areas[0].floor_minutes == interval.total_minutes()
+    )
 
 
 async def test_a_past_block_lowers_both_floor_quantities_because_it_is_in_both_sets() -> None:
