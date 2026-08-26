@@ -77,6 +77,7 @@ from syncr_api.core.errors import Conflict, NotFound
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import require_scope
 from syncr_api.core.scopes import Scope
+from syncr_api.plans.anchor_origins import anchor_origins, bound_anchor_ids
 from syncr_api.plans.candidates import awaiting_approval
 from syncr_api.plans.currency import plan_currency
 from syncr_api.plans.emptiness import Horizon, empty_week
@@ -93,14 +94,18 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
+    from uuid import UUID
 
+    from syncr_api.anchors.repository import AnchorRepository
     from syncr_api.budgets.service import BudgetService, BudgetView
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.offplan.repository import OffPlanPeriodRepository
     from syncr_api.plans.adjustments import WeekAdjustmentRepository
+    from syncr_api.plans.anchor_origins import AnchorOrigin
     from syncr_api.plans.confirmations import DayConfirmationReader
     from syncr_api.plans.conflicts import PlanConflictRepository
     from syncr_api.plans.emptiness import EmptyWeek
@@ -139,6 +144,7 @@ class WeekService:
         coordinator: SolveCoordinator,
         minimum: MinimumInputs,
         sources: CalendarSourceRepository,
+        anchors: AnchorRepository,
         off_plan: OffPlanPeriodRepository,
         confirmations: DayConfirmationReader,
         clock: Clock,
@@ -156,6 +162,7 @@ class WeekService:
         self._coordinator = coordinator
         self._minimum = minimum
         self._sources = sources
+        self._anchors = anchors
         self._off_plan = off_plan
         self._confirmations = confirmations
         self._clock = clock
@@ -171,9 +178,10 @@ class WeekService:
         ``now`` is read once and passed to everything below it, which is the discipline the horizon
         maintainer states: a tick that read the clock per collaborator could compute a horizon from
         one date and a per-day figure from another, and at local midnight the two would differ by a
-        day. Three consumers read it now, the horizon, the per-day figures and the assembly a live
-        verdict is computed from, and the verdict's own instant is stamped from it, so a client
-        comparing the verdict's instant with the week beside it reads one instant rather than two.
+        day. Four consumers read it now, the horizon, the per-day figures, the anchor origins'
+        staleness decisions and the assembly a live verdict is computed from, and the verdict's own
+        instant is stamped from it, so a client comparing the verdict's instant with the week beside
+        it reads one instant rather than two.
 
         The version is read once and used twice, as the figure the view reports and as the currency
         test the served verdict applies to the pending slot. **The slot is read once for the same
@@ -190,6 +198,7 @@ class WeekService:
         budget = await self._budgets.read(principal, str(week))
         live = await self._revisions.latest(week)
         document = None if live is None else plan_document(live.document)
+        origins = {} if document is None else await self._anchor_origins(document, now=now)
         in_flight = await self._operations.in_flight_of(week, kinds=PLAN_KINDS)
         version = await self._versions.tracked_version(week)
         adjustments = await self._adjustments.for_week(week)
@@ -200,6 +209,7 @@ class WeekService:
             zone_by_date=budget.zone_by_date,
             live=document,
             area_names=budget.area_names,
+            anchor_origins=origins,
             empty=None if document is not None else await self._why_empty(week, budget, now=now),
             proposal=None if held is None else read_proposal_diff(held.proposal_diff, week),
             candidate_adjustment=None if held is None else awaiting_approval(held),
@@ -219,6 +229,25 @@ class WeekService:
                 if document is None
                 else await self._readings(document, budget=budget, in_flight=in_flight, now=now)
             ),
+        )
+
+    async def _anchor_origins(
+        self, document: PlanDocument, *, now: datetime
+    ) -> Mapping[UUID, AnchorOrigin]:
+        """The feed behind each imported commitment the week binds, and whether it is failing.
+
+        Two reads answer every block: the commitments' sources, and the source rows the staleness
+        decision reads. A week holding no import costs neither. The staleness half is decided by
+        the notice composer's own predicate against this read's ``now``, so the week payload and
+        the panels cannot disagree about whether a feed is failing.
+        """
+        anchors = bound_anchor_ids(document.blocks)
+        if not anchors:
+            return {}
+        return anchor_origins(
+            await self._anchors.sources_of(anchors),
+            {source.id: source for source in await self._sources.list_all()},
+            now=now,
         )
 
     @measured("weeks")

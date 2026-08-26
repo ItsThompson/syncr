@@ -596,7 +596,7 @@ def test_a_documents_zones_reach_the_wire_in_date_order_whatever_order_they_arri
     reversed_zones = dict(reversed(list(a_zone_map().items())))
 
     rendered = PlanDocumentResponse.of(
-        a_document(zone_by_date=reversed_zones), area_names=AREA_NAMES
+        a_document(zone_by_date=reversed_zones), area_names=AREA_NAMES, anchor_origins={}
     )
 
     assert list(rendered.zone_by_date) == [day.isoformat() for day in WEEK.dates()]
@@ -608,7 +608,7 @@ def test_a_blocks_derived_identity_origin_and_chunk_reach_the_wire() -> None:
     document = a_document()
     block = document.blocks[0]
 
-    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES).blocks[0]
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={}).blocks[0]
 
     assert rendered.id == block.id
     assert rendered.origin == block.origin
@@ -642,7 +642,9 @@ def test_a_slot_resolves_the_name_of_the_area_it_is_charged_to() -> None:
 
 def test_the_document_renders_one_response_slot_per_document_slot_in_order() -> None:
     """The pairing alone. Which name each slot resolved its own Area to is the case below."""
-    rendered = PlanDocumentResponse.of(a_document_holding_two_slots(), area_names=AREA_NAMES)
+    rendered = PlanDocumentResponse.of(
+        a_document_holding_two_slots(), area_names=AREA_NAMES, anchor_origins={}
+    )
 
     assert [one.area_id for one in rendered.empty_slots] == [CAREER, FITNESS]
 
@@ -669,7 +671,9 @@ def test_a_slot_charged_to_an_area_the_read_did_not_name_is_refused_rather_than_
     """
     with pytest.raises(SlotContextRejected, match=str(unnamed)):
         PlanDocumentResponse.of(
-            a_document_holding_two_slots(), area_names={named: AREA_NAMES[named]}
+            a_document_holding_two_slots(),
+            area_names={named: AREA_NAMES[named]},
+            anchor_origins={},
         )
 
 
@@ -683,7 +687,9 @@ def test_each_slots_label_names_the_area_that_slot_is_charged_to() -> None:
     This is also the positive form of the refusal above: a resolution that reused the first slot's
     context for the rest names one Area twice, which the two names here separate.
     """
-    rendered = PlanDocumentResponse.of(a_document_holding_two_slots(), area_names=AREA_NAMES)
+    rendered = PlanDocumentResponse.of(
+        a_document_holding_two_slots(), area_names=AREA_NAMES, anchor_origins={}
+    )
 
     assert [one.label for one in rendered.empty_slots] == [
         "no eligible Career content",

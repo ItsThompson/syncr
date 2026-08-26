@@ -16,8 +16,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import datetime
+    from uuid import UUID
 
     from syncr_api.offplan.records import OffPlanPeriodRecord
+    from syncr_api.plans.anchor_origins import AnchorOrigin
     from syncr_api.plans.emptiness import EmptyWeek
     from syncr_api.plans.readings import WeekReadings
     from syncr_api.plans.records import (
@@ -55,6 +57,11 @@ class WeekView:
     ``area_names`` names every Area this tenant holds. The plan charges its blocks and its gaps to
     Areas by identifier and a name is the user's own word for one, so the words travel beside the
     document rather than inside it: one read of the rows names every gap in the week.
+
+    ``anchor_origins`` names, per imported commitment the week binds, the calendar feed it came
+    from and whether that feed is failing now. It travels beside the document for the same reason:
+    one read of each of the two tables answers every block, and the staleness threshold stays on
+    this side of the wire.
     """
 
     iso_week: IsoWeek
@@ -62,6 +69,7 @@ class WeekView:
     zone_by_date: Mapping[Date, ZoneId]
     live: PlanDocument | None
     area_names: Mapping[AreaId, str]
+    anchor_origins: Mapping[UUID, AnchorOrigin]
     empty: EmptyWeek | None
     proposal: ProposalDiff | None
     candidate_adjustment: WeekAdjustmentRecord | None

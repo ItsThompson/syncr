@@ -272,6 +272,7 @@ def build_week_service(
             WeekPatternRepository(transaction, tenant_id),
         ),
         sources=CalendarSourceRepository(transaction, tenant_id),
+        anchors=AnchorRepository(transaction, tenant_id),
         off_plan=OffPlanPeriodRepository(transaction, tenant_id),
         confirmations=RecordedDayConfirmations(
             PlannedDayReader(revisions),

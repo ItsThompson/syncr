@@ -147,6 +147,28 @@
         "title": "AdjustmentsResponse",
         "type": "object"
       },
+      "AnchorOriginResponse": {
+        "description": "The feed one imported commitment came from, and whether that feed is failing now.",
+        "properties": {
+          "possiblyStale": {
+            "description": "Whether that source has been failing long enough to doubt what it fed, decided here against the server's own threshold, which never crosses the wire. A block that is not bound to an import answers null on anchorOrigin instead of an answer.",
+            "title": "Possiblystale",
+            "type": "boolean"
+          },
+          "sourceId": {
+            "description": "The calendar source this commitment was read from. On the block itself, so marking what a failing feed touched costs no second read.",
+            "format": "uuid",
+            "title": "Sourceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "possiblyStale"
+        ],
+        "title": "AnchorOriginResponse",
+        "type": "object"
+      },
       "AnchorResponse": {
         "description": "One imported commitment. Read-only in syncr, and it says so.\n\nNo location field, deliberately. See the module docstring.",
         "properties": {
@@ -1364,6 +1386,17 @@
       "BlockResponse": {
         "description": "One thing that happens in the week, and why it is where it is.",
         "properties": {
+          "anchorOrigin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorOriginResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The calendar feed this block's imported commitment came from, and whether that feed is failing now. Null for every block no import binds: a solver-placed or frame block claims nothing about any feed."
+          },
           "areaId": {
             "anyOf": [
               {
@@ -1451,7 +1484,8 @@
           "pinned",
           "supersededPlacement",
           "objectiveDelta",
-          "splitCount"
+          "splitCount",
+          "anchorOrigin"
         ],
         "title": "BlockResponse",
         "type": "object"

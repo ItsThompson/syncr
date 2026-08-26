@@ -1906,6 +1906,23 @@ export interface components {
             adjustments: components["schemas"]["AdjustmentResponse"][];
         };
         /**
+         * AnchorOriginResponse
+         * @description The feed one imported commitment came from, and whether that feed is failing now.
+         */
+        AnchorOriginResponse: {
+            /**
+             * Possiblystale
+             * @description Whether that source has been failing long enough to doubt what it fed, decided here against the server's own threshold, which never crosses the wire. A block that is not bound to an import answers null on anchorOrigin instead of an answer.
+             */
+            possiblyStale: boolean;
+            /**
+             * Sourceid
+             * Format: uuid
+             * @description The calendar source this commitment was read from. On the block itself, so marking what a failing feed touched costs no second read.
+             */
+            sourceId: string;
+        };
+        /**
          * AnchorResponse
          * @description One imported commitment. Read-only in syncr, and it says so.
          *
@@ -2513,6 +2530,8 @@ export interface components {
          * @description One thing that happens in the week, and why it is where it is.
          */
         BlockResponse: {
+            /** @description The calendar feed this block's imported commitment came from, and whether that feed is failing now. Null for every block no import binds: a solver-placed or frame block claims nothing about any feed. */
+            anchorOrigin: components["schemas"]["AnchorOriginResponse"] | null;
             /**
              * Areaid
              * @description The Area this block is charged to. Null for the frame and for an imported anchor: one defines how much time exists and the other is time the product does not own.

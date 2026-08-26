@@ -51,6 +51,7 @@ from syncr_domain.identity import BindingKind, Origin  # noqa: TC001
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from syncr_api.plans.anchor_origins import AnchorOrigin
     from syncr_domain.gaps import EmptySlot, ForbiddenWindow, SlotContext
     from syncr_domain.identifiers import AreaId
     from syncr_domain.identity import BindingRef
@@ -79,6 +80,24 @@ class BindingResponse(WireModel):
         )
 
 
+class AnchorOriginResponse(WireModel):
+    """The feed one imported commitment came from, and whether that feed is failing now."""
+
+    source_id: UUID = Field(
+        description="The calendar source this commitment was read from. On the block itself, so "
+        "marking what a failing feed touched costs no second read."
+    )
+    possibly_stale: bool = Field(
+        description="Whether that source has been failing long enough to doubt what it fed, "
+        "decided here against the server's own threshold, which never crosses the wire. A block "
+        "that is not bound to an import answers null on anchorOrigin instead of an answer."
+    )
+
+    @classmethod
+    def of(cls, origin: AnchorOrigin) -> Self:
+        return cls(source_id=origin.source_id, possibly_stale=origin.possibly_stale)
+
+
 class BlockResponse(WireModel):
     """One thing that happens in the week, and why it is where it is."""
 
@@ -104,9 +123,14 @@ class BlockResponse(WireModel):
     )
     objective_delta: float | None = Field(description="What overriding that placement cost.")
     split_count: int | None = Field(description="How many chunks the divided task was split into.")
+    anchor_origin: AnchorOriginResponse | None = Field(
+        description="The calendar feed this block's imported commitment came from, and whether "
+        "that feed is failing now. Null for every block no import binds: a solver-placed or "
+        "frame block claims nothing about any feed."
+    )
 
     @classmethod
-    def of(cls, block: Block) -> Self:
+    def of(cls, block: Block, origin: AnchorOrigin | None) -> Self:
         return cls(
             id=block.id,
             interval=WireSpan.of(block.interval),
@@ -123,6 +147,7 @@ class BlockResponse(WireModel):
             ),
             objective_delta=block.objective_delta,
             split_count=block.split_count,
+            anchor_origin=None if origin is None else AnchorOriginResponse.of(origin),
         )
 
 
@@ -196,7 +221,13 @@ class PlanDocumentResponse(WireModel):
     )
 
     @classmethod
-    def of(cls, document: PlanDocument, *, area_names: Mapping[AreaId, str]) -> Self:
+    def of(
+        cls,
+        document: PlanDocument,
+        *,
+        area_names: Mapping[AreaId, str],
+        anchor_origins: Mapping[UUID, AnchorOrigin],
+    ) -> Self:
         """The wire shape of one rebuilt document, in the order the domain holds it.
 
         The zone mapping is emitted in date order rather than in the order the document's keys
@@ -205,13 +236,20 @@ class PlanDocumentResponse(WireModel):
         ``area_names`` names every Area this tenant holds, and each empty slot resolves its own
         against it: one read of the rows answers every gap in the week, and a slot charged to an
         Area the mapping does not name is refused rather than answered.
+
+        ``anchor_origins`` names the feed behind each imported commitment, keyed by anchor. A week
+        composed without the two reads that answer it passes an empty mapping, and every block
+        then answers null rather than a claim nothing read.
         """
         return cls(
             iso_week=str(document.iso_week),
             zone_by_date={
                 day.isoformat(): zone for day, zone in sorted(document.zone_by_date.items())
             },
-            blocks=[BlockResponse.of(block) for block in document.blocks],
+            blocks=[
+                BlockResponse.of(block, anchor_origins.get(block.binding.entity_id))
+                for block in document.blocks
+            ],
             forbidden_windows=[
                 ForbiddenWindowResponse.of(window) for window in document.forbidden_windows
             ],

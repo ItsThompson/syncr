@@ -178,6 +178,23 @@ class AnchorRepository(TenantScopedRepository):
         )
         return tuple(found)
 
+    async def sources_of(
+        self, anchor_ids: Collection[AnchorId]
+    ) -> dict[AnchorId, CalendarSourceId]:
+        """The source each of these commitments was read from, the identifiers keyed by anchor.
+
+        One read for the whole set, because a week can hold many commitments and the caller wants
+        one origin per feed, not one query per block. A commitment named here whose row is gone
+        answers nothing: removing a source cascades to its anchors while stored weeks naming them
+        stay.
+        """
+        found = await self._session.execute(
+            self.scoped_select(Anchor)
+            .where(Anchor.id.in_(anchor_ids))
+            .with_only_columns(Anchor.id, Anchor.source_id)
+        )
+        return {row.id: row.source_id for row in found}
+
     async def list_matchable(self) -> tuple[AnchorRecord, ...]:
         """Every anchor whose type a rule may still decide, earliest first.
 

@@ -236,7 +236,9 @@ class WeekViewResponse(WireModel):
             live=(
                 None
                 if view.live is None
-                else PlanDocumentResponse.of(view.live, area_names=view.area_names)
+                else PlanDocumentResponse.of(
+                    view.live, area_names=view.area_names, anchor_origins=view.anchor_origins
+                )
             ),
             empty_reason=None if view.empty is None else view.empty.reason,
             empty_week=None if view.empty is None else EmptyWeekResponse.of(view.empty),
