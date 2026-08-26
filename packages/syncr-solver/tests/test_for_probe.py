@@ -108,8 +108,8 @@ PROJECTED_FROM = {
 #                            occupancy for the same reason this week's own occurrences are
 #   shadow_blocks            allocated to an Area rather than removed from the week, so it reaches
 #                            the probe through `placed` once a plan holds it; subtracting one
-#                            whole-week would count it twice, out of the denominator AND against
-#                            the Area's own figures at once
+#                            would count it twice over a whole week, out of the denominator AND
+#                            against the Area's own figures at once
 #   dropped_legs             the same reading from the other side: a dropped journey allocates
 #                            nothing, so its span stays discretionary and needs no projection
 #   template_entries         a concrete entry is fixed by derivation, so before the week is first
