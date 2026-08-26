@@ -15,12 +15,15 @@ import { describe, expect, it } from "vitest";
 import {
   CASES,
   geometryOf,
+  LINES_SECTION,
   probePage,
   WEEK_SECTION,
+  type CaseGeometry,
 } from "../../../../../scripts/check-render/page.ts";
+import { LINE_EXTENT } from "../../../../../scripts/check-render/lineWeight.ts";
 import { WEEK_DATES, WEEK_LABELS } from "../../../../../scripts/check-render/weekColumns.ts";
 import { columnLabel } from "../../../../routes/week/labels";
-import { Block } from "../Block";
+import { Block, type BlockStates } from "../Block";
 import { WeekGrid } from "../WeekGrid";
 import type { Extent, GridBlock, WeekDay } from "../types";
 
@@ -28,57 +31,88 @@ const cases = geometryOf(CASES);
 const modal = cases[0];
 const page = probePage({ bundleName: "bundle.css", cases });
 
-const BLOCK: GridBlock = {
-  id: "b1",
-  title: modal.title,
-  span: { startMin: 540, endMin: 570 },
-  origin: "task",
-  pigment: "01",
-  areaName: "Career",
-  isPinned: false,
-};
+/** The block one case stands for: its title, its origin, and the glyph slot's pinned claim. */
+function blockFixture(each: CaseGeometry): GridBlock {
+  return {
+    id: "b1",
+    title: each.title,
+    span: { startMin: 540, endMin: 570 },
+    origin: each.origin ?? "task",
+    pigment: "01",
+    areaName: "Career",
+    isPinned: each.glyph === "pinned",
+  };
+}
 
-function realBlock(): HTMLElement {
-  const { container } = render(
+/** The case's states in `BlockStates`' own spelling. Split is a placement fact and travels separately. */
+function statesOf(each: CaseGeometry): BlockStates {
+  return {
+    isSelected: each.states?.selected === true ? true : undefined,
+    isConflicted: each.states?.conflicted === true ? true : undefined,
+    isProposalTarget: each.states?.proposalTarget === true ? true : undefined,
+  };
+}
+
+function realBlock(each: CaseGeometry): HTMLElement {
+  const rendered = render(
     <Block
-      block={BLOCK}
+      block={blockFixture(each)}
       placement={{
-        topPx: modal.cappedTopPx,
-        heightPx: modal.heightPx,
-        across: { left: 0, right: 0, indentSteps: 0, layer: 0, overlapCount: null, isSplit: false },
+        topPx: each.cappedTopPx,
+        heightPx: each.heightPx,
+        across: {
+          left: 0,
+          right: 0,
+          indentSteps: 0,
+          layer: 0,
+          overlapCount: null,
+          isSplit: each.states?.split === true,
+        },
       }}
+      states={statesOf(each)}
     />,
   );
-  const element = container.firstElementChild;
+  const element = rendered.container.firstElementChild;
+  rendered.unmount();
   if (!(element instanceof HTMLElement)) throw new Error("the block rendered nothing");
   return element;
 }
 
-describe("the probe's block against this component's", () => {
-  it("writes every class the component writes", () => {
-    for (const className of realBlock().className.split(/\s+/)) {
-      expect(page, `the probe is missing ${className}`).toContain(className);
+describe("the probe's blocks against this component's", () => {
+  it("writes every class every case's rendering writes", () => {
+    for (const each of cases) {
+      for (const className of realBlock(each).className.split(/\s+/)) {
+        expect(page, `${each.name}: the probe is missing ${className}`).toContain(className);
+      }
     }
   });
 
-  it("writes every nested element the component writes, in the same nesting", () => {
+  it("writes every nested element every case writes, in the same nesting", () => {
     /* NESTING, NOT JUST PRESENCE. The glyph and the title are both inside `__body`, and a probe that emitted the glyph
      * as a sibling made it a flex ITEM rather than a float, which pushed the title 17.80px down. The containment check
-     * alone passed that, because every class was still present somewhere. */
-    const block = realBlock();
-    const body = block.querySelector(".week-block__body");
+     * alone passed that, because every class was still present somewhere. The anchor's hatch sits before `__body`,
+     * which is where the component puts it, so the same containment catches a hatch moved out of order. */
+    const body = realBlock(modal).querySelector(".week-block__body");
 
     expect(body?.querySelector(".week-block__glyph")).not.toBeNull();
     expect(body?.querySelector(".week-block__title")).not.toBeNull();
     expect(page).toContain('<span class="week-block__body"><span class="week-block__glyph"');
-    for (const child of block.querySelectorAll("[class]")) {
-      expect(page, `the probe is missing ${child.className}`).toContain(child.className);
+    for (const each of cases) {
+      for (const child of realBlock(each).querySelectorAll("[class]")) {
+        expect(page, `${each.name}: the probe is missing ${child.className}`).toContain(
+          child.className,
+        );
+      }
     }
   });
 
-  it("writes no shape the component does not, so the probe cannot drift by ADDING one", () => {
+  it("writes no shape the components do not, so the probe cannot drift by ADDING one", () => {
     const drawn = new Set(
-      [...realBlock().querySelectorAll("[class]")].flatMap((child) => child.className.split(/\s+/)),
+      cases.flatMap((each) =>
+        [...realBlock(each).querySelectorAll("[class]")].flatMap((child) =>
+          child.className.split(/\s+/),
+        ),
+      ),
     );
     const inProbe = new Set(
       [...page.matchAll(/class="([^"]*week-block__[^"]*)"/g)].flatMap((found) =>
@@ -91,24 +125,32 @@ describe("the probe's block against this component's", () => {
     }
   });
 
-  it("writes every attribute the component writes", () => {
-    for (const name of realBlock().getAttributeNames()) {
-      if (name === "style" || name === "aria-label") continue;
-      expect(page, `the probe is missing ${name}`).toContain(name);
+  it("writes every attribute every case's rendering writes", () => {
+    for (const each of cases) {
+      for (const name of realBlock(each).getAttributeNames()) {
+        if (name === "style" || name === "aria-label") continue;
+        expect(page, `${each.name}: the probe is missing ${name}`).toContain(name);
+      }
     }
   });
 
   it("passes the same two per-block custom values the component passes", () => {
     /* The VALUE, not just the name: `--lines` is the figure the whole gate is about, and a probe that wrote a
      * different one would measure a line count the product never sets. */
-    expect(realBlock().style.getPropertyValue("--lines")).toBe(String(modal.lines));
+    expect(realBlock(modal).style.getPropertyValue("--lines")).toBe(String(modal.lines));
     expect(page).toContain(`--lines:${String(modal.lines)}`);
     expect(page).toContain("var(--grid-inset)");
   });
 
-  it("renders the same block height, so the line count under test is the product's", () => {
-    expect(realBlock().style.height).toBe(`${modal.heightPx.toFixed(3)}px`);
-    expect(page).toContain(`height:${modal.heightPx.toFixed(3)}px`);
+  it("renders every case at the height the geometry says, so the line count under test is the product's", () => {
+    for (const each of cases) {
+      /* The block rounds to three decimals and the CSSOM trims a trailing zero, so both sides are read back as the
+       * same rounded number rather than as one literal string. */
+      expect(Number.parseFloat(realBlock(each).style.height)).toBe(
+        Number(each.heightPx.toFixed(3)),
+      );
+      expect(page).toContain(`height:${each.heightPx.toFixed(3)}px`);
+    }
   });
 });
 
@@ -193,5 +235,46 @@ describe("the probe's seven day columns against this component's", () => {
 
   it("puts the columns on the page, so the gate reads a section the page actually holds", () => {
     expect(page).toContain(WEEK_SECTION.html);
+  });
+});
+
+/* THE LINE-WEIGHT SECTION AGAINST THE COMPONENT.
+ *
+ * The gate reads whether `[data-dragging]` steps the quarter lines to hour weight off one canvas of grid lines that
+ * this markup carries. What holds it to the product is the same move as the block and the columns: the real
+ * `WeekGrid` renders over the same slice of the axis, and the section has to draw the same lines with the same
+ * classes. The section ships AT REST; its reading script puts the attribute on the grid itself, so a section parked
+ * permanently mid-drag cannot measure anything the flip does not. */
+describe("the line-weight section against this component's", () => {
+  function gridOverTheSlice(): Element {
+    const { container } = render(
+      <WeekGrid
+        days={WEEK_DATES.map(emptyDay)}
+        extent={{ ...LINE_EXTENT }}
+        labels={WEEK_DATES.map(columnLabel)}
+        nowMs={null}
+        visibleHours={12}
+      />,
+    );
+    const grid = container.querySelector(".week-grid");
+    if (grid === null) throw new Error("the grid rendered nothing");
+    return grid;
+  }
+
+  it("draws the same lines one canvas of the real grid draws over the same slice of the axis", () => {
+    const real = [...(gridOverTheSlice().querySelector(".week-day__canvas")?.children ?? [])].map(
+      (line) => line.className,
+    );
+    const probed = [...gridIn(LINES_SECTION.html).querySelectorAll(".week-grid__line")].map(
+      (line) => line.className,
+    );
+
+    expect(real.length).toBeGreaterThan(0);
+    expect(probed).toEqual(real);
+  });
+
+  it("ships at rest and lets its reading step it to dragging", () => {
+    expect(gridIn(LINES_SECTION.html).getAttribute("data-dragging")).toBeNull();
+    expect(LINES_SECTION.script).toContain('setAttribute("data-dragging"');
   });
 });

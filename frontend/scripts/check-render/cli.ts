@@ -12,8 +12,10 @@
  * none: a check that passes when it cannot look reports a claim it never tested. GitHub's ubuntu runner images ship
  * `/usr/bin/google-chrome`, which is one of the paths it probes, so CI needs no setup step.
  *
- * Its title cases are the nine the clamp needed, and the page also lays out the week's seven day columns, which is
- * where the drag's horizontal read is measured against a box a browser computed rather than one a test stubbed. */
+ * Its title cases are the nine the clamp needed plus the state cases the channel table measures, and the page also
+ * lays out the week's seven day columns, where the drag's horizontal read is measured against a box a browser
+ * computed rather than one a test stubbed, and one canvas of grid lines weighed at rest and under `data-dragging`.
+ */
 
 import { buildStylesheets } from "../check-bundle/build.ts";
 import { checkRender } from "./check.ts";

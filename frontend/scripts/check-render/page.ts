@@ -52,6 +52,7 @@ import {
   VISIBLE_HOURS_DEFAULT,
 } from "../../src/ui/domain/week-grid/metrics.ts";
 import { COLUMN_READINGS_ID, weekColumns } from "./weekColumns.ts";
+import { LINE_READINGS_ID, lineWeightSection } from "./lineWeight.ts";
 
 /** The narrowest supported day column, `--col-min`, which is where a title is tightest. */
 export const COLUMN_PX = 137;
@@ -68,6 +69,15 @@ const PAGE_MARGIN_PX = 40;
 /** The uncapped control's own line allowance: more lines than any title here needs. */
 const UNCAPPED_LINES = 99;
 
+/** The block states a case stands in, all absent at rest. `BlockStates`' own spelling. */
+export interface RenderStates {
+  readonly selected?: boolean | undefined;
+  readonly conflicted?: boolean | undefined;
+  readonly proposalTarget?: boolean | undefined;
+  /** A block divided by a deeper stagger, which owns the one hairline left rule at rest. */
+  readonly split?: boolean | undefined;
+}
+
 export interface RenderCase {
   readonly name: string;
   readonly title: string;
@@ -77,6 +87,10 @@ export interface RenderCase {
   readonly visibleHours: number;
   /** What sits in the glyph slot, or none. A float shortens the lines it overlaps and nothing else. */
   readonly glyph?: "pinned" | "overlap" | undefined;
+  /** What the time is. Absent means a task of an Area; an anchor carries the hatch instead. */
+  readonly origin?: "task" | "anchor" | undefined;
+  /** The states the case renders with, absent at rest. */
+  readonly states?: RenderStates | undefined;
 }
 
 /**
@@ -91,6 +105,12 @@ export interface RenderCase {
  * block and a staggered one carry a glyph, and the float that puts it beside a wrapping title is the reason the
  * block became a column flex box with one block child: with a glyph the first line box goes from 110.78px to
  * 41.55px, so a case with an empty slot never measures it.
+ *
+ * THE STATE CASES turn the channel table into measurements. Each composition rule the sheets state about the left
+ * rule, the fill and the hatch is asserted by `check.ts` over what a browser computed for one of these: conflict
+ * winning the left rule over selected, the split's hairline REPLACED by the state rule rather than added to it,
+ * the proposal target keeping the Area's top rule while giving up its fill, and the anchor's hatch riding the
+ * image channel so hover's colour composes with it rather than competing.
  */
 export const CASES: readonly RenderCase[] = [
   {
@@ -149,6 +169,55 @@ export const CASES: readonly RenderCase[] = [
     durationMinutes: 90,
     visibleHours: 12,
     glyph: "overlap",
+  },
+  {
+    name: "conflicted and selected, the conflict winning the left rule",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    states: { conflicted: true, selected: true },
+  },
+  {
+    name: "conflicted alone, the left rule in oxide",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    states: { conflicted: true },
+  },
+  {
+    name: "selected alone, the reserved rule inked",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    states: { selected: true },
+  },
+  {
+    name: "split at rest, its own hairline left rule",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    states: { split: true },
+  },
+  {
+    name: "split and selected, the state rule replacing the split's",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    states: { split: true, selected: true },
+  },
+  {
+    name: "proposal target, no fill and the Area's top rule kept",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    states: { proposalTarget: true },
+  },
+  {
+    name: "anchor block, the hatch over the fill",
+    title: "Amazon Interview Prep",
+    durationMinutes: 30,
+    visibleHours: 12,
+    origin: "anchor",
   },
 ];
 
@@ -221,18 +290,33 @@ function glyphSlot(claim: RenderCase["glyph"]): string {
   );
 }
 
+/* An empty-string data attribute when the state holds, absent otherwise, which is what React writes. */
+function flag(name: string, on: boolean | undefined): string {
+  return on === true ? ` ${name}=""` : "";
+}
+
 /* The class list, the attributes and the inline style `Block.tsx` writes, in the NESTING it writes them in: the glyph
  * and the title are both inside `__body`, because the float that puts one beside the other cannot live in the flex
  * container the block itself is. Emitting the glyph as a sibling of `__body` makes it a flex ITEM, which pushes the
- * title 17.80px down: the gate caught exactly that the first time a case carried a glyph. */
+ * title 17.80px down: the gate caught exactly that the first time a case carried a glyph. The anchor's hatch sits
+ * before `__body` for the same reason: it is absolutely positioned, but the ORDER is what the component writes. */
 function block(geometry: CaseGeometry, lines: number, topPx: number, id: string): string {
+  const states = geometry.states ?? {};
   return (
     `<button type="button" id="${id}" class="week-block week-block--area-01 state-row"` +
-    ` data-origin="task" data-tier="${geometry.tier}"` +
+    flag("data-conflict", states.conflicted) +
+    flag("data-pinned", geometry.glyph === "pinned") +
+    flag("data-proposal", states.proposalTarget) +
+    flag("data-selected", states.selected) +
+    flag("data-split", states.split) +
+    ` data-origin="${geometry.origin ?? "task"}" data-tier="${geometry.tier}"` +
     ` aria-label="${geometry.title} \u00b7 Career"` +
     ` style="top:${String(topPx)}px;height:${geometry.heightPx.toFixed(3)}px` +
     `;left:calc(var(--grid-inset) + 0.000%);right:calc(var(--grid-inset) + 0.000%)` +
     `;z-index:0;--lines:${String(lines)}">` +
+    (geometry.origin === "anchor"
+      ? `<span aria-hidden="true" class="week-block__hatch"></span>`
+      : "") +
     `<span class="week-block__body">` +
     glyphSlot(geometry.glyph) +
     `<span class="week-block__title">${geometry.title}</span>` +
@@ -254,6 +338,9 @@ export const WEEK_SECTION = weekColumns({
   pxPerMin: heightOf(1, VISIBLE_HOURS_DEFAULT),
   columnPx: COLUMN_PX,
 });
+
+/** One canvas of grid lines, drawn at rest so the reading can step it to dragging. `lineWeight` owns it. */
+export const LINES_SECTION = lineWeightSection();
 
 /** How wide a window has to be to hold the widest thing on the page, which is the week's seven columns. */
 export const PAGE_WIDTH_PX = Math.max(WIDE_COLUMN_PX, WEEK_SECTION.widthPx) + PAGE_MARGIN_PX;
@@ -277,6 +364,21 @@ export interface PageReading {
   readonly maxHeightPx: number;
   /** The first line box's width, which the glyph's float shortens where there is one. */
   readonly firstLineWidthPx: number;
+  /* THE FOUR EDGES AS THE BROWSER COMPOSED THEM, widths and inks off the BLOCK element. These are the channel
+   * table's readings: what a state won, replaced or kept is answered here and not by any declaration. */
+  readonly borderTopWidth: string;
+  readonly borderTopColor: string;
+  readonly borderRightWidth: string;
+  readonly borderRightColor: string;
+  readonly borderBottomWidth: string;
+  readonly borderBottomColor: string;
+  readonly borderBottomStyle: string;
+  readonly borderLeftWidth: string;
+  readonly borderLeftColor: string;
+  /** The block's own fill, which the proposal target gives up and hover recolours. */
+  readonly backgroundColor: string;
+  /** The anchor hatch's painted image, or null where the block carries no hatch. */
+  readonly hatchBackgroundImage: string | null;
 }
 
 export function probePage({ bundleName, cases, scriptName }: PageRequest): string {
@@ -312,13 +414,17 @@ ${narrow}
 ${wide}
 </div>
 ${WEEK_SECTION.html}
+${LINES_SECTION.html}
 <pre id="${READINGS_ID}"></pre>
 <pre id="${COLUMN_READINGS_ID}"></pre>
+<pre id="${LINE_READINGS_ID}"></pre>
 ${scriptName === undefined ? "" : `<script src="./${scriptName}"></script>`}
 <script>
   const readings = [...document.querySelectorAll(".week-block")].map((block) => {
     const title = block.querySelector(".week-block__title");
     const style = getComputedStyle(title);
+    const composed = getComputedStyle(block);
+    const hatch = block.querySelector(".week-block__hatch");
     return {
       id: block.id,
       titleTopPx: title.getBoundingClientRect().top - block.getBoundingClientRect().top,
@@ -326,11 +432,24 @@ ${scriptName === undefined ? "" : `<script src="./${scriptName}"></script>`}
       lineHeightPx: Number.parseFloat(style.lineHeight),
       maxHeightPx: Number.parseFloat(style.maxHeight),
       firstLineWidthPx: title.getBoundingClientRect().width,
+      borderTopWidth: composed.borderTopWidth,
+      borderTopColor: composed.borderTopColor,
+      borderRightWidth: composed.borderRightWidth,
+      borderRightColor: composed.borderRightColor,
+      borderBottomWidth: composed.borderBottomWidth,
+      borderBottomColor: composed.borderBottomColor,
+      borderBottomStyle: composed.borderBottomStyle,
+      borderLeftWidth: composed.borderLeftWidth,
+      borderLeftColor: composed.borderLeftColor,
+      backgroundColor: composed.backgroundColor,
+      hatchBackgroundImage:
+        hatch === null ? null : getComputedStyle(hatch).backgroundImage,
     };
   });
   document.getElementById(${JSON.stringify(READINGS_ID)}).textContent = JSON.stringify(readings);
 </script>
 <script>${WEEK_SECTION.script}</script>
+<script>${LINES_SECTION.script}</script>
 </body></html>
 `;
 }
@@ -340,9 +459,12 @@ export function stackTopPx(cases: readonly CaseGeometry[]): number {
   return cases.length * CASE_PITCH_PX;
 }
 
-/** How tall a window has to be to hold both columns and the week below them, so no region reads past the screenshot. */
+/** How tall a window has to be to hold both columns, the week, the verdict section and the line-weight section,
+ * so no region reads past the screenshot. */
 export function pageHeightPx(cases: readonly CaseGeometry[]): number {
-  return Math.ceil(2 * stackTopPx(cases) + CASE_PITCH_PX + WEEK_SECTION.heightPx);
+  return Math.ceil(
+    2 * stackTopPx(cases) + CASE_PITCH_PX + WEEK_SECTION.heightPx + LINES_SECTION.heightPx,
+  );
 }
 
 export const PAGE_PITCH_PX = CASE_PITCH_PX;
