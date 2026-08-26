@@ -12,13 +12,12 @@ source and then this text, so the text is what the reader learns beyond the bloc
 ## What the text can say, and what it cannot
 
 Every label here is derived from the resolved inputs and from nothing else, which bounds what a
-clause can name. Four pieces of the upstream examples are absent from those inputs and are
-therefore absent here: the day type a shape belongs to, a routine's day-type association, which
-does not exist at all because a routine materializes on every date, the calendar and access role
-an anchor was read from, and the name of the anchor type that cast a buffer along with the title
-of the commitment it was cast by, which is reachable INSIDE THIS STRUCT only through a join that
-is not total: an evening buffer for a Monday-morning commitment is cast by an anchor that this
-week's span does not hold.
+clause can name. Three pieces of the upstream examples are absent from those inputs and are
+therefore absent here: a routine's day-type association, which does not exist at all because a
+routine materializes on every date, the calendar and access role an anchor was read from, and
+the name of the anchor type that cast a buffer along with the title of the commitment it was
+cast by, which is reachable INSIDE THIS STRUCT only through a join that is not total: an evening
+buffer for a Monday-morning commitment is cast by an anchor that this week's span does not hold.
 
 So each label states the determinant's own name plus the geometry the block was derived at, and
 a clause never renders a value that depends on whether an unrelated collection happens to carry
@@ -59,14 +58,16 @@ def bound_to_routine(entry: FrameEntry, *, zone: ZoneId) -> Bound:
 
 
 def bound_to_template_entry(entry: MaterializedEntry, *, title: str, zone: ZoneId) -> Bound:
-    """What a concrete template entry's block says: its content, at the shape's target time.
+    """What a concrete template entry's block says: its day shape, its content, at the target time.
 
-    The title is an argument rather than a read of ``entry.title``, because only a concrete entry
-    carries one and this clause is only ever built for a concrete entry. The caller separating
-    the two kinds is what already knows which it holds.
+    The day type's name leads because it is what placed the content and it is the one thing the
+    block's own title cannot say. ``title`` itself is an argument rather than a read of
+    ``entry.title``, because only a concrete entry carries one and this clause is only ever built
+    for a concrete entry. The caller separating the two kinds is what already knows which it holds.
     """
     return Bound(
-        DerivationSource.TEMPLATE_ENTRY, _PART.join((title, _wall_time(entry.interval.start, zone)))
+        DerivationSource.TEMPLATE_ENTRY,
+        _PART.join((entry.day_type_name, title, _wall_time(entry.interval.start, zone))),
     )
 
 

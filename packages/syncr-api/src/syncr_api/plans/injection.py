@@ -1,7 +1,7 @@
 """How a caller acquires a week assembler and a week service, and which reader each seam is wired
 to.
 
-The assembler takes eighteen collaborators, so composing one is stated here rather than at each
+The assembler takes nineteen collaborators, so composing one is stated here rather than at each
 call site: three components assemble a week and a second copy of this list is how one of them
 would come to read a different set of tables.
 
@@ -76,7 +76,11 @@ from syncr_api.solving.injection import (
 )
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.tasks.repository import TaskRepository
-from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
+from syncr_api.templates.repository import (
+    DayTypeRepository,
+    TemplateRepository,
+    WeekPatternRepository,
+)
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 
 if TYPE_CHECKING:
@@ -113,6 +117,7 @@ def build_week_assembler(
         routines=RoutineRepository(transaction, tenant_id),
         week_pattern=WeekPatternRepository(transaction, tenant_id),
         templates=TemplateRepository(transaction, tenant_id),
+        day_types=DayTypeRepository(transaction, tenant_id),
         habits=HabitRepository(transaction, tenant_id),
         outcomes=HabitOutcomeLog(transaction, tenant_id),
         tasks=TaskRepository(transaction, tenant_id),

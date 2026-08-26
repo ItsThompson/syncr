@@ -50,14 +50,15 @@ from syncr_domain.habits import (
 from syncr_domain.identity import date_occurrence_key, index_occurrence_key
 from syncr_domain.intervals import Interval, IntervalError
 from syncr_domain.outcomes import HabitOutcome, OutcomeState
-from syncr_domain.templates import BindingTarget, TemplateEntryKind
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.templates import BindingTarget, TemplateEntryKind, WeekPattern
+from syncr_domain.weeks import IsoWeek, Weekday
 from tests.assembly_fakes import (
     MONDAY,
     MONDAY_MIDNIGHT,
     NOW,
     WEEK,
     FakeAreas,
+    FakeDayTypes,
     FakeHabits,
     FakeOffPlan,
     FakeOutcomes,
@@ -68,6 +69,7 @@ from tests.assembly_fakes import (
     FakeVersions,
     FakeWeekPattern,
     a_concrete_entry,
+    a_day_type,
     a_habit,
     a_routine,
     a_slot_entry,
@@ -325,6 +327,7 @@ async def test_template_entries_materialize_per_date_from_the_week_pattern() -> 
     inputs = await an_assembler(
         areas=FakeAreas([area]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -353,6 +356,7 @@ async def test_a_slot_names_its_area_and_a_concrete_entry_names_its_content() ->
         areas=FakeAreas([area]),
         habits=FakeHabits([habit]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -363,6 +367,46 @@ async def test_a_slot_names_its_area_and_a_concrete_entry_names_its_content() ->
     assert slot.title is None
     assert concrete.binding is not None
     assert (concrete.binding.target, concrete.binding.entity_id) == (BindingTarget.HABIT, habit.id)
+
+
+async def test_an_entry_carries_the_name_of_the_day_type_its_date_maps_to() -> None:
+    # The pattern resolves one day type per date and the producer reads the name off that row,
+    # so a week whose pattern maps two types carries two different names downstream.
+    area = an_area()
+    work = uuid4()
+    rest = uuid4()
+    mapping = dict.fromkeys(Weekday, work)
+    mapping[Weekday.SATURDAY] = rest
+    mapping[Weekday.SUNDAY] = rest
+
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        week_pattern=FakeWeekPattern(WeekPattern(mapping)),
+        day_types=FakeDayTypes(
+            [
+                a_day_type(day_type_id=work, name="Uni day"),
+                a_day_type(day_type_id=rest, name="Rest day"),
+            ]
+        ),
+        templates=FakeTemplates(
+            [
+                a_template(
+                    day_type_id=work,
+                    entries=[a_slot_entry(template_id=uuid4(), area_id=area.id)],
+                ),
+                a_template(
+                    day_type_id=rest,
+                    entries=[a_slot_entry(template_id=uuid4(), area_id=area.id)],
+                ),
+            ]
+        ),
+    ).assemble(WEEK, NOW)
+
+    names = {entry.occurrence_key: entry.day_type_name for entry in inputs.template_entries}
+    assert len(names) == 7
+    friday = date_occurrence_key(MONDAY + timedelta(days=4))
+    saturday = date_occurrence_key(MONDAY + timedelta(days=5))
+    assert (names[friday], names[saturday]) == ("Uni day", "Rest day")
 
 
 async def test_a_concrete_entry_carries_its_content_name_and_the_area_it_charges() -> None:
@@ -389,6 +433,7 @@ async def test_a_concrete_entry_carries_its_content_name_and_the_area_it_charges
         areas=FakeAreas([declared, charged]),
         habits=FakeHabits([habit]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -426,6 +471,7 @@ async def test_a_concrete_entry_naming_a_routine_materializes_nothing(
         areas=FakeAreas([area]),
         routines=FakeRoutines([routine]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -451,6 +497,7 @@ async def test_a_concrete_entry_naming_content_this_tenant_does_not_have_is_drop
     inputs = await an_assembler(
         areas=FakeAreas([area]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -480,6 +527,7 @@ async def test_a_binding_does_not_resolve_against_the_table_its_target_does_not_
         areas=FakeAreas([area]),
         routines=FakeRoutines([routine]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -516,6 +564,7 @@ async def test_a_suppressed_frame_does_not_hand_the_placement_back_to_the_entry(
         routines=FakeRoutines([routine]),
         off_plan=FakeOffPlan(nights),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
     ).assemble(WEEK, NOW)
 
@@ -930,6 +979,7 @@ async def test_a_period_suppresses_a_template_entry_whichever_way_it_keeps_the_f
     inputs = await an_assembler(
         areas=FakeAreas([area]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([template]),
         off_plan=FakeOffPlan([period]),
     ).assemble(WEEK, NOW)

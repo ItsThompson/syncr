@@ -2,29 +2,29 @@ week 2026-W07  discretionary 5895m  unallocated 3630m  oversubscription 0m
 blocks 61  slots 0  windows 1  blocked 11
 
 BLOCKS
-  Mon 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Wake Up · 06:30
-  Mon 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Shower · 06:45
+  Mon 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
+  Mon 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Mon 07:00-07:30   habit           Fitness  Walk                               bound fixed · Walk
   Mon 07:30-08:45   habit           Fitness  Gym · Pull                         bound rotation · Pull
   Mon 13:45-14:45   task            Career   Placement Admin                    bound queue · Placement Admin
   Mon 14:45-15:30   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
   Mon 15:30-20:45   task            Study    F&F Past Papers                    bound queue · F&F Past Papers
-  Mon 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Mon 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Mon 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
-  Tue 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Wake Up · 06:30
+  Tue 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
   Tue 06:30-07:45   habit           Fitness  Gym · Push                         bound rotation · Push
-  Tue 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Shower · 06:45
+  Tue 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Tue 07:45-08:30   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
   Tue 08:30-09:15   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
   Tue 09:15-10:00   habit           Career   Leetcode · Placement Admin         bound queue · Placement Admin
   Tue 10:00-12:00   anchor          -        Systems Programming                bound anchor · Systems Programming
   Tue 14:00-16:00   anchor          -        Formal Methods                     bound anchor · Formal Methods
   Tue 16:00-20:00   task            Career   Placement Admin                    bound queue · Placement Admin
-  Tue 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Tue 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Tue 21:00-22:30   habit           Study    Reading                            bound fixed · Reading
   Tue 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
-  Wed 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Wake Up · 06:30
-  Wed 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Shower · 06:45
+  Wed 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
+  Wed 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Wed 07:00-07:30   habit           Fitness  Walk                               bound fixed · Walk
   Wed 08:15-09:00   prep            Career   Interview prep                     bound anchor_type · Interview prep · prep, 45m
   Wed 09:00-09:15   transit         Career   Leave for Kontron                  bound anchor_type · Leave for Kontron · transit out, 15m
@@ -33,35 +33,35 @@ BLOCKS
   Wed 14:00-16:00   anchor          -        Databases                          bound anchor · Databases
   Wed 16:30-18:00   anchor          -        Networks                           bound anchor · Networks
   Wed 18:00-19:30   habit           Study    Reading                            bound fixed · Reading
-  Wed 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Wed 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Wed 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
   Thu 06:30-08:00   anchor          -        Formal Methods                     bound anchor · Formal Methods
   Thu 14:00-16:00   anchor          -        Databases                          bound anchor · Databases
   Thu 16:00-18:45   task            Study    F&F Past Papers                    bound queue · F&F Past Papers
-  Thu 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Thu 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Thu 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
-  Fri 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Wake Up · 06:30
-  Fri 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Shower · 06:45
+  Fri 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
+  Fri 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Fri 07:00-08:15   habit           Fitness  Gym · Pull                         bound rotation · Pull
   Fri 08:15-08:45   habit           Fitness  Walk                               bound fixed · Walk
   Fri 08:45-13:45   task            Study    Lab Report                         bound queue · Lab Report
-  Fri 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Fri 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Fri 22:30-23:30   anchor          -        Networks                           bound anchor · Networks
   Fri 23:00-23:45   anchor          -        Compilers                          bound anchor · Compilers
   Fri 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
-  Sat 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Wake Up · 06:30
-  Sat 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Shower · 06:45
+  Sat 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
+  Sat 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Sat 07:00-08:15   habit           Fitness  Gym · Legs                         bound rotation · Legs
   Sat 08:15-08:45   habit           Fitness  Walk                               bound fixed · Walk
   Sat 11:00-12:30   anchor          -        Networks                           bound anchor · Networks
   Sat 15:00-16:30   anchor          -        Systems Programming                bound anchor · Systems Programming
-  Sat 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Sat 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Sat 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
-  Sun 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Wake Up · 06:30
-  Sun 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Shower · 06:45
+  Sun 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
+  Sun 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Sun 07:00-08:15   habit           Fitness  Gym · Push                         bound rotation · Push
   Sun 11:00-12:30   anchor          -        Compilers                          bound anchor · Compilers
-  Sun 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Stretch · 20:45
+  Sun 20:45-21:00   template_entry  Fitness  Stretch                            bound template_entry · Uni day · Stretch · 20:45
   Sun 23:00-06:30   frame           -        Sleep                              bound routine · Sleep · 23:00 + 7h30m
 
 EMPTY SLOTS

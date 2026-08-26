@@ -39,8 +39,8 @@ budget and the assembly is why".
 
 **Both figures were set against eleven repository reads, and eleven was never counted.**
 `plans/assembler.py` counts what the assembly actually does: `RESOLUTION_COUNT` is **18** resolutions
-over `REPOSITORY_READ_COUNT` **20** repository reads, and the api suite crosses both constants against
-the method itself. Neither the 100 ms budget nor this threshold has been re-derived against 20, so read
+over `REPOSITORY_READ_COUNT` **21** repository reads, and the api suite crosses both constants against
+the method itself. Neither the 100 ms budget nor this threshold has been re-derived against 21, so read
 the threshold as the point where the interaction is over budget and not as a figure today's read count
 justifies.
 
@@ -76,7 +76,7 @@ process, so read it per `instance`.
 
 ## What the assembly reads, in order
 
-Twenty reads over eighteen collaborators, in the order one assembly performs them. Each row is the
+Twenty-one reads over nineteen collaborators, in the order one assembly performs them. Each row is the
 series the read histogram registers, so a row of the panel above is a row of this table.
 
 | # | Series | What it resolves |
@@ -91,16 +91,17 @@ series the read histogram registers, so a row of the panel above is a row of thi
 | 8 | `WeekAdjustmentRepository.for_week` | the PRECEDING week's approved concessions, which its inherited occurrences are resolved under |
 | 9 | `HabitRepository.list_all` | the habits a template entry binds and the cadence expands |
 | 10 | `WeekPatternRepository.read` | the week pattern, which names each day's type |
-| 11 | `TemplateRepository.list_all` | the template entries those day types materialize |
-| 12 | `WeightSetRepository.active` | the duration multipliers, gated by maturity |
-| 13 | `HabitOutcomeLog.read` | the habit outcome log, from which each rotation cursor and the outstanding debt derive |
-| 14 | `HabitOutcomeLog.latest` | when each habit last recorded an occurrence, from a read bounded to the longest declared interval |
-| 15 | `AnchorTypeRepository.list_all` | the anchor types, read before the anchors they widen the span for |
-| 16 | `AnchorRepository.overlapping` | the anchors of that widened span, and what each casts into the week |
-| 17 | `TaskRepository.list_all` | the eligible tasks, and the demand per deadline |
-| 18 | `PreferenceRepository.list_all` | the per-Area daily caps, and the preference chain resolved after the fold |
-| 19 | `AreaRepository.list_all` | the Areas whose floor minutes, reservations and gross targets are computed |
-| 20 | `WeekAdjustmentRepository.for_week` | this week's approved concessions, folded as a post-pass |
+| 11 | `DayTypeRepository.list_all` | the day-type names each materialized entry carries beside its content |
+| 12 | `TemplateRepository.list_all` | the template entries those day types materialize |
+| 13 | `WeightSetRepository.active` | the duration multipliers, gated by maturity |
+| 14 | `HabitOutcomeLog.read` | the habit outcome log, from which each rotation cursor and the outstanding debt derive |
+| 15 | `HabitOutcomeLog.latest` | when each habit last recorded an occurrence, from a read bounded to the longest declared interval |
+| 16 | `AnchorTypeRepository.list_all` | the anchor types, read before the anchors they widen the span for |
+| 17 | `AnchorRepository.overlapping` | the anchors of that widened span, and what each casts into the week |
+| 18 | `TaskRepository.list_all` | the eligible tasks, and the demand per deadline |
+| 19 | `PreferenceRepository.list_all` | the per-Area daily caps, and the preference chain resolved after the fold |
+| 20 | `AreaRepository.list_all` | the Areas whose floor minutes, reservations and gross targets are computed |
+| 21 | `WeekAdjustmentRepository.for_week` | this week's approved concessions, folded as a post-pass |
 
 **Three things the rows do not say on their own.**
 
@@ -108,16 +109,16 @@ series the read histogram registers, so a row of the panel above is a row of thi
   panel shows its statements under their own names rather than under the seam: `PlanRepository.latest`,
   `SettingsRepository.read`, `PinRepository.for_week` and `BlockOutcomeRepository.for_span`. So
   `SettingsRepository.read` is observed twice in one assembly, at row 1 and again inside row 5.
-- **Row 13 is bounded by the habits, not by the week, and the cursor owns what remains of it.** It
+- **Row 14 is bounded by the habits, not by the week, and the cursor owns what remains of it.** It
   reads every outcome the tenant's habits hold, because the rotation cursor counts completions over
   the whole log and survives no narrower read -- and whether a habit ever recorded anything feeds
   the interval due rule whatever its binding source. Outstanding debt no longer derives here at
   all: it is stored on the habit row (``habits.charged_misses``) and restated by the outcome write,
   so the figure a week's make-ups come from does not grow with the tenant's history.
-- **Row 14 asks one question and reads recent history only.** The interval cadence's due rule needs
+- **Row 15 asks one question and reads recent history only.** The interval cadence's due rule needs
   when each habit last occurred, which no occurrence older than the longest declared interval can
   answer, so the read carries an `occurred_at` window beside the habits predicate row 13 states.
-- **`WeekAdjustmentRepository.for_week` is read twice**, at rows 8 and 19, because each week's
+- **`WeekAdjustmentRepository.for_week` is read twice**, at rows 8 and 20, because each week's
   concessions have to be resolved as that week resolves them or the two weeks disagree about how long
   one night was.
 

@@ -288,6 +288,7 @@ def _read_template_entry(value: object, *, field: str) -> MaterializedEntry:
         interval=held("interval", read_interval),
         flex_band_minutes=held("flex_band_minutes", read_whole_number),
         area_id=held("area_id", read_id),
+        day_type_name=held("day_type_name", read_text),
         title=held("title", read_optional_text),
         binding=held("binding", _optional(_read_entry_binding)),
     )

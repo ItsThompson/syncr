@@ -351,6 +351,7 @@ def an_entry(kind: TemplateEntryKind, **overrides: object) -> MaterializedEntry:
         "interval": Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(minutes=15)),
         "flex_band_minutes": 0,
         "area_id": uuid4(),
+        "day_type_name": "Weekday",
     }
     stated.update(overrides)
     return MaterializedEntry(**stated)  # type: ignore[arg-type]

@@ -432,6 +432,9 @@ async def test_the_week_pattern_and_the_day_shapes_materialize_per_date(
     assert concrete.binding is not None
     assert concrete.binding.entity_id == declared.gym
     assert concrete.binding.target is BindingTarget.HABIT
+    # The name is resolved at the producer, from the day_types row the pattern maps each date to,
+    # so every entry that materialized carries it and rendering needs no join.
+    assert {entry.day_type_name for entry in inputs.template_entries} == {"Weekday"}
 
 
 async def test_a_deadline_bearing_task_reaches_the_probes_demand(

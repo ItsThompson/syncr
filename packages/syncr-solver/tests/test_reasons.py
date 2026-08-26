@@ -502,6 +502,59 @@ class TestADerivedBlockReportsItsDeterminantAndStops:
 
 
 # --------------------------------------------------------------------------------------
+# The day shape a concrete entry came from, named by the clause
+# --------------------------------------------------------------------------------------
+
+
+class TestABoundClauseNamesTheDayShape:
+    def test_the_clause_names_the_day_type_before_the_content(self) -> None:
+        """The clause is asserted verbatim: the day type's name is the one thing the block's own
+        title cannot say, and it reads ahead of the content because the shape is what placed it.
+        """
+        document = materialize(
+            a_week(template_entries=(a_concrete_entry(day_type_name="Uni day"),)),
+            cause=MaterializeCause.SOLVE_FAILED,
+        )
+        block = next(b for b in document.blocks if b.title == "Shower")
+        bound = only(Bound, block.reason.clauses)
+
+        assert isinstance(bound, Bound)
+        assert bound.selected == "Uni day · Shower · 06:45"
+
+    def test_two_day_types_render_two_different_names(self) -> None:
+        """One pattern maps two weekdays to two shapes, so the two clauses cannot agree."""
+        document = materialize(
+            a_week(
+                template_entries=(
+                    a_concrete_entry(day=0, entry_id=UUID(int=1), day_type_name="Uni day"),
+                    a_concrete_entry(day=1, entry_id=UUID(int=2), day_type_name="Rest day"),
+                )
+            ),
+            cause=MaterializeCause.SOLVE_FAILED,
+        )
+        selected = set()
+        for block in document.blocks:
+            if block.title != "Shower":
+                continue
+            bound = only(Bound, block.reason.clauses)
+            assert isinstance(bound, Bound)
+            selected.add(bound.selected)
+
+        assert selected == {"Uni day · Shower · 06:45", "Rest day · Shower · 06:45"}
+
+    def test_no_clause_renders_a_day_type_for_a_routine(self) -> None:
+        """A routine has no day-type association: it materializes on every date alike."""
+        document = materialize(
+            a_week(frame=(a_frame_entry(),)), cause=MaterializeCause.SOLVE_FAILED
+        )
+        bound = only(Bound, document.blocks[0].reason.clauses)
+
+        assert isinstance(bound, Bound)
+        assert bound.source is DerivationSource.ROUTINE
+        assert bound.selected == "Sleep · 23:00 + 8h"
+
+
+# --------------------------------------------------------------------------------------
 # The floor clause, and the reservation it may not disagree with
 # --------------------------------------------------------------------------------------
 

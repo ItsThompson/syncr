@@ -116,6 +116,7 @@ def a_dense_week() -> SolveInputs:
             interval=between(start, end, day=day),
             flex_band_minutes=0,
             area_id=area,
+            day_type_name="Uni day",
             title=title,
             binding=EntryBinding(
                 target=BindingTarget.HABIT,

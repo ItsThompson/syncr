@@ -228,6 +228,7 @@ def _entry(
         interval=interval,
         flex_band_minutes=0,
         area_id=area_id,
+        day_type_name="Uni day",
         title=title,
         binding=EntryBinding(target=BindingTarget.HABIT, entity_id=entry_id),
     )
@@ -255,6 +256,7 @@ TEMPLATE_ENTRIES: Final = (
         interval=between(19, 20, day=0),
         flex_band_minutes=15,
         area_id=STUDY,
+        day_type_name="Uni day",
     ),
     MaterializedEntry(
         entry_id=LEARNING_SLOT,
@@ -263,6 +265,7 @@ TEMPLATE_ENTRIES: Final = (
         interval=between(19, 20, day=4),
         flex_band_minutes=15,
         area_id=STUDY,
+        day_type_name="Rest day",
     ),
 )
 

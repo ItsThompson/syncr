@@ -7,12 +7,12 @@ lookup, derives no domain projection, and reads no clock, so it is testable agai
 
 ## The pipeline, and the count that is load-bearing
 
-**Eighteen resolutions over twenty repository reads.** The figure is stated once, here, and the
+**Eighteen resolutions over twenty-one repository reads.** The figure is stated once, here, and the
 bullets below are counted to match it, because a latency budget and an alert are calibrated to
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
 histogram's alert is read against that budget. **The budget and the alert were both set against a
 figure of eleven, which was never counted; recalibrating them is its own piece of work, and
-restating the figure here does not do it.** One of the eighteen performs four statements behind a
+restating the figure here does not do it.** One of the nineteen performs four statements behind a
 single call, named below.
 
 ```
@@ -134,7 +134,11 @@ if TYPE_CHECKING:
     from syncr_api.preferences.repository import PreferenceRepository
     from syncr_api.routines.repository import RoutineRepository
     from syncr_api.tasks.repository import TaskRepository
-    from syncr_api.templates.repository import TemplateRepository, WeekPatternRepository
+    from syncr_api.templates.repository import (
+        DayTypeRepository,
+        TemplateRepository,
+        WeekPatternRepository,
+    )
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
     from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.plan import PlanDocument
@@ -149,12 +153,12 @@ _log = get_logger("syncr.plans")
 RESOLUTION_COUNT = 18
 
 # How many repository reads one assembly performs. The dominant cost of every request that
-# returns a live verdict, which is what the assembly histogram exists to make visible. Twenty
-# reads over eighteen collaborators: the concession table is read once per week, for this week and
+# returns a live verdict, which is what the assembly histogram exists to make visible. Twenty-one
+# reads over nineteen collaborators: the concession table is read once per week, for this week and
 # for the one whose boundary-crossing occurrences this week inherits, and the outcome log is read
 # twice, whole for the two derivations that accumulate over history and bounded to the longest
 # declared interval for the last occurrence the due rule reads.
-REPOSITORY_READ_COUNT = 20
+REPOSITORY_READ_COUNT = 21
 
 # The version an assembly of a week nothing has referenced reports. A missing row is a MISMATCH
 # to the conditional write rather than a match, so a first solve's write is superseded and its
@@ -187,7 +191,7 @@ class AssemblyCaller(StrEnum):
 class WeekAssembler:
     """Turn stored state into one resolved, self-contained ``SolveInputs``.
 
-    Eighteen collaborators plus the caller, and that is the component's nature rather than an
+    Nineteen collaborators plus the caller, and that is the component's nature rather than an
     accident: this is where every ounce of complexity the solver sheds actually lands. A caller
     cannot get it partially right, because there is nothing to get partially right.
     """
@@ -200,6 +204,7 @@ class WeekAssembler:
         routines: RoutineRepository,
         week_pattern: WeekPatternRepository,
         templates: TemplateRepository,
+        day_types: DayTypeRepository,
         habits: HabitRepository,
         outcomes: HabitOutcomeReader,
         tasks: TaskRepository,
@@ -220,6 +225,7 @@ class WeekAssembler:
         self._routines = routines
         self._week_pattern = week_pattern
         self._templates = templates
+        self._day_types = day_types
         self._habits = habits
         self._outcomes = outcomes
         self._tasks = tasks
@@ -303,6 +309,7 @@ class WeekAssembler:
         habits = await self._habits.list_all()
         template_entries = materialized_entries(
             pattern=await self._week_pattern.read(),
+            day_types=await self._day_types.list_all(),
             templates=await self._templates.list_all(),
             routines=routines,
             habits=habits,

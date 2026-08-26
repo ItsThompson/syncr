@@ -180,6 +180,11 @@ class MaterializedEntry:
     content's, falling back to the entry's own declaration. An entry whose Area resolves to
     neither cannot become a block, so the producer drops it rather than carrying one nothing
     can place.
+
+    ``day_type_name`` is the DAY SHAPE's own name, resolved by the producer from the ``day_types``
+    row the week pattern maps this date to. Carried beside ``title`` for the same reason: the
+    clause a block renders is built from resolved inputs alone, and the one fact a reader cannot
+    recover from the content's own title is which kind of day placed it.
     """
 
     entry_id: TemplateEntryId
@@ -188,6 +193,7 @@ class MaterializedEntry:
     interval: Interval
     flex_band_minutes: int
     area_id: AreaId
+    day_type_name: str
     title: str | None = None
     binding: EntryBinding | None = None
 

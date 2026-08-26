@@ -58,6 +58,11 @@ and live verdict for the week over one malformed row. An entry naming a ROUTINE 
 nor placed: the frame is the authority for a routine's placement, so it materializes nothing and
 nothing is counted. Which states are dropped, which are refused outright and which the frame answers
 is that module's own statement.
+
+Every emitted entry also carries its day shape's NAME, read off the ``day_types`` row the pattern
+maps this date to. The clause a block renders is built from resolved inputs alone, so the name
+carries rather than joins: the shape that placed the content is the one fact its own title cannot
+say.
 """
 
 from __future__ import annotations
@@ -89,7 +94,7 @@ if TYPE_CHECKING:
     from syncr_api.offplan.records import OffPlanPeriodRecord
     from syncr_api.plans.entry_content import EntryContent
     from syncr_api.routines.records import RoutineRecord
-    from syncr_api.templates.records import TemplateEntryRecord, TemplateRecord
+    from syncr_api.templates.records import DayTypeRecord, TemplateEntryRecord, TemplateRecord
     from syncr_domain.identifiers import DayTypeId
     from syncr_domain.templates import BindingTarget, WeekPattern
     from syncr_domain.zones import Date, LocalTime, ZoneId
@@ -217,6 +222,7 @@ def reduced_frame_entry(entry: FrameEntry, *, reduction_minutes: int) -> FrameEn
 def materialized_entries(
     *,
     pattern: WeekPattern | None,
+    day_types: Sequence[DayTypeRecord],
     templates: Sequence[TemplateRecord],
     routines: Sequence[RoutineRecord],
     habits: Sequence[HabitRecord],
@@ -234,16 +240,18 @@ def materialized_entries(
     if pattern is None:
         return ()
     by_day_type = _templates_by_day_type(templates)
+    names = {record.id: record.name for record in day_types}
     content = content_by_binding(routines, habits)
     resolved: list[MaterializedEntry] = []
     dropped: list[DropCause] = []
     for on in dates:
-        template = by_day_type.get(pattern.day_type(_weekday_of(on)))
+        day_type = pattern.day_type(_weekday_of(on))
+        template = by_day_type.get(day_type)
         if template is None:
             continue
         zone = zone_by_date[on]
         for stored in template.entries:
-            outcome = _entry_on(stored, on, zone, off_plan, content)
+            outcome = _entry_on(stored, on, zone, off_plan, content, names[day_type])
             if isinstance(outcome, DropCause):
                 dropped.append(outcome)
             elif outcome is not None:
@@ -258,6 +266,7 @@ def _entry_on(
     zone: ZoneId,
     off_plan: OffPlanSuppression,
     content: Mapping[tuple[BindingTarget, UUID], EntryContent],
+    day_type_name: str,
 ) -> MaterializedEntry | DropCause | None:
     """One stored entry as this date's occurrence, the cause it is not one, or nothing.
 
@@ -282,6 +291,7 @@ def _entry_on(
         interval=interval,
         flex_band_minutes=stored.span.flex_band_minutes,
         area_id=resolved.area_id,
+        day_type_name=day_type_name,
         title=resolved.title,
         binding=binding,
     )

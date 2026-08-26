@@ -287,6 +287,7 @@ def a_concrete_entry(**overrides: Any) -> MaterializedEntry:
         "interval": between(7, 7.25),
         "flex_band_minutes": 15,
         "area_id": FITNESS,
+        "day_type_name": "Weekday",
         "title": "Wake Up",
         "binding": EntryBinding(target=BindingTarget.ROUTINE, entity_id=A_ROUTINE),
     }

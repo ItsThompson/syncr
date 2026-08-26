@@ -150,6 +150,7 @@ def a_concrete_entry(
     interval: Interval | None = None,
     area_id: AreaId = FITNESS,
     title: str = "Shower",
+    day_type_name: str = "Weekday",
     target: BindingTarget = BindingTarget.HABIT,
     entity_id: UUID | None = None,
 ) -> MaterializedEntry:
@@ -161,6 +162,7 @@ def a_concrete_entry(
         interval=interval or between(6.75, 7, day=day),
         flex_band_minutes=0,
         area_id=area_id,
+        day_type_name=day_type_name,
         title=title,
         binding=EntryBinding(target=target, entity_id=entity_id or uuid4()),
     )
@@ -172,6 +174,7 @@ def a_slot(
     entry_id: UUID | None = None,
     interval: Interval | None = None,
     area_id: AreaId = FITNESS,
+    day_type_name: str = "Weekday",
 ) -> MaterializedEntry:
     """A template entry whose content binds late, so it becomes an empty slot."""
     return MaterializedEntry(
@@ -181,6 +184,7 @@ def a_slot(
         interval=interval or between(18, 19, day=day),
         flex_band_minutes=15,
         area_id=area_id,
+        day_type_name=day_type_name,
     )
 
 

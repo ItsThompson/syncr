@@ -399,7 +399,7 @@ def test_each_bound_clause_renders_the_determinant_and_the_geometry_it_was_deriv
 
     assert {rendered(bound_clause(block)) for block in document.blocks} == {
         "routine · Sleep · 23:00 + 8h",
-        "template_entry · Shower · 06:45",
+        "template_entry · Weekday · Shower · 06:45",
         "anchor_type · Leave for Uni · transit out, 30m",
         "anchor · Kontron Placement Interview",
     }
@@ -437,7 +437,7 @@ def test_a_prep_buffer_and_the_two_transit_legs_each_say_which_buffer_they_are()
         "anchor_type · Interview prep · prep, 1h",
         "anchor_type · Leave for Uni · transit out, 30m",
         "anchor_type · Go Home · transit back, 15m",
-        "template_entry · Shower · 06:45",
+        "template_entry · Weekday · Shower · 06:45",
     }
 
 

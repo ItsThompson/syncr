@@ -63,6 +63,7 @@ def _entry(*, entry_id: UUID, hour: int, kind: TemplateEntryKind) -> Materialize
         interval=Interval(start, start + timedelta(minutes=60)),
         flex_band_minutes=0,
         area_id=AREA,
+        day_type_name="Uni day",
         title="Deep work" if named else None,
         binding=EntryBinding(target=BindingTarget.ROUTINE, entity_id=ROUTINE) if named else None,
     )

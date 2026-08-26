@@ -40,6 +40,7 @@ from tests.assembly_fakes import (
     NOW,
     WEEK,
     FakeAreas,
+    FakeDayTypes,
     FakeHabits,
     FakeOffPlan,
     FakePlacements,
@@ -47,6 +48,7 @@ from tests.assembly_fakes import (
     FakeTemplates,
     FakeWeekPattern,
     a_concrete_entry,
+    a_day_type,
     a_habit,
     a_routine,
     a_slot_entry,
@@ -131,6 +133,7 @@ async def an_assembly(
     return await an_assembler(
         routines=FakeRoutines([routine]),
         week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
         templates=FakeTemplates([a_template(day_type_id=day_type, entries=entries)]),
         habits=FakeHabits(habits),
         areas=FakeAreas([area]),
