@@ -7,12 +7,15 @@
  * creates. `hostile_ics` is absent for the same kind of reason: it is a corpus of feed bodies the
  * api's own adapter suite reads, and nothing in a browser can observe a parse.
  *
- * `tight_capacity` and `owes_more_than_a_week` are the two names this harness added rather than
- * inherited. `tight_capacity` exists for a week whose verdict one mutation can move, which is what
- * makes the floor reservation, the progress arithmetic and a session-attributed infeasibility episode
- * observable at all: three of this suite's stated gaps had one cause, and it was the absence of this
- * week. `owes_more_than_a_week` is a week with no frame and a gap no week could close, which is what
- * makes the span a verdict measures capacity over readable as a figure rather than as a comparison.
+ * `tight_capacity`, `owes_more_than_a_week` and `repeated_pins` are the three names this harness
+ * added rather than inherited. `tight_capacity` exists for a week whose verdict one mutation can
+ * move, which is what makes the floor reservation, the progress arithmetic and a session-attributed
+ * infeasibility episode observable at all: three of this suite's stated gaps had one cause, and it
+ * was the absence of this week. `owes_more_than_a_week` is a week with no frame and a gap no week
+ * could close, which is what makes the span a verdict measures capacity over readable as a figure
+ * rather than as a comparison. `repeated_pins` is the reference week plus one content pinned to one
+ * local time in three consecutive weeks beyond it, because no fixture that only materializes the
+ * horizon can hold pins in three future weeks and so raise the promotion candidate the panel reads.
  */
 
 import type { ApiClient } from "../api/client.ts";
@@ -23,6 +26,7 @@ import { seedOffPlanWeek } from "./fixtures/off-plan-week.ts";
 import { seedOwesMoreThanAWeek } from "./fixtures/owes-more-than-a-week.ts";
 import { seedPartialProgress } from "./fixtures/partial-progress.ts";
 import { seedRecoveryScopes } from "./fixtures/recovery-scopes.ts";
+import { seedRepeatedPins } from "./fixtures/repeated-pins.ts";
 import { seedReferenceWeek } from "./fixtures/reference-week.ts";
 import { seedShadowGeometry } from "./fixtures/shadow-geometry.ts";
 import { seedTightCapacity } from "./fixtures/tight-capacity.ts";
@@ -40,6 +44,7 @@ export const FIXTURES: Readonly<Record<string, Fixture>> = {
   maturity_corpus: seedMaturityCorpus,
   tight_capacity: seedTightCapacity,
   owes_more_than_a_week: seedOwesMoreThanAWeek,
+  repeated_pins: seedRepeatedPins,
 };
 
 export const fixtureNames = (): readonly string[] => Object.keys(FIXTURES);
