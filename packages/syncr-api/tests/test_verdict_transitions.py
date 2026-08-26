@@ -56,10 +56,12 @@ DEADLINE_GAP = Shortfall(
     honoring=("its Friday 09:00 deadline",),
     deadline=NOW + timedelta(days=2),
 )
-ANOTHER_FLOOR_GAP = Shortfall(
+# The same 140 minutes the deadline gap measures, seen as its Area's floor instead of as the
+# deadline: the double-counting pair, so a sum over both is twice one shortage.
+THE_FLOOR_GAP_OF_THAT_DEADLINE = Shortfall(
     kind=ShortfallKind.AREA_FLOOR_UNREACHABLE,
-    minutes=45,
-    against=("Career",),
+    minutes=140,
+    against=("F&F Past Papers",),
     honoring=("its 3h floor",),
 )
 
@@ -89,7 +91,7 @@ def a_row(
     surface: VerdictSurface = VerdictSurface.PIN,
     session_mode_active: bool = False,
     occurred_at: datetime = NOW,
-    shortfall_minutes: int = 60,
+    largest_gap_minutes: int = 60,
 ) -> VerdictEventRecord:
     """One stored transition, as the repository hands it back."""
     return VerdictEventRecord(
@@ -99,7 +101,7 @@ def a_row(
         occurred_at=occurred_at,
         provenance=provenance,
         feasible=feasible,
-        shortfall_minutes=0 if feasible else shortfall_minutes,
+        largest_gap_minutes=0 if feasible else largest_gap_minutes,
         shortfall_kinds=() if feasible else (ShortfallKind.FLOORS_EXCEED_CAPACITY,),
         surface=surface,
         session_mode_active=session_mode_active,
@@ -152,20 +154,20 @@ def test_a_solver_verdict_records_what_it_proved() -> None:
     assert recorded(solved, surface=VerdictSurface.SOLVE).feasible is True
 
 
-def test_the_recorded_gap_is_the_largest_one_rather_than_their_sum() -> None:
+def test_the_recorded_figure_is_the_largest_one_rather_than_their_sum() -> None:
     """Shortfalls can measure the same minutes twice, so their sum is not a duration.
 
     A deadline gap and the floor gap of the Area that deadline belongs to are the same capacity seen
-    two ways: summed, they can exceed the week. The largest single gap is a real quantity, and the
-    metric job that reads it is the one place that could argue for another.
+    two ways: summed, they can exceed the week. Both gaps here measure the same 140 minutes, so the
+    figure a wrong frame would double is asserted exactly, not merely as a sign.
     """
-    verdict = a_verdict(shortfalls=(FLOOR_GAP, DEADLINE_GAP, ANOTHER_FLOOR_GAP))
+    verdict = a_verdict(shortfalls=(DEADLINE_GAP, THE_FLOOR_GAP_OF_THAT_DEADLINE))
 
-    assert recorded(verdict).shortfall_minutes == DEADLINE_GAP.minutes
+    assert recorded(verdict).largest_gap_minutes == DEADLINE_GAP.minutes
 
 
 def test_a_feasible_row_records_no_gap_at_all() -> None:
-    assert recorded(a_verdict()).shortfall_minutes == 0
+    assert recorded(a_verdict()).largest_gap_minutes == 0
 
 
 def test_the_kinds_are_deduplicated_in_the_order_the_verdict_named_them() -> None:
@@ -205,7 +207,7 @@ def test_the_first_verdict_a_mutation_computes_for_a_week_is_a_transition() -> N
 
 def test_a_verdict_recomputed_identically_is_not_a_transition() -> None:
     """What makes a burst of twelve pins write at most one row."""
-    since = a_row(feasible=True, shortfall_minutes=0)
+    since = a_row(feasible=True, largest_gap_minutes=0)
 
     assert is_a_transition(recorded(a_verdict()), since=since) is False
 
@@ -229,7 +231,7 @@ def test_a_provenance_change_while_infeasible_is_a_transition() -> None:
 def test_a_provenance_change_while_feasible_is_not_a_transition() -> None:
     """There is nothing to confirm about a week nobody has said is impossible."""
     solved = a_verdict(provenance=Provenance.SOLVER, feasible=True)
-    since = a_row(feasible=True, shortfall_minutes=0)
+    since = a_row(feasible=True, largest_gap_minutes=0)
 
     assert is_a_transition(recorded(solved, surface=VerdictSurface.SOLVE), since=since) is False
 
@@ -248,7 +250,7 @@ def test_the_maintainer_records_a_flip_in_either_direction() -> None:
     to_infeasible = recorded(a_verdict(shortfalls=(FLOOR_GAP,)), surface=VerdictSurface.MAINTAINER)
     to_feasible = recorded(a_verdict(), surface=VerdictSurface.MAINTAINER)
 
-    assert is_a_transition(to_infeasible, since=a_row(feasible=True, shortfall_minutes=0)) is True
+    assert is_a_transition(to_infeasible, since=a_row(feasible=True, largest_gap_minutes=0)) is True
     assert is_a_transition(to_feasible, since=a_row(feasible=False)) is True
 
 
@@ -286,7 +288,7 @@ def test_a_surface_and_a_provenance_that_disagree_are_refused() -> None:
             occurred_at=NOW,
             provenance=Provenance.SOLVER,
             feasible=False,
-            shortfall_minutes=60,
+            largest_gap_minutes=60,
             shortfall_kinds=(ShortfallKind.FLOORS_EXCEED_CAPACITY,),
             surface=VerdictSurface.PIN,
             session_mode_active=False,
@@ -302,7 +304,7 @@ def test_a_solver_verdict_that_names_no_operation_is_refused() -> None:
             occurred_at=NOW,
             provenance=Provenance.SOLVER,
             feasible=True,
-            shortfall_minutes=0,
+            largest_gap_minutes=0,
             shortfall_kinds=(),
             surface=VerdictSurface.SOLVE,
             session_mode_active=False,
@@ -318,7 +320,7 @@ def test_a_probe_verdict_that_names_an_operation_is_refused() -> None:
             occurred_at=NOW,
             provenance=Provenance.PROBE,
             feasible=False,
-            shortfall_minutes=60,
+            largest_gap_minutes=60,
             shortfall_kinds=(ShortfallKind.FLOORS_EXCEED_CAPACITY,),
             surface=VerdictSurface.PIN,
             session_mode_active=False,

@@ -403,7 +403,7 @@ async def test_a_feasible_verdict_cannot_carry_a_shortfall(
             "occurred_at": NOW,
             "provenance": "probe",
             "feasible": True,
-            "shortfall_minutes": 0,
+            "largest_gap_minutes": 0,
             "shortfall_kinds": [],
             "surface": "pin",
             "session_mode_active": True,
@@ -412,9 +412,9 @@ async def test_a_feasible_verdict_cannot_carry_a_shortfall(
         }
         return VerdictEvent(**values)
 
-    await refuses(sessions, event(shortfall_minutes=90), "feasible_has_no_shortfall")
+    await refuses(sessions, event(largest_gap_minutes=90), "feasible_has_no_shortfall")
     await refuses(
-        sessions, event(feasible=False, shortfall_minutes=-1), "shortfall_is_not_negative"
+        sessions, event(feasible=False, largest_gap_minutes=-1), "shortfall_is_not_negative"
     )
     await refuses(sessions, event(surface="week_screen"), "surface_is_known")
     await refuses(sessions, event(provenance="assembler"), "provenance_is_known")
@@ -422,7 +422,7 @@ async def test_a_feasible_verdict_cannot_carry_a_shortfall(
         sessions,
         event(
             feasible=False,
-            shortfall_minutes=90,
+            largest_gap_minutes=90,
             shortfall_kinds=["deadline_capacity"],
             surface="maintainer",
             session_mode_active=False,

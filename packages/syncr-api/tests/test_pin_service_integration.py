@@ -840,7 +840,7 @@ class TestVerdictTransitionRecording:
         assert one.surface is VerdictSurface.PIN
         assert one.provenance is Provenance.PROBE
         assert one.feasible is True
-        assert one.shortfall_minutes == 0
+        assert one.largest_gap_minutes == 0
         assert one.shortfall_kinds == ()
         assert one.session_mode_active is False
         assert one.caused_by_operation_id is None

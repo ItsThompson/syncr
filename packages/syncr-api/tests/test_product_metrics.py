@@ -62,7 +62,7 @@ def row(
         occurred_at=at,
         provenance=provenance,
         feasible=feasible,
-        shortfall_minutes=0 if feasible else 90,
+        largest_gap_minutes=0 if feasible else 90,
         shortfall_kinds=() if feasible else (ShortfallKind.FLOORS_EXCEED_CAPACITY,),
         surface=surface,
         session_mode_active=session_mode_active,
