@@ -85,7 +85,7 @@ NETTING: Final = "packages/syncr-api/src/syncr_api/plans/netting.py"
 ICS: Final = "packages/syncr-api/src/syncr_api/calendars/ics_recurrence.py"
 
 # The predicates by name, and the one module a reader may take them from.
-PREDICATES: Final = frozenset({"has_started", "has_elapsed"})
+PREDICATES: Final = frozenset({"has_started", "has_elapsed", "has_ended"})
 CANONICAL_MODULE: Final = "syncr_domain.intervals"
 
 # Readers at the time this rule was written, asserted as a floor rather than an equality: a new
@@ -175,6 +175,7 @@ WRAPPED_IN_A_NESTED_CALL: Final = "rows.where(and_(Anchor.starts_at <= span.star
 
 FINDS_AN_IMPORT: Final = (
     "from syncr_domain.intervals import has_started",
+    "from syncr_domain.intervals import has_ended",
     "from syncr_domain.intervals import Interval, has_elapsed, has_started",
     "from syncr_api.plans.settled import has_started",
     "from .settled import has_elapsed",

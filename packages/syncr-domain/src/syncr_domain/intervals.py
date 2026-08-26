@@ -24,11 +24,12 @@ through :func:`syncr_domain.zones.to_instant`, which is where a daylight-saving
 transition is resolved. Minute counts here are therefore elapsed minutes, so a
 transition inside a set is counted correctly with no special case.
 
-The two boundary predicates, :func:`has_started` and :func:`has_elapsed`, live here for
-the same reason the arithmetic does. Both answer whether a reference instant has reached
-an interval, they disagree at exactly one instant, and the api and the solver both ask
-the question: a second spelling of either inside a caller is how the two packages come to
-answer it differently.
+The boundary predicates :func:`has_started` and :func:`has_elapsed`, and their far-bound
+counterpart :func:`has_ended`, live here for the same reason the arithmetic does. The first
+two answer whether a reference instant has reached an interval, they disagree at exactly one
+instant, and the api and the solver both ask the question; the third answers whether every
+minute of an interval is behind it. A second spelling of any of them inside a caller is how
+the two packages come to answer the question differently.
 """
 
 from __future__ import annotations
@@ -135,6 +136,15 @@ def has_elapsed(interval: Interval, now: Instant) -> bool:
     one of the two rules wrong at that instant.
     """
     return interval.start < now
+
+
+def has_ended(interval: Interval, now: Instant) -> bool:
+    """Whether every minute of this interval lies behind ``now``.
+
+    Inclusive of the end, because the interval is half-open: ``[09:00, 10:00)`` holds no
+    minute at 10:00, so an interval closing exactly at ``now`` has nothing left ahead of it.
+    """
+    return interval.end <= now
 
 
 def _merge(ordered: Sequence[Interval]) -> tuple[Interval, ...]:
