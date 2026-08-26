@@ -160,7 +160,9 @@ export function WeekRoute() {
           drawnHours={interaction.drawnHours}
           hasProposal={screen.view.proposal !== null}
           onApprove={interaction.onApprove}
+          onPickHours={interaction.onPickHours}
           onResolveNow={interaction.onResolveNow}
+          reportedLevels={interaction.reportedLevels}
           sessionHref={sessionPath(isoWeek)}
           unconfirmedDays={screen.readings.unconfirmedDays}
         />

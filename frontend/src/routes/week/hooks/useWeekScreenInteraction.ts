@@ -16,8 +16,8 @@
  * cleared selection rather than a silent no-op. A reason row for a block that no longer exists is the same case, one
  * panel over, and it is answered the same way.
  *
- * THE ZOOM IS SCREEN STATE RATHER THAN A SETTING WRITE. `z` cycles the visible hours within the display's own clamped
- * range, and cycling a stored setting would mean a request per keystroke on the densest surface in the product. The
+ * THE ZOOM IS SCREEN STATE RATHER THAN A SETTING WRITE. `z` walks the available levels of the range the grid
+ * reported and wraps at the top, and cycling a stored setting would mean a request per keystroke on the densest surface in the product. The
  * reader's stored value is what the screen opens at, and what they cycle to is theirs until they leave.
  *
  * A LEVEL TRAVELS DOWN AS A PROPOSAL AND COMES BACK AS A READING. Only the grid has a measurement, so only the grid can
@@ -50,6 +50,7 @@ import type {
   BlockStates,
   VerdictTradeoff,
   WeekDay,
+  ZoomLevel,
   ZoomReport,
 } from "../../../ui/domain";
 import { isoWeekOf } from "../../today/isoWeek";
@@ -61,12 +62,12 @@ import type { WeekView } from "../../../api/hooks/useWeek";
 const SNAP_MINUTES = 15;
 const MILLISECONDS_IN_MINUTE = 60_000;
 
-/* THE LADDER `z` CYCLES, AND WHY IT IS NOT THE WHOLE RANGE. The offerable range is 6 to 24 and its upper end is
- * clamped PER DISPLAY, from a measurement only the grid has: cycling one hour at a time would take nineteen presses
- * to cross it, and cycling the range this route cannot see would mean naming a cap it cannot compute. So the route
- * proposes a level and the grid brings it inside the range its own measured height offers, which is where that
- * arithmetic already lives. A press past this display's cap therefore renders at the cap rather than lying. */
-const ZOOM_LADDER = [6, 9, 12, 16, 20, 24] as const;
+/* THE WALK `z` TAKES, AND WHY IT IS THE REPORT'S LEVELS AND NOT A LADDER OF ITS OWN. The offerable range is 6 to 24
+ * with its upper end clamped PER DISPLAY, from a measurement only the grid has: a ladder named here would be named from
+ * no measurement at all, and this one was -- it cycled onto 20 on a display whose cap is 16 and let the grid silently
+ * redraw 16 instead. So the walk follows the report hour by hour, skips every level whose own refusal the report
+ * states, and wraps past the top, which is where the walk ends that a cap would otherwise strand: from 16 on a
+ * six-hundred-pixel grid one press lands on 6, and nothing past the cap is ever proposed. */
 
 export interface WeekInteractionInput {
   readonly isoWeek: string;
@@ -88,6 +89,10 @@ export interface WeekInteraction {
   readonly proposedHours: number;
   /** The level the grid answered with, or null before it has measured. What a surface stating the level reads. */
   readonly drawnHours: number | null;
+  /** Every level of the range the grid last reported, or null before it has measured. What the band's segment offers. */
+  readonly reportedLevels: readonly ZoomLevel[] | null;
+  /** Proposing a level picked in the band's segment, which the grid answers the way it answers `z`. */
+  readonly onPickHours: (hours: number) => void;
   /** The grid's own answer, handed back once per measurement. */
   readonly onZoom: (report: ZoomReport) => void;
   readonly statesOf: (blockId: string) => BlockStates;
@@ -199,7 +204,8 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
     if (week !== null) goTo(week);
   });
   useKeyBinding({ key: "z" }, () => {
-    setZoomHours(nextZoom(zoomHours ?? visibleHours));
+    const next = nextAvailableHours(zoom, zoomHours ?? visibleHours);
+    if (next !== null) setZoomHours(next);
   });
   useKeyBinding({ key: "p" }, togglePin);
   useKeyBinding({ key: "Enter" }, () => {
@@ -236,6 +242,8 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
     isDetailOpen,
     proposedHours: zoomHours ?? visibleHours,
     drawnHours: zoom?.hours ?? null,
+    reportedLevels: zoom?.levels ?? null,
+    onPickHours: setZoomHours,
     onZoom: setZoom,
     statesOf,
     onSelect: (blockId) => {
@@ -313,10 +321,22 @@ function conflictedOf(view: WeekView | null): ReadonlySet<string> {
   );
 }
 
-/** The next level of the ladder, wrapping at the top, from whatever the screen is currently showing. */
-function nextZoom(hours: number): number {
-  const at = ZOOM_LADDER.findIndex((level) => level >= hours);
-  return ZOOM_LADDER[(at + 1) % ZOOM_LADDER.length] ?? ZOOM_LADDER[0];
+/** The first available level after the current one, wrapping past the top of the report's range.
+ *
+ * Null only where there is nothing to walk -- before the grid has reported, or on a report offering no level at all,
+ * which the floor makes unreachable but a walk must survive rather than loop in. */
+function nextAvailableHours(report: ZoomReport | null, current: number): number | null {
+  if (report === null) return null;
+  const levels = report.levels;
+  if (levels.length === 0) return null;
+  /* From below the floor or above the ceiling the walk starts at the range's own ends, never off its edge. */
+  const found = levels.findIndex((level) => level.hours >= current);
+  const start = found === -1 ? 0 : found;
+  for (let step = 1; step <= levels.length; step += 1) {
+    const candidate = levels[(start + step) % levels.length];
+    if (candidate.isAvailable) return candidate.hours;
+  }
+  return null;
 }
 
 /**

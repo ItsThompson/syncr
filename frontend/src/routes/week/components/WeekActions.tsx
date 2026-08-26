@@ -1,4 +1,4 @@
-/* THE WEEK SCREEN'S BAND: the counts, the zoom reading, the session's entry, `Re-solve` and `Approve`.
+/* THE WEEK SCREEN'S BAND: the counts, the zoom segment, the session's entry, `Re-solve` and `Approve`.
  *
  * `Run the weekly session` IS A REAL LINK, not a button that assigns a location, which is what keeps middle-click and
  * cmd-click working and what makes the mode something a reader can send to themselves. It mirrors the closest existing
@@ -20,10 +20,14 @@
  * block count, and a band that repeated the word would be the second surface the rule exists to prevent. The count
  * here is the same figure the strip's cell reads, which is why the two cannot disagree about it.
  *
- * THE ZOOM READING IS THE GRID'S OWN ANSWER, not the level the screen asked for. The offerable range is clamped per
- * display, from a measurement only the grid has, so a band that rendered the setting would read `20h visible` over a
- * grid drawing 16 whenever the reader's level is past their display's cap. There is no figure to render before the grid
- * has reported one, which is what `null` states: a band with no grid beside it states no level rather than a guess.
+ * THE ZOOM SEGMENT IS THE GRID'S OWN ANSWER, NOT THE LEVEL THE SCREEN ASKED FOR. The offerable range is clamped per
+ * display, from a measurement only the grid has, so a band that offered its own range would sell levels the reader's
+ * display refuses and press a level the grid is not drawing. The segment renders the report's range whole, presses
+ * the drawn level, and hands a pick to the same proposal `z` makes. There is no answer before the grid has measured,
+ * which is what `null` states: a band with no grid beside it offers no range rather than a guess.
+ *
+ * THE KEYSTROKE IS ADVERTISED BESIDE THE CONTROL, not inside it: the hint sits in ink beside segments whose own fill
+ * is none, which is the pattern the day band and the backlog band set.
  *
  * THE UNCONFIRMED DAYS ARE SERVED, NOT COUNTED HERE. The api decides which of a week's days have ended, hold a block
  * and are still unanswered, and the Today band reads the same rule's answer for its own window; counting the columns
@@ -32,7 +36,9 @@
 import { Link } from "react-router";
 
 import { KeyHint } from "../../../ui/domain";
+import type { ZoomLevel } from "../../../ui/domain";
 import { Button } from "../../../ui/primitives";
+import { ZoomSegment } from "./ZoomSegment";
 
 export interface WeekActionsProps {
   readonly blockCount: number;
@@ -40,6 +46,10 @@ export interface WeekActionsProps {
   readonly unconfirmedDays: number;
   /** The visible hours the grid reported it is drawing, or null before it has measured. */
   readonly drawnHours: number | null;
+  /** Every level of the range the grid last reported, or null before it has measured. */
+  readonly reportedLevels: readonly ZoomLevel[] | null;
+  /** Proposing a level picked in the segment, which the grid answers the way it answers `z`. */
+  readonly onPickHours: (hours: number) => void;
   readonly hasProposal: boolean;
   /** Where the weekly session opens for this week, or null when this band IS the session. */
   readonly sessionHref: string | null;
@@ -55,6 +65,8 @@ export function WeekActions({
   blockCount,
   unconfirmedDays,
   drawnHours,
+  reportedLevels,
+  onPickHours,
   hasProposal,
   sessionHref,
   onResolveNow,
@@ -64,13 +76,13 @@ export function WeekActions({
     <div className="flex flex-wrap items-center gap-3">
       <p className="text-eyebrow text-text-muted">
         {blockCount} blocks · {unconfirmedReading(unconfirmedDays)}
-        {drawnHours === null ? null : (
-          <>
-            {" · "}
-            {drawnHours}h visible <KeyHint keys="z" />
-          </>
-        )}
       </p>
+      {drawnHours === null || reportedLevels === null ? null : (
+        <span className="flex items-center gap-2">
+          <ZoomSegment levels={reportedLevels} onPick={onPickHours} pickedHours={drawnHours} />
+          <KeyHint keys="z" />
+        </span>
+      )}
       {sessionHref === null ? null : (
         <Link className="text-sm underline" to={sessionHref}>
           Run the weekly session

@@ -75,7 +75,9 @@ export function SessionMode({
           drawnHours={interaction.drawnHours}
           hasProposal={screen.view.proposal !== null}
           onApprove={interaction.onApprove}
+          onPickHours={interaction.onPickHours}
           onResolveNow={interaction.onResolveNow}
+          reportedLevels={interaction.reportedLevels}
           sessionHref={null}
           unconfirmedDays={screen.readings.unconfirmedDays}
         />
