@@ -110,8 +110,6 @@ class Shortfall:
     | `deadline` | against what instant was this measured, where one applies? |
     | `area_id` | whose gap is this, where it belongs to one Area? |
     | `honored_floor_minutes` | what did each honored floor take? no check reads it |
-    The last row is reporting only, like a target on the probe's inputs: it exists so a stated
-    recovery can be exact, and no check reads it.
     """
 
     kind: ShortfallKind
