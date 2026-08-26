@@ -47,7 +47,12 @@ def _area_budget_constructions(tree: ast.AST) -> list[ast.Call]:
 
 
 def _is_netted(value: ast.expr) -> bool:
-    """Whether the stated figure subtracts a placement set or clamps, instead of naming one."""
+    """Whether the stated figure subtracts a placement set or clamps, instead of naming one.
+
+    Structural only: netting hidden inside a helper function reads as a plain call and passes
+    here. That is acceptable while the producer is pinned verbatim to ``share.floor_minutes``;
+    a second producer would need its own behavioral run, not just this walk.
+    """
     for node in ast.walk(value):
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub):
             return True
@@ -56,18 +61,24 @@ def _is_netted(value: ast.expr) -> bool:
     return False
 
 
-def _stated_sources() -> list[tuple[Path, ast.Call]]:
+def _stated_sources() -> tuple[list[tuple[Path, ast.Call]], list[str]]:
+    # Parsed at collection time. The tree is a few hundred small modules, so the walk costs
+    # single-digit milliseconds; revisit only if collection time ever matters.
     sources = [*_API_SRC.rglob("*.py"), _ASSEMBLY_FAKES]
     stated: list[tuple[Path, ast.Call]] = []
+    ids: list[str] = []
     for path in sources:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        stated.extend((path, node) for node in _area_budget_constructions(tree))
-    return stated
+        found = _area_budget_constructions(tree)
+        stated.extend((path, node) for node in found)
+        ids.extend(f"{path.name}:{node.lineno}" for node in found)
+    return stated, ids
 
 
-@pytest.mark.parametrize(
-    ("path", "construction"), _stated_sources(), ids=lambda value: str(getattr(value, "lineno", ""))
-)
+_STATED_SOURCES, _STATED_IDS = _stated_sources()
+
+
+@pytest.mark.parametrize(("path", "construction"), _STATED_SOURCES, ids=_STATED_IDS)
 def test_every_area_budget_construction_states_the_declared_floor_unnetted(
     path: Path, construction: ast.Call
 ) -> None:
