@@ -26,7 +26,7 @@ from syncr_solver.moves import RELOCATE, RESIZE, RESPLIT, SWAP, moves
 from syncr_solver.objective import evaluate
 from syncr_solver.offering import CHECK
 from syncr_solver.preferred import ResolvedPreferences
-from syncr_solver.search import improve
+from syncr_solver.search import _stop, improve
 from tests.materialized_weeks import (
     CAREER,
     a_frame_entry,
@@ -45,10 +45,13 @@ from tests.objective_weeks import (
     an_occurrence,
     hand_tuned_weights,
 )
+from tests.reference_week import reference_week
+from tests.search_yield import constructed as constructed_at
 from tests.solve_weeks import QUICK, a_week
 
 if TYPE_CHECKING:
     from syncr_solver.inputs import SolveInputs
+    from syncr_solver.search import Improved
 
 BUDGET = SolveBudget(scored_windows=2, move_evaluations=60, checkpoint_every=5)
 
@@ -366,3 +369,82 @@ def test_a_cancelled_search_stops_at_its_next_checkpoint_and_keeps_what_it_had()
 def test_the_quick_budget_this_suite_uses_is_smaller_than_the_shipped_one() -> None:
     # So a suite's speed is not silently a claim about what a real solve spends.
     assert QUICK.move_evaluations < SolveBudget().move_evaluations
+
+
+# --------------------------------------------------------------------------------------
+# The rejection bound
+# --------------------------------------------------------------------------------------
+
+
+def improved_reference_week(budget: SolveBudget) -> Improved:
+    """The reference week's descent under this budget, cancellation out of the way.
+
+    Built at the budget it is descended under, the way ``solve`` builds it, and a real week rather
+    than the ten-move fixture above: the bound earns its keep where a plan sits near its optimum and
+    almost every remaining move is refused, and that fixture reaches its optimum inside a handful of
+    moves with no tail to speak of.
+    """
+    weights = hand_tuned_weights()
+    return improve(
+        constructed_at(reference_week(), weights, budget=budget),
+        weights,
+        budget=budget,
+        cancelled=never_cancelled,
+    )
+
+
+def test_a_run_of_rejections_ends_the_search_before_its_budget() -> None:
+    """A short refusal run stops the descent early; the move budget alone lets it run on.
+
+    Stopping earlier can only leave a plan the objective likes less, never one it likes more, which
+    is the second assertion: a stop condition that improved the plan would be a different mechanism.
+    """
+    short = improved_reference_week(SolveBudget(rejection_run=10, checkpoint_every=10_000))
+    whole = improved_reference_week(SolveBudget(checkpoint_every=10_000))
+
+    assert short.iterations < whole.iterations
+    assert short.breakdown.total() >= whole.breakdown.total()
+
+
+def test_the_rejection_bound_keeps_an_acceptance_that_sits_behind_a_long_run() -> None:
+    """The bound sits just above the measured runs, so the descent's last acceptance survives it.
+
+    Measured through ``python -m tests.measure_solve yield``: this week's final acceptance landed on
+    iteration 175, behind a run of 56 refusals, though 167 refusals precede it across the descent as
+    a whole. A bound of 57 buys it and 56 does not, so the boundary is where the measurement says it
+    is, and the counter is refusals SINCE THE LAST ACCEPTANCE rather than a running total -- a
+    counter that never reset would have crossed 57 long before the acceptance it protects. The
+    counts move when the generator or the objective moves, so re-measure rather than adjust.
+    """
+    kept = improved_reference_week(SolveBudget(rejection_run=57))
+    lost = improved_reference_week(SolveBudget(rejection_run=56))
+
+    assert kept.accepted == lost.accepted + 1
+    assert kept.breakdown.total() < lost.breakdown.total()
+
+
+def test_a_full_rejection_run_stops_where_neither_the_budget_nor_the_checkpoint_does() -> None:
+    budget = SolveBudget(move_evaluations=1000, rejection_run=120, checkpoint_every=100)
+
+    assert _stop(5, 120, budget=budget, cancelled=never_cancelled) is True
+
+
+def test_below_the_run_the_search_stops_on_nothing_but_its_budget_or_its_caller() -> None:
+    budget = SolveBudget(move_evaluations=1000, rejection_run=120, checkpoint_every=100)
+
+    assert _stop(5, 119, budget=budget, cancelled=never_cancelled) is False
+    # One below the budget, one below the checkpoint: neither clause alone may fire early.
+    assert _stop(999, 119, budget=budget, cancelled=never_cancelled) is False
+
+
+def test_the_same_plan_under_the_rejection_bound_consumes_the_same_iterations() -> None:
+    """The determinism contract crosses the new exit: the count is the inputs', not the host's."""
+    weights = hand_tuned_weights()
+    budget = SolveBudget(rejection_run=20)
+    attempt = constructed_at(reference_week(), weights, budget=budget)
+
+    runs = [improve(attempt, weights, budget=budget, cancelled=never_cancelled) for _ in range(3)]
+
+    assert {(found.iterations, found.accepted) for found in runs} == {
+        (runs[0].iterations, runs[0].accepted)
+    }

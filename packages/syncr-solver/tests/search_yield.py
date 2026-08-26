@@ -135,8 +135,9 @@ def descend(attempt: Attempt, weights: WeightSet, *, budget: SolveBudget) -> Yie
     """The descent ``improve`` runs over this plan, with the yield of each kind recorded.
 
     The loop is the loop: first improvement, strict inequality, restart the pass on an acceptance,
-    and an iteration per move CONSIDERED whether a rule refused it or the objective did. The
-    counters are the only addition, and the module docstring names the one narrowing.
+    stop on the budget or on a run of rejections, and an iteration per move CONSIDERED whether a
+    rule refused it or the objective did. The counters are the only addition, and the module
+    docstring names the one narrowing.
     """
     preferences = ResolvedPreferences(attempt.inputs.preferences)
     current = attempt
@@ -144,6 +145,7 @@ def descend(attempt: Attempt, weights: WeightSet, *, budget: SolveBudget) -> Yie
     tally = _Tally()
     started = perf_counter()
     iterations = 0
+    rejections = 0
     improving = True
     while improving and iterations < budget.move_evaluations:
         improving = False
@@ -156,7 +158,7 @@ def descend(attempt: Attempt, weights: WeightSet, *, budget: SolveBudget) -> Yie
                 tally.drained(generating)
                 break
             iterations += 1
-            if iterations >= budget.move_evaluations:
+            if iterations >= budget.move_evaluations or rejections >= budget.rejection_run:
                 tally.considered(move.kind, generating)
                 return tally.reading(
                     iterations=iterations, total=total, seconds=perf_counter() - started
@@ -165,8 +167,10 @@ def descend(attempt: Attempt, weights: WeightSet, *, budget: SolveBudget) -> Yie
             found = evaluate(move.attempt.document(), inputs=current.inputs, weights=weights)
             tally.considered(move.kind, generating + perf_counter() - at)
             if found.total() >= total:
+                rejections += 1
                 continue
             current, total = move.attempt, found.total()
+            rejections = 0
             tally.accepted(iteration=iterations, kind=move.kind, total=total)
             improving = True
             break
