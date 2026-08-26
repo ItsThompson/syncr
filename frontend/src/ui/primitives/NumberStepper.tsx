@@ -22,7 +22,7 @@
  * `docs/design/components.html` renders as invalid, and the caller decides whether to correct or to
  * refuse it. */
 
-import { useState, type Ref } from "react";
+import { useState, type KeyboardEvent, type Ref } from "react";
 
 import "./control.css";
 import "./glyphs.css";
@@ -55,6 +55,8 @@ export interface NumberStepperProps {
   readonly label?: string | undefined;
   /** The id of the hint or error text under the field, which the form row owns. */
   readonly describedBy?: string | undefined;
+  /** A keystroke heard by the field itself, where a bare key can reach a reader who is typing into it. */
+  readonly onKeyDown?: ((event: KeyboardEvent<HTMLInputElement>) => void) | undefined;
   readonly ref?: Ref<HTMLInputElement> | undefined;
 }
 
@@ -71,6 +73,7 @@ export function NumberStepper({
   isInvalid,
   label,
   describedBy,
+  onKeyDown,
   ref,
 }: NumberStepperProps) {
   const step = STEP_BY_MEASURE[measure];
@@ -127,6 +130,7 @@ export function NumberStepper({
         aria-invalid={isInvalid === true ? true : undefined}
         aria-label={label}
         aria-describedby={describedBy}
+        onKeyDown={onKeyDown}
         onChange={(event) => type(event.target.value)}
         onBlur={(event) => leave(event.target.value)}
       />

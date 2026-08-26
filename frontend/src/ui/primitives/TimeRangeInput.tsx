@@ -11,7 +11,7 @@
  * THE FIELDSET CANNOT BE POINTED AT BY A LABEL, because it holds two fields rather than one, so it is named
  * either by a string of its own or by an element a screen has already drawn the question in. See `naming.ts`. */
 
-import type { Ref } from "react";
+import type { KeyboardEvent, Ref } from "react";
 
 import type { GroupNaming } from "./naming";
 import { TimeInput } from "./TimeInput";
@@ -31,6 +31,8 @@ export type TimeRangeInputProps = GroupNaming & {
   readonly isInvalid?: boolean | undefined;
   /** The id of the hint or error text under the control, which the form row owns. */
   readonly describedBy?: string | undefined;
+  /** A keystroke heard by either end, where a bare key can reach a reader who is typing into it. */
+  readonly onKeyDown?: ((event: KeyboardEvent<HTMLInputElement>) => void) | undefined;
   /** The start field, which is the first of the two and where a form focusing the interval lands. */
   readonly ref?: Ref<HTMLInputElement> | undefined;
 };
@@ -51,6 +53,7 @@ export function TimeRangeInput({
   label,
   labelledBy,
   describedBy,
+  onKeyDown,
   ref,
 }: TimeRangeInputProps) {
   return (
@@ -69,6 +72,7 @@ export function TimeRangeInput({
         isInvalid={isInvalid}
         label={endName("from", label)}
         describedBy={describedBy}
+        onKeyDown={onKeyDown}
       />
       <span aria-hidden="true" className="text-text-muted">
         to
@@ -80,6 +84,7 @@ export function TimeRangeInput({
         isInvalid={isInvalid}
         label={endName("to", label)}
         describedBy={describedBy}
+        onKeyDown={onKeyDown}
       />
     </fieldset>
   );

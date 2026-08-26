@@ -10,7 +10,7 @@
  * An unparseable value is handed back unchanged rather than corrected. A control that rewrites what a
  * reader typed while they are still typing is worse than one that waits for the form to say so. */
 
-import type { Ref } from "react";
+import type { KeyboardEvent, Ref } from "react";
 
 import "./control.css";
 import { SNAP_MINUTES, snapClock } from "./quarterHour";
@@ -30,6 +30,8 @@ export interface TimeInputProps {
   readonly label?: string | undefined;
   /** The id of the hint or error text under the field, which the form row owns. */
   readonly describedBy?: string | undefined;
+  /** A keystroke heard by the field itself, where a bare key can reach a reader who is typing into it. */
+  readonly onKeyDown?: ((event: KeyboardEvent<HTMLInputElement>) => void) | undefined;
   readonly ref?: Ref<HTMLInputElement> | undefined;
 }
 
@@ -43,6 +45,7 @@ export function TimeInput({
   isRequired,
   label,
   describedBy,
+  onKeyDown,
   ref,
 }: TimeInputProps) {
   const commit = (text: string) => {
@@ -63,6 +66,7 @@ export function TimeInput({
       aria-invalid={isInvalid === true ? true : undefined}
       aria-label={label}
       aria-describedby={describedBy}
+      onKeyDown={onKeyDown}
       onChange={(event) => onValueChange(event.target.value)}
       onBlur={(event) => commit(event.target.value)}
     />
