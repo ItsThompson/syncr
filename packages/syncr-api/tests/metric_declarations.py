@@ -18,9 +18,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 # ---------------------------------------------------------------------------
-# THE THIRTEEN, and the severity each carries.
+# THE FOURTEEN, and the severity each carries.
 #
-# `ClockDrifting` is the one of the thirteen that watches the host clock: the frame and the now
+# `ClockDrifting` is the one of the fourteen that watches the host clock: the frame and the now
 # rule are computed against it, so a drifting one leaves every plan correct and placed in the wrong
 # day, and nothing else in the deployment would notice.
 #
@@ -38,6 +38,7 @@ SEVERITY_BY_ALERT: Final[Mapping[str, str]] = {
     "SupersededRatioHigh": "warning",
     "ProbeSlow": "warning",
     "AssemblySlow": "warning",
+    "WeeklySessionSlow": "warning",
     "HorizonNotMaintained": "warning",
     "DiskFillingUp": "warning",
     "ClockDrifting": "warning",
@@ -301,10 +302,6 @@ NOT_ALERTED: Final[Mapping[str, str]] = {
     "syncr_http_requests_total": (
         "Traffic. There is one user, so neither a rise nor a fall is a condition: the latency and "
         "error families beside it carry every alertable reading."
-    ),
-    "syncr_http_request_duration_seconds": (
-        "Route latency, drawn against section 19's budgets. The two routes whose latency is a "
-        "stated promise, the probe and the assembly, have alerts of their own."
     ),
     "syncr_http_errors_total": (
         "A 4xx is usually the client's own request and a 5xx is visible through whichever "

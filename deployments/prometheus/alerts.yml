@@ -1,11 +1,16 @@
-# The thirteen alert rules, and no fourteenth.
+# The fourteen alert rules, and no fifteenth.
 #
-# `18-observability.md` names twelve and this file holds THIRTEEN. The extra one is `ClockDrifting`,
+# `18-observability.md` names twelve and this file held THIRTEEN. The extra one was `ClockDrifting`,
 # and it is here because `19-nonfunctional.md`'s failure matrix names it as a row of its own -- "clock
 # skew on the host: alert on NTP drift" -- while section 18's table did not enumerate it. The frame
 # and the now rule are computed against the host clock, so a drifting one makes every plan correct and
 # placed in the wrong day. Ticket 58 resolved the two sections in favour of the rule existing; the
 # reasoning is beside the rule.
+#
+# The FOURTEENTH is `WeeklySessionSlow`, and it exists because the weekly session's payload read
+# carries a stated p95 budget: `reviews/config.py` derives it from the week view's own figure, the
+# threshold below quotes that constant, and `tests/test_alert_rules.py` crosses the literal against
+# both. A latency budget nothing alerts against is a hope rather than a budget.
 #
 # On a personal deployment alert fatigue is the failure mode to design against, so two rules govern
 # every entry and both are enforced by `tests/test_alert_rules.py`:
@@ -324,6 +329,36 @@ groups:
             boundary, which blocks read as past, and every staleness figure are all computed against
             this clock, so a plan can be correct and placed in the wrong day.
           runbook: docs/runbooks/clock-drift.md
+
+      # THE WEEKLY SESSION'S ONE READ, BUDGETED RATHER THAN MERELY OBSERVED. The payload read composes
+      # the week view, which answers to its own stated budget of p95 under 300 ms, plus a bounded tail:
+      # two span reads over the reviewed quarter, at most thirteen stored documents, seven single-
+      # statement fact reads and three repository reads. `reviews/config.py` states the arithmetic and
+      # holds the whole to 400 ms as `SESSION_P95_BUDGET_SECONDS`; the threshold here quotes that
+      # constant and `tests/test_alert_rules.py` crosses the literal against it, so a retune moves the
+      # constant, this rule and the runbook together or the suite fails.
+      #
+      # p95 RATHER THAN THE PROBE AND ASSEMBLY ALERTS' p99, because the budget itself is stated as a
+      # p95: the firing condition and the promise stay one sentence. Read over the route template, so
+      # every week's session read is one series. No `absent()`, by the same derivation as every rule
+      # over an api family: the scrape job's liveness alert covers a process that never reported.
+      #
+      # A warning by the severity scheme: a slow session read loses nothing, and what degrades is the
+      # sitting the user plans their week in.
+      - alert: WeeklySessionSlow
+        expr: >-
+          histogram_quantile(0.95,
+            sum by (le) (rate(syncr_http_request_duration_seconds_bucket{route="/api/v1/reviews/week/{iso_week}"}[30m]))) > 0.4
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: p95 weekly-session payload latency is over 400 ms.
+          surviving: >-
+            Nothing is lost and nothing is wrong with the plan: verdicts, week views, solving and
+            projecting all still work at their own pace. What has degraded is opening the weekly
+            session, whose one read is slower than the budget it is held to.
+          runbook: docs/runbooks/weekly-session-slow.md
 
   - name: syncr-info
     rules:

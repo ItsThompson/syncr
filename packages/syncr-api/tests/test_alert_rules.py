@@ -55,6 +55,7 @@ from typing import TYPE_CHECKING, Any, Final
 import pytest
 
 import syncr_api
+from syncr_api.reviews.config import SESSION_P95_BUDGET_SECONDS
 from syncr_common.metrics import REGISTRY
 from tests.metric_declarations import (
     DASHBOARDS,
@@ -892,14 +893,15 @@ class TestTheExtractionItself:
         assert collector_names_are_plain_literals() == []
 
 
-class TestTheThirteen:
-    def test_there_are_exactly_thirteen_rules(self) -> None:
+class TestTheFourteen:
+    def test_there_are_exactly_fourteen_rules(self) -> None:
         """The rule file and the severity table hold the same number. Alert fatigue is the failure
         mode on a personal deployment, so neither may grow a rule the other does not carry.
 
         `ClockDrifting` is the one that watches the host clock rather than the product, and nothing
         else in the deployment would notice a drift; the reasoning is beside the rule and beside
-        `SEVERITY_BY_ALERT`.
+        `SEVERITY_BY_ALERT`. `WeeklySessionSlow` is the one that turns a stated latency budget into
+        a firing condition, which is what makes a budget a budget.
         """
         assert len(alert_rules()) == len(SEVERITY_BY_ALERT)
 
@@ -1384,6 +1386,30 @@ class TestTheRulesThatGovernTheRules:
         assert "syncr_assembly_duration_seconds_bucket" in rule.expr
         assert 'caller="request"' in rule.expr
         assert "0.15" in rule.expr
+        assert rule.severity == "warning"
+
+    def test_the_session_alert_reads_its_route_at_the_stated_budget(self) -> None:
+        """THE SESSION'S BUDGET IS STATED ONCE, AND THIS RULE QUOTES IT.
+
+        The weekly session's payload read carries a stated p95 budget,
+        `reviews/config.SESSION_P95_BUDGET_SECONDS`, derived from the week view's own figure. The
+        threshold here is crossed against the constant rather than against a second copy of the
+        number, so a retune moves the constant, this rule and the runbook together or the suite
+        fails.
+
+        Read over the ROUTE TEMPLATE rather than over a method family, because one route is the
+        whole surface the budget is promised to: the payload read composes collaborators whose own
+        histograms are diagnostics for this one, not part of its promise.
+        """
+        rule = named("WeeklySessionSlow")
+        term = comparison_on(rule, "syncr_http_request_duration_seconds")
+
+        assert (term.operator, term.threshold) == (">", SESSION_P95_BUDGET_SECONDS)
+        assert term.window == "30m"
+        assert 'route="/api/v1/reviews/week/{iso_week}"' in rule.expr
+        # p95, because the budget itself is stated as a p95: firing condition and promise in one
+        # quantile, unlike the probe and assembly alerts' p99 above.
+        assert "histogram_quantile(0.95" in rule.expr
         assert rule.severity == "warning"
 
 
