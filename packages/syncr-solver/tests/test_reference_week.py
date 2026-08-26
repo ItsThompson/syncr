@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.feasibility import Provenance
+from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingRef, Origin
 from syncr_domain.reasons import (
     CLAUSE_BUDGET,
@@ -43,6 +44,7 @@ from syncr_domain.reasons import (
     Floor,
     InsteadOf,
     Pinned,
+    PlacedSource,
 )
 from syncr_solver import solve
 from tests.objective_weeks import hand_tuned_weights
@@ -60,8 +62,10 @@ from tests.reference_week import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from syncr_domain.plan import Block
-    from syncr_domain.reasons import Clause
+    from syncr_domain.reasons import BoundSource, Clause
     from syncr_solver.solve import SolveResult
 
 GOLDEN: Final = Path(__file__).with_name("reference_week_golden.txt")
@@ -289,6 +293,29 @@ def test_the_queue_bound_habit_names_the_backlog_item_it_drew() -> None:
 
     assert len(drawn) == 4
     assert {block.title for block in drawn} == {"Leetcode · Placement Admin"}
+
+
+def test_a_placed_task_and_the_occurrence_that_drew_it_name_two_different_sources() -> None:
+    """A task the solver placed outright is not a queue draw, so the two do not share a word.
+
+    ``Placement Admin`` appears both as task blocks the search placed and inside habit occurrences
+    whose ``queue`` binding drew it: same task, two different determinants, two different sources.
+    """
+    document = solved_reference().document
+    tasks = [block for block in document.blocks if block.origin is Origin.TASK]
+    drawn = [block for block in document.blocks if block.title.startswith("Leetcode")]
+
+    def bound_sources(blocks: Sequence[Block]) -> set[BoundSource]:
+        return {
+            clause.source
+            for block in blocks
+            for clause in block.reason.clauses
+            if isinstance(clause, Bound)
+        }
+
+    assert tasks and drawn
+    assert bound_sources(tasks) == {PlacedSource.SOLVER}
+    assert bound_sources(drawn) == {BindingSource.QUEUE}
 
 
 def test_the_frame_span_the_preceding_week_owns_holds_time_this_week_cannot_place_in() -> None:

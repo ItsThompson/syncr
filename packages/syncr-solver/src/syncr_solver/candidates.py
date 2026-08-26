@@ -59,7 +59,7 @@ from typing import TYPE_CHECKING, Final
 
 from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingKind
-from syncr_domain.reasons import Bound
+from syncr_domain.reasons import Bound, PlacedSource
 from syncr_solver.reading import demand_key
 from syncr_solver.state import Sizing
 from syncr_solver.tiebreak import in_tiebreak_order
@@ -191,10 +191,10 @@ def _task_candidates(
                 deadline=task.deadline,
                 stale_minutes=0,
                 floor_shortfall_minutes=floor_shortfalls.get(task.area_id, 0),
-                # A task's content comes from the backlog, which is what `queue` names in the
-                # closed vocabulary a `bound` clause speaks. Nothing else in it names the backlog,
-                # and the alternative is a seventh clause kind for a placement the solver chose.
-                bound=Bound(source=BindingSource.QUEUE, selected=task.title),
+                # The placement was the search's own choice, so the clause names the placed arm
+                # rather than ``queue``: a queue habit occurrence that draws this same task keeps
+                # ``BindingSource.QUEUE``, and the two cases stay two words on the wire.
+                bound=Bound(source=PlacedSource.SOLVER, selected=task.title),
             )
         )
     return in_tiebreak_order(tuple(found))
