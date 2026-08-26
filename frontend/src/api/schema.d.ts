@@ -2806,7 +2806,8 @@ export interface components {
             proposal: components["schemas"]["BudgetProposalResponse"];
             /** @description The whole reviewed quarter's day counts, summed from the trend's weeks. */
             quarterDays: components["schemas"]["ReviewDayCounts"];
-            span: components["schemas"]["PeriodSpan"];
+            /** @description The half-open interval the review covers, ``[start, end)``. Present because it is what the denominator was derived from. */
+            span: components["schemas"]["WireSpan"];
             /**
              * Statement
              * @description Why the figures above are null, stated when the week holds no plan of record. Null otherwise.
@@ -6121,7 +6122,8 @@ export interface components {
              */
             raised: components["schemas"]["RaisedItemResponse"][];
             retro: components["schemas"]["SessionRetroResponse"];
-            span: components["schemas"]["PeriodSpan"];
+            /** @description The half-open interval the planned week covers, ``[start, end)``. Present because it is what the denominator was derived from. */
+            span: components["schemas"]["WireSpan"];
             /** @description Whether the planned week can hold its commitments. Null exactly when that week holds no plan, because nothing has been computed about it. Computing it appends no row: reading a review is a read. */
             verdict: components["schemas"]["VerdictResponse"] | null;
         };

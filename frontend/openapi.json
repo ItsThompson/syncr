@@ -1914,7 +1914,8 @@
             "description": "The whole reviewed quarter's day counts, summed from the trend's weeks."
           },
           "span": {
-            "$ref": "#/components/schemas/PeriodSpan"
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "The half-open interval the review covers, ``[start, end)``. Present because it is what the denominator was derived from."
           },
           "statement": {
             "anyOf": [
@@ -7918,7 +7919,8 @@
             "$ref": "#/components/schemas/SessionRetroResponse"
           },
           "span": {
-            "$ref": "#/components/schemas/PeriodSpan"
+            "$ref": "#/components/schemas/WireSpan",
+            "description": "The half-open interval the planned week covers, ``[start, end)``. Present because it is what the denominator was derived from."
           },
           "verdict": {
             "anyOf": [
