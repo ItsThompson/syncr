@@ -26,9 +26,11 @@ from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BindingRef
 from syncr_solver import solve
 from syncr_solver.budget import SolveBudget
+from syncr_solver.derivation import shadow_blocks
 from tests.materialized_weeks import (
     CAREER,
     FITNESS,
+    WEEK,
     a_block,
     a_concrete_entry,
     a_frame_entry,
@@ -297,6 +299,79 @@ def test_a_pin_naming_content_the_week_holds_nowhere_is_refused_rather_than_drop
     from syncr_solver.errors import SolveError
 
     week = a_week(pins=(a_pin(binding=BindingRef.for_habit(uuid4(), index=3)),))
+
+    with pytest.raises(SolveError, match="names content this week does not hold"):
+        solved(week)
+
+
+def test_a_pin_on_a_binding_derivation_refused_is_honored_at_the_interval_the_user_chose() -> None:
+    """A buffer whose span its own commitment spent is refused by materialization yet still held.
+
+    The week holds the content: the buffer is in the inputs and only its span was refused. So the
+    pin is honored by lookup across the four collections that spell a derived block, at the
+    interval the user chose rather than at the refused one -- and no operation fails claiming the
+    solver raised.
+    """
+    anchor = an_anchor(interval=between(10, 11, day=1))
+    transit = a_transit_block(anchor_id=anchor.anchor_id, interval=between(9.5, 11, day=1))
+    pin_interval = between(8, 9.5, day=2)
+    week = a_week(
+        anchors=(anchor,),
+        shadow_blocks=(transit,),
+        pins=(a_pin(binding=transit.binding, interval=pin_interval),),
+        areas=(an_area_budget(area_id=CAREER, name="Career", target_minutes=300),),
+    )
+
+    placed = blocks_titled(solved(week).document, "Leave for Uni")
+
+    assert [block.interval for block in placed] == [pin_interval]
+
+
+def test_the_pinned_block_derivation_refused_carries_derivations_own_bound_clause() -> None:
+    """Which is what makes the lookup a reuse of derivation rather than a second spelling of it."""
+    anchor = an_anchor(interval=between(10, 11, day=1))
+    transit = a_transit_block(anchor_id=anchor.anchor_id, interval=between(9.5, 11, day=1))
+    pin_interval = between(8, 9.5, day=2)
+    week = a_week(
+        anchors=(anchor,),
+        shadow_blocks=(transit,),
+        pins=(a_pin(binding=transit.binding, interval=pin_interval),),
+    )
+
+    placed = blocks_titled(solved(week).document, "Leave for Uni")
+    (built,) = shadow_blocks((transit,), iso_week=WEEK)
+
+    # The document appends the pin's own clause to every pinned block, so it is stripped beside
+    # the interval before the comparison: everything else must be derivation's own.
+    assert replace(placed[0], interval=built.interval, reason=built.reason) == built
+    assert placed[0].reason.clauses[:-1] == built.reason.clauses
+
+
+def test_a_pin_on_a_concrete_template_entry_derivation_refused_is_honored_too() -> None:
+    """The lookup spans all four collections, so a refused entry is not a second way to fail."""
+    anchor = an_anchor(interval=between(10, 11, day=1))
+    entry = a_concrete_entry(day=1, interval=between(10, 11.25, day=1))
+    pin_interval = between(8, 8.25, day=3)
+    week = a_week(
+        anchors=(anchor,),
+        template_entries=(entry,),
+        pins=(a_pin(binding=entry.block_binding, interval=pin_interval),),
+    )
+
+    placed = blocks_titled(solved(week).document, "Shower")
+
+    assert [block.interval for block in placed] == [pin_interval]
+
+
+def test_a_pin_naming_a_slot_still_raises_slots_bind_late_and_name_no_content() -> None:
+    """A slot names no content, so the week holds nothing at all for a pin naming one."""
+    from syncr_solver.errors import SolveError
+
+    slot = a_slot(day=3)
+    week = a_week(
+        template_entries=(slot,),
+        pins=(a_pin(binding=slot.block_binding, interval=between(9, 10, day=4)),),
+    )
 
     with pytest.raises(SolveError, match="names content this week does not hold"):
         solved(week)
