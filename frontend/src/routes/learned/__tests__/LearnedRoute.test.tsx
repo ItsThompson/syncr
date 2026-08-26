@@ -31,6 +31,7 @@ import {
   COLLECTING_IS_NORMAL,
   FITNESS,
   ONLY_HAND_TUNED,
+  RECOVERY,
   THRESHOLDS_ARE_ESTIMATES,
   UNLOCKS_COUNT_VOLUME,
   buildCollectingBaseline,
@@ -117,7 +118,7 @@ describe("the per-parameter table", () => {
         parameters: [
           buildReadyParameter({ subject: "Fitness" }),
           buildReadyParameter({
-            parameter: `duration_multiplier[${FITNESS}]`,
+            parameter: `duration_multiplier[${RECOVERY}]`,
             subject: "Recovery",
           }),
         ],

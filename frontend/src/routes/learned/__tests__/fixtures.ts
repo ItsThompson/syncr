@@ -18,6 +18,7 @@ import type {
 } from "../../../api/hooks/useLearned";
 
 export const FITNESS = "11111111-1111-4111-8111-111111111111";
+export const RECOVERY = "22222222-2222-4222-8222-222222222222";
 
 export const COLLECTING_IS_NORMAL =
   "Nothing is broken while a parameter collects. syncr applies a number only once it has enough " +
