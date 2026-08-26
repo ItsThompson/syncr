@@ -344,6 +344,7 @@ def _read_area_budget(value: object, *, field: str) -> AreaBudget:
         name=held("name", read_text),
         floor_minutes=held("floor_minutes", read_whole_number),
         floor_reservation_minutes=held("floor_reservation_minutes", read_whole_number),
+        declared_floor_minutes=held("declared_floor_minutes", read_whole_number),
         target_minutes=held("target_minutes", read_whole_number),
         placed_minutes=held("placed_minutes", read_whole_number),
         max_per_day_minutes=held("max_per_day_minutes", read_optional_whole_number),

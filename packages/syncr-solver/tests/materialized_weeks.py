@@ -215,12 +215,16 @@ def an_area_budget(
     max_per_day_minutes: int | None = None,
     floor_reservation_minutes: int | None = None,
     placed_minutes: int = 0,
+    declared_floor_minutes: int | None = None,
 ) -> AreaBudget:
     """One Area's figures for the week, with the two floor quantities equal by default.
 
     They are equal on a week that holds no placement at all, which is what an empty fixture is: the
     solver's floor nets the immovable placements and the probe's reservation nets every placement,
     so both net nothing. A test about the difference between them states both.
+
+    ``declared_floor_minutes`` defaults to the stated floors for the same reason: with nothing
+    placed, neither netting has taken anything from the declared figure yet.
     """
     return AreaBudget(
         area_id=area_id,
@@ -228,6 +232,9 @@ def an_area_budget(
         floor_minutes=floor_minutes,
         floor_reservation_minutes=(
             floor_minutes if floor_reservation_minutes is None else floor_reservation_minutes
+        ),
+        declared_floor_minutes=(
+            floor_minutes if declared_floor_minutes is None else declared_floor_minutes
         ),
         target_minutes=target_minutes,
         placed_minutes=placed_minutes,

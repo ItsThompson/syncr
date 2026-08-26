@@ -92,6 +92,7 @@ def area_budgets(
             floor_reservation_minutes=max(
                 0, share.floor_minutes - placed.minutes_of_area(share.area_id)
             ),
+            declared_floor_minutes=share.floor_minutes,
             target_minutes=target_minutes(share, after_floors=after_floors),
             placed_minutes=placed.minutes_of_area(share.area_id),
             max_per_day_minutes=caps.get(share.area_id),

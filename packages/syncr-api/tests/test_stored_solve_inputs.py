@@ -196,6 +196,7 @@ def a_week_holding_one_of_everything(**overrides: Any) -> SolveInputs:
                 name="Career",
                 floor_minutes=300,
                 floor_reservation_minutes=180,
+                declared_floor_minutes=360,
                 target_minutes=600,
                 placed_minutes=120,
                 max_per_day_minutes=240,

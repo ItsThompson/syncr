@@ -170,13 +170,25 @@ def inputs(**overrides: object) -> SolveInputs:
 
 
 def a_budget(
-    area_id: AreaId, *, name: str, reservation: int, floor: int, target: int, placed: int = 0
+    area_id: AreaId,
+    *,
+    name: str,
+    reservation: int,
+    floor: int,
+    target: int,
+    placed: int = 0,
+    declared_floor_minutes: int | None = None,
 ) -> AreaBudget:
     return AreaBudget(
         area_id=area_id,
         name=name,
         floor_minutes=floor,
         floor_reservation_minutes=reservation,
+        # The figure both stated floors were netted FROM, which is what a drawn week holds; where
+        # none was drawn, nothing has been netted yet and the floors are the declaration.
+        declared_floor_minutes=(
+            floor if declared_floor_minutes is None else declared_floor_minutes
+        ),
         target_minutes=target,
         placed_minutes=placed,
     )
@@ -776,6 +788,7 @@ def weeks_holding_unpinned_placements(draw: st.DrawFn) -> GeneratedWeek:
                 floor=area.declared_floor_minutes - minutes_of(immovable(charged)),
                 target=area.target_minutes,
                 placed=minutes_of(charged),
+                declared_floor_minutes=area.declared_floor_minutes,
             )
         )
 

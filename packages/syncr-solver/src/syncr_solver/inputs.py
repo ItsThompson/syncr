@@ -304,6 +304,10 @@ class AreaBudget:
     # fall would make the solver place five hours on top of the pinned one and over-serve
     # the floor by an hour.
     floor_reservation_minutes: int
+    # The DECLARED floor as the Area states it, NET of NO placement set: user intent rather
+    # than either reservation above, both of which read it today as their subtrahend. Gross,
+    # and so in need of no clamp: nothing is subtracted from it.
+    declared_floor_minutes: int
     # The declared floor plus this Area's share of the remainder. GROSS, net of nothing,
     # because it is a reporting figure rather than a reservation.
     target_minutes: int

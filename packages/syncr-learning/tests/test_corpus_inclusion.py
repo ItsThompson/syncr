@@ -83,6 +83,7 @@ def _inputs(*, entries: tuple[MaterializedEntry, ...]) -> SolveInputs:
                 name="Career",
                 floor_minutes=60,
                 floor_reservation_minutes=60,
+                declared_floor_minutes=60,
                 target_minutes=600,
                 placed_minutes=0,
             ),

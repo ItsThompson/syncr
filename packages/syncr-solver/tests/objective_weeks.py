@@ -174,18 +174,26 @@ def a_budget(
     floor_minutes: int = 0,
     placed_minutes: int = 0,
     name: str = "Fitness",
+    declared_floor_minutes: int | None = None,
 ) -> AreaBudget:
     """One Area's figures, with ``placed_minutes`` statable.
 
     Separate from the materialization suite's builder because that one holds ``placed_minutes`` at
     zero, and the objective needs a week where the figure is non-zero to prove no term adds it to
     the plan's own blocks.
+
+    ``declared_floor_minutes`` defaults to the stated solver floor, which is the same figure when
+    nothing immovable is placed; a test about the objective reads neither, so the default holds
+    everywhere it is used.
     """
     return AreaBudget(
         area_id=area_id,
         name=name,
         floor_minutes=floor_minutes,
         floor_reservation_minutes=floor_minutes,
+        declared_floor_minutes=(
+            floor_minutes if declared_floor_minutes is None else declared_floor_minutes
+        ),
         target_minutes=target_minutes,
         placed_minutes=placed_minutes,
     )
