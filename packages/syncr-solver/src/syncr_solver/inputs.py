@@ -455,11 +455,11 @@ class ChurnBaseline:
     ## The name collides with a domain type, and so does ``is_measured``
 
     :class:`syncr_domain.reasons.ChurnBaseline` is the value a ``dominant`` clause renders from,
-    and its own ``is_measured`` reads ``revision_id is not None``. **The two answer differently**,
-    on every approved week in this deployment: that one says a baseline exists because a revision
-    is named, and this one says churn can be measured only when the plan to measure against is in
-    hand. Both are right for their own question. A caller converting between them states which it
-    is asking.
+    and its own ``is_measured`` reads ``revision_id is not None``. **The two answer differently**
+    wherever a revision is named whose plan is not in hand: that one says a baseline exists
+    because a revision is named, and this one says churn can be measured only when the plan to
+    measure against is in hand. Both are right for their own question. A caller converting between
+    them states which it is asking.
 
     **The pairing invariant is the domain twin's, for the reason a clause renders from it.** A
     plan with no revision named would make ``is_measured`` true while ``reason`` said
