@@ -76,7 +76,7 @@ because the plan it already has is better than a derived-only one.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from syncr_api.anchors.commitments import AnchorCommitments
@@ -96,6 +96,7 @@ from syncr_api.plans.proposals import PendingProposalRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_verdicts import stored_verdict
 from syncr_api.plans.surfaces import VerdictSurface
+from syncr_api.plans.tradeoffs import offered_tradeoffs
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.checkpoints import watching_the_version
 from syncr_api.solving.config import (
@@ -131,6 +132,7 @@ if TYPE_CHECKING:
     from syncr_api.solving.config import SolveFailure
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
+    from syncr_domain.feasibility import Verdict
     from syncr_domain.identifiers import TenantId
     from syncr_domain.weeks import IsoWeek
     from syncr_solver.budget import SolveBudget
@@ -475,13 +477,27 @@ class SolveDispatch:
         return Candidate(
             document=solved.document,
             objective_breakdown=solved.objective_breakdown.costs(),
-            verdict=stored_verdict(solved.verdict),
+            verdict=stored_verdict(self._with_remedies(loaded, solved)),
             weight_set_version=loaded.weight_set_version,
             input_version=loaded.input_version,
             operation_id=op.id,
             reason=RevisionReason.AUTO_APPLIED_FILL.value,
             candidate_adjustment=op.candidate_adjustment,
         )
+
+    @staticmethod
+    def _with_remedies(loaded: Loaded, solved: SolveResult) -> Verdict:
+        """The solve's verdict, with a remedy per gap, enumerated over the assembly already read.
+
+        ``loaded.inputs`` is in hand here without paying for an assembly, and it is the assembly
+        the verdict's own shortfalls were computed from. Enumerating on a READ instead -- a fresh
+        one, as the probe fallback does over an empty slot -- would size each concession against
+        figures that moved after this solve measured its gap. Frozen into the slot's verdict, the
+        served figures stay the ones the shortfall beside them names for as long as the slot is
+        current, whatever moves underneath.
+        """
+        offers = offered_tradeoffs(loaded.inputs, solved.verdict)
+        return replace(solved.verdict, tradeoffs=tuple(offer.tradeoff for offer in offers))
 
     def _adoption(self, session: AsyncSession) -> PlanAdoption:
         return PlanAdoption(
