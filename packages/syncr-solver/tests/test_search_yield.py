@@ -127,6 +127,26 @@ def test_the_instrument_runs_the_descent_the_budget_cuts_short() -> None:
     assert measured.accepted == 4
 
 
+def test_the_instrument_runs_the_descent_the_rejection_bound_cuts_short() -> None:
+    """The third exit: a run of refusals fires mid-pass, and the counted move is never evaluated.
+
+    A run of thirty is longer than any stretch this week's early acceptances sit behind but shorter
+    than the one its last acceptance needs, so the bound ends a descent the move budget would have
+    carried further. The tail is the run plus the one move counted past it, the same shape the
+    budget's own exit reports.
+    """
+    weights = hand_tuned_weights()
+    budget = SolveBudget(rejection_run=30, checkpoint_every=10_000)
+    attempt = constructed(reference_week(), weights, budget=budget)
+    shipped = improve(attempt, weights, budget=budget, cancelled=never_cancelled)
+    measured = descend(attempt, weights, budget=budget)
+
+    assert (measured.iterations, measured.accepted) == (shipped.iterations, shipped.accepted)
+    assert measured.total == shipped.breakdown.total()
+    assert measured.iterations < SHIPPED.move_evaluations
+    assert measured.tail == budget.rejection_run + 1
+
+
 # --------------------------------------------------------------------------------------
 # Each kind's own column
 # --------------------------------------------------------------------------------------
@@ -233,11 +253,13 @@ def test_the_dense_weeks_whole_budget_is_spent_inside_the_first_kind() -> None:
 
 
 def test_a_week_with_nothing_unallocated_offers_no_relocation_at_all() -> None:
-    """With no gap left, the first kind offers nothing and the second spends the whole budget.
+    """With no gap left, the first kind offers nothing and the second stops on the rejection bound.
 
     A relocation needs a gap that can hold the block, and this week has no gap at all: that is what
     ``unallocated 0`` means, and it is why the kind that dominates the other weeks is empty here.
-    The swaps take the budget, accept once, and the 161 iterations after that buy nothing.
+    The swaps accept once, at 39, and the bound then ends the descent one move past the run it
+    tolerates: the 121 iterations after the acceptance are all the proof of nothing improving this
+    week buys, where the move budget alone would have bought 161.
 
     The empty gap tuple is the precondition rather than a second assertion of the same thing: a week
     that stopped being saturated would offer relocations again, and the columns below would be a
@@ -261,8 +283,13 @@ def test_a_week_with_nothing_unallocated_offers_no_relocation_at_all() -> None:
 
     assert attempt.gaps() == ()
     assert found.of_kind(RELOCATE).considered == 0
-    assert found.of_kind(SWAP).considered == SHIPPED.move_evaluations
-    assert (found.accepted, found.last_acceptance, found.tail) == (1, 39, 161)
+    assert found.of_kind(SWAP).considered == 39 + SHIPPED.rejection_run + 1
+    assert found.iterations == found.of_kind(SWAP).considered
+    assert (found.accepted, found.last_acceptance, found.tail) == (
+        1,
+        39,
+        SHIPPED.rejection_run + 1,
+    )
     assert [taken.kind for taken in found.acceptances] == [SWAP]
     # The same iteration, reached without the instrument: 39 stops on the move it would accept and
     # 40 buys it, for a strictly cheaper plan.

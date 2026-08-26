@@ -18,7 +18,9 @@ from syncr_domain.identity import BindingRef
 from syncr_domain.preferences import PreferenceStrength
 from syncr_domain.reasons import Bound
 from syncr_solver.attempt import Attempt, Placed
+from syncr_solver.budget import SolveBudget
 from syncr_solver.candidates import Candidate
+from syncr_solver.filling import fill_gaps
 from syncr_solver.moves import RELOCATE, moves
 from syncr_solver.offering import offers_in
 from syncr_solver.preferred import ResolvedPreferences
@@ -36,6 +38,7 @@ from tests.objective_weeks import (
     A_HABIT,
     a_preference,
     an_occurrence,
+    hand_tuned_weights,
 )
 from tests.solve_weeks import a_week, solved
 
@@ -207,3 +210,44 @@ def test_solving_the_measurement_week_twice_yields_the_same_plan() -> None:
     week = the_measurement_week()
 
     assert solved(week).document.blocks == solved(week).document.blocks
+
+
+def test_one_legal_offer_is_scored_per_start() -> None:
+    """The scored-evaluation count, not the offer count, is what the added starts could inflate.
+
+    An elastic occurrence offers every length its range allows at EVERY start, so an unbounded
+    reading of "price each offer" would multiply evaluations by the range's grid steps. One legal
+    offer per start is scored; everything behind it on the same start is checked and skipped.
+    """
+    import syncr_solver.filling as filling_module
+
+    week = a_week(
+        habit_occurrences=(an_occurrence(minutes=30, max_minutes=120, title="Gym"),),
+        areas=(an_area_budget(target_minutes=120, floor_minutes=0),),
+        preferences=(
+            a_preference(
+                windows=(between(13, 14, day=WEDNESDAY),),
+                strength=PreferenceStrength.STRONG,
+            ),
+        ),
+    )
+    weights = hand_tuned_weights()
+    scored_calls = 0
+    original_scored = filling_module.scored
+
+    def counting_scored(offer, attempt, weights):
+        nonlocal scored_calls
+        scored_calls += 1
+        return original_scored(offer, attempt, weights)
+
+    filling_module.scored = counting_scored
+    try:
+        attempt = fill_gaps(Attempt.of(week), weights, budget=SolveBudget())
+    finally:
+        filling_module.scored = original_scored
+
+    gym = [block for block in attempt.blocks() if block.title == "Gym"]
+    assert len(gym) == 1
+    # The week holds one gap, whose opening and whose declared-window start are two starts; a
+    # third scored evaluation would mean some start paid for more than its longest legal piece.
+    assert scored_calls == 2
