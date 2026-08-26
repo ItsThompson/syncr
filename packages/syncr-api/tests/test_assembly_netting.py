@@ -6,11 +6,14 @@ numbers. What the assembler suite adds on top is that each quantity reads the se
 
 The boundary these tests are most about is ``now``. A placement is immovable when it HAS STARTED,
 which is the reading the hard constraint takes, so the boundary is the start rather than the end
-and a block straddling the instant is immovable for the whole of its span.
+and a block straddling the instant is immovable for the whole of its span. The SOLVER's remaining
+work reads the same set but counts only what was attributed at or before ``now``, so the two
+figures part exactly at that instant.
 
 Which placements a figure nets and what span it counts of each are two separate questions, and the
-second one parts the two Area figures: an Area's placed minutes count the time a placement occupies
-and its floor reading counts the time the user gave the Area inside that span.
+second one parts the figures from one another: an Area's placed minutes count the time a placement
+occupies, its floor reading counts the time the user gave the Area inside that span, and the
+solver's remaining work counts what the outcome log gave the task before ``now``.
 """
 
 from __future__ import annotations
@@ -104,28 +107,30 @@ def test_a_block_that_started_before_now_is_immovable() -> None:
 
 
 @pytest.mark.parametrize(
-    ("label", "start", "immovable_minutes"),
+    ("label", "start", "lived_minutes", "floor_minutes"),
     [
-        ("starting_one_minute_before_now", NOW - timedelta(minutes=1), 60),
-        ("starting_exactly_at_now", NOW, 60),
-        ("starting_one_minute_after_now", NOW + timedelta(minutes=1), 0),
+        ("starting_one_minute_before_now", NOW - timedelta(minutes=1), 1, 60),
+        ("starting_exactly_at_now", NOW, 0, 60),
+        ("starting_one_minute_after_now", NOW + timedelta(minutes=1), 0, 0),
     ],
 )
-def test_the_boundary_is_the_start_and_now_itself_has_started(
-    label: str, start: datetime, immovable_minutes: int
+def test_the_remaining_figure_counts_only_the_part_of_a_block_that_has_been_lived(
+    label: str, start: datetime, lived_minutes: int, floor_minutes: int
 ) -> None:
-    # A block running ACROSS `now` is immovable for its whole span rather than for its elapsed
-    # part: the rule is about whether the solver may move the block, not about how much of it
-    # has happened.
+    # Immovability itself is still decided at the START rather than at the end, which is why the
+    # AREA figure counts a block opening exactly at `now` whole: that rule is about whether the
+    # solver may move the block. The remaining-work figure is about how much of it is done, so it
+    # clips what was attributed at `now` and answers with the elapsed part alone.
     interval = Interval(start, start + AN_HOUR)
     plan = a_plan(blocks=[a_task_block(task_id=TASK, area_id=FITNESS, interval=interval)])
 
     placed = placed_time(live_plan=plan)
 
-    assert placed.immovable_minutes_of_task(TASK) == immovable_minutes, label
+    assert placed.immovable_minutes_of_task(TASK) == lived_minutes, label
+    assert placed.immovable_minutes_of_area(FITNESS) == floor_minutes, label
 
 
-def test_a_pin_makes_a_future_block_immovable_without_changing_what_is_placed() -> None:
+def test_a_pin_makes_a_future_block_immovable_and_offers_no_less_work_until_it_is_lived() -> None:
     interval = between(9, 10, day=3)
     plan = a_plan(blocks=[a_task_block(task_id=TASK, area_id=FITNESS, interval=interval)])
     pin = a_pin(binding=BindingRef.for_task(TASK), interval=interval)
@@ -134,8 +139,9 @@ def test_a_pin_makes_a_future_block_immovable_without_changing_what_is_placed() 
     after = placed_time(live_plan=plan, pins=[pin])
 
     assert before.minutes_of_area(FITNESS) == after.minutes_of_area(FITNESS) == 60
-    assert before.immovable_minutes_of_task(TASK) == 0
-    assert after.immovable_minutes_of_task(TASK) == 60
+    # The pin takes the solver's re-place away, and the figure still offers the hour: nothing of it
+    # has been lived, so netting it would schedule the task twice over one pinned hour.
+    assert before.immovable_minutes_of_task(TASK) == after.immovable_minutes_of_task(TASK) == 0
     # The pinned hour is Thursday's, which has not happened. It still lowers the floor the solver
     # must place, because the solver may no longer move it: an hour it is holding is an hour of the
     # floor it does not have to find room for.
@@ -155,7 +161,8 @@ def test_a_pin_and_the_block_it_pins_are_one_placement_at_the_pins_interval() ->
     placed = placed_time(live_plan=plan, pins=[pin])
 
     assert [item.interval for item in committed] == [pin.interval]
-    assert placed.immovable_minutes_of_task(TASK) == 60
+    # One placement, read over the attributed union: counted twice, the week would hold two hours.
+    assert placed.attributed_to_task_before(TASK, at(9, day=6)).future == 60
     assert placed.minutes_of_area(FITNESS) == 60
 
 
@@ -174,13 +181,14 @@ def test_the_pins_interval_is_where_the_block_is_and_it_decides_what_falls_befor
 
     attributed = placed.attributed_to_task_before(TASK, friday_09)
     assert (attributed.past, attributed.future) == (0, 0)
-    assert placed.immovable_minutes_of_task(TASK) == 120
+    # Both hours sit ahead of `now`, so neither has been lived and both stay offered.
+    assert placed.immovable_minutes_of_task(TASK) == 0
 
 
 def test_an_orphan_pin_takes_its_area_from_the_entity_its_binding_names() -> None:
     # The user's edit outlives a re-solve that dropped the block. The pin carries no Area of its
     # own, so it takes its task's, and the hour stays committed time an Area figure sees.
-    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=3))
+    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=1))
 
     placed = placed_time(pins=[pin], areas_of={(BindingKind.TASK, TASK): FITNESS})
 
@@ -192,7 +200,7 @@ def test_an_orphan_pin_takes_its_area_from_the_entity_its_binding_names() -> Non
 
 def test_an_orphan_pin_over_content_no_entity_answers_carries_no_area() -> None:
     # A binding whose entity no longer exists resolves to nothing rather than to a guess.
-    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=3))
+    pin = a_pin(binding=BindingRef.for_task(TASK), interval=between(9, 10, day=1))
 
     placed = placed_time(pins=[pin])
 
@@ -261,7 +269,7 @@ def test_a_chunk_of_a_divided_task_is_that_tasks_placement() -> None:
                 task_id=TASK, area_id=CAREER, interval=between(9, 10, day=1), split_index=0
             ),
             a_task_block(
-                task_id=TASK, area_id=CAREER, interval=between(9, 10, day=2), split_index=1
+                task_id=TASK, area_id=CAREER, interval=between(14, 15, day=1), split_index=1
             ),
         ]
     )
@@ -345,7 +353,9 @@ def test_a_placement_straddling_now_is_past_for_the_minutes_that_have_elapsed() 
     attributed = placed.attributed_to_task_before(TASK, at(9, day=5))
 
     assert (attributed.past, attributed.future) == (60, 60)
-    assert placed.immovable_minutes_of_task(TASK) == 120
+    # Only the elapsed hour counts as done: the second half is still ahead of `now`, so the figure
+    # offers it again rather than ending the task over work that has not happened yet.
+    assert placed.immovable_minutes_of_task(TASK) == 60
     # An hour of it is still to come and the solver may not move any of it, so the whole two hours
     # count toward the Area's floor: nothing about a block in progress says the user is not doing
     # the second half of it.
@@ -453,27 +463,25 @@ def test_a_moved_block_is_attributed_where_it_really_happened() -> None:
 
 
 @pytest.mark.parametrize(
-    "outcome",
+    ("outcome", "counted_minutes"),
     [
-        None,
-        OutcomeState.PRESUMED,
-        OutcomeState.COMPLETED,
-        OutcomeState.PARTIAL,
-        OutcomeState.SKIPPED,
-        OutcomeState.MOVED,
+        (None, 60),
+        (OutcomeState.PRESUMED, 60),
+        (OutcomeState.COMPLETED, 60),
+        (OutcomeState.PARTIAL, 20),
+        (MISS_STATE, 0),
+        (OutcomeState.MOVED, 0),
     ],
     ids=["no row", "presumed", "completed", "partial", "skipped", "moved"],
 )
-def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
-    outcome: OutcomeState | None,
+def test_the_outcome_table_decides_what_the_solvers_figure_counts(
+    outcome: OutcomeState | None, counted_minutes: int
 ) -> None:
-    # The uniform column of the outcome-state table, asserted over the whole vocabulary rather than
-    # over the one state that tempted it. If `skipped` returned its hour to capacity, skipping
-    # work would make the week read as MORE feasible, which is the inversion the split between
-    # attribution and capacity exists to prevent.
-    #
-    # What each state gives the Area's floor reading is the column that VARIES, and it is asserted
-    # over the same vocabulary in the test below.
+    # The column of the outcome-state table the SOLVER's remaining work reads, asserted over the
+    # whole vocabulary rather than over the one state that tempted it. A skip attributes nothing,
+    # so its hour returns to the offered work instead of ending the task; a move whose new
+    # interval is ahead of `now` contributes nothing until it is lived either. What capacity sees
+    # is the uniform column: committed time whatever the user said happened in it.
     plan = a_past_task_hour()
     recorded = (
         []
@@ -490,7 +498,24 @@ def test_no_outcome_returns_a_span_to_capacity_or_makes_a_past_block_movable(
     placed = placed_time(live_plan=plan, outcomes=recorded)
 
     assert placed.minutes_of_area(CAREER) == 60
-    assert placed.immovable_minutes_of_task(TASK) == 60
+    assert placed.immovable_minutes_of_task(TASK) == counted_minutes
+
+
+def test_a_movable_block_stays_offered_whatever_its_outcome_attributes() -> None:
+    # Membership in the solver's set is immovability; the attributed span decides only how much of
+    # a MEMBER counts. A Thursday block reported as moved into Monday is done work, but the block
+    # itself is still the solver's to discard and re-place, so it nets nothing while it stays
+    # movable -- crediting an hour against a block that may vanish would under-place the task.
+    plan = a_plan(
+        blocks=[a_task_block(task_id=TASK, area_id=CAREER, interval=between(9, 10, day=3))]
+    )
+
+    placed = placed_time(
+        live_plan=plan,
+        outcomes=[an_outcome(OutcomeState.MOVED, actual_interval=between(9, 10, day=1))],
+    )
+
+    assert placed.immovable_minutes_of_task(TASK) == 0
 
 
 @pytest.mark.parametrize(
