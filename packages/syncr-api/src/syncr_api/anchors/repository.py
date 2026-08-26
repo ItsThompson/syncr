@@ -351,8 +351,8 @@ def _require_a_span_one_assembly_could_need(span: Interval) -> None:
     raise SpanTooWideForOneRead(
         f"an unpaged anchor read covers at most {ASSEMBLY_READ_MINUTES_MAX} minutes and this one "
         f"asked for {asked}: that is wider than a week widened by the largest lead and the largest "
-        "buffer any anchor type may declare, so it is not one week's assembly. Read it in weeks, "
-        "or page it"
+        "buffer any anchor type may declare, taken once for what lands in the week and once more "
+        "for what collides with it, so it is not one week's assembly. Read it in weeks, or page it"
     )
 
 

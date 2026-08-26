@@ -113,9 +113,11 @@ MINUTES_MIN: Final = 0
 # How wide the week assembly's own unpaged read may be, derived from the two bounds above rather
 # than chosen so that a change to either reaches it. One week, plus two days of slack for a travel
 # override that resolves the week's two Mondays in zones up to 26 hours apart, plus the largest
-# lead a type may declare after the week and the largest duration one may declare before it. A
-# caller asking for more than this is not assembling a week, and the unpaged read is not for it.
-ASSEMBLY_READ_MINUTES_MAX: Final = (7 + 2) * 24 * 60 + LEAD_MINUTES_MAX + DURATION_MINUTES_MAX
+# lead a type may declare after the week and the largest duration one may declare before it, taken
+# twice: once for the products that land in the week, and once more for the commitments those
+# products collide with, which `reach.py` derives. A caller asking for more than this is not
+# assembling a week, and the unpaged read is not for it.
+ASSEMBLY_READ_MINUTES_MAX: Final = (7 + 2) * 24 * 60 + 2 * (LEAD_MINUTES_MAX + DURATION_MINUTES_MAX)
 
 # How many types one tenant may declare, and how many Areas one recovery window may name.
 # Both are hand-authored lists, so both bounds are far above what a person writes; what they

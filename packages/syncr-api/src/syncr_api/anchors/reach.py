@@ -42,11 +42,25 @@ Sunday 19:30, which is the last evening of the PREVIOUS ISO week, so it is that 
 assembly that has to read forwards to find the exam. Widening that week backwards by the lead
 instead would read a week of commitments that can cast nothing into it and still lose the prep.
 
-## The read is therefore bounded by two column bounds
+## The read takes the widest reach twice
+
+Collision resolution runs over the set a week loaded, so a commitment whose shadows collide with
+a product cast into the week has to load too, even when it casts nothing into the week itself.
+Such a partner's envelope touches the envelope of something that does reach the week, so it sits
+at most one further reach outside: widening by the widest reach once more loads every such
+partner, and two weeks that share an edge then load the same pair and resolve their collision
+to the same block.
+
+One extra reach narrows that order-dependence; it does not end it. A chain of three commitments,
+each colliding with the next, still resolves differently in each week, because no finite number
+of reaches covers every chain. The residual is stated beside the edge test that measures it.
+
+## The read is therefore still bounded by the two column bounds
 
 A lead is bounded at a week and a duration at a day, so the span read is at most the week plus
-one day before it and one week after it. That bound is the reason the lead column has one:
-without it a single declaration would widen every assembly's read without limit.
+two days before it and two weeks after it. That bound is the reason the lead column has one:
+without it a single declaration would widen every assembly's read without limit, and taking the
+reach twice doubles what one declaration costs.
 """
 
 from __future__ import annotations
@@ -133,14 +147,30 @@ def widest_reach(specifications: Iterable[AnchorTypeSpecification]) -> ShadowRea
     return widest
 
 
-def casting_span(week: Interval, specifications: Iterable[AnchorTypeSpecification]) -> Interval:
-    """The span holding every commitment that can cast a product inside ``week``.
+def casting_reach(specifications: Iterable[AnchorTypeSpecification]) -> ShadowReach:
+    """The reach a week's read widens by: the tenant's widest reach, plus one further reach.
 
-    Widened forwards by the largest lead and backwards by the largest span measured from a
-    commitment's end, for the reason the module docstring derives. Equal to ``week`` for a
-    tenant whose types cast nothing, so an assembly reads exactly its own week.
+    The second reach loads the commitments whose shadows collide with a product cast into the
+    week without casting into it themselves, which is what lets two weeks that share an edge
+    resolve a collision they both cover to the same block. See the module docstring.
     """
     reach = widest_reach(specifications)
+    # Added rather than widened-with-itself: `widened` keeps the larger half, and a reach is its
+    # own larger half, so doubling has to be stated as addition to reach past the first reach.
+    return ShadowReach(
+        before_minutes=2 * reach.before_minutes,
+        after_minutes=2 * reach.after_minutes,
+    )
+
+
+def casting_span(week: Interval, specifications: Iterable[AnchorTypeSpecification]) -> Interval:
+    """The span holding every commitment whose shadows can decide what ``week`` holds.
+
+    Widened forwards and backwards by :func:`casting_reach`, for the reasons the module docstring
+    derives. Equal to ``week`` for a tenant whose types cast nothing, so an assembly reads
+    exactly its own week.
+    """
+    reach = casting_reach(specifications)
     return Interval(
         week.start - timedelta(minutes=reach.after_minutes),
         week.end + timedelta(minutes=reach.before_minutes),

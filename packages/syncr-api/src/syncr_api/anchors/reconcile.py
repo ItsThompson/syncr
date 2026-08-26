@@ -50,7 +50,7 @@ from syncr_api.anchors.identity import (
     stored_title,
 )
 from syncr_api.anchors.matching import first_match, series_overrides
-from syncr_api.anchors.reach import widest_reach
+from syncr_api.anchors.reach import casting_reach
 from syncr_api.calendars.anchor_writing import AnchorDelta
 from syncr_api.user_settings.solve_inputs import contiguous_ranges, weeks_occupied
 from syncr_common.logging import get_logger
@@ -117,11 +117,13 @@ class AnchorReconciler:
         overrides = series_overrides(held)
         types = await self._types.list_all()
         incoming = _keyed(outcome.events)
-        # One reach for the tenant rather than one per anchor, because a week reads every
-        # commitment that can cast a product inside it and `casting_span` widens that read by the
-        # same two maxima over this same set. Read off the types this tenant holds, so a
-        # declaration edited to a 14-hour lead moves this with it.
-        reach = widest_reach(one.specification for one in types)
+        # The same reach `casting_span` widens a week's read by, over this same set of types
+        # rather than per anchor, so the two sides of one bound cannot drift: a week loads a
+        # commitment exactly when the commitment's envelope reaches that week. Without the second
+        # reach a moved partner would leave stale a week whose read had loaded it only to resolve
+        # a collision. Read off the types this tenant holds, so a declaration edited to a 14-hour
+        # lead moves this with it.
+        reach = casting_reach(one.specification for one in types)
 
         created = 0
         updated = 0
