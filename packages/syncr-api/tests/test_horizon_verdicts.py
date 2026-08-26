@@ -30,6 +30,11 @@ another week's transition with it, and a failure after the append leaves no row 
 **How the plan came to exist is not something this duty reads.** The transition is the same whether
 the live revision was materialized or adopted from a solve, which is why a change to duty
 1's producer cannot change duty 2.
+
+**The solve usually speaks first.** Duty 1 leaves requests, not plans, and the worker's solve duty
+realizes them inside the same loop, so a completed solve records its verdict on the SOLVE surface
+before duty 2 probes. A first impossibility is therefore often that row; duty 2 adds only what is
+still news, and the tests below read the EPISODE with each row's surface asserted.
 """
 
 from __future__ import annotations
@@ -55,13 +60,18 @@ from syncr_api.horizon.config import MAINTAINER_INTERVAL, MaintainerDuty
 from syncr_api.horizon.metrics import TransitionDirection
 from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.horizon.verdicts import TimeDrivenVerdicts, VerdictPass
+from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.declarations import VerdictToRecord
 from syncr_api.plans.facts import VerdictEvent
+from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.models import PlanRevision
+from syncr_api.plans.production import WeekProducer
+from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdict_events import VerdictEventRepository
+from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import debounce_window
 from syncr_api.solving.runner import SolveRunner
 from syncr_api.tasks.repository import TaskRepository
@@ -197,23 +207,39 @@ async def declared(
         )
 
 
+def _producer(
+    session: AsyncSession, tenant_id: TenantId
+) -> WeekProducer:
+    """The week producer, as the maintainer suite composes it, for one appended revision."""
+    from syncr_api.solving.lifecycle import OperationLifecycle
+    from syncr_api.solving.repository import OperationRepository as Ops
+
+    return WeekProducer(
+        assembler=build_week_assembler(session, tenant_id, caller=AssemblyCaller.MAINTAINER),
+        revisions=PlanRepository(session, tenant_id),
+        versions=WeekInputVersionRepository(session, tenant_id),
+        weights=WeightSetRepository(session, tenant_id),
+        operations=OperationLifecycle(Ops(session, tenant_id), lambda: LATE_IN_THE_WEEK),
+    )
+
+
 async def transitions_of(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, iso_week: IsoWeek = THIS_WEEK
 ) -> list[VerdictEventRecord]:
-    """One week's MAINTAINER transitions, oldest first.
+    """One week's verdict rows on every surface, oldest first.
 
-    A solve now lands between duty 1 and duty 2 of one tick, and a completed solve records its
-    own verdict on the SOLVE surface beside these rows. Duty 2's rows are what this suite reads.
+    A solve lands between duty 1 and duty 2 of one tick, so the week's FIRST row usually carries
+    the SOLVE surface and duty 2 records what is still news beside it. What this suite reads is the
+    episode those rows describe, with the surface asserted per row rather than filtered away.
     """
     async with sessions() as session:
-        found = await VerdictEventRepository(session, tenant_id).for_week(iso_week)
-        return [one for one in found if one.surface == VerdictSurface.MAINTAINER.value]
+        return await VerdictEventRepository(session, tenant_id).for_week(iso_week)
 
 
-async def every_transition(
+async def every_maintainer_row(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
 ) -> list[VerdictEvent]:
-    """Every MAINTAINER-surface row, for the same reason ``transitions_of`` filters."""
+    """Every MAINTAINER-surface row of the tenant, for assertions about duty 2's own writes."""
     async with sessions() as session:
         found = await session.scalars(
             select(VerdictEvent)
@@ -221,6 +247,19 @@ async def every_transition(
                 VerdictEvent.tenant_id == tenant_id,
                 VerdictEvent.surface == VerdictSurface.MAINTAINER.value,
             )
+            .order_by(VerdictEvent.iso_week, VerdictEvent.occurred_at)
+        )
+        return list(found)
+
+
+async def every_transition(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> list[VerdictEvent]:
+    """Every verdict row of the tenant on every surface, ordered by week then instant."""
+    async with sessions() as session:
+        found = await session.scalars(
+            select(VerdictEvent)
+            .where(VerdictEvent.tenant_id == tenant_id)
             .order_by(VerdictEvent.iso_week, VerdictEvent.occurred_at)
         )
         return list(found)
@@ -246,10 +285,15 @@ async def declare_a_fortnight_away(
 async def declare_a_floor(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, *, hours: Decimal
 ) -> None:
-    """Restate the tenant's one Area with a different floor, as the Areas route would."""
+    """Restate the CAREER Area's floor, as the Areas route would.
+
+    Named rather than taken as the first row: this tenant holds a second, floorless Area beside
+    Career, and the rows answer in no stable order between two declarations stamped with one
+    instant.
+    """
     async with sessions() as session, session.begin():
         areas = AreaRepository(session, tenant_id)
-        declared = (await areas.list_all())[0]
+        (declared,) = [one for one in await areas.list_all() if one.name == "Career"]
         await areas.write(
             declared.id,
             name=declared.name,
@@ -308,7 +352,7 @@ async def test_a_week_becomes_impossible_with_no_user_action_and_the_flip_is_rec
     await declared(sessions, owner.tenant_id)
     early = Ticking(NOW)
     await a_tick(context, early)
-    assert await every_transition(sessions, owner.tenant_id) == [], (
+    assert await every_maintainer_row(sessions, owner.tenant_id) == [], (
         "a healthy week is not a discovery, so the maintainer records nothing for it"
     )
     before = maintainer_transitions(TransitionDirection.TO_INFEASIBLE)
@@ -317,12 +361,15 @@ async def test_a_week_becomes_impossible_with_no_user_action_and_the_flip_is_rec
     await a_tick(context, late)
 
     recorded = await transitions_of(sessions, owner.tenant_id)
-    assert len(recorded) == 1
-    (one,) = recorded
+    # The solve the early tick drained spoke first (healthy, SOLVE surface); duty 2 records the
+    # discovery beside it.
+    assert [(one.surface, one.feasible) for one in recorded] == [
+        (VerdictSurface.SOLVE, True),
+        (VerdictSurface.MAINTAINER, False),
+    ]
+    one = recorded[-1]
     assert one.iso_week == THIS_WEEK
-    assert one.feasible is False
     assert one.provenance is Provenance.PROBE
-    assert one.surface is VerdictSurface.MAINTAINER
     assert one.session_mode_active is False
     assert one.largest_gap_minutes == EXPECTED_GAP_MINUTES
     assert ShortfallKind.FLOORS_EXCEED_CAPACITY in one.shortfall_kinds
@@ -347,7 +394,13 @@ async def test_the_transition_is_recorded_within_one_tick_of_the_week_becoming_i
     assert due is not None
     clock.advance(MAINTAINER_INTERVAL)
 
-    await runner(context)
+    # The due tick, stated as its two duties with the worker's solve duty between them: the pass
+    # asks, the drain realizes, and duty 2 probes what the drain produced.
+    now = clock()
+    planned = await PlanHorizonRunner(clock=clock).plan(context, now=now)
+    clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
+    await SolveRunner(clock=clock).drain(context)
+    await PlanHorizonRunner(clock=clock).record_transitions(context, planned.weeks, now=now)
 
     (one,) = await transitions_of(sessions, owner.tenant_id)
     assert one.occurred_at - became_impossible_at <= MAINTAINER_INTERVAL
@@ -361,16 +414,22 @@ async def test_the_transition_is_recorded_within_one_tick_of_the_week_becoming_i
 async def test_a_second_tick_that_finds_the_same_verdict_writes_nothing(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
-    """A verdict recomputed identically is not news, which is what makes the cadence free."""
+    """A verdict recomputed identically is not news, which is what makes the cadence free.
+
+    The week is impossible from its first instant, and the solve the tick drained already said so on
+    the SOLVE surface; duty 2 probes the same verdict and adds nothing, on this tick and on every
+    tick after it.
+    """
     await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     await a_tick(context, clock)
-    assert len(await transitions_of(sessions, owner.tenant_id)) == 1
+    after_one = await transitions_of(sessions, owner.tenant_id)
+    assert [(one.surface, one.feasible) for one in after_one] == [(VerdictSurface.SOLVE, False)]
 
     clock.advance(MAINTAINER_INTERVAL)
     await a_tick(context, clock)
 
-    assert len(await transitions_of(sessions, owner.tenant_id)) == 1
+    assert await transitions_of(sessions, owner.tenant_id) == after_one
 
 
 async def test_a_week_the_maintainer_finds_healthy_is_never_recorded(
@@ -389,7 +448,9 @@ async def test_a_week_the_maintainer_finds_healthy_is_never_recorded(
     clock.advance(MAINTAINER_INTERVAL)
     await a_tick(context, clock)
 
-    assert await every_transition(sessions, owner.tenant_id) == []
+    assert await every_maintainer_row(sessions, owner.tenant_id) == [], (
+        "a healthy week is not a discovery, whichever surface answered first"
+    )
 
 
 async def test_the_close_of_an_episode_is_recorded_too(
@@ -411,7 +472,12 @@ async def test_the_close_of_an_episode_is_recorded_too(
     await a_tick(context, clock)
 
     recorded = await transitions_of(sessions, owner.tenant_id)
-    assert [one.feasible for one in recorded] == [False, True]
+    # The opening impossibility was the drained solve's own row; the recovery has no mutation to
+    # attach to, so the closing flip is duty 2's.
+    assert [(one.surface, one.feasible) for one in recorded] == [
+        (VerdictSurface.SOLVE, False),
+        (VerdictSurface.MAINTAINER, True),
+    ]
     assert recorded[1].largest_gap_minutes == 0
     assert recorded[1].shortfall_kinds == ()
     assert maintainer_transitions(TransitionDirection.TO_FEASIBLE) == before + 1
@@ -434,13 +500,15 @@ async def test_the_tick_after_a_solve_adds_no_provenance_only_row(
     await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     await a_tick(context, clock)
+    # The drained solve's own row already carries SOLVER provenance, so seed the confirmation that
+    # a second solve would write and hold it as the row duty 2 must not top up.
     confirmed = await _seed_a_solver_row(sessions, owner.tenant_id, at=clock())
 
     clock.advance(MAINTAINER_INTERVAL)
     await a_tick(context, clock)
 
     recorded = await transitions_of(sessions, owner.tenant_id)
-    assert [one.provenance for one in recorded] == [Provenance.PROBE, Provenance.SOLVER]
+    assert [one.provenance for one in recorded] == [Provenance.SOLVER, Provenance.SOLVER]
     assert recorded[1].id == confirmed.id, "the maintainer added a row where VE8 forbids one"
 
 
@@ -475,25 +543,32 @@ async def test_every_transition_one_tick_records_carries_the_ticks_own_instant(
 ) -> None:
     """One instant per tick, against a clock that advances on every read.
 
-    Two weeks are impossible from the first tick, so one tick records two transitions. Both carry
-    one ``occurred_at``, and it is the instant duty 1 stamped its own revisions with: a duty that
-    read the clock per week would stamp each row differently, and a tick's transitions would then be
-    evaluated against several instants.
+    Two healthy weeks become impossible together when an off-plan span is declared between ticks,
+    so ONE tick records two transitions. Both carry one ``occurred_at``, and it is that tick's own
+    instant: a duty that read the clock per week would stamp each row differently, and a tick's
+    transitions would then be evaluated against several instants.
     """
     await declared(sessions, owner.tenant_id)
-    await declare_a_fortnight_away(sessions, owner.tenant_id)
     clock = Ticking(NOW)
 
     await a_tick(context, clock)
+    settled_after = clock.at
+    await declare_a_fortnight_away(sessions, owner.tenant_id)
+    clock.advance(MAINTAINER_INTERVAL)
+    due_at = settled_after + MAINTAINER_INTERVAL
 
-    recorded = await every_transition(sessions, owner.tenant_id)
+    await a_tick(context, clock)
+
+    recorded = await every_maintainer_row(sessions, owner.tenant_id)
     assert [one.iso_week for one in recorded] == [str(THIS_WEEK), str(NEXT_WEEK)]
-    assert {one.occurred_at for one in recorded} == {NOW}
+    assert {one.occurred_at for one in recorded} == {due_at}
     async with sessions() as session:
         stamps = await session.scalars(
             select(PlanRevision.created_at).where(PlanRevision.tenant_id == owner.tenant_id)
         )
-    assert set(stamps) == {NOW}, "duty 1 and duty 2 were evaluated against different instants"
+    # Each tick kept its own instant: every revision is the FIRST tick's (the drain that realized
+    # it solved within that tick's window), and both transitions are the second's.
+    assert stamps and max(stamps) < settled_after
 
 
 # --------------------------------------------------------------------------------
@@ -512,6 +587,10 @@ async def test_one_weeks_failure_does_not_lose_another_weeks_transition(
     like a tick on which nothing changed.
     """
     await declared(sessions, owner.tenant_id)
+    clock = Ticking(NOW)
+    await a_tick(context, clock)
+    # Both healthy weeks become impossible together, so ONE tick holds two transitions to write:
+    # the patch fails the first append and the second must survive it.
     await declare_a_fortnight_away(sessions, owner.tenant_id)
     before = method_errors("horizon_verdicts", "record")
     real = VerdictEventRepository.append
@@ -526,10 +605,11 @@ async def test_one_weeks_failure_does_not_lose_another_weeks_transition(
             raise RuntimeError("simulated append failure")
         return await real(self, transition)
 
+    clock.advance(MAINTAINER_INTERVAL + debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
     with patch.object(VerdictEventRepository, "append", failing_first):
-        await a_tick(context, Ticking(NOW))
+        await a_tick(context, clock)
 
-    recorded = await every_transition(sessions, owner.tenant_id)
+    recorded = await every_maintainer_row(sessions, owner.tenant_id)
     assert [one.iso_week for one in recorded] == [str(NEXT_WEEK)], (
         "the second week's transition was lost to the first week's failure"
     )
@@ -545,16 +625,21 @@ async def test_a_failure_after_the_append_leaves_no_row(
     reachable way to ask whether the row was already committed. It must not be.
     """
     await declared(sessions, owner.tenant_id)
-    clock = Ticking(LATE_IN_THE_WEEK)
+    await a_tick(context, Ticking(NOW))
+    # A floor the remaining capacity cannot hold turns the week infeasible without any mutation
+    # that probes, so this tick's duty 2 reaches its own append.
+    await declare_a_floor(sessions, owner.tenant_id, hours=Decimal(6))
 
     with patch(
         "syncr_api.horizon.verdicts.MAINTAINER_VERDICT_TRANSITIONS.labels",
         side_effect=RuntimeError("simulated failure after the append"),
     ):
-        tally = await a_tick(context, clock)
+        tally = await a_tick(context, Ticking(LATE_IN_THE_WEEK))
 
     assert tally.failed == 1, "the failure this asserts about did not happen"
-    assert await every_transition(sessions, owner.tenant_id) == []
+    assert await every_maintainer_row(sessions, owner.tenant_id) == [], (
+        "a failure after the append left a row behind"
+    )
 
 
 async def test_a_week_with_no_live_plan_is_not_probed(
@@ -598,11 +683,15 @@ async def test_the_verdict_duty_is_timed_under_its_own_label(
 
 
 def _tick_count(duty: MaintainerDuty) -> float:
+    """The tick count for one duty; absent reads as zero, as the maintainer suite's reads it.
+
+    A histogram child exists only once something observed it, and this suite run alone never times
+    a tick before its own first one.
+    """
     sample = REGISTRY.get_sample_value(
         "syncr_maintainer_tick_duration_seconds_count", {"duty": duty.value}
     )
-    assert sample is not None, f"{duty.value} was not exported, so nothing could read it"
-    return sample
+    return 0.0 if sample is None else sample
 
 
 async def test_the_assemblies_duty_2_performs_are_visible_on_the_assembly_histogram(
@@ -619,13 +708,20 @@ async def test_the_assemblies_duty_2_performs_are_visible_on_the_assembly_histog
     clock = Ticking(LATE_IN_THE_WEEK)
     runner = PlanHorizonRunner(clock=clock)
     planned = await runner.plan(context, now=LATE_IN_THE_WEEK)
+    # Duty 2 assembles only weeks that hold a plan, and the pass leaves requests, so the solve
+    # duty runs first -- as it does in the worker loop this tick stands in for.
+    clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
+    await SolveRunner(clock=clock).drain(context)
     before = _assemblies_by_the_maintainer()
 
     tally = await runner.record_transitions(context, planned.weeks, now=LATE_IN_THE_WEEK)
 
     probed = sum(len(weeks) for weeks in planned.weeks.values())
     assert tally.weeks == probed, "duty 2 probed a different set of weeks than duty 1 resolved"
-    assert _assemblies_by_the_maintainer() == before + probed
+    # Scoped to this tenant's weeks, because a pass covers every tenant the database holds and the
+    # histogram counts only the weeks that held a plan to assemble.
+    ours = len(planned.weeks.get(owner.tenant_id, ()))
+    assert _assemblies_by_the_maintainer() == before + ours
 
 
 def _assemblies_by_the_maintainer() -> float:
@@ -650,7 +746,9 @@ async def test_a_tenant_far_east_probes_the_week_its_own_date_names(
     clock = Ticking(LATE_IN_THE_WEEK)
     runner = PlanHorizonRunner(clock=clock)
     planned = await runner.plan(context, now=LATE_IN_THE_WEEK)
-    tally = await runner.record_transitions(context, planned.weeks, now=LATE_IN_THE_WEEK)
+    clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
+    await SolveRunner(clock=clock).drain(context)
+    await runner.record_transitions(context, planned.weeks, now=LATE_IN_THE_WEEK)
 
     async with sessions() as session:
         planned_weeks = await session.scalars(
@@ -664,8 +762,14 @@ async def test_a_tenant_far_east_probes_the_week_its_own_date_names(
     # Scoped to this tenant, because a pass covers every tenant the database holds and this claim is
     # about which weeks THIS tenant's local date names.
     assert planned.weeks[owner.tenant_id] == (NEXT_WEEK, THIRD_WEEK)
-    assert tally.without_a_plan == 0
-    assert await every_transition(sessions, owner.tenant_id) == [], (
+    # Scoped to this tenant, because the pass tally above covers every tenant the database holds.
+    async with sessions() as session, session.begin():
+        for week in planned.weeks[owner.tenant_id]:
+            probed = await TimeDrivenVerdicts(session, owner.tenant_id).record(
+                week, now=LATE_IN_THE_WEEK
+            )
+            assert probed.without_a_plan == 0
+    assert await every_maintainer_row(sessions, owner.tenant_id) == [], (
         "both weeks are wholly ahead, so neither is short of capacity"
     )
 
@@ -690,21 +794,24 @@ async def test_the_transition_is_the_same_whatever_produced_the_live_plan(
     such a change cannot reach duty 2: the same transition is recorded under either reason.
     """
     await declared(sessions, owner.tenant_id)
-    clock = Ticking(LATE_IN_THE_WEEK)
-    planned = await PlanHorizonRunner(clock=clock).plan(context, now=clock())
+    # A live revision appended through the producer's own path, so no solve row precedes duty 2
+    # and the transition this asserts about is duty 2's own.
     async with sessions() as session, session.begin():
+        await _producer(session, owner.tenant_id).advance_into(THIS_WEEK, now=LATE_IN_THE_WEEK)
         await session.execute(
             update(PlanRevision)
             .where(PlanRevision.tenant_id == owner.tenant_id)
             .values(reason=reason)
         )
+        planned = {owner.tenant_id: (THIS_WEEK,)}
 
-    await PlanHorizonRunner(clock=clock).record_transitions(
-        context, planned.weeks, now=LATE_IN_THE_WEEK
+    await PlanHorizonRunner(clock=Ticking(LATE_IN_THE_WEEK)).record_transitions(
+        context, planned, now=LATE_IN_THE_WEEK
     )
 
     (one,) = await transitions_of(sessions, owner.tenant_id)
     assert one.feasible is False
+    assert one.surface is VerdictSurface.MAINTAINER
     assert one.largest_gap_minutes == EXPECTED_GAP_MINUTES
 
 
@@ -719,6 +826,10 @@ async def test_the_counter_the_metric_job_reads_carries_the_surface_and_the_dire
     await declared(sessions, owner.tenant_id)
     before = recorded_transitions(surface=VerdictSurface.MAINTAINER, feasible=False)
 
+    # Healthy on the first tick; a floor the remainder cannot hold makes the second tick's probe
+    # the writer of the discovery.
+    await a_tick(context, Ticking(NOW))
+    await declare_a_floor(sessions, owner.tenant_id, hours=Decimal(6))
     await a_tick(context, Ticking(LATE_IN_THE_WEEK))
 
     assert recorded_transitions(surface=VerdictSurface.MAINTAINER, feasible=False) == before + 1
@@ -743,6 +854,8 @@ async def test_the_rows_a_week_holds_are_counted_by_the_query_the_metric_job_wil
         counted = await session.scalar(
             select(func.count())
             .select_from(VerdictEvent)
-            .where(VerdictEvent.tenant_id == owner.tenant_id)
+            .where(
+                VerdictEvent.tenant_id == owner.tenant_id, VerdictEvent.iso_week == str(THIS_WEEK)
+            )
         )
     assert counted == 1
