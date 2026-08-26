@@ -1,4 +1,4 @@
-"""The seventeen version-row callers, each accounted against the lock-order rule.
+"""Every version-row caller, accounted against the lock-order rule.
 
 The rule, stated on :meth:`~syncr_api.plans.versions.WeekInputVersionRepository.hold`:
 whoever takes the week's input-version row takes it FIRST. It is the one lock this api holds
@@ -24,8 +24,10 @@ changes no service's write order, so the inversion stands resolved-as-recorded b
 where a follow-up that reorders it will delete the entry and watch the walk go green.
 
 Both controls plant a synthetic module shaped like a real caller: one that writes first and
-must redden the walk, one that takes the row first and must stay green. A reading never seen
-to fail cannot be trusted to fail when the thing it guards arrives.
+must redden the walk, one that takes the row first and must stay green. They are one fixture
+with its two statements swapped, so the only delta between flagged and green is the order the
+rule speaks about. A reading never seen to fail cannot be trusted to fail when the thing it
+guards arrives.
 """
 
 from __future__ import annotations
@@ -46,8 +48,10 @@ if TYPE_CHECKING:
 SOURCE_ROOT = Path(syncr_api.__file__).resolve().parent
 
 # How many callers exist today. When this moves, a caller arrived or left: find it, decide
-# whether it obeys the rule, and record it in the same change that moves the figure.
-MEASURED_CALLERS = 17
+# whether it obeys the rule, and record it in the same change that moves the figure. The
+# eighteenth arrived from the duty-1 work (the horizon pass asking for its own first solve)
+# and obeys: its bump is the transaction's first write, creating the row for an untracked week.
+MEASURED_CALLERS = 18
 
 # Every call site the walk must find, keyed without the line a formatting change moves.
 EXPECTED_CALLERS: frozenset[tuple[str, str, str]] = frozenset(
@@ -59,6 +63,7 @@ EXPECTED_CALLERS: frozenset[tuple[str, str, str]] = frozenset(
         ("concessions/service.py", "ConcessionService.revoke", "bump"),
         ("concessions/service.py", "ConcessionService.revoke", "hold"),
         ("conflicts/service.py", "ConflictService._solve_for", "bump"),
+        ("horizon/maintainer.py", "PlanHorizonMaintainer._request", "bump"),
         ("learned/activation.py", "FutureWeeksResolved._resolved", "bump"),
         ("offplan/service.py", "OffPlanService._bump", "bump"),
         ("pins/service.py", "PinService._held", "bump"),
@@ -103,7 +108,7 @@ RESOLVED_PRECEDING_WRITES: Mapping[tuple[str, str], str] = {
 }
 
 
-def test_the_walk_finds_the_seventeen_call_sites_that_exist() -> None:
+def test_the_walk_finds_every_call_site_that_exists() -> None:
     calls = version_row_calls(SOURCE_ROOT)
     assert len(calls) == MEASURED_CALLERS
     found = {call.site for call in calls}
@@ -130,7 +135,7 @@ def test_every_preceding_write_carries_a_recorded_resolution() -> None:
 
 
 def test_control_a_fixture_caller_that_writes_first_reddens_the_walk(tmp_path: Path) -> None:
-    root = _plant(tmp_path / "red", "fixture_writer.py", _FIXTURE_THAT_WRITES_FIRST)
+    root = _plant(tmp_path / "red", "fixture_writer.py", FIXTURE_THAT_WRITES_FIRST)
     violations = lock_order_violations(root)
     assert len(violations) == 1
     flagged = violations[0]
@@ -144,7 +149,7 @@ def test_control_a_fixture_caller_that_writes_first_reddens_the_walk(tmp_path: P
 
 
 def test_control_a_fixture_caller_that_takes_the_row_first_stays_green(tmp_path: Path) -> None:
-    root = _plant(tmp_path / "green", "fixture_taker.py", _FIXTURE_THAT_TAKES_FIRST)
+    root = _plant(tmp_path / "green", "fixture_taker.py", FIXTURE_THAT_TAKES_FIRST)
     assert lock_order_violations(root) == ()
     assert [call.site for call in version_row_calls(root)] == [
         ("fixture_taker.py", "UnpinFixture.unpin", "bump")
@@ -158,7 +163,7 @@ def _plant(root: Path, name: str, source: str) -> Path:
     return root
 
 
-_FIXTURE_THAT_WRITES_FIRST = """\
+_FIXTURE_BODY = """
 class PinRepository:
     async def release(self, pin_id: str) -> bool:
         return True
@@ -180,32 +185,17 @@ class UnpinFixture:
         self._versions = versions
 
     async def unpin(self) -> None:
-        await self._pins.release(_PIN)
-        await self._versions.bump(_WEEK, at=_NOW)
+{order}
 """
 
-_FIXTURE_THAT_TAKES_FIRST = """\
-class PinRepository:
-    async def release(self, pin_id: str) -> bool:
-        return True
+_OBEYING_ORDER = (
+    "        await self._versions.bump(_WEEK, at=_NOW)\n        await self._pins.release(_PIN)"
+)
+_INVERTED_ORDER = (
+    "        await self._pins.release(_PIN)\n        await self._versions.bump(_WEEK, at=_NOW)"
+)
 
-
-class WeekInputVersionRepository:
-    async def bump(self, iso_week: str, *, at: str) -> int:
-        return 1
-
-
-_PIN = "pin"
-_WEEK = "2026-W07"
-_NOW = "now"
-
-
-class UnpinFixture:
-    def __init__(self, pins: PinRepository, versions: WeekInputVersionRepository) -> None:
-        self._pins = pins
-        self._versions = versions
-
-    async def unpin(self) -> None:
-        await self._versions.bump(_WEEK, at=_NOW)
-        await self._pins.release(_PIN)
-"""
+# The red control is the green one with its two statements swapped, so the only delta between
+# "the walk must flag this" and "the walk must pass this" is the order itself.
+FIXTURE_THAT_TAKES_FIRST = _FIXTURE_BODY.format(order=_OBEYING_ORDER)
+FIXTURE_THAT_WRITES_FIRST = _FIXTURE_BODY.format(order=_INVERTED_ORDER)

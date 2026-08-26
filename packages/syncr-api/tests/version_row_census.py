@@ -10,10 +10,12 @@ census is the reading that examines whatever callers exist whenever it runs.
 
 **The population is discovered, not listed.** Every module under the source root is parsed,
 and each ``bump``/``hold`` receiver is resolved to a type through the annotations the file
-already carries: a constructor parameter annotated with the repository or with an adapter
-composed around it, filed into an attribute by ``__init__`` or into a local by direct
-assignment. A new caller arrives as a new entry in :func:`version_row_calls` without anyone
-remembering to add it to a list, and the count the test asserts moves with it.
+already carries (the receiver typing lives in
+:mod:`tests.version_row_receiver_types`): a constructor parameter annotated with the
+repository or with an adapter composed around it, filed into an attribute by ``__init__`` or
+into a local by direct assignment. A new caller arrives as a new entry in
+:func:`version_row_calls` without anyone remembering to add it to a list, and the count the
+test asserts moves with it.
 
 **What the reading accepts as a take.** ``hold`` spells the lock and ``bump`` takes the same
 row to raise it, so both order whatever follows them; ``holds_version``, the solve's
@@ -22,10 +24,13 @@ too. A write may also sit above or below the function the call site lives in: th
 are what the test's recorded resolutions account for, each with its reason.
 
 **What this cannot see, stated because a census that hides its edge is worse than none.**
+The walk reads method bodies of classes only, so a caller at module level -- a free function
+taking a row or a session -- produces no call site, moves no count, and is never checked for
+order; today every caller is a class method, which is what keeps the measured figure honest.
 Receivers are typed through annotations and direct assignments, so a row or a table reached by
 untyped inference, a factory call (``self._adoption(session).adopt(...)``), or a helper's
-return is invisible to the ordering reading. A collaborator counts as a table only when its
-type name ends in ``Repository``, and on such a collaborator everything but
+return is invisible to the ordering reading too. A collaborator counts as a table only when
+its type name ends in ``Repository``, and on such a collaborator everything but
 :data:`READ_METHODS` counts as a write: an undeclared read method fails the walk loudly
 instead of silently passing for one.
 
@@ -37,16 +42,19 @@ positive control passes forever once it has gone blind.
 from __future__ import annotations
 
 import ast
-import re
 from typing import TYPE_CHECKING, NamedTuple
+
+from tests.version_row_receiver_types import (
+    VERSION_ROW_REPOSITORY,
+    annotation_kind,
+    annotation_of,
+    attribute_annotations,
+    row_types,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
-
-# The repository whose docstring states the rule. Receivers are resolved through annotations,
-# and the annotation carries this name however the file imported it.
-VERSION_ROW_REPOSITORY = "WeekInputVersionRepository"
 
 # The methods a take of the row arrives as. ``bump`` and ``hold`` spell the lock directly;
 # ``holds_version`` is the solve's conditional-write guard, which takes the row FOR UPDATE
@@ -75,8 +83,6 @@ READ_METHODS = frozenset(
         "lock",
     }
 )
-
-_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 class VersionRowCall(NamedTuple):
@@ -129,8 +135,8 @@ def _walk(source_root: Path) -> tuple[list[VersionRowCall], list[PrecedingWrite]
         path: ast.parse(path.read_text(encoding="utf-8"))
         for path in sorted(source_root.rglob("*.py"))
     }
-    row_types = _row_types(trees)
-    attributes = _attribute_annotations(trees)
+    types = row_types(trees)
+    attributes = attribute_annotations(trees)
     calls: list[VersionRowCall] = []
     violations: list[PrecedingWrite] = []
     for path, tree in trees.items():
@@ -143,9 +149,9 @@ def _walk(source_root: Path) -> tuple[list[VersionRowCall], list[PrecedingWrite]
                     continue
                 scope = _MethodScope(
                     attributes=attributes.get(node.name, {}),
-                    locals_=_local_types(function, row_types),
+                    locals_=_local_types(function, types),
                 )
-                taken_at = _first_take(function, scope, row_types)
+                taken_at = _first_take(function, scope, types)
                 if taken_at is None:
                     # No take here orders nothing: this function never acquires the row, so
                     # its writes are ordered by whoever called it, above or below.
@@ -156,7 +162,7 @@ def _walk(source_root: Path) -> tuple[list[VersionRowCall], list[PrecedingWrite]
                         and isinstance(statement.func, ast.Attribute)
                     ):
                         continue
-                    kind, display = scope.receiver(statement.func.value, row_types)
+                    kind, display = scope.receiver(statement.func.value, types)
                     if kind == "version":
                         if (
                             statement.func.attr in CALLED_METHODS
@@ -212,165 +218,20 @@ class _MethodScope:
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             if node.value.id == "self":
                 annotation = self._attributes.get(node.attr)
-                return _kind(annotation, row_types), f"self.{node.attr}"
+                return annotation_kind(annotation, row_types), f"self.{node.attr}"
             return None, ""
         if isinstance(node, ast.Name):
             return self._locals.get(node.id), node.id
         return None, ""
 
 
-def _kind(annotation: str | None, row_types: frozenset[str]) -> str | None:
-    """Whether an annotation names the version row, a table-holding repository, or neither."""
-    names: set[str] = set(_IDENTIFIER.findall(annotation or ""))
-    if names & row_types:
-        return "version"
-    repositories = {name for name in names if name.endswith("Repository")}
-    if len(repositories) == 1:
-        return repositories.pop()
-    return None
-
-
-def _annotation_of(arg: ast.arg) -> str | None:
-    return ast.unparse(arg.annotation) if arg.annotation else None
-
-
-def _init_parameters(cls: ast.ClassDef) -> dict[str, str]:
-    """The initializer's parameter names, mapped to the annotation each carries."""
-    found: dict[str, str] = {}
-    for item in cls.body:
-        if not (
-            isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__"
-        ):
-            continue
-        found.update(
-            {arg.arg: (_annotation_of(arg) or "") for arg in item.args.args + item.args.kwonlyargs}
-        )
-    return found
-
-
-def _constructed_locals(tree: ast.Module, classes: frozenset[str]) -> dict[str, str]:
-    """Every local a module binds to a constructor call, keyed for wiring reads."""
-    found: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Name)
-            and node.value.func.id in classes
-        ):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                found[target.id] = node.value.func.id
-    return found
-
-
-def _wired_type(value: ast.expr, constructed: Mapping[str, str]) -> str | None:
-    """What an argument expression hands a constructor: a member, or nothing known."""
-    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
-        return value.func.id
-    if isinstance(value, ast.Name):
-        return constructed.get(value.id)
-    return None
-
-
-def _row_types(trees: Mapping[Path, ast.Module]) -> frozenset[str]:
-    """The row's own type plus every adapter composed around it, derived transitively.
-
-    Two edges grow the set to a fixed point. A class whose ``__init__`` takes a parameter
-    annotated with a member composes it, so :class:`TrackedWeekInputVersions` joins the
-    repository itself. And a constructor wired at composition time (``SomeService(versions=
-    TrackedWeekInputVersions(...))``) proves the annotated name the keyword files into -- here
-    the :class:`WeekInputVersions` protocol -- resolves to a member, so services depending on
-    the operation rather than on plan storage's repository are reached without naming them.
-    Keyword wiring only: a positional hand-off is this reading's stated blind edge.
-    """
-    classes = {
-        node.name: node
-        for tree in trees.values()
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
-    }
-    constructed = {
-        path: _constructed_locals(tree, frozenset(classes)) for path, tree in trees.items()
-    }
-    types = {VERSION_ROW_REPOSITORY}
-    growing = True
-    while growing:
-        growing = False
-        for name in sorted(classes):
-            if name not in types and _composed_class(classes[name], frozenset(types)):
-                types.add(name)
-                growing = True
-        for path, tree in trees.items():
-            wired = constructed[path]
-            for node in ast.walk(tree):
-                if (
-                    not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name))
-                    or node.func.id not in classes
-                ):
-                    continue
-                parameters = _init_parameters(classes[node.func.id])
-                for keyword in node.keywords:
-                    if keyword.arg is None:  # the ``**`` marker carries no name to file under
-                        continue
-                    annotation = parameters.get(keyword.arg)
-                    if not annotation or annotation in types:
-                        continue
-                    if _wired_type(keyword.value, wired) in types:
-                        types.add(annotation)
-                        growing = True
-    return frozenset(types)
-
-
-def _composed_class(node: ast.ClassDef, types: frozenset[str]) -> bool:
-    """Whether a class composes a member of ``types`` through an annotated parameter."""
-    return any(
-        _kind(_annotation_of(arg), types) == "version"
-        for item in node.body
-        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__"
-        for arg in item.args.args + item.args.kwonlyargs
-    )
-
-
-def _attribute_annotations(trees: Mapping[Path, ast.Module]) -> dict[str, dict[str, str]]:
-    """Every class's ``self.X`` filings, mapped to the annotation the filed parameter carries."""
-    filings: dict[str, dict[str, str]] = {}
-    for tree in trees.values():
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            annotations = filings.setdefault(node.name, {})
-            for item in node.body:
-                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                parameters = {
-                    arg.arg: (_annotation_of(arg) or "")
-                    for arg in item.args.args + item.args.kwonlyargs
-                }
-                for statement in ast.walk(item):
-                    if not isinstance(statement, ast.Assign):
-                        continue
-                    for target in statement.targets:
-                        if not (
-                            isinstance(target, ast.Attribute)
-                            and isinstance(target.value, ast.Name)
-                            and target.value.id == "self"
-                            and isinstance(statement.value, ast.Name)
-                        ):
-                            continue
-                        if target.attr not in annotations:
-                            annotations[target.attr] = parameters.get(statement.value.id, "")
-    return filings
-
-
 def _local_types(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, row_types: frozenset[str]
+    function: ast.FunctionDef | ast.AsyncFunctionDef, types: frozenset[str]
 ) -> dict[str, str]:
     """The method's own typed names: annotated parameters and constructed locals."""
     found: dict[str, str] = {}
     for arg in function.args.args + function.args.kwonlyargs:
-        kind = _kind(_annotation_of(arg), row_types)
+        kind = annotation_kind(annotation_of(arg), types)
         if kind is not None:
             found[arg.arg] = kind
     for statement in ast.walk(function):
@@ -380,7 +241,7 @@ def _local_types(
             and isinstance(statement.value.func, ast.Name)
         ):
             continue
-        kind = _kind(statement.value.func.id, row_types)
+        kind = annotation_kind(statement.value.func.id, types)
         if kind is None:
             continue
         for target in statement.targets:
@@ -390,7 +251,7 @@ def _local_types(
 
 
 def _first_take(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, scope: _MethodScope, row_types: frozenset[str]
+    function: ast.FunctionDef | ast.AsyncFunctionDef, scope: _MethodScope, types: frozenset[str]
 ) -> int | None:
     """The earliest line the row is taken at, or ``None`` while the function takes nothing."""
     taken: list[int] = []
@@ -399,7 +260,7 @@ def _first_take(
             continue
         if statement.func.attr not in TAKE_METHODS:
             continue
-        kind, _ = scope.receiver(statement.func.value, row_types)
+        kind, _ = scope.receiver(statement.func.value, types)
         if kind == "version":
             taken.append(statement.lineno)
     return min(taken, default=None)
