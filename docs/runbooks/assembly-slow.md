@@ -117,7 +117,7 @@ series the read histogram registers, so a row of the panel above is a row of thi
   so the figure a week's make-ups come from does not grow with the tenant's history.
 - **Row 15 asks one question and reads recent history only.** The interval cadence's due rule needs
   when each habit last occurred, which no occurrence older than the longest declared interval can
-  answer, so the read carries an `occurred_at` window beside the habits predicate row 13 states.
+  answer, so the read carries an `occurred_at` window beside the habits predicate row 14 states.
 - **`WeekAdjustmentRepository.for_week` is read twice**, at rows 8 and 20, because each week's
   concessions have to be resolved as that week resolves them or the two weeks disagree about how long
   one night was.
@@ -138,6 +138,6 @@ moved, look at what the request does that the maintainer does not.
 
 - A decomposition of the assembly into its stages. Today it is one histogram, so a regression is
   visible but not attributable without going to the per-read timings and inferring.
-- Which of the twenty reads are avoidable. The order is above; nothing yet says which of them could
+- Which of the twenty-one reads are avoidable. The order is above; nothing yet says which of them could
   be composed into fewer statements.
 - A load-shedding or caching answer, if the cost turns out to be inherent rather than a regression.

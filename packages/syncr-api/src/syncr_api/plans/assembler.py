@@ -12,8 +12,8 @@ bullets below are counted to match it, because a latency budget and an alert are
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
 histogram's alert is read against that budget. **The budget and the alert were both set against a
 figure of eleven, which was never counted; recalibrating them is its own piece of work, and
-restating the figure here does not do it.** One of the nineteen performs four statements behind a
-single call, named below.
+restating the figure here does not do it.** One of the nineteen collaborators performs four
+statements behind a single call, named below.
 
 ```
 assemble(iso_week, now, extra_adjustment=None)
