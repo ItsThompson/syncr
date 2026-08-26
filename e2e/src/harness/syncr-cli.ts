@@ -22,6 +22,10 @@ type SpawnTarget = {
   readonly args: readonly string[];
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  /** How long the child may run before it is killed and the wait fails. A hung invocation must
+   * fail fast with its streams attached rather than outlive the test that started it and leak
+   * into the next serial case. Generous because a worktree probe builds an environment first. */
+  readonly timeoutMs?: number;
 };
 
 /** One running invocation: its exit, and the streams as they stand right now. */
@@ -42,7 +46,9 @@ export type SyncrRun = {
   readonly stderr: string;
 };
 
-const spawnWorkspaceTool = ({ args, cwd, env }: SpawnTarget): SyncrProcess => {
+const DEFAULT_TIMEOUT_MS = 120_000;
+
+const spawnWorkspaceTool = ({ args, cwd, env, timeoutMs }: SpawnTarget): SyncrProcess => {
   const child = spawn("uv", ["run", "--no-sync", ...args], {
     cwd: cwd ?? repoRoot,
     env: { ...process.env, ...env },
@@ -59,16 +65,33 @@ const spawnWorkspaceTool = ({ args, cwd, env }: SpawnTarget): SyncrProcess => {
     stderr += chunk;
   });
   return {
-    exited: new Promise((resolve, reject) => {
-      child.on("error", reject);
-      child.on("exit", (code) => resolve(code));
+    exited: new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(
+          new Error(
+            `the invocation of '${args[0]}' was still running after ${timeoutMs ?? DEFAULT_TIMEOUT_MS}ms and was killed.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+          ),
+        );
+      }, timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      child.on("error", (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
     }),
     stdout: () => stdout,
     stderr: () => stderr,
   };
 };
 
-/** One `syncr` invocation, from the same workspace environment the commands themselves use. */
+/** Resolves with the exit code, or null when a signal ended the process; rejects when the
+ * deadline passed (after killing the child) or when the process could not be spawned at all.
+ *
+ * One `syncr` invocation, from the same workspace environment the commands themselves use. */
 export const spawnSyncr = ({ args, ...options }: SpawnTarget): SyncrProcess =>
   spawnWorkspaceTool({ args: ["syncr", ...args], ...options });
 
@@ -81,8 +104,9 @@ const runWorkspaceTool = async (
   return { code, stdout: invocation.stdout(), stderr: invocation.stderr() };
 };
 
-/** One `syncr` invocation, running until it exits. Resolves whatever the exit code was: reading
- * the answer is the caller's business, and a non-zero exit is often exactly what is asserted. */
+/** One `syncr` invocation, running until it exits or its deadline kills it. Resolves whatever the
+ * exit code was: reading the answer is the caller's business, and a non-zero exit is often exactly
+ * what is asserted. */
 export const runSyncr = async (
   args: readonly string[],
   options: Omit<SpawnTarget, "args"> = {},

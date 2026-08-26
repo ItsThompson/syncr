@@ -81,8 +81,10 @@ test.afterAll(async () => {
 const waitForAuthorizeUrl = async (stderr: () => string, timeoutMs = 30_000): Promise<string> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const stated = stderr().match(/scopes: (\S+)/);
-    if (stated) return stated[1];
+    // The URL itself, not a phrase around it: the notice's wording is the CLI's to change, and
+    // the first URL on stderr is always this run's authorize endpoint.
+    const stated = stderr().match(/\bhttps?:\/\/\S+/);
+    if (stated) return stated[0];
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`the CLI named no authorize URL within ${timeoutMs}ms. stderr:\n${stderr()}`);
@@ -163,7 +165,11 @@ test("in a worktree, source resolution fails outright", async ({}, testInfo) => 
     );
   } finally {
     await run("git", ["worktree", "remove", "--force", worktree], { cwd: repoRoot }).catch(
-      () => undefined,
+      (failure: unknown) =>
+        console.warn(
+          `cleanup: 'git worktree remove ${worktree}' failed; it may be left registered.`,
+          failure,
+        ),
     );
     await rm(parent, { recursive: true, force: true });
   }
