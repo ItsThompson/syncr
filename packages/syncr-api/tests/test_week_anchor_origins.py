@@ -116,8 +116,9 @@ def a_stale_source(source_id: CalendarSourceId, tenant_id: TenantId) -> Calendar
 
 
 def test_only_the_anchor_bound_kinds_are_collected() -> None:
-    # Every member of the vocabulary is stated here, so a kind added later reddens rather than
-    # silently joining or silently staying out of the set this module claims.
+    # All three anchor-bound members are stated against a literal, so a kind added to the binding
+    # vocabulary reddens here rather than silently joining or silently staying out of the set this
+    # module claims.
     assert (
         frozenset({BindingKind.ANCHOR, BindingKind.ANCHOR_PREP, BindingKind.ANCHOR_TRANSIT})
         == ANCHOR_BOUND_KINDS
