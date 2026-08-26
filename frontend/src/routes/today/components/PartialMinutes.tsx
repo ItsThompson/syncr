@@ -13,11 +13,9 @@
  * figure is refused unless it lands on the fives running from that figure. A commit is the other grid: a blur
  * snaps to a multiple of five, whatever the field opened at.
  *
- * THERE IS NO ESCAPE BINDING, and it is a gap rather than a choice. A bare Escape yields to the field a
- * reader is typing into, which is by design in the shell's keyboard module, and the kit's fields accept no
- * key handler, so the only place left is a container: the a11y lint refuses a key handler on one and it is
- * right to, since the handler belongs on the focusable element. Cancelling is the cancel control, which Tab
- * reaches from the field.
+ * ESCAPE CANCELS FROM THE FIELD ITSELF, through the key handler the stepper forwards onto its input. A bare
+ * Escape yields to the field a reader is typing into by design in the shell's keyboard module, so a document
+ * binding could never hear it here; the field is the only place it can be heard while a reader is typing.
  *
  * A FIGURE OUTSIDE THE API'S BOUNDS DISABLES THE RECORD BUTTON AND SAYS SO. The stepper hands a typed value
  * back unsnapped and unclamped on purpose, so the surface that knows the bounds is the one that judges it,
@@ -28,7 +26,7 @@
  * below one minute the outcome is a skip, which is its own state on this row. `isSendable` refuses the figure
  * instead, and the message beside the control names the api's bound, which is something a reader can act on. */
 
-import { useEffect, useRef, type FormEvent } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 
 import { Button, NumberStepper } from "../../../ui/primitives";
 import { MAX_ACTUAL_MINUTES, MIN_ACTUAL_MINUTES, isSendable } from "../drafts";
@@ -55,6 +53,13 @@ export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
     if (canRecord) actions.onRecord();
   };
 
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      actions.onCancel();
+    }
+  };
+
   return (
     <form className="flex items-center gap-2" onSubmit={onSubmit}>
       <NumberStepper
@@ -66,6 +71,7 @@ export function PartialMinutes({ row, form, actions }: PartialMinutesProps) {
         isInvalid={!canRecord}
         label={`actual minutes for ${row.title}`}
         unit={`min of ${minutesRead(row.durationMinutes)} planned`}
+        onKeyDown={onKeyDown}
       />
       <Button type="submit" size="sm" isDisabled={!canRecord}>
         record partial

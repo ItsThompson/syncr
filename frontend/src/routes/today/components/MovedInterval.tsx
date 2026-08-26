@@ -6,8 +6,9 @@
  *
  * THE FIRST END TAKES FOCUS WHEN THE FORM OPENS, for the reason the minutes stepper's field does: the control
  * that opened the form unmounted with it, and a reader who pressed `m` should be typing the time rather than
- * hunting for the field. Enter records through a real form, which is the browser's own submit; there is no
- * Escape binding, for the reason the minutes form states.
+ * hunting for the field. Enter records through a real form, which is the browser's own submit. Escape cancels
+ * from either end, through the key handler the control forwards onto its inputs, for the reason the minutes
+ * form states.
  *
  * AN END AT OR BEFORE THE START IS THE FOLLOWING DAY rather than an error, which is why nothing here refuses
  * one: a block that runs past midnight is ordinary, and `drafts.ts` is where that date is decided. What is
@@ -16,7 +17,7 @@
  * RECORDING `moved` CREATES NO PIN. The interval describes the past and a pin constrains the future, so
  * there is no "and pin it here" control on this form and the api makes no pin from what it sends. */
 
-import { useEffect, useRef, type FormEvent } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 
 import { Button, TimeRangeInput } from "../../../ui/primitives";
 import { isSendable } from "../drafts";
@@ -42,6 +43,13 @@ export function MovedInterval({ row, form, actions }: MovedIntervalProps) {
     if (canRecord) actions.onRecord();
   };
 
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      actions.onCancel();
+    }
+  };
+
   return (
     <form className="flex items-center gap-2" onSubmit={onSubmit}>
       <TimeRangeInput
@@ -50,6 +58,7 @@ export function MovedInterval({ row, form, actions }: MovedIntervalProps) {
         onValueChange={(range) => actions.onDraft({ ...form, range })}
         isInvalid={!canRecord}
         label={`when ${row.title} really happened`}
+        onKeyDown={onKeyDown}
       />
       <Button type="submit" size="sm" isDisabled={!canRecord}>
         record moved
