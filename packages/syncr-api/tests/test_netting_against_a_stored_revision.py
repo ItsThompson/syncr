@@ -18,8 +18,9 @@ assertions see is that the stored row was read (its block still nets) and its pi
 arrive. If the filter ever stopped dropping such a pin, the pin tuple here would grow.
 
 **A partial outcome attributes a prefix, not the block's span.** Recorded against the elapsed
-block through the outcome log the reader also reads, it splits the two remaining-work readings:
-the solver nets the block's own span, the probe nets only the minutes the user said were done.
+block through the outcome log the reader also reads, it parts the two remaining-work readings: the
+solver nets only the attributed prefix that has been lived, the probe nets the same minutes through
+its own split at ``now``, and a pin ahead of ``now`` nets nothing on the solver's side at all.
 """
 
 from __future__ import annotations
@@ -321,11 +322,12 @@ async def test_a_stored_week_nets_every_figure_through_the_production_reader(
     assert area.floor_minutes == DECLARED_FLOOR_MINUTES - BLOCK_MINUTES - PARTIAL_MINUTES
 
     remaining = {t.binding.entity_id: t.remaining_minutes for t in inputs.eligible_tasks}
-    # The pinned hour nets from the pinned task's own span once, at the pin's location.
-    assert remaining[PINNED_TASK] == 120 - BLOCK_MINUTES
-    # The elapsed block nets whole, whatever the outcome attributed: the solver cannot
-    # re-place any of it.
-    assert remaining[ELAPSED_TASK] == 180 - BLOCK_MINUTES
+    # The pinned hour sits ahead of `now`, so nothing of it has been lived and none of it nets:
+    # the task is offered whole, at the pin's location as anywhere.
+    assert remaining[PINNED_TASK] == 120
+    # The elapsed block nets only what the outcome attributed that has been lived: the reported
+    # prefix of Monday's hour, which is the half the user said was done.
+    assert remaining[ELAPSED_TASK] == 180 - PARTIAL_MINUTES
     # The movable hour deliberately nets nothing.
     assert remaining[FUTURE_TASK] == 90
 

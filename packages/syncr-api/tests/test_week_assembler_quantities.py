@@ -130,7 +130,12 @@ async def test_an_unpinned_future_block_is_not_netted_from_the_solvers_remaining
     assert [entry.remaining_minutes for entry in inputs.eligible_tasks] == [FOUR_HOURS]
 
 
-async def test_pinning_that_future_block_nets_it_because_the_solver_can_no_longer_move_it() -> None:
+async def test_pinning_a_future_block_offers_no_less_work_until_it_is_lived() -> None:
+    # THE defect this pair exists to prevent. The solver discards and re-places Thursday's block,
+    # so netting it would place two hours of a four-hour task, report no shortfall because both
+    # sides agree, and leave the state stable and permanently wrong. A pin takes the re-place away
+    # but nets nothing either: nothing of the pinned hour has been lived, so the figure still
+    # offers the work rather than scheduling the task twice over one pinned hour.
     area = an_area()
     task = a_task(area_id=area.id, estimate_minutes=FOUR_HOURS)
     interval = between(9, 11, day=3)
@@ -144,7 +149,7 @@ async def test_pinning_that_future_block_nets_it_because_the_solver_can_no_longe
         ),
     ).assemble(WEEK, NOW)
 
-    assert [entry.remaining_minutes for entry in inputs.eligible_tasks] == [2 * MINUTES_PER_HOUR]
+    assert [entry.remaining_minutes for entry in inputs.eligible_tasks] == [FOUR_HOURS]
 
 
 async def test_a_task_whose_work_is_wholly_immovable_is_not_offered_to_the_solver_again() -> None:
@@ -282,11 +287,11 @@ async def test_a_confirmed_skip_raises_the_demand_for_the_task_it_was_placed_for
     assert [demand.remaining_minutes for demand in skipped_inputs.deadline_demands] == [FOUR_HOURS]
 
 
-async def test_a_confirmed_skip_leaves_the_solvers_own_figure_where_it_was() -> None:
-    # The asymmetry, pinned so it is not read as a rule. The solver's remaining work nets what it
-    # cannot RE-PLACE, and a past hour stays unmovable whatever the user said happened in it. The
-    # two readings genuinely disagree here and only the probe's is settled; whether the solver's
-    # should read the log too is open.
+async def test_a_confirmed_skip_raises_the_solvers_own_offered_remaining_work() -> None:
+    # The solver's remaining work reads the outcome log now, clipped at `now`. Monday's hour was
+    # placed and then marked skipped, so four hours are offered rather than three: the hour the
+    # user said they did not work comes back to the figure that offers it, instead of ending the
+    # task over work that never happened.
     area = an_area()
     task = a_task(area_id=area.id, estimate_minutes=FOUR_HOURS, deadline=at(9, day=4))
     plan = a_plan(
@@ -294,13 +299,21 @@ async def test_a_confirmed_skip_leaves_the_solvers_own_figure_where_it_was() -> 
     )
     skipped = RecordedOutcome(binding=BindingRef.for_task(task.id), state=MISS_STATE)
 
-    inputs = await an_assembler(
+    presumed_inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        tasks=FakeTasks([task]),
+        placements=FakePlacements(live_plan=plan),
+    ).assemble(WEEK, NOW)
+    skipped_inputs = await an_assembler(
         areas=FakeAreas([area]),
         tasks=FakeTasks([task]),
         placements=FakePlacements(live_plan=plan, outcomes=[skipped]),
     ).assemble(WEEK, NOW)
 
-    assert [entry.remaining_minutes for entry in inputs.eligible_tasks] == [3 * MINUTES_PER_HOUR]
+    assert [entry.remaining_minutes for entry in presumed_inputs.eligible_tasks] == [
+        3 * MINUTES_PER_HOUR
+    ]
+    assert [entry.remaining_minutes for entry in skipped_inputs.eligible_tasks] == [FOUR_HOURS]
 
 
 async def test_a_task_with_no_deadline_demands_nothing() -> None:

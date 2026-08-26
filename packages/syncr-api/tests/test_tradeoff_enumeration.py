@@ -45,7 +45,6 @@ from syncr_domain.feasibility import (
     probe,
 )
 from syncr_domain.fixtures import elastic_sleep
-from syncr_domain.identity import BindingRef
 from syncr_domain.plan import AdjustmentKind
 from syncr_solver.inputs import WeekAdjustment
 from tests.assembly_fakes import (
@@ -58,9 +57,10 @@ from tests.assembly_fakes import (
     FakePlacements,
     FakeRoutines,
     FakeTasks,
-    a_pin,
+    a_plan,
     a_routine,
     a_task,
+    a_task_block,
     an_adjustment,
     an_area,
     an_assembler,
@@ -645,10 +645,11 @@ def captured_log() -> Iterator[io.StringIO]:
 async def test_a_demand_whose_task_has_no_eligible_row_is_answered_with_nothing(
     captured_log: io.StringIO,
 ) -> None:
-    # The exception to the rule above, one user pin away from an ordinary week, and the reason it
-    # exists: eligibility nets immovable placements WHEREVER they sit and the demand nets only those
-    # before the deadline, so a pin the user made after the deadline empties eligibility and leaves
-    # the demand standing. Neither task-targeted kind can name a task eligibility does not carry.
+    # The exception to the rule above, one lived block past its deadline away from an ordinary
+    # week, and the reason it exists: eligibility nets what was done of the placements the solver
+    # cannot re-place, and the demand nets only those before the deadline, so a block the user
+    # lived AFTER its deadline empties eligibility and leaves the demand standing. Neither
+    # task-targeted kind can name a task eligibility does not carry.
     #
     # Recorded rather than fixed here: closing it needs the demand to carry its tasks' identities,
     # which is a field on the probe's own input struct and the same field the recovery-figure bounds
@@ -660,20 +661,18 @@ async def test_a_demand_whose_task_has_no_eligible_row_is_answered_with_nothing(
         area_id=career.id,
         title="F&F Past Papers",
         estimate_minutes=4 * MINUTES_PER_HOUR,
-        deadline=at(10, day=2),
+        deadline=at(10, day=1),
     )
-    pinned = FakePlacements(
-        pins=[
-            a_pin(
-                binding=BindingRef.for_task(CAREER_TASK),
-                interval=between(9, 13, day=3),
-                pinned_on=WEEK.dates()[2],
-            )
+    plan = a_plan(
+        blocks=[
+            a_task_block(task_id=CAREER_TASK, area_id=career.id, interval=between(14, 18, day=1))
         ]
     )
 
     inputs = await an_assembly(
-        areas=FakeAreas([career]), tasks=FakeTasks([task]), placements=pinned
+        areas=FakeAreas([career]),
+        tasks=FakeTasks([task]),
+        placements=FakePlacements(live_plan=plan),
     )
     verdict = probe(inputs.for_probe())
 
@@ -682,7 +681,7 @@ async def test_a_demand_whose_task_has_no_eligible_row_is_answered_with_nothing(
     assert inputs.eligible_tasks == ()
     assert [one.remaining_minutes for one in inputs.deadline_demands] == [4 * MINUTES_PER_HOUR]
     gap = next(one for one in verdict.shortfalls if one.kind is ShortfallKind.DEADLINE_CAPACITY)
-    assert gap.minutes == 3 * MINUTES_PER_HOUR
+    assert gap.minutes == 4 * MINUTES_PER_HOUR
     assert offers == ()
     # The one thing that makes the silence visible outside this request.
     assert "plans.tradeoff.gap_unanswered" in captured_log.getvalue()
