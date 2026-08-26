@@ -29,9 +29,12 @@ overhang this week carries, its off-plan periods and its approved concessions in
 block carries an Area and is content; a recovery window explains a gap that is real; a commitment
 during a period the user declared off is still a commitment.
 
-One case here pins a limitation rather than a rule, and it says so: collisions are resolved over
-the commitments a week reads, so two commitments whose shadows collide across the week's edge can
-leave one block in one week and not the other. It is measured rather than argued, and tracked.
+Collisions are resolved over the set a week reads, so two commitments whose shadows collide
+across the week's edge used to resolve differently in each week. The read now takes the widest
+reach twice, which loads each collision's partner into both weeks and settles a shared collision
+to the same block in both. The residual is measured rather than argued: a chain of three
+commitments, each colliding with the next, still differs at the edge, and the control beside the
+edge test states why.
 """
 
 from __future__ import annotations
@@ -190,15 +193,17 @@ async def test_the_read_reaches_past_the_week_by_the_largest_lead_and_not_by_a_s
     # Asserted through the span the repository was asked for, which is the channel that decides
     # what a week can know about. A sum of the two leading products would read 885 minutes past
     # the end for this declaration, and nothing is ever cast that far back: prep and the outbound
-    # leg are both measured from the commitment's start and run in parallel.
+    # leg are both measured from the commitment's start and run in parallel. The reach is taken
+    # twice so collision partners load too, which is why the read goes twice as far as anything
+    # is cast.
     exam_type = an_anchor_type(ATTRIBUTED_EXAM)
     reader = FakeAnchors()
 
     inputs = await assemble_before(types=[exam_type], anchor_reader=reader)
 
     read = reader.asked_for[-1]
-    assert read.end == inputs.span.end + timedelta(minutes=EXAM.prep_lead_minutes)
-    assert read.start == inputs.span.start - timedelta(minutes=EXAM.post_buffer_minutes)
+    assert read.end == inputs.span.end + timedelta(minutes=2 * EXAM.prep_lead_minutes)
+    assert read.start == inputs.span.start - timedelta(minutes=2 * EXAM.post_buffer_minutes)
 
 
 async def test_a_journey_to_a_monday_morning_commitment_needs_the_transit_lead_in_the_read() -> (
@@ -466,17 +471,17 @@ async def test_a_commitment_whose_type_this_read_did_not_see_is_busy_time_rather
     ] == [(1, 1, 0)]
 
 
-async def test_a_collision_the_read_does_not_cover_is_not_resolved_in_this_week() -> None:
-    # Measured rather than argued, and recorded here as a known limit. Collisions are resolved over
-    # the loaded set, and the loaded set is every commitment that can cast INSIDE the week rather
-    # than every commitment that can cast over one of those products. A journey home that ends
-    # before the read begins truncates a prep block below the grid step in the week that reads both,
-    # and the week after it, which reads only the prep, keeps the half that falls inside it.
+async def test_a_collision_across_the_week_edge_resolves_to_the_same_block_in_both_weeks() -> None:
+    # The edge case that used to be a pinned limitation: collisions are resolved over the loaded
+    # set, and the loaded set is every commitment whose shadows can decide what the week holds.
+    # The read takes the widest reach twice, so both weeks load BOTH commitments here and give
+    # way the same way: the journey home outranks the prep in each, and the one surviving block
+    # is drawn clipped into whichever week each half of it falls in.
     #
-    # The consequence is bounded: two derived blocks may cover the same minutes, which is a state
-    # the grid draws, and each charges its own Area.
+    # The journey home is 90 minutes so it crosses Monday midnight, which is what makes the
+    # agreement visible as one block with a half in each week rather than as an absence.
     returns = an_anchor_type(
-        replace(NOTHING, name="Returns", return_transit_minutes=60, transit_area_id=TRANSIT)
+        replace(NOTHING, name="Returns", return_transit_minutes=90, transit_area_id=TRANSIT)
     )
     preps = an_anchor_type(
         replace(
@@ -499,22 +504,86 @@ async def test_a_collision_the_read_does_not_cover_is_not_resolved_in_this_week(
         anchor_type=preps,
         title="Interview",
     )
+    reader = FakeAnchors([away, interview])
     assembler = an_assembler(
         settings=FakeSettings(LONDON),
-        anchors=FakeAnchors([away, interview]),
+        anchors=reader,
         anchor_types=FakeAnchorTypes([returns, preps]),
     )
 
     before = await assembler.assemble(BEFORE, NOW)
     after = await assembler.assemble(WEEK, NOW)
 
-    # The week that reads both drops the prep entirely: it gives way to the journey home and what
-    # is left of it is shorter than a grid step.
-    assert [block.title for block in before.shadow_blocks] == ["Go Home"]
-    # The week that reads only the prep keeps its half hour.
-    assert [(block.title, block.interval) for block in after.shadow_blocks] == [
-        ("Prep for Interview", Interval(edge, edge + timedelta(minutes=30)))
+    assert [(block.title, block.interval) for block in before.shadow_blocks] == [
+        ("Go Home", Interval(on_sunday(23, 0), edge))
     ]
+    assert [(block.title, block.interval) for block in after.shadow_blocks] == [
+        ("Go Home", Interval(edge, on_monday(0, 30)))
+    ]
+    # The channel, not just the outcome: WEEK's read reaches back by the trailing reach taken
+    # twice (2 x 90 minutes past Sunday midnight) or `away` would not be in its set at all.
+    assert reader.asked_for[-1].start == on_sunday(21, 0)
+
+
+async def test_a_chain_of_three_collisions_still_resolves_differently_at_the_edge() -> None:
+    """The residual the widening leaves, measured and kept rather than argued away.
+
+    Three commitments, each colliding with the next: the far match's journey home overlaps the
+    away match's, whose journey home overlaps the interview's prep. BEFORE loads all three and
+    resolves the chain from its start, where the earlier-cast far journey wins and the prep stands
+    behind it; WEEK, whose read is one reach wider than a single reach, loads the away match but
+    not the far one, so there the away journey wins and the prep gives way to it. Each answer is
+    right for the set that produced it, and the sets still differ: order-dependent resolution is
+    narrowed by one reach, not ended, because no finite number of reaches covers every chain.
+    """
+    returns = an_anchor_type(
+        replace(NOTHING, name="Returns", return_transit_minutes=240, transit_area_id=TRANSIT)
+    )
+    preps = an_anchor_type(
+        replace(
+            NOTHING,
+            name="Preps",
+            prep_lead_minutes=90,
+            prep_duration_minutes=60,
+            prep_area_id=CAREER,
+        ),
+        rule_order=1,
+    )
+    edge = on_monday(0, 0)
+    far = an_anchor(
+        interval=Interval(on_sunday(14, 55), on_sunday(15, 55)),
+        anchor_type=returns,
+        title="Far Match",
+    )
+    away = an_anchor(
+        interval=Interval(on_sunday(17, 50), on_sunday(19, 50)),
+        anchor_type=returns,
+        title="Away Match",
+    )
+    interview = an_anchor(
+        interval=Interval(edge + timedelta(minutes=60), edge + timedelta(minutes=120)),
+        anchor_type=preps,
+        title="Interview",
+    )
+    assembler = an_assembler(
+        settings=FakeSettings(LONDON),
+        anchors=FakeAnchors([far, away, interview]),
+        anchor_types=FakeAnchorTypes([returns, preps]),
+    )
+
+    before = await assembler.assemble(BEFORE, NOW)
+    after = await assembler.assemble(WEEK, NOW)
+
+    # The whole chain: the far journey keeps its whole leg, the away journey gives way whole, and
+    # the prep never meets a kept block, so it stands entire up to the edge.
+    assert [(block.title, block.interval) for block in before.shadow_blocks] == [
+        ("Go Home", Interval(on_sunday(15, 55), on_sunday(19, 55))),
+        ("Prep for Interview", Interval(on_sunday(23, 30), edge)),
+    ]
+    # Without `far`, the away journey wins instead and the prep truncates against it to nothing:
+    # the half hour BEFORE draws up to the edge is time WEEK holds free. Nothing survives into
+    # WEEK at all, because the away journey home ends before Monday starts.
+    assert [(block.title, block.interval) for block in after.shadow_blocks] == []
 
 
 # --------------------------------------------------------------------------------

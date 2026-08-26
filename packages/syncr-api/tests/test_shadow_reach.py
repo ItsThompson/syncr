@@ -41,7 +41,13 @@ from syncr_api.anchors.config import (
     FORBIDS_NOTHING,
     LEAD_MINUTES_MAX,
 )
-from syncr_api.anchors.reach import ShadowReach, casting_span, shadow_reach, widest_reach
+from syncr_api.anchors.reach import (
+    ShadowReach,
+    casting_reach,
+    casting_span,
+    shadow_reach,
+    widest_reach,
+)
 from syncr_api.anchors.shadows import generate
 from syncr_domain.intervals import Interval
 from tests.anchor_specifications import (
@@ -172,6 +178,18 @@ def test_the_widest_reach_covers_every_declaration_a_tenant_holds() -> None:
     )
 
 
+def test_the_widened_reach_covers_the_widest_reach_twice_over() -> None:
+    # One reach covers what can cast into the week; the second is added to it, so it covers what
+    # can collide with those products. Stated over the halves rather than through `widened`,
+    # because a reach widened with itself would keep its own halves and add nothing.
+    reach = widest_reach(ATTRIBUTED_GEOMETRY)
+
+    assert casting_reach(ATTRIBUTED_GEOMETRY) == ShadowReach(
+        before_minutes=2 * reach.before_minutes,
+        after_minutes=2 * reach.after_minutes,
+    )
+
+
 def test_a_tenant_with_no_declared_types_reads_exactly_its_own_week() -> None:
     week = Interval(at(EXAM_MONDAY, 0), at(EXAM_MONDAY, 0) + timedelta(days=7))
 
@@ -180,13 +198,14 @@ def test_a_tenant_with_no_declared_types_reads_exactly_its_own_week() -> None:
 
 def test_the_read_widens_forwards_by_the_lead_and_backwards_by_the_trailing_span() -> None:
     # The inversion, stated as the two bounds: a commitment ahead of the week casts prep back
-    # into it, and a commitment behind it casts recovery forward into it.
+    # into it, and a commitment behind it casts recovery forward into it. The reach is taken
+    # twice, so the partners those products collide with load as well.
     week = Interval(at(EXAM_MONDAY, 0), at(EXAM_MONDAY, 0) + timedelta(days=7))
 
     read = casting_span(week, ATTRIBUTED_GEOMETRY)
 
-    assert read.end == week.end + timedelta(minutes=EXAM.prep_lead_minutes)
-    assert read.start == week.start - timedelta(minutes=INTERVIEW.post_buffer_minutes)
+    assert read.end == week.end + timedelta(minutes=2 * EXAM.prep_lead_minutes)
+    assert read.start == week.start - timedelta(minutes=2 * INTERVIEW.post_buffer_minutes)
 
 
 def test_the_commitment_whose_prep_lands_in_the_previous_week_is_inside_that_weeks_read() -> None:
@@ -209,14 +228,15 @@ def test_a_commitment_is_read_by_exactly_the_weeks_its_envelope_reaches() -> Non
 
     An assembly loads every commitment overlapping ``casting_span(week)``. A writer that has just
     moved a commitment needs the same question from the other side: which weeks was it an input of.
-    ``envelope`` is that answer, and the two agree by derivation rather than by coincidence, so
-    this asserts the biconditional directly. If they came apart, a week could load a commitment
-    that nothing told it had moved, and its plan would be stale with every counter green.
+    ``envelope`` is that answer, taken over the same widened reach the read applies, and the two
+    agree by derivation rather than by coincidence, so this asserts the biconditional directly. If
+    they came apart, a week could load a commitment that nothing told it had moved, and its plan
+    would be stale with every counter green.
 
     Swept rather than asserted at one offset, because the two disagree only at an edge, and a
     single offset in the middle of the overlap would pass for a bound that was wrong by a day.
     """
-    reach = widest_reach(ATTRIBUTED_GEOMETRY)
+    reach = casting_reach(ATTRIBUTED_GEOMETRY)
     anchor = Interval(at(EXAM_MONDAY, 9, 30), at(EXAM_MONDAY, 11, 30))
     envelope = reach.envelope(anchor)
     monday = at(EXAM_MONDAY, 0)
@@ -250,13 +270,13 @@ def test_a_journey_at_the_turn_of_the_week_needs_the_transit_lead_in_the_read() 
 
     assert journey.overlaps(previous_week)
     assert lecture.interval.start < read.end
-    assert read.end == previous_week.end + timedelta(minutes=LECTURE.transit_duration_minutes)
+    assert read.end == previous_week.end + timedelta(minutes=2 * LECTURE.transit_duration_minutes)
 
 
 def test_the_read_is_bounded_by_the_two_column_bounds_rather_than_by_a_declaration() -> None:
     # The reason the lead column has a bound at all: without one a single declaration would
-    # widen every assembly's read without limit. The widest declaration the columns permit
-    # widens it by one week forwards and one day backwards.
+    # widen every assembly's read without limit. The widest declaration the columns permit widens
+    # the read by two weeks forwards and two days backwards, the reach taken twice.
     widest = replace(
         NOTHING,
         prep_lead_minutes=LEAD_MINUTES_MAX,
@@ -271,8 +291,8 @@ def test_the_read_is_bounded_by_the_two_column_bounds_rather_than_by_a_declarati
 
     read = casting_span(week, (widest,))
 
-    assert read.end - week.end == timedelta(minutes=LEAD_MINUTES_MAX)
-    assert week.start - read.start == timedelta(minutes=DURATION_MINUTES_MAX)
+    assert read.end - week.end == timedelta(minutes=2 * LEAD_MINUTES_MAX)
+    assert week.start - read.start == timedelta(minutes=2 * DURATION_MINUTES_MAX)
 
 
 def test_the_widest_read_a_week_can_ask_for_is_inside_the_bound_the_repository_enforces() -> None:
@@ -295,3 +315,11 @@ def test_the_widest_read_a_week_can_ask_for_is_inside_the_bound_the_repository_e
     read = casting_span(longest_week, (widest,))
 
     assert read.total_minutes() <= ASSEMBLY_READ_MINUTES_MAX
+
+
+def test_the_repository_bound_is_the_widened_read_derived_from_the_two_column_bounds() -> None:
+    # Written out over literals rather than re-derived from the constants, so a change to how the
+    # bound is composed is a decision this failure forces someone to look at rather than
+    # arithmetic that silently moves with the code it guards: nine days of week and zone slack,
+    # plus the lead bound and the duration bound taken twice each.
+    assert ASSEMBLY_READ_MINUTES_MAX == 9 * 24 * 60 + 2 * (7 * 24 * 60) + 2 * (24 * 60)
