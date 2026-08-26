@@ -1,10 +1,10 @@
-/* THE BAND'S ZOOM READING, ASSERTED AGAINST WHAT THE GRID ACTUALLY DRAWS.
+/* THE BAND'S ZOOM SEGMENT, ASSERTED AGAINST WHAT THE GRID ACTUALLY DRAWS.
  *
- * TWO FIGURES, ONE OBSERVABLE EACH, AND THE ASSERTION IS THAT THEY AGREE. The reading is the band's rendered text and
- * the drawing is a column's canvas height, which is the extent's minutes at the pixels per minute the grid derived. A
- * case that compared the band's number against the same clamp the band's own source calls could not fail: it would be
- * one expression asserted against itself. So the drawn figure here is computed from the reference grid height and the
- * hours independently, and the band is required to state that same figure.
+ * TWO FIGURES, ONE OBSERVABLE EACH, AND THE ASSERTION IS THAT THEY AGREE. The segment's pressed level is the band's
+ * rendering and the drawing is a column's canvas height, which is the extent's minutes at the pixels per minute the grid
+ * derived. A case that compared the pressed figure against the same clamp the band's own source calls could not fail: it
+ * would be one expression asserted against itself. So the drawn figure here is computed from the reference grid height
+ * and the hours independently, and the band is required to mark that same level.
  *
  * THE PROPOSAL AND THE DRAWING DIFFER ON PURPOSE. 20 is inside the range the setting offers and outside the range a
  * 626px grid can draw, which is the whole of the disagreement: at 20 a thirty-minute block would be 15.6px, under the
@@ -42,9 +42,10 @@ function canvasPxAt(hours: number): number {
   return EXTENT_MINUTES * (GRID_H_PX / (hours * 60));
 }
 
-/** The band's own line, which is where the zoom reading is rendered. */
-async function bandLine(): Promise<string> {
-  return (await screen.findByText(/h visible/)).textContent ?? "";
+/** The hours on the segment's one pressed level, which is where the drawn figure is rendered. */
+async function pickedHours(): Promise<string> {
+  const group = await screen.findByRole("group", { name: "Visible hours" });
+  return group.querySelector('[aria-pressed="true"]')?.textContent ?? "";
 }
 
 /** The one canvas a column draws, in pixels, which is where the level the grid actually drew is observable. */
@@ -74,36 +75,52 @@ describe("the band states the level the grid draws", () => {
     expect(canvasPxAt(PROPOSED_HOURS)).not.toBeCloseTo(canvasPxAt(DRAWN_HOURS), 1);
   });
 
-  it(`reads ${DRAWN_HOURS}h visible where a stored ${PROPOSED_HOURS} draws at ${DRAWN_HOURS}`, async () => {
+  it(`marks ${DRAWN_HOURS}h as drawn where a stored ${PROPOSED_HOURS} draws at ${DRAWN_HOURS}`, async () => {
     const { container } = await renderWeekStoring(PROPOSED_HOURS);
 
     expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(DRAWN_HOURS), 1);
     expect(canvasPxOf(container)).not.toBeCloseTo(canvasPxAt(PROPOSED_HOURS), 1);
-    expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
-    expect(await bandLine()).not.toContain(`${PROPOSED_HOURS}h visible`);
+    expect(await pickedHours()).toBe(`${DRAWN_HOURS}h`);
   });
 
-  /* THE WRAP IS WHAT PROVES THE PRESSES LANDED, and it is here because the two figures this case is about are
-   * indistinguishable on this display: a press that proposes 20 and a press the screen never saw both leave the band
-   * reading 16. The ladder is 6, 9, 12, 16, 20, 24 and it wraps, so from the fixture's stored 12 exactly four presses
-   * read 6: three would leave 24 and five would leave 9. So the last assertion is what makes the middle two mean that
-   * the screen proposed a level this grid refuses, rather than that nothing happened. */
-  it(`reads ${DRAWN_HOURS}h visible while z cycles past what this grid can draw`, async () => {
+  /* THE VISIT IS HOURLY THROUGH THE AVAILABLE LEVELS ONLY, and it wraps past the top. From the fixture's stored 12
+   * every level to the cap 16 is available, so four presses climb it hour by hour and the fifth wraps to the floor;
+   * nothing along the way reports a level this display cannot draw, which is what `never 20h` asserts against the one
+   * figure the band renders. The canvas assertion at the end is what makes the last press mean a wrapped proposal the
+   * grid answered, rather than a press the screen never saw. */
+  it("climbs the available levels hourly from the stored one, then wraps to the floor", async () => {
     const { container } = await renderWeekStoring(SETTINGS.visibleHours);
 
     await press();
-    expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
+    expect(await pickedHours()).toBe("13h");
 
     await press();
-    expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
-    expect(await bandLine()).not.toContain(`${PROPOSED_HOURS}h visible`);
-    expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(DRAWN_HOURS), 1);
+    expect(await pickedHours()).toBe("14h");
 
     await press();
-    expect(await bandLine()).toContain(`${DRAWN_HOURS}h visible`);
+    expect(await pickedHours()).toBe("15h");
 
     await press();
-    expect(await bandLine()).toContain(`${ZOOM_MIN_HOURS}h visible`);
+    expect(await pickedHours()).toBe("16h");
+
+    /* The fifth press wraps: every level past the cap is unavailable, so the walk lands on the floor rather
+     * than on one of them, and `never 20h` is what makes that mean a skipped refusal instead of a quiet press. */
+    await press();
+    const wrapped = await pickedHours();
+    expect(wrapped).toBe(`${ZOOM_MIN_HOURS}h`);
+    expect(wrapped).not.toBe(`${PROPOSED_HOURS}h`);
+    expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(ZOOM_MIN_HOURS), 1);
+  });
+
+  /* THE TICKET'S OWN CASE, AT ITS OWN SEAM: the cap is where the range stops, so from it one press skips every level
+   * past the cap -- none available, each carrying its own refusal -- and lands on the floor. Nineteen levels in the
+   * report, sixteen available, and the walk still terminates because the wrap is part of the walk. */
+  it("wraps from the cap straight to the floor, never reporting a level past the cap", async () => {
+    const { container } = await renderWeekStoring(DRAWN_HOURS);
+
+    await press();
+
+    expect(await pickedHours()).toBe(`${ZOOM_MIN_HOURS}h`);
     expect(canvasPxOf(container)).toBeCloseTo(canvasPxAt(ZOOM_MIN_HOURS), 1);
   });
 });

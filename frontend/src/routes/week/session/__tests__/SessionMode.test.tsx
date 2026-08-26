@@ -392,7 +392,7 @@ describe("the retrospective half", () => {
     openTheSession(buildSession({ retro }), buildWeekView({ readings }));
     renderAt(SESSION_PATH);
 
-    expect((await screen.findByText(/h visible/)).textContent).toBe(
+    expect((await screen.findByText(/blocks ·/)).textContent).toBe(
       wholeBandLine(readings.blockCount, `${thisWeek} days unconfirmed`),
     );
     expect(await screen.findByText(/5 confirmed days and 1 unconfirmed/)).toBeVisible();

@@ -180,15 +180,24 @@ describe("the keys that change the week", () => {
   });
 });
 
+/** The one level the band's segment marks as drawn, which is where a cycled level becomes visible. */
+function pickedLevel(): string | undefined {
+  return (
+    document.querySelector('fieldset[aria-label="Visible hours"] [aria-pressed="true"]')
+      ?.textContent ?? undefined
+  );
+}
+
 describe("z cycles the visible hours", () => {
-  it("moves to the next level of the ladder and says so in the band", async () => {
+  it("moves to the next available level and marks it in the band's segment", async () => {
     await renderWeek();
-    expect(screen.getByText(/12h visible/)).toBeInTheDocument();
+    expect(pickedLevel()).toBe("12h");
 
     await userEvent.keyboard("z");
 
-    /* The ladder is 6, 9, 12, 16, 20, 24 and the grid clamps whatever it is given to what this display can hold. */
-    expect(screen.getByText(/16h visible/)).toBeInTheDocument();
+    /* The walk is hourly through the levels this display can draw, and the fixture's stored 12 has every level to
+     * the cap 16 available, so one press lands on the next hour rather than on a ladder rung. */
+    expect(pickedLevel()).toBe("13h");
   });
 });
 

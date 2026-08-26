@@ -40,9 +40,10 @@ import {
  * the extent is 960 minutes and every column's canvas is that many minutes of pixels. */
 const EXTENT_MINUTES = 16 * 60;
 
-/** The band's own line: the block count, the unconfirmed days, and the zoom reading, as a reader reads them. */
+/** The band's own line: the block count and the unconfirmed days, as a reader reads them. The zoom level the band
+ * draws lives in the segment beside this line, not in it. */
 async function bandLine(): Promise<string> {
-  return (await screen.findByText(/h visible/)).textContent ?? "";
+  return (await screen.findByText(/blocks ·/)).textContent ?? "";
 }
 
 describe("the week the reader asked for", () => {
