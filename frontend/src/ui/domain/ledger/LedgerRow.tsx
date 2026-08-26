@@ -10,8 +10,10 @@
  * test could pin to a zone. The same rule makes today a prop on the calendar.
  *
  * The Area is passed as its name and its ramp step rather than as a chip, so the row cannot be given a chip
- * without one. `AreaChip` refuses that at the typecheck; passing the pair keeps the refusal one hop closer to the
- * data. A routine carries no Area at all, and its column is simply empty.
+ * without one. `AreaChip` refuses that at the typecheck; passing the pair keeps the refusal one hop closer to
+ * the data. A routine carries no Area at all, and its column is simply empty. A row can also carry a name whose
+ * ramp step is gone: the name draws alone, because the name is what identifies an Area past the ramp's twelve
+ * steps, and a chip without a step would be a colour this kit invented.
  *
  * THE BORDERED BOX AROUND A RUN OF ROWS IS THE CALLER'S `Panel`. A row draws itself and its hairline; the block's
  * border and raised fill keep the one definition the layout layer gives them.
@@ -29,8 +31,8 @@ import "./ledger.css";
 
 export interface LedgerRowArea {
   readonly name: string;
-  /** From `areaPigment(area.pigmentIndex)`. */
-  readonly pigment: AreaPigment;
+  /** From `areaPigment(area.pigmentIndex)`. Absent where the ramp holds no step for the named Area. */
+  readonly pigment?: AreaPigment | undefined;
 }
 
 export interface LedgerRowProps {
@@ -64,7 +66,11 @@ export function LedgerRow({
       <span className="ledger__time">{timeRange}</span>
       <span className="ledger__duration">{duration}</span>
       <span className="ledger__area">
-        {area === undefined ? null : <AreaChip name={area.name} pigment={area.pigment} />}
+        {area === undefined ? null : area.pigment === undefined ? (
+          area.name
+        ) : (
+          <AreaChip name={area.name} pigment={area.pigment} />
+        )}
       </span>
       <span className="ledger__title">{title}</span>
       <span className="ledger__outcome">{children}</span>

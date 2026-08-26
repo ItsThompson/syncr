@@ -39,6 +39,22 @@ describe("a ledger row", () => {
     expect(container.querySelector(".area-chip")).toHaveClass("bg-area-01");
   });
 
+  /* A name can outlive its ramp step: the row draws the name alone rather than losing both, and never
+     invents a chip for a step the caller did not hand it. */
+  it("draws the name alone where the Area carries no pigment", () => {
+    const { container } = render(
+      <LedgerRow
+        timeRange="13:30-17:00"
+        duration="3h 30m"
+        title="Leetcode · DP"
+        area={{ name: "Career" }}
+      />,
+    );
+
+    expect(screen.getByText("Career")).toBeInTheDocument();
+    expect(container.querySelector(".area-chip")).toBeNull();
+  });
+
   it("leaves the Area column empty for a routine, which carries no Area at all", () => {
     const { container } = render(
       <LedgerRow timeRange="05:15-05:30" duration="15m" title="Wake up" />,
