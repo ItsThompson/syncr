@@ -46,9 +46,20 @@ from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
-from syncr_api.solving.config import FAILED, MAX_ATTEMPTS, PAST_DISAGREEMENT, PENDING, SUCCEEDED
+from syncr_api.solving.config import (
+    FAILED,
+    MAX_ATTEMPTS,
+    PAST_DISAGREEMENT,
+    PENDING,
+    SOLVE,
+    SUCCEEDED,
+)
 from syncr_api.solving.dispatch import SolveDispatch
 from syncr_api.solving.injection import build_solve_coordinator, debounce_window
+from syncr_api.solving.lifecycle import OperationLifecycle
+from syncr_api.solving.queue import OperationQueue
+from syncr_api.solving.repository import OperationRepository
+from syncr_api.solving.runner import SolveRunner
 from syncr_api.tasks.repository import TaskRepository
 from syncr_api.templates.declarations import SlotEntry
 from syncr_api.templates.repository import (
@@ -62,6 +73,7 @@ from syncr_domain.feasibility import Provenance, Verdict
 from syncr_domain.gaps import EmptySlotReason
 from syncr_domain.identity import Origin, is_placed_by_the_solver
 from syncr_domain.intervals import Interval, has_started
+from syncr_domain.plan import RevisionReason
 from syncr_domain.tasks import Priority
 from syncr_domain.templates import EntrySpan, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
@@ -201,12 +213,14 @@ async def materialize_the_current_week(
     clock: Ticking,
     tenant_id: TenantId,
 ) -> tuple[IsoWeek, ...]:
-    """Duty 1 of the horizon runner, over every tenant, at the frozen instant.
+    """Duty 1 of the horizon runner over every tenant, at the frozen instant.
 
-    The maintainer plans each week inside the horizon that holds no plan, which for a fresh tenant
-    is all of them starting with the current one.
+    The maintainer asks for each week inside the horizon that holds no plan -- for a fresh tenant,
+    all of them starting with the current one. The clock then moves past the debounce window, so
+    what the pass asked for is due and a claim takes THIS week's own operation first.
     """
     planned = await PlanHorizonRunner(clock=clock).plan(context, now=clock())
+    clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
     return planned.weeks.get(tenant_id, ())
 
 
@@ -245,12 +259,13 @@ async def a_solve(
             debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
         ).request_solve(WEEK, 1, immediate=True, session_mode_active=False)
     async with sessions() as session, session.begin():
-        claim = await build_solve_coordinator(
-            session,
-            owner.tenant_id,
-            clock=clock,
-            debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
-        ).claim_next()
+        # The horizon pass leaves the week's siblings queued beside this one, so the claim names
+        # the week under test rather than taking whichever due operation is oldest.
+        due = await OperationQueue(session, owner.tenant_id).due(kind=SOLVE, at=clock())
+        (mine,) = [one for one in due if one.iso_week == WEEK]
+        claim = await OperationLifecycle(
+            OperationRepository(session, owner.tenant_id), clock
+        ).claim(mine.id)
     assert claim is not None
     dispatch = SolveDispatch(
         context.database,
@@ -409,17 +424,22 @@ class TestTheFirstSolveOfTheCurrentWeek:
         owner: UserRecord,
         clock: Ticking,
     ) -> None:
-        """Duty 1 resolves the week the clock is standing in, and its plan says who produced it."""
+        """Duty 1 resolves the week the clock is standing in, and its plan says who produced it.
+
+        The pass asks and the drain answers, so every row says a solve wrote it -- which is what
+        the horizon's own cadence produces now.
+        """
         await declare_the_week(sessions, owner)
 
         resolved = await materialize_the_current_week(context, clock, owner.tenant_id)
+        await SolveRunner(clock=clock).drain(context)
 
         assert WEEK in resolved
         # The runner contains a week's fault behind a tally, so a silent assembly failure would
         # look exactly like a week that needed no plan. Read the rows rather than trust the tally:
-        # the whole fresh horizon is planned, and every row says the runner, not a solve, wrote it.
+        # the whole fresh horizon holds a plan, and every row names the fill that produced it.
         reasons = await revision_reasons(sessions, owner)
-        assert reasons and set(reasons) == {"horizon_advanced"}
+        assert reasons and set(reasons) == {RevisionReason.AUTO_APPLIED_FILL.value}
 
     async def test_the_operation_reaches_succeeded(
         self,

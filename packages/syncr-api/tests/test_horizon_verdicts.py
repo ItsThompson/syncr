@@ -45,7 +45,12 @@ from sqlalchemy import func, select, update
 
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.core.db import create_database, create_db_engine, create_sessionmaker
-from syncr_api.core.settings import WORKER_SERVICE, EnvSettings, build_service_settings
+from syncr_api.core.settings import (
+    DEFAULT_SOLVE_DEBOUNCE_MS,
+    WORKER_SERVICE,
+    EnvSettings,
+    build_service_settings,
+)
 from syncr_api.horizon.config import MAINTAINER_INTERVAL, MaintainerDuty
 from syncr_api.horizon.metrics import TransitionDirection
 from syncr_api.horizon.runner import PlanHorizonRunner
@@ -57,13 +62,16 @@ from syncr_api.plans.facts import VerdictEvent
 from syncr_api.plans.models import PlanRevision
 from syncr_api.plans.surfaces import VerdictSurface
 from syncr_api.plans.verdict_events import VerdictEventRepository
+from syncr_api.solving.injection import debounce_window
+from syncr_api.solving.runner import SolveRunner
+from syncr_api.tasks.repository import TaskRepository
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
 from syncr_domain.feasibility import Provenance, ShortfallKind
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import RevisionReason
+from syncr_domain.tasks import Priority
 from tests.live_horizons import (
-    AREA_FLOOR_HOURS,
     AUCKLAND,
     CAPACITY_LEFT_MINUTES,
     LATE_IN_THE_WEEK,
@@ -72,8 +80,8 @@ from tests.live_horizons import (
     THIRD_WEEK,
     THIS_WEEK,
     Ticking,
-    declare_the_minimum,
 )
+from tests.live_minimums import AREA_FLOOR_HOURS, declare_the_minimum
 from tests.live_tenants import delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -144,24 +152,75 @@ async def a_tick(context: WorkerContext, clock: Ticking) -> VerdictPass:
     now = clock()
     runner = PlanHorizonRunner(clock=clock)
     planned = await runner.plan(context, now=now)
+    # The pass leaves requests, not plans. The worker's solve duty realizes them within one loop
+    # of the debounce window, which is the step between duty 1 asking for a week and duty 2
+    # probing it; a suite that probed without it would be driving a horizon nobody solved.
+    clock.advance(debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS))
+    await SolveRunner(clock=clock).drain(context)
     return await runner.record_transitions(context, planned.weeks, now=now)
+
+
+async def declared(
+    sessions: async_sessionmaker[AsyncSession],
+    tenant_id: TenantId,
+    *,
+    home_zone: str = "Europe/London",
+) -> None:
+    """The minimum, plus work in a SECOND, floorless Area that a solved week can hold.
+
+    A solve of a week with nothing to place adopts nothing, and this suite's probe reads the
+    live revision, so every tenant here declares content beside the minimum. The work sits in an
+    Area with no floor deliberately: a placed block honours part of its own Area's floor, so a
+    Career task would shrink the very gap the infeasible flips are asserted against.
+    """
+    await declare_the_minimum(sessions, tenant_id, home_zone=home_zone)
+    async with sessions() as session, session.begin():
+        areas = AreaRepository(session, tenant_id)
+        health = await areas.create(
+            parent_id=None,
+            name="Health",
+            pigment_index=2,
+            budget_percent=Decimal(10),
+            floor_hours=Decimal(0),
+            created_at=NOW,
+        )
+        await TaskRepository(session, tenant_id).create(
+            area_id=health.id,
+            project_id=None,
+            title="Swim laps",
+            estimate_minutes=120,
+            deadline=None,
+            priority=Priority.NORMAL,
+            min_chunk_minutes=30,
+            splittable=True,
+            created_at=NOW,
+        )
 
 
 async def transitions_of(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId, iso_week: IsoWeek = THIS_WEEK
 ) -> list[VerdictEventRecord]:
-    """One week's transitions, oldest first, read back through the repository that wrote them."""
+    """One week's MAINTAINER transitions, oldest first.
+
+    A solve now lands between duty 1 and duty 2 of one tick, and a completed solve records its
+    own verdict on the SOLVE surface beside these rows. Duty 2's rows are what this suite reads.
+    """
     async with sessions() as session:
-        return await VerdictEventRepository(session, tenant_id).for_week(iso_week)
+        found = await VerdictEventRepository(session, tenant_id).for_week(iso_week)
+        return [one for one in found if one.surface == VerdictSurface.MAINTAINER.value]
 
 
 async def every_transition(
     sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
 ) -> list[VerdictEvent]:
+    """Every MAINTAINER-surface row, for the same reason ``transitions_of`` filters."""
     async with sessions() as session:
         found = await session.scalars(
             select(VerdictEvent)
-            .where(VerdictEvent.tenant_id == tenant_id)
+            .where(
+                VerdictEvent.tenant_id == tenant_id,
+                VerdictEvent.surface == VerdictSurface.MAINTAINER.value,
+            )
             .order_by(VerdictEvent.iso_week, VerdictEvent.occurred_at)
         )
         return list(found)
@@ -246,7 +305,7 @@ async def test_a_week_becomes_impossible_with_no_user_action_and_the_flip_is_rec
     is asserted as a figure rather than as a sign, because a shortfall recorded from the wrong frame
     would still be positive.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     early = Ticking(NOW)
     await a_tick(context, early)
     assert await every_transition(sessions, owner.tenant_id) == [], (
@@ -265,7 +324,7 @@ async def test_a_week_becomes_impossible_with_no_user_action_and_the_flip_is_rec
     assert one.provenance is Provenance.PROBE
     assert one.surface is VerdictSurface.MAINTAINER
     assert one.session_mode_active is False
-    assert one.shortfall_minutes == EXPECTED_GAP_MINUTES
+    assert one.largest_gap_minutes == EXPECTED_GAP_MINUTES
     assert ShortfallKind.FLOORS_EXCEED_CAPACITY in one.shortfall_kinds
     assert one.caused_by_operation_id is None
     assert maintainer_transitions(TransitionDirection.TO_INFEASIBLE) == before + 1
@@ -279,7 +338,7 @@ async def test_the_transition_is_recorded_within_one_tick_of_the_week_becoming_i
     Driven as the runner schedules it rather than by calling the pass twice: the second tick is due
     exactly one interval after the first, and the row it writes is stamped with that instant.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     became_impossible_at = LATE_IN_THE_WEEK - timedelta(minutes=1)
     clock = Ticking(became_impossible_at - MAINTAINER_INTERVAL)
     runner = PlanHorizonRunner(clock=clock)
@@ -303,7 +362,7 @@ async def test_a_second_tick_that_finds_the_same_verdict_writes_nothing(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
     """A verdict recomputed identically is not news, which is what makes the cadence free."""
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     await a_tick(context, clock)
     assert len(await transitions_of(sessions, owner.tenant_id)) == 1
@@ -323,7 +382,7 @@ async def test_a_week_the_maintainer_finds_healthy_is_never_recorded(
     tick after it. Recording it would put one row per horizon week per tenant into a corpus nothing
     ever prunes, and none of them would carry a discovery.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(NOW)
 
     await a_tick(context, clock)
@@ -342,7 +401,7 @@ async def test_the_close_of_an_episode_is_recorded_too(
     Areas route changes a declaration and asks for a solve, and nothing on that path probes. So the
     week's recovery has no mutation to attach to either, and this duty is what records it.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     await a_tick(context, clock)
     before = maintainer_transitions(TransitionDirection.TO_FEASIBLE)
@@ -353,7 +412,7 @@ async def test_the_close_of_an_episode_is_recorded_too(
 
     recorded = await transitions_of(sessions, owner.tenant_id)
     assert [one.feasible for one in recorded] == [False, True]
-    assert recorded[1].shortfall_minutes == 0
+    assert recorded[1].largest_gap_minutes == 0
     assert recorded[1].shortfall_kinds == ()
     assert maintainer_transitions(TransitionDirection.TO_FEASIBLE) == before + 1
 
@@ -372,7 +431,7 @@ async def test_the_tick_after_a_solve_adds_no_provenance_only_row(
     the maintainer does NEXT: it probes the same impossible week, reaches ``probe`` provenance, and
     must write nothing. A periodic re-confirmation is not a discovery.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     await a_tick(context, clock)
     confirmed = await _seed_a_solver_row(sessions, owner.tenant_id, at=clock())
@@ -396,7 +455,7 @@ async def _seed_a_solver_row(
                 occurred_at=at,
                 provenance=Provenance.SOLVER,
                 feasible=False,
-                shortfall_minutes=EXPECTED_GAP_MINUTES,
+                largest_gap_minutes=EXPECTED_GAP_MINUTES,
                 shortfall_kinds=(ShortfallKind.FLOORS_EXCEED_CAPACITY,),
                 surface=VerdictSurface.SOLVE,
                 session_mode_active=False,
@@ -421,7 +480,7 @@ async def test_every_transition_one_tick_records_carries_the_ticks_own_instant(
     read the clock per week would stamp each row differently, and a tick's transitions would then be
     evaluated against several instants.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     await declare_a_fortnight_away(sessions, owner.tenant_id)
     clock = Ticking(NOW)
 
@@ -452,7 +511,7 @@ async def test_one_weeks_failure_does_not_lose_another_weeks_transition(
     a duty failing on every week would leave both transition counters at zero, which reads exactly
     like a tick on which nothing changed.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     await declare_a_fortnight_away(sessions, owner.tenant_id)
     before = method_errors("horizon_verdicts", "record")
     real = VerdictEventRepository.append
@@ -485,7 +544,7 @@ async def test_a_failure_after_the_append_leaves_no_row(
     The counter increment is the one statement that follows the append, so failing it is the
     reachable way to ask whether the row was already committed. It must not be.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
 
     with patch(
@@ -525,7 +584,7 @@ async def test_the_verdict_duty_is_timed_under_its_own_label(
     sessions: async_sessionmaker[AsyncSession], owner: UserRecord, context: WorkerContext
 ) -> None:
     """Labeled by duty, because duty 2 assembles every planned week and duty 1 skips it."""
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(NOW)
     runner = PlanHorizonRunner(clock=clock)
     await runner(context)  # the first tick schedules
@@ -556,7 +615,7 @@ async def test_the_assemblies_duty_2_performs_are_visible_on_the_assembly_histog
     "maintainer"}`` is what makes them visible, so the figure an operator would read before
     shortening the interval is asserted to move once per week probed.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     runner = PlanHorizonRunner(clock=clock)
     planned = await runner.plan(context, now=LATE_IN_THE_WEEK)
@@ -585,7 +644,7 @@ async def test_a_tenant_far_east_probes_the_week_its_own_date_names(
     1's: what this asserts is that duty 2 probes the weeks that list holds rather than re-deriving
     them.
     """
-    await declare_the_minimum(sessions, owner.tenant_id, home_zone=AUCKLAND)
+    await declared(sessions, owner.tenant_id, home_zone=AUCKLAND)
     # Sunday 22:00 UTC is Monday 11:00 in Auckland, so the local date is already in W08 while the
     # UTC date is still in W07.
     clock = Ticking(LATE_IN_THE_WEEK)
@@ -630,7 +689,7 @@ async def test_the_transition_is_the_same_whatever_produced_the_live_plan(
     A change to duty 1's producer moves the revision reason with it. This is the assertion that says
     such a change cannot reach duty 2: the same transition is recorded under either reason.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
     planned = await PlanHorizonRunner(clock=clock).plan(context, now=clock())
     async with sessions() as session, session.begin():
@@ -646,7 +705,7 @@ async def test_the_transition_is_the_same_whatever_produced_the_live_plan(
 
     (one,) = await transitions_of(sessions, owner.tenant_id)
     assert one.feasible is False
-    assert one.shortfall_minutes == EXPECTED_GAP_MINUTES
+    assert one.largest_gap_minutes == EXPECTED_GAP_MINUTES
 
 
 async def test_the_counter_the_metric_job_reads_carries_the_surface_and_the_direction(
@@ -657,7 +716,7 @@ async def test_the_counter_the_metric_job_reads_carries_the_surface_and_the_dire
     Read out of the registry as a scraper reads it, so what is asserted is the exposition rather
     than a call.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     before = recorded_transitions(surface=VerdictSurface.MAINTAINER, feasible=False)
 
     await a_tick(context, Ticking(LATE_IN_THE_WEEK))
@@ -673,7 +732,7 @@ async def test_the_rows_a_week_holds_are_counted_by_the_query_the_metric_job_wil
     The repository is what wrote them, so counting through it could agree with itself about a row
     that is not there.
     """
-    await declare_the_minimum(sessions, owner.tenant_id)
+    await declared(sessions, owner.tenant_id)
     clock = Ticking(LATE_IN_THE_WEEK)
 
     await a_tick(context, clock)

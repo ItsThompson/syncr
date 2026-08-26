@@ -1,25 +1,29 @@
-"""Duty 1 against a real Postgres: the plan that exists because time passed.
+"""Duty 1 against a real Postgres: the week a solve is asked for because time passed.
 
 This is the checkpoint's headline capability and it has no other producer, so what it does has to be
-driven end to end rather than through fakes: the pass reads eight tables, appends a revision through
-the real append-only repository, and leaves an operation and a projection behind.
+driven end to end rather than through fakes: the pass reads eight tables, tracks each horizon week
+by bumping its input version, and leaves one pending solve per week behind -- and no plan of its
+own. The plan arrives when the worker's solve duty drains the queue.
 
-Six groups.
+Seven groups.
 
-**A week nobody has touched gets a plan.** The revision's reason is ``horizon_advanced``, an
-operation of kind ``materialize`` records that it happened, the week's input version is bumped
-because the live plan is a solve input, and a projection is queued.
+**A week nobody has touched gets a solve requested.** No revision and no ``materialize`` operation:
+what the pass leaves behind is one pending ``solve`` per week, due one debounce window later, and a
+version row that makes the week tracked.
+
+**One maintainer tick then one solve tick leaves Area slots filled.** The drain runs the real
+dispatch over what the pass asked for; the document the adoption appends binds content into every
+slot the clock had not reached, which a materialization never does.
 
 **It is idempotent.** A second pass creates no operation and appends no revision, which is what
 makes a fifteen-minute cadence free.
 
-**One instant, and chronological order.** Every revision a pass appends carries the same
-``created_at``, because ``now`` is read once; and the weeks are planned oldest first, which is what
-matters on first run.
+**One instant, and chronological order.** Every version row a pass stamps carries the same instant,
+because ``now`` is read once; and the weeks are asked for oldest first, which is what matters on
+first run.
 
-**Minimum inputs missing does nothing.** Guessing at a plan without Areas would be worse than
-showing why one cannot exist, so no operation and no revision appear, and the gauge says the horizon
-has a hole.
+**Minimum inputs missing asks for nothing.** A solve without Areas would fail at load time with
+less to say than the pass can say now, so no operation appears, and the gauge says there is a hole.
 
 **The horizon's length is the write target's.** Widening it brings the newly covered weeks in on the
 next tick and bumps their input versions.
@@ -31,10 +35,10 @@ between weeks is not a mutation.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,6 +57,7 @@ from syncr_api.core.db import (
 )
 from syncr_api.core.settings import (
     API_PREFIX,
+    DEFAULT_SOLVE_DEBOUNCE_MS,
     DEV_ALLOWED_ORIGINS,
     WORKER_SERVICE,
     EnvSettings,
@@ -63,20 +68,39 @@ from syncr_api.horizon.maintainer import HorizonPass, PlanHorizonMaintainer
 from syncr_api.horizon.runner import PlanHorizonRunner
 from syncr_api.horizon.weeks import next_local_midnight
 from syncr_api.learned.repository import WeightSetRepository
-from syncr_api.plans.models import PlanRevision
+from syncr_api.plans.models import PlanRevision, WeekInputVersion
 from syncr_api.plans.production import WeekProducer
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import plan_document
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.config import MATERIALIZE, PENDING, PROJECTION, SUCCEEDED
+from syncr_api.solving.config import (
+    FAILED,
+    MATERIALIZE,
+    MAX_ATTEMPTS,
+    PENDING,
+    PROJECTION,
+    SOLVE,
+    SUCCEEDED,
+)
+from syncr_api.solving.injection import debounce_window
 from syncr_api.solving.models import Operation
 from syncr_api.solving.repository import OperationRepository
-from syncr_api.templates.repository import DayTypeRepository, WeekPatternRepository
+from syncr_api.solving.runner import SolveRunner
+from syncr_api.tasks.repository import TaskRepository
+from syncr_api.templates.declarations import SlotEntry
+from syncr_api.templates.repository import (
+    DayTypeRepository,
+    TemplateRepository,
+    WeekPatternRepository,
+)
 from syncr_api.user_settings.models import Settings
 from syncr_api.worker.main import WorkerContext
 from syncr_common.metrics import REGISTRY
+from syncr_domain.gaps import EmptySlotReason
+from syncr_domain.intervals import Interval
 from syncr_domain.plan import RevisionReason
-from syncr_domain.templates import WeekPattern
+from syncr_domain.tasks import Priority
+from syncr_domain.templates import EntrySpan, WeekPattern
 from syncr_domain.weeks import Weekday
 from tests.boundaries import read_paths
 from tests.live_horizons import (
@@ -89,8 +113,8 @@ from tests.live_horizons import (
     THIS_WEEK,
     Ticking,
     declare_a_write_target,
-    declare_the_minimum,
 )
+from tests.live_minimums import declare_the_minimum
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 
 if TYPE_CHECKING:
@@ -109,6 +133,21 @@ BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 # A fortnight from a Monday touches two weeks; three weeks needs one more day than the fortnight's
 # last, so 15 days is the shortest widening that brings a third week in.
 THREE_WEEKS_OF_DAYS = 15
+
+# This deployment's window, as the coordinator schedules against it. A pass's requests are due one
+# window after they are made, so a drain that should claim them moves the clock past it first.
+DEBOUNCE: Final = debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+
+# The one shape every weekday carries in the solved-week group: one Career slot at ten o'clock, an
+# hour long, no band. The task beside it can take that duration, so the binding phase has something
+# to put in the slot and "the Area slots are filled" is a fact about content rather than an
+# absence of slots.
+SLOT_SPAN: Final = EntrySpan(target_time=time(10, 0), duration_minutes=60, flex_band_minutes=0)
+
+
+def _raising(*_args: Any, **_asked: Any) -> Any:
+    message = "the solver could not complete"
+    raise RuntimeError(message)
 
 
 @pytest.fixture
@@ -203,12 +242,99 @@ def _sample(family: str) -> float:
     return sample
 
 
+def _delta(family: str, labels: dict[str, str], around: float) -> float:
+    """A labeled counter's movement across one step, read as a scraper reads it.
+
+    Absent reads as zero rather than failing: a label whose child was never observed is the
+    still-at-zero case this function exists to measure.
+    """
+    after = REGISTRY.get_sample_value(family, labels)
+    return (0.0 if after is None else after) - around
+
+
+async def solves_of(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: TenantId
+) -> list[Operation]:
+    """Every solve operation of one tenant, in the order the pass created them."""
+    async with sessions() as session:
+        found = await session.scalars(
+            select(Operation)
+            .where(Operation.tenant_id == tenant_id, Operation.kind == SOLVE)
+            .order_by(Operation.scheduled_for)
+        )
+        return list(found)
+
+
+def solve_total(*, outcome: str) -> float:
+    """``syncr_solve_total`` for one ending, the counter the debounce is tuned from."""
+    value = REGISTRY.get_sample_value("syncr_solve_total", {"outcome": outcome})
+    return 0.0 if value is None else value
+
+
+def materialize_total(*, cause: str) -> float:
+    """``syncr_materialize_total`` for one cause; absent reads as zero, as a scraper sees it.
+
+    A labeled counter's child exists only once something has observed it, and a pass that no
+    longer materializes is exactly the case where the checkpoint label may never appear at all.
+    """
+    value = REGISTRY.get_sample_value("syncr_materialize_total", {"cause": cause})
+    return 0.0 if value is None else value
+
+
+async def declare_a_week_with_work(
+    sessions: async_sessionmaker[AsyncSession], owner: UserRecord
+) -> None:
+    """The minimum, plus a template slot per day and a task long enough to bind into it.
+
+    The minimum alone solves to a week with nothing to place, so a suite asserting about filled
+    Area slots declares the content the binding phase reads. Everything except the template and
+    the task is what ``declare_the_minimum`` already writes, and this adds to it rather than
+    restating it.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+    async with sessions() as session, session.begin():
+        areas = AreaRepository(session, owner.tenant_id)
+        (area,) = [one for one in await areas.list_all() if one.name == "Career"]
+        day_type = (await DayTypeRepository(session, owner.tenant_id).list_all())[0]
+        template = await TemplateRepository(session, owner.tenant_id).create(
+            day_type_id=day_type.id, name="Weekday", created_at=NOW
+        )
+        await TemplateRepository(session, owner.tenant_id).create_entry(
+            template_id=template.id,
+            span=SLOT_SPAN,
+            content=SlotEntry(span=SLOT_SPAN, area_id=area.id).content(),
+        )
+        await TaskRepository(session, owner.tenant_id).create(
+            area_id=area.id,
+            project_id=None,
+            title="Interview preparation",
+            estimate_minutes=15 * 60,
+            deadline=None,
+            priority=Priority.NORMAL,
+            min_chunk_minutes=30,
+            splittable=True,
+            created_at=NOW,
+        )
+
+
+async def a_solve_tick(context: WorkerContext, clock: Ticking) -> int:
+    """One run of the worker's solve duty over every tenant; answers how many it claimed."""
+    return (await SolveRunner(clock=clock).drain(context)).claimed
+
+
+def _maintainer(
+    session: AsyncSession, tenant_id: TenantId, clock: Ticking
+) -> PlanHorizonMaintainer:
+    """One maintainer, as this deployment composes it, for tests that drive one week directly."""
+    return PlanHorizonMaintainer(session, tenant_id, clock, debounce=DEBOUNCE)
+
+
 # --------------------------------------------------------------------------------
-# A week nobody has touched gets a plan
+# A week nobody has touched gets a solve requested
 # --------------------------------------------------------------------------------
 
 
-async def test_a_horizon_week_with_no_plan_is_planned(
+async def test_a_horizon_week_with_no_plan_is_asked_for(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
@@ -218,9 +344,10 @@ async def test_a_horizon_week_with_no_plan_is_planned(
 
     await a_pass(context, clock)
 
-    appended = await revisions_of(sessions, owner.tenant_id)
-    assert [row.iso_week for row in appended] == [str(THIS_WEEK), str(NEXT_WEEK)]
-    assert {row.reason for row in appended} == {RevisionReason.HORIZON_ADVANCED.value}
+    assert await revisions_of(sessions, owner.tenant_id) == []
+    asked = await solves_of(sessions, owner.tenant_id)
+    assert [one.iso_week for one in asked] == [str(THIS_WEEK), str(NEXT_WEEK)]
+    assert {one.status for one in asked} == {PENDING}
 
 
 def test_the_reason_a_maintained_week_states_is_not_the_one_a_fallback_states() -> None:
@@ -230,52 +357,50 @@ def test_the_reason_a_maintained_week_states_is_not_the_one_a_fallback_states() 
     assert len(reasons) == 2
 
 
-async def test_the_plan_it_appends_is_a_document_the_domain_can_rebuild(
+async def test_the_pass_performs_no_materialize_write_of_its_own(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """The one place a stored document is written by production code rather than by a test."""
+    """Producing a plan is the coordinator's job now, and the pass leaves its queue work behind.
+
+    Read off two faces. The operations table holds no ``materialize`` row, which is what a pass
+    that produced would leave beside its revision; and the checkpoint-labelled counter never
+    moves, which is what a scraper watching the deployment would have seen.
+    """
     await declare_the_minimum(sessions, owner.tenant_id)
+    checkpoints = materialize_total(cause="checkpoint")
 
     await a_pass(context, clock)
 
-    first, _next_week = await revisions_of(sessions, owner.tenant_id)
-    rebuilt = plan_document(first.document)
-    assert rebuilt.iso_week == THIS_WEEK
-    assert set(rebuilt.zone_by_date) == set(THIS_WEEK.dates())
-
-
-async def test_an_operation_records_that_the_week_was_materialized(
-    sessions: async_sessionmaker[AsyncSession],
-    owner: UserRecord,
-    context: WorkerContext,
-    clock: Ticking,
-) -> None:
-    await declare_the_minimum(sessions, owner.tenant_id)
-
-    await a_pass(context, clock)
-
-    materializations = [
+    assert [
         one for one in await operations_of(sessions, owner.tenant_id) if one.kind == MATERIALIZE
-    ]
-    assert len(materializations) == 2
-    assert {one.status for one in materializations} == {SUCCEEDED}
-    assert all(one.result_revision_id is not None for one in materializations)
-    assert all(one.started_at is not None for one in materializations), "it ran, so it was claimed"
+    ] == []
+    assert materialize_total(cause="checkpoint") == checkpoints
 
 
-async def test_a_projection_is_queued_for_each_week_it_planned(
+async def test_a_projection_is_queued_by_the_solve_the_pass_asked_for(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """The queue is the operations table, so the maintainer leaves work rather than doing it."""
-    await declare_the_minimum(sessions, owner.tenant_id)
+    """The queue is the operations table, so each duty leaves its own work in it.
+
+    The pass queues solves and nothing else; the projection appears when the solve adopts a plan,
+    which is why this reads after a drain rather than after a tick. The week declares work, so
+    the solve really changes the live plan, which is the condition the projection is under.
+    """
+    await declare_a_week_with_work(sessions, owner)
 
     await a_pass(context, clock)
+    assert [
+        one for one in await operations_of(sessions, owner.tenant_id) if one.kind == PROJECTION
+    ] == []
+
+    clock.advance(DEBOUNCE)
+    await a_solve_tick(context, clock)
 
     projections = [
         one for one in await operations_of(sessions, owner.tenant_id) if one.kind == PROJECTION
@@ -284,13 +409,17 @@ async def test_a_projection_is_queued_for_each_week_it_planned(
     assert {one.status for one in projections} == {PENDING}
 
 
-async def test_the_weeks_input_version_is_bumped_because_the_live_plan_changed(
+async def test_the_weeks_input_version_is_bumped_because_the_week_is_now_tracked(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """A week nobody had touched has no version row at all, so the plan is its first reference."""
+    """A week nobody had touched has no version row at all, so the request's bump is its first.
+
+    Tracking is the trigger's own write: every backlog-wide mutation after this enumerates from
+    this row, and the solve's guard compares against what it stamps.
+    """
     await declare_the_minimum(sessions, owner.tenant_id)
     async with sessions() as session:
         assert await WeekInputVersionRepository(session, owner.tenant_id).current(THIS_WEEK) is None
@@ -334,18 +463,17 @@ async def test_a_week_that_already_has_a_plan_is_skipped(
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """Skipped by a read of the live revision, which is one indexed read per horizon week."""
+    """Skipped by a read of the live revision, which is one indexed read per horizon week.
+
+    The plan is appended through the producer's own path, because a week whose solve is still
+    pending has no revision yet and would be asked about again -- correctly.
+    """
     await declare_the_minimum(sessions, owner.tenant_id)
     async with sessions() as session, session.begin():
-        tally = await PlanHorizonMaintainer(session, owner.tenant_id, clock).plan(
-            THIS_WEEK, now=NOW
-        )
-    assert tally.planned == 1
+        await _producer(session, owner.tenant_id, clock).advance_into(THIS_WEEK, now=NOW)
 
     async with sessions() as session, session.begin():
-        again = await PlanHorizonMaintainer(session, owner.tenant_id, clock).plan(
-            THIS_WEEK, now=NOW
-        )
+        again = await _maintainer(session, owner.tenant_id, clock).plan(THIS_WEEK, now=NOW)
 
     assert (again.already_planned, again.planned) == (1, 0)
 
@@ -355,7 +483,7 @@ async def test_a_week_that_already_has_a_plan_is_skipped(
 # --------------------------------------------------------------------------------
 
 
-async def test_every_revision_a_pass_appends_carries_one_instant(
+async def test_every_version_row_a_pass_stamps_carries_one_instant(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
@@ -363,16 +491,26 @@ async def test_every_revision_a_pass_appends_carries_one_instant(
 ) -> None:
     """``now`` is read once and passed down, so a tick's decisions share one instant.
 
-    The clock advances on every read, so a pass that read it per week would stamp each revision
+    The clock advances on every read, so a pass that read it per week would stamp each version row
     differently. At 00:00 those two readings would name different local dates, and the week brought
-    in would not be the week planned.
+    in would not be the week tracked.
     """
     await declare_the_minimum(sessions, owner.tenant_id)
 
     await a_pass(context, clock)
 
-    stamps = {row.created_at for row in await revisions_of(sessions, owner.tenant_id)}
-    assert len(stamps) == 1
+    async with sessions() as session:
+        versions = WeekInputVersionRepository(session, owner.tenant_id)
+        for week in (THIS_WEEK, NEXT_WEEK):
+            current = await versions.current(week)
+            assert current == 1
+            stamped = await session.scalar(
+                select(WeekInputVersion.updated_at).where(
+                    WeekInputVersion.tenant_id == owner.tenant_id,
+                    WeekInputVersion.iso_week == str(week),
+                )
+            )
+            assert stamped == NOW
 
 
 async def test_the_weeks_are_planned_oldest_first(
@@ -391,16 +529,11 @@ async def test_the_weeks_are_planned_oldest_first(
 
     await a_pass(context, clock)
 
+    # The clock advances per read, so each request's own ``scheduled_for`` records when within
+    # the pass it was made: ordering the operations by it reads the pass's order back.
     ordered = [
         one.iso_week
-        for one in sorted(
-            (
-                one
-                for one in await operations_of(sessions, owner.tenant_id)
-                if one.kind == MATERIALIZE
-            ),
-            key=lambda one: one.scheduled_for,
-        )
+        for one in sorted(await solves_of(sessions, owner.tenant_id), key=lambda o: o.scheduled_for)
     ]
     assert ordered == [str(THIS_WEEK), str(NEXT_WEEK), str(THIRD_WEEK)]
 
@@ -443,9 +576,7 @@ async def test_such_a_week_is_counted_as_not_ready_rather_than_as_a_failure(
         await WeightSetRepository(session, owner.tenant_id).seed_hand_tuned(at=NOW)
 
     async with sessions() as session, session.begin():
-        tally = await PlanHorizonMaintainer(session, owner.tenant_id, clock).plan(
-            THIS_WEEK, now=NOW
-        )
+        tally = await _maintainer(session, owner.tenant_id, clock).plan(THIS_WEEK, now=NOW)
 
     assert tally == HorizonPass(weeks=1, not_ready=1)
 
@@ -473,12 +604,13 @@ async def test_a_tenant_with_areas_but_no_day_shape_is_still_left_alone(
     assert await revisions_of(sessions, owner.tenant_id) == []
 
 
-async def test_the_gauge_sits_at_zero_once_every_horizon_week_is_planned(
+async def test_the_gauge_sits_at_zero_once_every_horizon_week_is_asked_for(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
+    """A requested week is the duty's work done; the solve's own queue is measured elsewhere."""
     await declare_the_minimum(sessions, owner.tenant_id)
 
     await a_pass(context, clock)
@@ -540,17 +672,19 @@ def _ticks_timed_under(duty: MaintainerDuty) -> float:
     return 0.0 if counted is None else counted
 
 
-async def test_a_tenant_whose_week_raises_does_not_stop_another_tenants(
+async def test_a_tenant_with_no_weight_set_has_its_weeks_requested_all_the_same(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     other_owner: UserRecord,
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """One week's fault is contained to that week, so the pass finishes and the rest are planned.
+    """The weights are a solve-time read, so readiness no longer turns on them.
 
-    The broken tenant has Areas and a day shape but no active weight set, which the producer refuses
-    rather than planning around: it is the reachable fault that is not a bug in this suite.
+    The pass asks on behalf of any tenant that can have a plan at all; whether the weights in force
+    can produce one is the solve's answer, and its failure path is that operation's own. Both
+    tenants here are readied and both get their weeks asked for, where the old producer refused the
+    weightless one outright.
     """
     await declare_the_minimum(sessions, owner.tenant_id)
     async with sessions() as session, session.begin():
@@ -571,9 +705,8 @@ async def test_a_tenant_whose_week_raises_does_not_stop_another_tenants(
 
     await a_pass(context, clock)
 
-    assert len(await revisions_of(sessions, owner.tenant_id)) == 2, "a fault stopped a good tenant"
-    assert await revisions_of(sessions, other_owner.tenant_id) == []
-    assert weeks_without_a_plan() == 2, "the broken tenant's two horizon weeks"
+    assert len(await solves_of(sessions, owner.tenant_id)) == 2
+    assert len(await solves_of(sessions, other_owner.tenant_id)) == 2
 
 
 async def test_the_gauge_does_not_grow_across_passes(
@@ -612,7 +745,7 @@ async def test_widening_the_horizon_brings_the_newly_covered_week_in_on_the_next
     await declare_the_minimum(sessions, owner.tenant_id)
     await declare_a_write_target(sessions, owner.tenant_id, horizon_days=HORIZON_DAYS_DEFAULT)
     await a_pass(context, clock)
-    assert [row.iso_week for row in await revisions_of(sessions, owner.tenant_id)] == [
+    assert [one.iso_week for one in await solves_of(sessions, owner.tenant_id)] == [
         str(THIS_WEEK),
         str(NEXT_WEEK),
     ]
@@ -623,7 +756,7 @@ async def test_widening_the_horizon_brings_the_newly_covered_week_in_on_the_next
         await sources.set_horizon(target.id, horizon_days=THREE_WEEKS_OF_DAYS)
     await a_pass(context, clock)
 
-    assert [row.iso_week for row in await revisions_of(sessions, owner.tenant_id)] == [
+    assert [one.iso_week for one in await solves_of(sessions, owner.tenant_id)] == [
         str(THIS_WEEK),
         str(NEXT_WEEK),
         str(THIRD_WEEK),
@@ -646,18 +779,18 @@ async def test_the_newly_covered_weeks_input_version_is_bumped_too(
         assert await versions.current(THIRD_WEEK) == 1
 
 
-async def test_a_tenant_with_no_write_target_still_has_its_weeks_planned(
+async def test_a_tenant_with_no_write_target_still_has_its_weeks_asked_for(
     sessions: async_sessionmaker[AsyncSession],
     owner: UserRecord,
     context: WorkerContext,
     clock: Ticking,
 ) -> None:
-    """The horizon falls back to the default, so planning does not wait on a projection bound."""
+    """The horizon falls back to the default, so asking does not wait on a projection bound."""
     await declare_the_minimum(sessions, owner.tenant_id)
 
     await a_pass(context, clock)
 
-    assert len(await revisions_of(sessions, owner.tenant_id)) == 2
+    assert len(await solves_of(sessions, owner.tenant_id)) == 2
 
 
 async def test_the_horizon_starts_on_the_tenants_local_date_rather_than_the_utc_one(
@@ -676,10 +809,119 @@ async def test_the_horizon_starts_on_the_tenants_local_date_rather_than_the_utc_
 
     await a_pass(context, Ticking(sunday_in_utc), now=sunday_in_utc)
 
-    assert [row.iso_week for row in await revisions_of(sessions, owner.tenant_id)] == [
+    assert [one.iso_week for one in await solves_of(sessions, owner.tenant_id)] == [
         str(THIS_WEEK),
         str(NEXT_WEEK),
     ]
+
+
+# --------------------------------------------------------------------------------
+# One maintainer tick, then one solve tick
+# --------------------------------------------------------------------------------
+
+
+async def test_one_tick_then_a_solve_tick_leaves_area_slots_filled(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """The composed result: the pass asks, the drain answers, and the slots hold content.
+
+    The declared week carries one Career slot per day and a task that can take it, so "filled" is
+    a fact about the binding phase rather than an absence of slots: every slot span ahead of the
+    clock appears among the blocks, and no empty slot says ``not_solved``, the materialized case
+    nobody looked at. The revision is the fill's own, not the maintainer's.
+    """
+    await declare_a_week_with_work(sessions, owner)
+
+    await a_pass(context, clock)
+    assert await revisions_of(sessions, owner.tenant_id) == []
+
+    clock.advance(DEBOUNCE)
+    claimed = await a_solve_tick(context, clock)
+    assert claimed == 2, "the pass asked for two weeks, so one drain claims both"
+
+    appended = {row.iso_week: row for row in await revisions_of(sessions, owner.tenant_id)}
+    assert set(appended) == {str(THIS_WEEK), str(NEXT_WEEK)}
+    assert {row.reason for row in appended.values()} == {RevisionReason.AUTO_APPLIED_FILL.value}
+    document = plan_document(appended[str(THIS_WEEK)].document)
+    placed = {block.interval for block in document.blocks}
+    monday = datetime.combine(THIS_WEEK.monday(), datetime.min.time(), tzinfo=UTC)
+    slot_spans = {
+        Interval(
+            monday + timedelta(days=day, hours=SLOT_SPAN.target_time.hour),
+            monday + timedelta(days=day, hours=SLOT_SPAN.target_time.hour + 1),
+        )
+        for day in range(7)
+    }
+    assert slot_spans <= placed
+    assert not any(slot.reason is EmptySlotReason.NOT_SOLVED for slot in document.empty_slots)
+
+
+async def test_the_solved_document_is_one_the_domain_can_rebuild(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """The stored document is written by production code, so it rebuilds through the domain."""
+    await declare_a_week_with_work(sessions, owner)
+
+    await a_pass(context, clock)
+    clock.advance(DEBOUNCE)
+    await a_solve_tick(context, clock)
+
+    (first, *_rest) = await revisions_of(sessions, owner.tenant_id)
+    rebuilt = plan_document(first.document)
+    assert rebuilt.iso_week == THIS_WEEK
+    assert set(rebuilt.zone_by_date) == set(THIS_WEEK.dates())
+
+
+async def test_syncr_solve_total_moves_for_a_tenant_that_never_mutated(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """Time passing alone reaches the counter the debounce is tuned from.
+
+    Nothing here drives a route or writes a declaration after the setup: the only acts are a
+    maintainer tick and a solve tick. If a solve ending shows up under those conditions, the
+    horizon's own cadence is part of what the supersession ratio counts.
+    """
+    await declare_a_week_with_work(sessions, owner)
+    before = solve_total(outcome=SUCCEEDED)
+
+    await a_pass(context, clock)
+    clock.advance(DEBOUNCE)
+    await a_solve_tick(context, clock)
+
+    assert solve_total(outcome=SUCCEEDED) > before
+
+
+async def test_phase_1_of_every_solve_still_materializes(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+) -> None:
+    """``materialize`` keeps its two remaining jobs; this is the first, asserted on its own label.
+
+    Every solve derives the frame, the commitments, the buffers and the day's shape before any
+    placement, labelled ``phase1``. The checkpoint label beside it stays still: that cause belongs
+    to a producer the horizon no longer is.
+    """
+    await declare_a_week_with_work(sessions, owner)
+    phase1 = materialize_total(cause="phase1")
+    checkpoints = materialize_total(cause="checkpoint")
+
+    await a_pass(context, clock)
+    clock.advance(DEBOUNCE)
+    await a_solve_tick(context, clock)
+
+    assert _delta("syncr_materialize_total", {"cause": "phase1"}, around=phase1) >= 2
+    assert _delta("syncr_materialize_total", {"cause": "checkpoint"}, around=checkpoints) == 0
 
 
 # --------------------------------------------------------------------------------
@@ -819,13 +1061,14 @@ async def test_counting_rows_would_have_caught_a_write(
     """The control on the assertion above: the same two counts DO move when work is done.
 
     Without this, a suite whose row counts were read from the wrong tenant would pass the read test
-    for the wrong reason.
+    for the wrong reason. The pass's own writes are the requests and their bumps, so it is the
+    operations count that has to move; revisions wait for the drain.
     """
     await declare_the_minimum(sessions, owner.tenant_id)
 
     await a_pass(context, clock)
 
-    assert await revisions_of(sessions, owner.tenant_id) != []
+    assert await revisions_of(sessions, owner.tenant_id) == []
     assert await operations_of(sessions, owner.tenant_id) != []
 
 
@@ -842,8 +1085,52 @@ def _sign_in(http: TestClient, email: str) -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------------
-# The plan of last resort
+# The plan of last resort, and the other job materialize still serves
 # --------------------------------------------------------------------------------
+
+
+async def test_the_plan_of_last_resort_still_follows_a_terminal_failure(
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserRecord,
+    context: WorkerContext,
+    clock: Ticking,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A week the pass asked for whose attempts are spent and that holds no plan is materialized.
+
+    This is ``materialize``'s second remaining job, asserted separately from phase 1: a solve
+    failing terminally over a planless week leaves no hole in the horizon. Every Area slot it
+    draws is unfilled, which is exactly what makes this history readable beside a fill's.
+    """
+    await declare_the_minimum(sessions, owner.tenant_id)
+    monkeypatch.setattr("syncr_api.solving.dispatch.solve", _raising)
+    solve_failed = materialize_total(cause="solve_failed")
+
+    await a_pass(context, clock)
+    finished: str = PENDING
+    for _attempt in range(MAX_ATTEMPTS):
+        clock.advance(DEBOUNCE)
+        await a_solve_tick(context, clock)
+        clock.advance(timedelta(hours=1))
+        (latest,) = [
+            one
+            for one in await solves_of(sessions, owner.tenant_id)
+            if one.iso_week == str(THIS_WEEK)
+        ]
+        finished = latest.status
+
+    assert finished == FAILED
+    appended = await revisions_of(sessions, owner.tenant_id)
+    assert {row.reason for row in appended} == {RevisionReason.MATERIALIZED.value}
+    fallbacks = {
+        one.iso_week: one.result_revision_id
+        for one in await operations_of(sessions, owner.tenant_id)
+        if one.kind == MATERIALIZE and one.status == SUCCEEDED
+    }
+    by_week = {row.iso_week: row.id for row in appended}
+    assert set(fallbacks) == set(by_week)
+    assert all(fallbacks[week] == revision for week, revision in by_week.items())
+    assert _delta("syncr_materialize_total", {"cause": "solve_failed"}, around=solve_failed) >= 2
 
 
 async def test_materialize_week_appends_its_own_reason(
@@ -955,8 +1242,8 @@ async def test_a_tenant_whose_zone_cannot_be_read_does_not_stop_another_tenants_
 
     await a_pass(context, clock)
 
-    assert len(await revisions_of(sessions, owner.tenant_id)) == 2, "a fault stopped a good tenant"
-    assert await revisions_of(sessions, other_owner.tenant_id) == []
+    assert len(await solves_of(sessions, owner.tenant_id)) == 2, "a fault stopped a good tenant"
+    assert await solves_of(sessions, other_owner.tenant_id) == []
     assert tenant_pass_failures() == before + 1
     assert weeks_without_a_plan() > 0, (
         "the gauge has to be set from what the pass DID reach, or the alert cannot fire for a "

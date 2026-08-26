@@ -43,7 +43,11 @@ from syncr_api.core.db import create_database, create_db_engine, create_sessionm
 from syncr_api.core.migrations import applied_revision, expected_head
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
-from syncr_api.core.settings import WORKER_SERVICE, build_service_settings
+from syncr_api.core.settings import (
+    DEFAULT_SOLVE_DEBOUNCE_MS,
+    WORKER_SERVICE,
+    build_service_settings,
+)
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.declarations import OffPlanDeclaration
@@ -62,6 +66,7 @@ from syncr_api.recovery.drill_target import NotTheDrillsDatabase, require_the_dr
 from syncr_api.recovery.drill_week import the_week_behind
 from syncr_api.recovery.fingerprint import Fingerprint, read_fingerprint
 from syncr_api.recovery.main import write_document
+from syncr_api.solving.injection import debounce_window
 from syncr_api.worker.main import WorkerContext
 from syncr_domain.weeks import IsoWeek
 from tests.conftest import UNREACHABLE_DATABASE_URL
@@ -408,9 +413,12 @@ class TestTheEvidenceTheFingerprintReads:
         await write_the_evidence(context, principal, now=NOW)
 
         async with sessions() as session, session.begin():
-            planned = await PlanHorizonMaintainer(session, principal.tenant_id, clock=utc_now).plan(
-                IsoWeek.containing(utc_now().date()), now=utc_now()
-            )
+            planned = await PlanHorizonMaintainer(
+                session,
+                principal.tenant_id,
+                clock=utc_now,
+                debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+            ).plan(IsoWeek.containing(utc_now().date()), now=utc_now())
         assert planned.planned == 1
         before = await _a_fingerprint(sessions, engine)
 

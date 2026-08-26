@@ -28,8 +28,8 @@ first. So a row unreadable here would be a live defect and not an artefact of th
 ## The cases, and what each is for
 
 1. The immediate solve, uncontended: the operation is readable at the response and stays readable.
-2. The same solve with a real horizon-maintainer transaction open across the request: contention on
-   the week changes nothing about the ordering.
+2. The same solve with a real production write of the week held open across it: contention on the
+   week changes nothing about the ordering.
 3. An uncommitted rival solve holding the single-flight index key: the api's write is refused and
    the route answers a fault, never an identifier.
 4. The forced calendar-source sync: the same readability, on the route whose operation both creates
@@ -71,12 +71,14 @@ from syncr_api.conflicts.config import CONFLICTS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
-from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.config import OFF_PLAN_PREFIX
+from syncr_api.plans.assembler import AssemblyCaller
 from syncr_api.plans.config import MOVED_RESOLUTION
 from syncr_api.plans.conflicts import Commitment, PlanConflictRepository
+from syncr_api.plans.injection import build_week_assembler
 from syncr_api.plans.overlaps import DetectedConflict
+from syncr_api.plans.production import WeekProducer
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
@@ -123,8 +125,8 @@ pytestmark = pytest.mark.integration
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 BASE_URL = "http://testserver"
 
-# The current week, because the horizon maintainer plans the weeks inside the horizon and this is
-# the first of them: the racing transaction below is the real maintainer pass over a real week.
+# The current week, because the weeks inside the horizon are the ones every writer here touches:
+# the racing transaction below is a real production append over this week.
 WEEK = IsoWeek.containing(datetime.now(UTC).date())
 
 # How long a racing transaction is given to reach the point it announces before a test gives up.
@@ -385,24 +387,31 @@ async def test_an_immediate_solve_names_a_row_readable_the_moment_it_answers(
 # ---------------------------------------------------------------------------
 
 
-async def a_maintainer_pass_held_open(
+async def a_production_write_held_open(
     sessions: async_sessionmaker[AsyncSession],
     tenant_id: TenantId,
     *,
     inside: asyncio.Event,
     release: asyncio.Event,
 ) -> None:
-    """One real horizon-maintainer pass, announcing that its transaction is open and then waiting.
+    """One real production write of the week, announcing its open transaction and then waiting.
 
-    `PlanHorizonMaintainer.plan` is the production call the worker's second duty makes, and it runs
-    in one transaction per week: it enqueues a `materialize` operation, claims it, assembles the
-    week, appends the revision, bumps the version and enqueues a `projection`. Held open here, every
-    one of those writes is uncommitted while the request under test runs, which is the loaded
-    database the failures were measured under.
+    ``WeekProducer.advance_into`` is the production path that appends a revision over the week's
+    own declarations, and it runs in one transaction: it enqueues a `materialize` operation, claims
+    it, assembles the week, appends the revision, bumps the version and enqueues a `projection`.
+    Held open here, every one of those writes is uncommitted while the request under test runs,
+    which is the loaded database the failures were measured under.
     """
     now = datetime.now(UTC)
     async with sessions() as session, session.begin():
-        await PlanHorizonMaintainer(session, tenant_id, lambda: now).plan(WEEK, now=now)
+        revisions = PlanRepository(session, tenant_id)
+        await WeekProducer(
+            assembler=build_week_assembler(session, tenant_id, caller=AssemblyCaller.MAINTAINER),
+            revisions=revisions,
+            versions=WeekInputVersionRepository(session, tenant_id),
+            weights=WeightSetRepository(session, tenant_id),
+            operations=OperationLifecycle(OperationRepository(session, tenant_id), lambda: now),
+        ).advance_into(WEEK, now=now)
         inside.set()
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(release.wait(), timeout=WINDOW)
@@ -416,31 +425,31 @@ async def a_plan_of_record_exists(
         return await PlanRepository(session, tenant_id).latest(WEEK) is not None
 
 
-async def test_a_solve_request_racing_a_maintainer_tick_answers_a_readable_row(
+async def test_a_solve_request_racing_a_production_write_answers_a_readable_row(
     watched: tuple[httpx.AsyncClient, dict[str, str], ResponseInstant],
     sessions: async_sessionmaker[AsyncSession],
     onlooker: async_sessionmaker[AsyncSession],
     owner: UserRecord,
 ) -> None:
-    """The maintainer's open transaction changes nothing about when the identifier is readable.
+    """A contending production write changes nothing about when the identifier is readable.
 
     Which is the measurement: the window is the route's own ordering, so contention on the week the
     tick is planning neither opens it nor widens it.
 
     The tick's own invisibility is asserted rather than described. Without it this case would pass
     whether or not a transaction was ever open, because the answer it makes is the answer the
-    uncontended case makes: the assertion that the maintainer's revision cannot be read while the
+    uncontended case makes: the assertion that the contender's revision cannot be read while the
     request runs is what makes this a race rather than a second copy of case 1.
     """
     client, headers, seen = watched
     inside, release = asyncio.Event(), asyncio.Event()
     tick = asyncio.create_task(
-        a_maintainer_pass_held_open(sessions, owner.tenant_id, inside=inside, release=release)
+        a_production_write_held_open(sessions, owner.tenant_id, inside=inside, release=release)
     )
     try:
         await asyncio.wait_for(inside.wait(), timeout=WINDOW)
         assert await a_plan_of_record_exists(onlooker, owner.tenant_id) is False, (
-            "the maintainer's revision was already readable, so its transaction had committed and "
+            "the contending revision was already readable, so its transaction had committed and "
             "nothing was raced"
         )
 
