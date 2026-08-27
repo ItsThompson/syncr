@@ -1,13 +1,5 @@
 # A solve is failing
 
-> **Partly a stub, and the reproduction is not yet runnable end to end.** The trigger, the mechanism
-> that makes a failure reproducible, and the retry and retention rules are settled and recorded below.
-> **The reproduction's FIRST step is unwritten**: nothing turns a stored snapshot back into the value
-> the solver takes, so the procedure under "Reproducing the failure locally" stops one step short.
-> **And nothing writes a snapshot yet**, so a query for failed solves today returns rows whose
-> snapshot is `null`. Both arrive with the solve runner and are named where they bite. Do not treat
-> the absence of those steps as the absence of a problem.
-
 ## Trigger
 
 - The `SolveFailing` alert fires. It watches solve failures over 30 minutes and is a **warning**, not
@@ -69,14 +61,11 @@ Take the `id`.
 
 ### Read the snapshot
 
-> **Today this prints `null`, and that is expected rather than a lost snapshot.** The only thing that
-> writes a snapshot is the solve runner, which does not exist yet: the column, its constraint, this
-> reader and the retention window are all in place ahead of it. A `null` here means no solve has
-> failed through the runner, not that a snapshot was dropped.
-
 The snapshot is deliberately absent from every ordinary read of an operation: it is a whole resolved
 week, and the wire shape and the worker both want the status and the attempt instead. It is read by
-identifier, and only by something that wants it.
+identifier, and only by something that wants it. A `null` here means no solve has failed through the
+runner, not that a snapshot was dropped: the column is written only on a terminal failure, which the
+table's own constraint enforces.
 
 ```
 docker compose exec worker python - <<'PY'
@@ -102,17 +91,26 @@ asyncio.run(read())
 PY
 ```
 
-### Call the solver on it
+### Rebuild the inputs
 
-> **This step needs the reader that does not exist.** `inputs` below is a `SolveInputs` value, and
-> the snapshot above is JSON. Nothing converts one to the other yet, so this snippet is the shape of
-> the call rather than a procedure you can run today.
+The snapshot is JSON and the solver takes a `SolveInputs` value. `inputs_of` is the reader that
+turns one into the other, and it is the mirror of the writer that stored the snapshot: it refuses a
+field it holds no form for, so a rebuilt value is the inputs that failed or a stated refusal, never
+a silently defaulted one.
+
+```python
+from syncr_api.solving.stored_inputs import inputs_of
+
+inputs = inputs_of(found)
+```
+
+### Call the solver on it
 
 The solver is pure: it performs no lookup, reads no clock, and draws on no randomness, so a snapshot
 plus a weight set is the whole input. Two solves of one snapshot produce one document, byte for byte.
 
-For the materialization path, which is what runs today, the call takes no weight set at all, because
-nothing is being chosen:
+For the materialization path, which is what runs when a terminal failure leaves a week with no plan,
+the call takes no weight set at all, because nothing is being chosen:
 
 ```python
 from syncr_solver import MaterializeCause, materialize
@@ -126,12 +124,6 @@ solver fault surfacing as a degraded plan rather than as an outage.
 
 ## Still to be written
 
-- **Writing a snapshot at all.** The producer is the solve runner: it holds the resolved inputs it
-  read, and it passes them to the terminal failure. Until then every failed operation's snapshot is
-  `null`.
-- **Rebuilding a `SolveInputs` value from the stored snapshot.** The snapshot is written as JSON and
-  the value has fourteen collections of member types with their own invariants; one of them, the plan
-  document, already has its codec. This is the reproduction procedure's first step.
 - The solver's own diagnosis: which constraint or which term to look at for a given exception.
 - What to do when a solve fails for a week whose inputs are legitimately unsatisfiable, which is the
   feasibility probe's answer rather than a fault.

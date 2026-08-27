@@ -187,23 +187,55 @@ class TestTheSolveFailingRunbook:
         """The horizon is never left with a hole: materialization's second permanent job."""
         assert "the horizon is never left with a hole" in read(SOLVE_FAILING)
 
-    def test_it_does_not_claim_the_reproduction_runs_today(self) -> None:
-        """The callout is the sentence a reader under pressure trusts, so it must not overclaim.
+    def test_it_does_not_claim_the_producer_is_missing(self) -> None:
+        """The reader and the writer both exist, so the runbook no longer says they do not.
 
-        It claimed the procedure was "complete" while its own "Still to be written" listed the first
-        step. An operator following it reached a script that prints ``null`` with no explanation.
+        The callout once warned the reproduction was not runnable and its first step was unwritten,
+        and the read step carried a block-quote saying the snapshot would print ``null`` because the
+        solve runner did not exist yet. Both arrived: ``inputs_of`` rebuilds the value and the solve
+        runner writes the snapshot on a terminal failure. A runbook that still says otherwise is one
+        an operator under pressure trusts, and it is wrong.
+
+        Bounded to the phrasings the tree really used, as the Google-token runbook's negative was:
+        a general check over unbounded wordings goes green the moment a writer picks a phrasing it
+        does not know.
         """
         text = read(SOLVE_FAILING)
 
-        assert "reproduction's FIRST step is unwritten" in text
-        assert "nothing writes a snapshot yet" in text.lower()
-        assert "reproduction procedure is complete" not in text
+        for lapsed in (
+            "reproduction's FIRST step is unwritten",
+            "nothing writes a snapshot yet",
+            "prints `null`",
+            "does not exist yet",
+            "reader that does not exist",
+            "Partly a stub",
+            "not yet runnable end to end",
+            "Writing a snapshot at all",
+        ):
+            assert lapsed not in text, (
+                f"the runbook still says {lapsed!r}, which the reader and the "
+                "solve runner made false"
+            )
+
+    def test_it_names_the_reader_that_rebuilds_the_inputs(self) -> None:
+        """The reproduction procedure's first step, named rather than left unwritten.
+
+        ``inputs_of`` is the mirror of the writer that stored the snapshot: it turns the JSON the
+        read step prints back into the ``SolveInputs`` value the solver takes, so the procedure has
+        no missing step.
+        """
+        text = read(SOLVE_FAILING)
+
+        assert "### Rebuild the inputs" in text
+        assert "inputs_of" in text
 
     def test_it_warns_where_the_null_snapshot_will_be_met(self) -> None:
-        """Beside the script that prints it, not only in the callout at the top."""
+        """Beside the script that meets it: a null is no failed solve, not a loss."""
         _before, _, after = read(SOLVE_FAILING).partition("### Read the snapshot")
+        section = after.split("###")[0]
 
-        assert "expected rather than a lost snapshot" in after.split("###")[0]
+        assert "no solve has failed" in section
+        assert "not that a snapshot was dropped" in section
 
 
 class TestTheGoogleTokenExpiredRunbook:
