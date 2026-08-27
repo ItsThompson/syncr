@@ -303,7 +303,18 @@ def test_a_placed_task_and_the_occurrence_that_drew_it_name_two_different_source
     """
     document = solved_reference().document
     tasks = [block for block in document.blocks if block.origin is Origin.TASK]
-    drawn = [block for block in document.blocks if block.title.startswith("Leetcode")]
+    # The occurrences that drew a task from the backlog, rather than the fixture's title: a habit
+    # block whose bound clause names the queue binding is the case that shares a task with a
+    # solver placement, whatever that week's backlog happened to name.
+    drawn = [
+        block
+        for block in document.blocks
+        if block.origin is Origin.HABIT
+        and any(
+            isinstance(clause, Bound) and clause.source is BindingSource.QUEUE
+            for clause in block.reason.clauses
+        )
+    ]
 
     def bound_sources(blocks: Sequence[Block]) -> set[BoundSource]:
         return {
