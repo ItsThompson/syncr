@@ -199,6 +199,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
   ShortfallRow: () => <domain.ShortfallRow shortfall={SHORTFALL} />,
   SidebarNav: () => <domain.SidebarNav screens={SCREENS} currentPath="/week" />,
   SidebarNavItem: () => <domain.SidebarNavItem screen={SCREENS[0]} isCurrent />,
+  SkipLink: () => <domain.SkipLink />,
   StackedBars: () => (
     <domain.StackedBars
       caption="Composition by week"

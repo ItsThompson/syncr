@@ -30,17 +30,20 @@ const LITERAL_IN_APP_HREF = /<a\s[^>]*href=\{?"\//;
 const RAW_ANCHOR = /<a\s[^>]*href=/;
 
 /**
- * The three components whose anchor is right, and why each one is.
+ * The four components whose anchor is right, and why each one is.
  *
  * A notice's action arrives on the notice, composed by the api, and may lead outside this product entirely: a Google
  * re-authorisation is the case that shapes it. Neither notice component can know where it is sending a reader, so
  * neither may assume a route. The consent panel is the other direction of the same fact: the destination is Google's
- * own authorization URL, minted by the api, and leaving this application is the whole point of following it.
+ * own authorization URL, minted by the api, and leaving this application is the whole point of following it. The skip
+ * link's destination is not a route at all but a fragment of the document already in memory, so there is nothing to
+ * reload and no router decision to make: a raw fragment anchor is the one spelling that does the job natively.
  */
 const RAW_ANCHORS_BY_DESIGN = [
   "routes/settings/components/GoogleConsentPanel.tsx",
   "ui/domain/notices/NoticePanel.tsx",
   "ui/domain/notices/NoticeStrip.tsx",
+  "ui/domain/shell/SkipLink.tsx",
 ];
 
 /** One source file, named by the tree it sits in, so a finding names a path a reader can open. */
@@ -70,7 +73,7 @@ describe("the application navigates without reloading", () => {
     ).toEqual([]);
   });
 
-  it("draws a raw anchor in exactly the three places whose destination is data", async () => {
+  it("draws a raw anchor in exactly the four places whose destination is not a route", async () => {
     const sources = await sourcesInEveryTree();
 
     expect(
