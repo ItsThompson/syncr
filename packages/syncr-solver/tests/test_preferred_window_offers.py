@@ -47,6 +47,8 @@ if TYPE_CHECKING:
 
     from syncr_domain.intervals import Interval
     from syncr_solver.inputs import SolveInputs
+    from syncr_solver.offering import Offer, Scored
+    from syncr_solver.weights import WeightSet
 
 WEDNESDAY = 2
 
@@ -232,13 +234,13 @@ def test_one_legal_offer_is_scored_per_start() -> None:
         ),
     )
     weights = hand_tuned_weights()
-    scored_calls = 0
+    scored_calls: int = 0
     original_scored = filling_module.scored
 
-    def counting_scored(offer, attempt, weights):
+    def counting_scored(offer: Offer, attempt: Attempt, weight_set: WeightSet) -> Scored:
         nonlocal scored_calls
         scored_calls += 1
-        return original_scored(offer, attempt, weights)
+        return original_scored(offer, attempt, weight_set)
 
     filling_module.scored = counting_scored
     try:
