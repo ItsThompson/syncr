@@ -3,6 +3,7 @@ export { HelpOverlay } from "./HelpOverlay";
 export { ShellLayout, type ShellLayoutProps } from "./ShellLayout";
 export { SidebarNav, type SidebarNavProps } from "./SidebarNav";
 export { SidebarNavItem, type SidebarNavItemProps } from "./SidebarNavItem";
+export { SkipLink } from "./SkipLink";
 export { TopBar, type TopBarProps } from "./TopBar";
 export { Wordmark } from "./Wordmark";
 export {

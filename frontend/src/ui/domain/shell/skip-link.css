@@ -1,0 +1,24 @@
+/* Layer 2: the skip link's two halves.
+ *
+ * AT REST THE LINK IS CLIPPED TO A ONE-PIXEL BOX rather than removed: `display: none` and `visibility:
+ * hidden` both take it out of the focus order, and the box it keeps is what makes it Tab-reachable
+ * before it is seen. Both figures are the token layer's --state-hidden-* names.
+ *
+ * THE REVEAL IS WRITTEN UNDER THE STATE SELECTOR, and restores geometry only. No pigment is spent, so
+ * nothing here depends on a colour forced-colors mode would strip; no outline is declared, because
+ * base.css draws the one ring anything focusable gets; and motion stays zero, without exception. */
+
+.skip-link {
+  position: absolute;
+  width: var(--state-hidden-size);
+  height: var(--state-hidden-size);
+  overflow: hidden;
+  clip-path: var(--state-hidden-clip);
+}
+
+.skip-link:focus-visible {
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}

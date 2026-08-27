@@ -21,6 +21,7 @@ import type { CommandAction } from "../../primitives";
 import { CommandPalette } from "./CommandPalette";
 import { HelpOverlay } from "./HelpOverlay";
 import { SidebarNav } from "./SidebarNav";
+import { SkipLink } from "./SkipLink";
 import { TopBar } from "./TopBar";
 import { SCREENS } from "./navigation";
 
@@ -48,6 +49,7 @@ export function ShellLayout({ notices }: ShellLayoutProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-paper text-ink">
+      <SkipLink />
       <TopBar notices={notices} />
       <div className="flex grow">
         <SidebarNav screens={SCREENS} currentPath={location.pathname} />
