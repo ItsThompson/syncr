@@ -2539,6 +2539,11 @@ export interface components {
             areaId: string | null;
             binding: components["schemas"]["BindingResponse"];
             /**
+             * Chunkpair
+             * @description The rendered 'N of M' pair for a divided task, derived from the pieces the document holds and their positions among them. Null when the task is whole. The count is the pieces the document holds and the position is the block's place among them, so a pin on a high chunk does not put a figure on the grid a reader cannot reconcile.
+             */
+            chunkPair: string | null;
+            /**
              * Id
              * @description A hash of the week and the binding, derived on read, so it is stable across reads and cannot name content it does not hold.
              */
@@ -3376,6 +3381,13 @@ export interface components {
          *     member of its own because nobody looked at the backlog, and every other member reports
          *     something a phase computed.
          *
+         *     ``no_eligible_content`` and ``no_fitting_content`` are the pair the backlog decides, and
+         *     each is a member of its own because they prompt opposite actions. The Area held nothing at
+         *     all for ``no_eligible_content``, and it held content for ``no_fitting_content`` but none of
+         *     it could take the slot's declared duration: one says the backlog is empty and the other says
+         *     it is full of the wrong size, and a user who cannot tell them apart cannot decide whether to
+         *     add content or to widen the slot.
+         *
          *     ``elapsed`` is the one the clock decides rather than the backlog. The week had already
          *     reached the slot when the solve ran, so no content could be placed into it and none will
          *     be: whether the Area had any is a question the span never got to ask.
@@ -3386,7 +3398,7 @@ export interface components {
          *     as time nothing ever claimed.
          * @enum {string}
          */
-        EmptySlotReason: "no_eligible_content" | "off_plan" | "blocked_by_constraint" | "not_solved" | "elapsed" | "dropped_leg";
+        EmptySlotReason: "no_eligible_content" | "no_fitting_content" | "off_plan" | "blocked_by_constraint" | "not_solved" | "elapsed" | "dropped_leg";
         /**
          * EmptySlotResponse
          * @description Discretionary time an Area was offered, and nothing filled.

@@ -142,6 +142,7 @@ export function buildBlock(overrides: Partial<Block> = {}): Block {
     interval: span(monday("09:00"), monday("10:30")),
     pinned: false,
     splitCount: null,
+    chunkPair: null,
     supersededPlacement: null,
     objectiveDelta: null,
     // A solver-placed block claims nothing about any feed, which null is the wire's way of saying.

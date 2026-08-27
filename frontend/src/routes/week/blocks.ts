@@ -11,10 +11,13 @@
  * time the product does not own, so neither has an Area to be charged to and neither takes a pigment. The top
  * rule says which of the two it is.
  *
- * A DIVIDED TASK'S `N OF M` PAIR IS NOT READ HERE. `splitCount` is the number of POSITIONS a division occupies
- * rather than the number of pieces the document holds, and a pin on a high chunk makes the two differ: a task
- * holding three pieces can carry a count of six. Rendering the pair before that is settled would put a figure on
- * the grid that a reader cannot reconcile with what they can see. */
+ * A DIVIDED TASK'S `N OF M` PAIR IS RENDERED SERVER-SIDE and carried on `chunkPair`. The pair is
+ * derived from the pieces the document holds and their positions among them, so the count is the
+ * pieces and the position is the block's place among them, not `splitIndex` or `splitCount`.
+ * `splitCount` is the number of POSITIONS a division occupies rather than the number of pieces the
+ * document holds, and a pin on a high chunk makes the two differ: a task holding three pieces can carry
+ * a count of six. The server renders the pair from the pieces, so no arithmetic over `splitIndex` or
+ * `splitCount` lives here. A task placed whole carries no pair. */
 
 import { areaPigment } from "../../ui/domain";
 import type { GridBlock } from "../../ui/domain";
