@@ -382,7 +382,8 @@ def improved_reference_week(budget: SolveBudget) -> Improved:
     Built at the budget it is descended under, the way ``solve`` builds it, and a real week rather
     than the ten-move fixture above: the bound earns its keep where a plan sits near its optimum and
     almost every remaining move is refused, and that fixture reaches its optimum inside a handful of
-    moves with no tail to speak of.
+    moves with no tail to speak of. Both arms of a comparison build at their own budget
+    symmetrically, so a difference in the descent is never confounded with one in the construction.
     """
     weights = hand_tuned_weights()
     return improve(
@@ -424,17 +425,19 @@ def test_the_rejection_bound_keeps_an_acceptance_that_sits_behind_a_long_run() -
 
 
 def test_a_full_rejection_run_stops_where_neither_the_budget_nor_the_checkpoint_does() -> None:
-    budget = SolveBudget(move_evaluations=1000, rejection_run=120, checkpoint_every=100)
+    run = SolveBudget().rejection_run
+    budget = SolveBudget(move_evaluations=1000, rejection_run=run, checkpoint_every=100)
 
-    assert _stop(5, 120, budget=budget, cancelled=never_cancelled) is True
+    assert _stop(5, run, budget=budget, cancelled=never_cancelled) is True
 
 
 def test_below_the_run_the_search_stops_on_nothing_but_its_budget_or_its_caller() -> None:
-    budget = SolveBudget(move_evaluations=1000, rejection_run=120, checkpoint_every=100)
+    run = SolveBudget().rejection_run
+    budget = SolveBudget(move_evaluations=1000, rejection_run=run, checkpoint_every=100)
 
-    assert _stop(5, 119, budget=budget, cancelled=never_cancelled) is False
+    assert _stop(5, run - 1, budget=budget, cancelled=never_cancelled) is False
     # One below the budget, one below the checkpoint: neither clause alone may fire early.
-    assert _stop(999, 119, budget=budget, cancelled=never_cancelled) is False
+    assert _stop(999, run - 1, budget=budget, cancelled=never_cancelled) is False
 
 
 def test_the_same_plan_under_the_rejection_bound_consumes_the_same_iterations() -> None:
