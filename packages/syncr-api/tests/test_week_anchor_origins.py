@@ -237,7 +237,7 @@ def test_an_anchor_block_renders_its_feed_and_the_decision_about_it() -> None:
 
 
 def test_a_solver_placed_block_answers_neither_feed_nor_verdict() -> None:
-    assert BlockResponse.of(a_block(), None).anchor_origin is None
+    assert BlockResponse.of(a_block(), None, None).anchor_origin is None
 
 
 def test_an_import_without_a_known_feed_renders_null_rather_than_a_guess() -> None:

@@ -30,6 +30,14 @@ per reason is :mod:`syncr_domain.gaps`'s single statement of it. That module is 
 clients that draw a gap are not, so a client composing the words from the reason code would be the
 second statement that rule exists to forbid. The reason stays on the wire because it is what a
 client branches on.
+
+**A divided task's ``N of M`` pair is RENDERED here, from the pieces the document holds.**
+``split_count`` is the number of POSITIONS a division occupies, not the number of pieces the
+document holds, and a pin on a high chunk makes the two differ: a task holding three pieces can
+carry a count of six. The rendered pair counts the pieces and orders them by their chunk index, so
+a reader sees a position they can reconcile with what is on the grid. The pair reuses the same
+mechanism the gutter wording does -- a string derived once on the server and carried on the wire --
+rather than a second one. A task placed whole renders no pair.
 """
 
 from __future__ import annotations
@@ -54,7 +62,7 @@ if TYPE_CHECKING:
     from syncr_api.plans.anchor_origins import AnchorOrigin
     from syncr_domain.gaps import EmptySlot, ForbiddenWindow, SlotContext
     from syncr_domain.identifiers import AreaId
-    from syncr_domain.identity import BindingRef
+    from syncr_domain.identity import BindingRef, BlockId
     from syncr_domain.plan import Block, PlanDocument
 
 
@@ -123,6 +131,12 @@ class BlockResponse(WireModel):
     )
     objective_delta: float | None = Field(description="What overriding that placement cost.")
     split_count: int | None = Field(description="How many chunks the divided task was split into.")
+    chunk_pair: str | None = Field(
+        description="The rendered 'N of M' pair for a divided task, derived from the pieces the "
+        "document holds and their positions among them. Null when the task is whole. The count "
+        "is the pieces the document holds and the position is the block's place among them, so "
+        "a pin on a high chunk does not put a figure on the grid a reader cannot reconcile."
+    )
     anchor_origin: AnchorOriginResponse | None = Field(
         description="The calendar feed this block's imported commitment came from, and whether "
         "that feed is failing now. Null for every block no import binds: a solver-placed or "
@@ -130,7 +144,7 @@ class BlockResponse(WireModel):
     )
 
     @classmethod
-    def of(cls, block: Block, origin: AnchorOrigin | None) -> Self:
+    def of(cls, block: Block, origin: AnchorOrigin | None, chunk_pair: str | None) -> Self:
         return cls(
             id=block.id,
             interval=WireSpan.of(block.interval),
@@ -147,6 +161,7 @@ class BlockResponse(WireModel):
             ),
             objective_delta=block.objective_delta,
             split_count=block.split_count,
+            chunk_pair=chunk_pair,
             anchor_origin=None if origin is None else AnchorOriginResponse.of(origin),
         )
 
@@ -241,13 +256,18 @@ class PlanDocumentResponse(WireModel):
         composed without the two reads that answer it passes an empty mapping, and every block
         then answers null rather than a claim nothing read.
         """
+        chunk_pairs = _chunk_pairs(document.blocks)
         return cls(
             iso_week=str(document.iso_week),
             zone_by_date={
                 day.isoformat(): zone for day, zone in sorted(document.zone_by_date.items())
             },
             blocks=[
-                BlockResponse.of(block, anchor_origins.get(block.binding.entity_id))
+                BlockResponse.of(
+                    block,
+                    anchor_origins.get(block.binding.entity_id),
+                    chunk_pairs.get(block.id),
+                )
                 for block in document.blocks
             ],
             forbidden_windows=[
@@ -259,3 +279,36 @@ class PlanDocumentResponse(WireModel):
             ],
             adjustments=list(document.adjustments),
         )
+
+
+# A task's identity within a week: the entity it comes from and the occurrence that names it.
+# Two blocks are pieces of the same task when these match, because a task takes one demand per
+# week and the split index distinguishes its chunks.
+_TaskKey = tuple[UUID, str]
+
+
+def _chunk_pairs(blocks: tuple[Block, ...]) -> Mapping[BlockId, str]:
+    """The rendered ``N of M`` pair for each divided-task block, derived from the pieces the
+    document holds.
+
+    The count is the number of pieces the document holds, not ``split_count`` (the number of
+    positions the division occupies), and the position is the block's place among them ordered
+    by chunk index. A pin on a high chunk makes the two differ: a task holding three pieces can
+    carry a count of six, and rendering the count rather than the position would put a figure on
+    the grid a reader cannot reconcile with what they can see.
+
+    A task placed whole carries no chunk index and renders no pair.
+    """
+    by_task: dict[_TaskKey, list[Block]] = {}
+    for block in blocks:
+        if block.split_index is not None:
+            key: _TaskKey = (block.binding.entity_id, block.binding.occurrence_key)
+            by_task.setdefault(key, []).append(block)
+
+    pairs: dict[BlockId, str] = {}
+    for pieces in by_task.values():
+        ordered = sorted(pieces, key=lambda block: block.split_index)
+        count = len(ordered)
+        for position, block in enumerate(ordered, start=1):
+            pairs[block.id] = f"{position} of {count}"
+    return pairs

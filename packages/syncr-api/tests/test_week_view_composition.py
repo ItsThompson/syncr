@@ -8,9 +8,10 @@ reaches the wire with, and the response's own field set.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, get_args, get_type_hints
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import BaseModel
@@ -49,8 +50,9 @@ from syncr_api.solving.config import (
 from syncr_api.solving.records import OperationRecord
 from syncr_domain.budgets import BudgetReport
 from syncr_domain.gaps import EmptySlotReason, SlotContext, gutter_label
+from syncr_domain.identity import BindingRef, Origin
 from syncr_domain.intervals import Interval, IntervalSet
-from syncr_domain.plan import PlanDocument
+from syncr_domain.plan import Block, PlanDocument
 from syncr_domain.reasons import (
     Blocked,
     Bound,
@@ -613,6 +615,135 @@ def test_a_blocks_derived_identity_origin_and_chunk_reach_the_wire() -> None:
     assert rendered.id == block.id
     assert rendered.origin == block.origin
     assert rendered.binding.split_index == block.binding.split_index
+
+
+# --------------------------------------------------------------------------------
+# The rendered chunk pair, derived from the pieces the document holds
+# --------------------------------------------------------------------------------
+
+
+def a_divided_task_block(
+    task_id: UUID, *, split_index: int, split_count: int, day: int = 0, start: float = 9
+) -> Block:
+    """One chunk of a divided task, placed on ``day`` starting at ``start`` hours."""
+    return a_block(
+        origin=Origin.TASK,
+        binding=BindingRef.for_task(task_id, split_index=split_index),
+        interval=between(start, start + 1, day=day),
+        split_count=split_count,
+    )
+
+
+def test_a_task_placed_whole_renders_no_pair() -> None:
+    """A whole task carries no chunk index and renders no pair."""
+    task_id = uuid4()
+    block = a_block(origin=Origin.TASK, binding=BindingRef.for_task(task_id))
+    document = a_document(blocks=(block,))
+
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={}).blocks[0]
+
+    assert rendered.chunk_pair is None
+
+
+def test_three_pieces_of_one_task_each_render_a_position_from_1_to_3_and_a_count_of_3() -> None:
+    """The count is the pieces the document holds, not ``split_count``.
+
+    A task holding three pieces one of which is a pinned chunk numbered 5 renders a position
+    from 1 to 3 and a count of 3: the position is the block's place among the pieces ordered
+    by chunk index, not the chunk index itself.
+    """
+    task_id = uuid4()
+    document = a_document(
+        blocks=(
+            a_divided_task_block(task_id, split_index=0, split_count=6, day=0),
+            a_divided_task_block(task_id, split_index=3, split_count=6, day=1),
+            a_divided_task_block(task_id, split_index=5, split_count=6, day=2),
+        )
+    )
+
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={})
+
+    assert [block.chunk_pair for block in rendered.blocks] == ["1 of 3", "2 of 3", "3 of 3"]
+
+
+def test_a_pinned_chunk_numbered_5_renders_its_position_among_the_pieces_not_the_chunk_index() -> None:
+    """The pin does not change the position: it is the place among the pieces, not the index."""
+    task_id = uuid4()
+    pinned_chunk = a_divided_task_block(task_id, split_index=5, split_count=6, day=2)
+    pinned_chunk = replace(
+        pinned_chunk,
+        pinned=True,
+        superseded_placement=between(10, 11, day=2),
+        objective_delta=0.12,
+    )
+    document = a_document(
+        blocks=(
+            a_divided_task_block(task_id, split_index=0, split_count=6, day=0),
+            a_divided_task_block(task_id, split_index=3, split_count=6, day=1),
+            pinned_chunk,
+        )
+    )
+
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={})
+
+    assert rendered.blocks[2].chunk_pair == "3 of 3"
+
+
+def test_two_tasks_each_divided_render_their_own_pairs() -> None:
+    """The pair is derived per task, so two divided tasks do not borrow each other's pieces."""
+    first, second = uuid4(), uuid4()
+    document = a_document(
+        blocks=(
+            a_divided_task_block(first, split_index=0, split_count=2, day=0),
+            a_divided_task_block(first, split_index=1, split_count=2, day=1),
+            a_divided_task_block(second, split_index=0, split_count=3, day=2),
+            a_divided_task_block(second, split_index=2, split_count=3, day=3),
+        )
+    )
+
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={})
+
+    assert [block.chunk_pair for block in rendered.blocks] == [
+        "1 of 2",
+        "2 of 2",
+        "1 of 2",
+        "2 of 2",
+    ]
+
+
+def test_a_whole_task_alongside_a_divided_one_renders_no_pair() -> None:
+    """A whole task among divided ones renders no pair, because it holds no chunk index."""
+    task_id = uuid4()
+    whole = a_block(origin=Origin.TASK, binding=BindingRef.for_task(uuid4()))
+    document = a_document(
+        blocks=(
+            whole,
+            a_divided_task_block(task_id, split_index=0, split_count=2, day=0),
+            a_divided_task_block(task_id, split_index=1, split_count=2, day=1),
+        )
+    )
+
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={})
+
+    assert rendered.blocks[0].chunk_pair is None
+    assert rendered.blocks[1].chunk_pair == "1 of 2"
+    assert rendered.blocks[2].chunk_pair == "2 of 2"
+
+
+def test_pieces_arriving_out_of_chunk_order_are_still_positioned_by_chunk_index() -> None:
+    """The position follows the chunk index, not the document's block order."""
+    task_id = uuid4()
+    document = a_document(
+        blocks=(
+            a_divided_task_block(task_id, split_index=5, split_count=6, day=0),
+            a_divided_task_block(task_id, split_index=0, split_count=6, day=1),
+            a_divided_task_block(task_id, split_index=3, split_count=6, day=2),
+        )
+    )
+
+    rendered = PlanDocumentResponse.of(document, area_names=AREA_NAMES, anchor_origins={})
+
+    assert [block.chunk_pair for block in rendered.blocks] == ["3 of 3", "1 of 3", "2 of 3"]
 
 
 # --------------------------------------------------------------------------------
