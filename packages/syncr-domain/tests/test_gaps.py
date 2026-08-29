@@ -75,6 +75,7 @@ class TestTheVocabularies:
     def test_every_reason_a_slot_is_empty_is_named_here(self) -> None:
         assert [reason.value for reason in EmptySlotReason] == [
             "no_eligible_content",
+            "no_fitting_content",
             "off_plan",
             "blocked_by_constraint",
             "not_solved",
@@ -207,6 +208,7 @@ class TestTheGutterLabels:
         ("reason", "expected"),
         [
             (EmptySlotReason.NO_ELIGIBLE_CONTENT, "no eligible Career content"),
+            (EmptySlotReason.NO_FITTING_CONTENT, "no Career content fits"),
             (EmptySlotReason.OFF_PLAN, "off plan"),
             (EmptySlotReason.BLOCKED_BY_CONSTRAINT, "no legal window"),
             (EmptySlotReason.NOT_SOLVED, "content not yet chosen"),
@@ -257,6 +259,18 @@ class TestTheGutterLabels:
         assert not_solved != gutter_label(
             EmptySlotReason.NO_ELIGIBLE_CONTENT, SlotContext("Career")
         )
+
+    def test_no_fitting_content_borrows_neither_neighbouring_wording(self) -> None:
+        """The Area held content but none of it fit the slot's duration, so a wording that says
+        the backlog was empty states something the opposite of what was computed, and a wording
+        that says nobody looked states something no phase reached. The one fact this reason adds
+        is that content was there and the slot was the wrong size.
+        """
+        context = SlotContext("Career")
+        fitting = gutter_label(EmptySlotReason.NO_FITTING_CONTENT, context)
+
+        assert fitting != gutter_label(EmptySlotReason.NO_ELIGIBLE_CONTENT, context)
+        assert fitting != gutter_label(EmptySlotReason.NOT_SOLVED, context)
 
     def test_an_elapsed_slot_borrows_neither_neighbouring_wording(self) -> None:
         """The clock emptied this slot, so a wording about content states something uncomputed.

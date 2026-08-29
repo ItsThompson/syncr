@@ -75,6 +75,13 @@ class EmptySlotReason(StrEnum):
     member of its own because nobody looked at the backlog, and every other member reports
     something a phase computed.
 
+    ``no_eligible_content`` and ``no_fitting_content`` are the pair the backlog decides, and
+    each is a member of its own because they prompt opposite actions. The Area held nothing at
+    all for ``no_eligible_content``, and it held content for ``no_fitting_content`` but none of
+    it could take the slot's declared duration: one says the backlog is empty and the other says
+    it is full of the wrong size, and a user who cannot tell them apart cannot decide whether to
+    add content or to widen the slot.
+
     ``elapsed`` is the one the clock decides rather than the backlog. The week had already
     reached the slot when the solve ran, so no content could be placed into it and none will
     be: whether the Area had any is a question the span never got to ask.
@@ -86,6 +93,7 @@ class EmptySlotReason(StrEnum):
     """
 
     NO_ELIGIBLE_CONTENT = "no_eligible_content"
+    NO_FITTING_CONTENT = "no_fitting_content"
     OFF_PLAN = "off_plan"
     BLOCKED_BY_CONSTRAINT = "blocked_by_constraint"
     NOT_SOLVED = "not_solved"
@@ -131,6 +139,10 @@ def _no_eligible_content(context: SlotContext) -> str:
     return f"no eligible {context.area_name} content"
 
 
+def _no_fitting_content(context: SlotContext) -> str:
+    return f"no {context.area_name} content fits"
+
+
 def _off_plan(context: SlotContext) -> str:
     if context.off_plan_label is None:
         return "off plan"
@@ -158,6 +170,7 @@ def _journey_dropped(_: SlotContext) -> str:
 # reason cannot change what another one renders.
 _LABEL_BY_REASON: Final[Mapping[EmptySlotReason, Callable[[SlotContext], str]]] = {
     EmptySlotReason.NO_ELIGIBLE_CONTENT: _no_eligible_content,
+    EmptySlotReason.NO_FITTING_CONTENT: _no_fitting_content,
     EmptySlotReason.OFF_PLAN: _off_plan,
     EmptySlotReason.BLOCKED_BY_CONSTRAINT: _no_legal_window,
     EmptySlotReason.NOT_SOLVED: _content_not_yet_chosen,
