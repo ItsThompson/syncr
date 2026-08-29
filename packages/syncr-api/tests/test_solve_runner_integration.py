@@ -34,6 +34,7 @@ substituted for the seam.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +56,7 @@ from syncr_api.core.settings import (
 )
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.plans.assembler import AssemblyCaller
+from syncr_api.plans.authority import classify
 from syncr_api.plans.episodes import caught_early_ratio, episodes
 from syncr_api.plans.injection import build_verdict_recorder, build_week_assembler
 from syncr_api.plans.models import PlanRevision
@@ -1302,3 +1304,57 @@ def _confirming_the_shortfall(inputs: Any, _weights: Any, **_asked: Any) -> Any:
         blocked_log=(),
         iterations=1,
     )
+
+
+class TestTheLivePlanReachesClassifyThroughInjectionWiring:
+    """The assembler built by ``plans/injection.py`` reads the live plan that reaches ``classify``.
+
+    The stale claim this replaces said the placement seam answered with no live plan, so every
+    candidate classified as a first plan and the authority rule had nothing to hold back. This test
+    bites on that: a week that holds a plan is assembled through the production wiring, and a
+    candidate that moves one of its blocks is classified against it, landing in the proposal slot
+    rather than auto-applying.
+    """
+
+    async def test_a_block_the_live_plan_placed_is_held_back_not_auto_applied(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        context: WorkerContext,
+        owner: UserRecord,
+        clock: Ticking,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await declare_the_minimum(sessions, owner.tenant_id, content=a_placeable_task)
+        await bump(sessions, owner, clock)
+        monkeypatch.setattr("syncr_api.solving.dispatch.solve", _placing_one_block)
+        await a_solve(sessions, context, owner, clock)
+
+        async with sessions() as session:
+            inputs = await build_week_assembler(
+                session, owner.tenant_id, caller=AssemblyCaller.WORKER
+            ).assemble(WEEK, clock())
+
+        assert inputs.live_plan is not None, (
+            "the placement seam answered with no live plan, so the authority rule has nothing "
+            "to hold back: this is the stale claim the split corrected"
+        )
+        movable = [block for block in inputs.live_plan.blocks if block.interval.start > inputs.now]
+        assert movable, "the live plan held no future block, so this test exercised nothing"
+        shifted = movable[0].interval.end + timedelta(minutes=30)
+        moved = replace(movable[0], interval=Interval(movable[0].interval.end, shifted))
+        candidate = replace(
+            inputs.live_plan,
+            blocks=tuple(
+                moved if block.id == moved.id else block for block in inputs.live_plan.blocks
+            ),
+        )
+
+        classification = classify(inputs.live_plan, candidate, now=inputs.now)
+
+        assert classification.proposal_diff.moved, (
+            "the moved block was not held back, so the live plan did not reach classify"
+        )
+        assert not classification.auto_applicable, (
+            "a block the live plan already placed auto-applied, which is what a seam that "
+            "answers with no live plan produces"
+        )
