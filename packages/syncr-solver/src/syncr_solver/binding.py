@@ -23,8 +23,10 @@ owns a reason's wording.
 ## Which reason a slot states, and how it is decided rather than chosen
 
 ``elapsed`` when the week had already reached the slot, which is read from the clock before any
-content is considered: see below. ``no_eligible_content`` when the Area had nothing that could
-take the slot's duration. ``off_plan`` when every candidate offered was refused by the span the
+content is considered: see below. ``no_eligible_content`` when the Area's backlog is genuinely
+empty, and ``no_fitting_content`` when it held content but none of it could take the slot's
+duration: the two are distinguished in one pass so a second filter never runs. ``off_plan`` when
+every candidate offered was refused by the span the
 user declared off, because then it is the span rather than the content that emptied the slot.
 ``blocked_by_constraint`` otherwise, which is a candidate the rules refused for some other reason.
 ``not_solved`` is deliberately unreachable here: it means nobody looked at the backlog, and this
@@ -61,12 +63,13 @@ A candidate's ``min_minutes`` and ``max_minutes`` bound one placement of it, so 
 duration falling inside that range is the whole test: an atomic task's range is a single length, a
 divisible task's runs from its minimum chunk to what is left, and an occurrence's is its declared
 elastic range. Content in the Area that cannot take the duration is not eligible FOR THIS SLOT,
-which is why a slot it leaves empty says the Area had none.
+which is why a slot it leaves empty says the Area had none that fit when the Area held any, and
+says the backlog was empty when it held none at all.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from syncr_domain.gaps import EmptySlot, EmptySlotReason
 from syncr_domain.intervals import has_elapsed
@@ -86,6 +89,19 @@ if TYPE_CHECKING:
     from syncr_solver.inputs import MaterializedEntry
 
 
+class Eligibility(NamedTuple):
+    """What a slot's Area held, and what could take the slot's duration.
+
+    ``candidates`` are the ones that passed the duration filter, in tie-break order. ``had_content``
+    is whether the Area held any candidate at all, before the filter ran. The two together let the
+    caller name the reason without a second pass: an empty Area and a full one with nothing that
+    fits prompt opposite actions.
+    """
+
+    candidates: tuple[Candidate, ...]
+    had_content: bool
+
+
 def bind_slots(attempt: Attempt) -> Attempt:
     """Every slot of the week, in span order, with content bound into it or a reason stated.
 
@@ -102,11 +118,16 @@ def _bind_one(entry: MaterializedEntry, attempt: Attempt) -> Attempt:
     """One slot: the first eligible candidate the rules accept, or the slot with its reason."""
     if has_elapsed(entry.interval, attempt.inputs.now):
         return attempt.with_slot(_slot(entry, EmptySlotReason.ELAPSED))
-    eligible = _eligible_for(entry, attempt)
-    if not eligible:
-        return attempt.with_slot(_slot(entry, EmptySlotReason.NO_ELIGIBLE_CONTENT))
+    eligibility = _eligible_for(entry, attempt)
+    if not eligibility.candidates:
+        reason = (
+            EmptySlotReason.NO_FITTING_CONTENT
+            if eligibility.had_content
+            else EmptySlotReason.NO_ELIGIBLE_CONTENT
+        )
+        return attempt.with_slot(_slot(entry, reason))
     refusals: list[BlockedCandidate] = []
-    for candidate in eligible:
+    for candidate in eligibility.candidates:
         offer = offer_at(candidate, entry.interval, attempt=attempt)
         refusal = refusal_of(offer, attempt)
         if refusal is None:
@@ -115,20 +136,28 @@ def _bind_one(entry: MaterializedEntry, attempt: Attempt) -> Attempt:
     return attempt.with_blocked(refusals).with_slot(_slot(entry, _reason_of(refusals)))
 
 
-def _eligible_for(entry: MaterializedEntry, attempt: Attempt) -> tuple[Candidate, ...]:
-    """The content of this slot's Area that could take its duration, in tie-break order."""
+def _eligible_for(entry: MaterializedEntry, attempt: Attempt) -> Eligibility:
+    """What this slot's Area held, and what could take the slot's duration.
+
+    Both are read in one pass over the candidates, so the caller names the reason without a second
+    filter: ``had_content`` is whether the Area held any candidate at all, and ``candidates`` is the
+    subset that could take the slot's declared duration, in tie-break order.
+    """
     minutes = entry.interval.total_minutes()
-    return tuple(
-        candidate
-        for candidate in candidates_for(
-            attempt.inputs,
-            placed_minutes=attempt.placed_minutes(),
-            held_demands=attempt.held_demands(),
-            floor_shortfalls=attempt.floor_shortfalls(),
-        )
-        if candidate.area_id == entry.area_id
-        and candidate.min_minutes <= minutes <= candidate.max_minutes
-    )
+    area_candidates: list[Candidate] = []
+    fitting: list[Candidate] = []
+    for candidate in candidates_for(
+        attempt.inputs,
+        placed_minutes=attempt.placed_minutes(),
+        held_demands=attempt.held_demands(),
+        floor_shortfalls=attempt.floor_shortfalls(),
+    ):
+        if candidate.area_id != entry.area_id:
+            continue
+        area_candidates.append(candidate)
+        if candidate.min_minutes <= minutes <= candidate.max_minutes:
+            fitting.append(candidate)
+    return Eligibility(candidates=tuple(fitting), had_content=bool(area_candidates))
 
 
 def _reason_of(refusals: Sequence[BlockedCandidate]) -> EmptySlotReason:

@@ -359,7 +359,7 @@ def test_a_slot_whose_areas_content_cannot_take_its_duration_is_not_filled_by_it
 
     document = solved(week).document
 
-    assert document.empty_slots[0].reason is EmptySlotReason.NO_ELIGIBLE_CONTENT
+    assert document.empty_slots[0].reason is EmptySlotReason.NO_FITTING_CONTENT
     assert all(block.interval != between(18, 19) for block in document.blocks)
 
 
