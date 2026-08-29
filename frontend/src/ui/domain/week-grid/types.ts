@@ -45,6 +45,7 @@ export type BandReason =
   | "transit_unattributed"
   | "off_plan"
   | "no_eligible_content"
+  | "no_fitting_content"
   | "blocked_by_constraint"
   | "not_solved"
   | "elapsed"
