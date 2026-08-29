@@ -64,14 +64,6 @@ The verdict transition is inside that transaction and after that guard, which is
 with the job that computed it and what makes it meaningful here: a discarded solve records nothing,
 because the plan it was about is not the plan the week holds. A row for it would tell the product
 metric that a week was confirmed impossible by a result nobody adopted.
-
-## Failure names what still works, and the last attempt keeps the inputs it read
-
-Every failure answers with a stated cause and leaves the previous live plan untouched and still
-projected. The attempt bound and the backoff are the lifecycle's, so a solver that raises is retried
-exactly as a worker that died is. When the attempts are spent, a week with no live revision at all
-is MATERIALIZED instead, so the horizon is never left with a hole; a week that has one keeps it,
-because the plan it already has is better than a derived-only one.
 """
 
 from __future__ import annotations
@@ -101,7 +93,6 @@ from syncr_api.plans.tradeoffs import offered_tradeoffs
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.checkpoints import watching_the_version
 from syncr_api.solving.config import (
-    FAILED,
     INPUTS_UNREADABLE,
     PAST_DISAGREEMENT,
     PROJECTION,
@@ -109,13 +100,11 @@ from syncr_api.solving.config import (
     WRITE_REFUSED,
 )
 from syncr_api.solving.errors import OperationMovedOn
-from syncr_api.solving.failures import statement_for
 from syncr_api.solving.injection import build_solve_coordinator
 from syncr_api.solving.lifecycle import OperationLifecycle
-from syncr_api.solving.metrics import SOLVE_TAKEN_OVER
-from syncr_api.solving.outcomes import Failed, Succeeded, Superseded
+from syncr_api.solving.outcomes import Succeeded, Superseded
+from syncr_api.solving.recovery import SolveRecovery
 from syncr_api.solving.repository import OperationRepository
-from syncr_api.solving.snapshots import as_snapshot
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 from syncr_domain.plan import RevisionReason
@@ -130,7 +119,6 @@ if TYPE_CHECKING:
     from syncr_api.core.db import Database
     from syncr_api.plans.authority import Classification
     from syncr_api.plans.recording import VerdictRecorder
-    from syncr_api.solving.config import SolveFailure
     from syncr_api.solving.coordinator import SolveCoordinator
     from syncr_api.solving.records import OperationRecord
     from syncr_domain.feasibility import Verdict
@@ -175,6 +163,13 @@ class SolveDispatch:
         self._clock = clock
         self._debounce = debounce
         self._budget = budget
+        self._recovery = SolveRecovery(
+            database,
+            tenant_id,
+            clock=clock,
+            coordinator_for=self._coordinator,
+            producer_for=self._producer,
+        )
 
     @measured("solve_dispatch")
     async def run(self, op: OperationRecord, week: IsoWeek) -> OperationRecord:
@@ -188,11 +183,13 @@ class SolveDispatch:
         try:
             loaded = await self._loaded(op, week)
         except Exception as unreadable:  # noqa: BLE001 - any read fault is one stated cause
-            return await self._failed(op, week, INPUTS_UNREADABLE, cause=unreadable)
+            return await self._recovery.failed(op, week, INPUTS_UNREADABLE, cause=unreadable)
         try:
             solved = await self._solved(loaded, week)
         except Exception as raised:  # noqa: BLE001 - the retry exists for exactly this
-            return await self._failed(op, week, SOLVER_RAISED, cause=raised, inputs=loaded.inputs)
+            return await self._recovery.failed(
+                op, week, SOLVER_RAISED, cause=raised, inputs=loaded.inputs
+            )
         try:
             classification = classify(
                 loaded.inputs.live_plan, solved.document, now=loaded.inputs.now
@@ -200,13 +197,13 @@ class SolveDispatch:
         except ClassificationRejected as refused:
             # Before any write transaction is opened, because the refusal is a pure comparison of
             # two documents: a candidate that restates the week's own past never reaches the guard.
-            return await self._failed(
+            return await self._recovery.failed(
                 op, week, PAST_DISAGREEMENT, cause=refused, inputs=loaded.inputs
             )
         try:
             return await self._written(op, week, loaded, solved, classification)
         except Exception as unwritable:  # noqa: BLE001 - a refused write is one stated cause
-            return await self._failed(
+            return await self._recovery.failed(
                 op, week, WRITE_REFUSED, cause=unwritable, inputs=loaded.inputs
             )
 
@@ -286,7 +283,7 @@ class SolveDispatch:
             # closed it applies to nothing and this transaction rolls back with everything it was
             # about to write. Detected here rather than routed through a failure, because a
             # `write_refused` would name a fault where there is only a race.
-            return await self._taken_from_under_this_solve(op, week, moved)
+            return await self._recovery.taken_from_under_this_solve(op, week, moved)
 
     async def _adopted(
         self,
@@ -364,99 +361,6 @@ class SolveDispatch:
             superseded = await self._coordinator(session).finish(op, Superseded())
             await published(session, operation_event(superseded))
             return superseded
-
-    async def _failed(
-        self,
-        op: OperationRecord,
-        week: IsoWeek,
-        code: SolveFailure,
-        *,
-        cause: BaseException,
-        inputs: SolveInputs | None = None,
-    ) -> OperationRecord:
-        """Record the failure, and materialize the week when this was the last attempt.
-
-        The snapshot is offered on every failure and kept only on the last one, which the lifecycle
-        decides: a retried attempt returns the row to the queue, and the table forbids a snapshot on
-        any status but ``failed``.
-
-        **A lease that expired mid-solve is a lost race here, not a failure.** The reaper finishes
-        an abandoned claim through the same lifecycle, so a solve that outlived its lease finds its
-        row already back in the queue and the step it tries to take applies to nothing. That is
-        expected under concurrency, and it is why the refusal has two types: nothing of this solve's
-        was written, the version did not move, and the retry the reaper queued is what runs next.
-        Left to raise, it reached the runner's per-tenant boundary and read as a tenant fault, which
-        is the one reading it is not.
-        """
-        _log.exception(
-            "solving.solve.failed",
-            exc_info=cause,
-            iso_week=str(week),
-            operation_id=str(op.id),
-            error_code=code,
-        )
-        try:
-            async with self._database.sessionmaker() as session, session.begin():
-                finished = await self._coordinator(session).finish(
-                    op,
-                    Failed(
-                        code=code,
-                        message=statement_for(code),
-                        snapshot=None if inputs is None else as_snapshot(inputs),
-                    ),
-                )
-                await published(session, operation_event(finished))
-        except OperationMovedOn as moved:
-            return await self._taken_from_under_this_solve(op, week, moved)
-        if finished.status != FAILED:
-            return finished
-        await self._materialized_if_the_week_has_no_plan(week)
-        return finished
-
-    async def _taken_from_under_this_solve(
-        self, op: OperationRecord, week: IsoWeek, moved: OperationMovedOn
-    ) -> OperationRecord:
-        """The row as something else left it, so ``run()`` answers rather than raising.
-
-        Two actors reach this: the reaper, on a lease this solve outlived, and a tradeoff request
-        superseding the solve to ask its own question of the week. Both leave the same fact behind,
-        which is what makes one instrument right for it: this solve's write was discarded whole. It
-        is NOT the claim scan's counter, because that race is a row skipped before any work, and the
-        status the row was found in is on the line below for the actor.
-        """
-        SOLVE_TAKEN_OVER.inc()
-        _log.info(
-            "solving.solve.taken_over",
-            iso_week=str(week),
-            operation_id=str(op.id),
-            held=moved.held,
-            attempted=moved.attempted,
-        )
-        async with self._database.sessionmaker() as session:
-            left = await OperationRepository(session, self._tenant_id).find(op.id)
-        # The refusal named the status the row held, so the row existed a moment ago. A tenant whose
-        # row vanished between the two is a defect the retention sweep cannot produce: it prunes
-        # terminal rows only.
-        if left is None:  # pragma: no cover - unreachable while pruning is terminal-only
-            message = f"operation {op.id} vanished after refusing a step from {moved.held!r}"
-            raise RuntimeError(message) from moved
-        return left
-
-    async def _materialized_if_the_week_has_no_plan(self, week: IsoWeek) -> None:
-        """The plan of last resort, for a week whose attempts are spent and that holds no plan.
-
-        A week that already has a live revision keeps it: the plan it has is better than a
-        derived-only one, and it is still projected. A week with none would otherwise leave the
-        horizon with a hole, so the frame, the commitments, the buffers and the day's shape are
-        materialized with every Area slot drawn unfilled.
-        """
-        now = self._clock()
-        async with self._database.sessionmaker() as session, session.begin():
-            revisions = PlanRepository(session, self._tenant_id)
-            if await revisions.latest(week) is not None:
-                return
-            await self._producer(session, revisions).materialize_week(week, now=now)
-        _log.info("solving.solve.materialized_instead", iso_week=str(week))
 
     def _candidate_of(self, op: OperationRecord, week: IsoWeek) -> WeekAdjustment | None:
         """The unpersisted concession this solve must fold in, or nothing.
