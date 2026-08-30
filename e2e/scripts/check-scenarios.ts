@@ -14,6 +14,7 @@
  *   every `*.spec.ts` the Where column names EXISTS
  *   for an automated row, the file the Where column names is a file that holds a test naming it
  *   every repository path and every `just` recipe the Where column names RESOLVES
+ *   every repository path and every `just` recipe the OBSERVATION cell names RESOLVES
  *
  * THAT LAST ONE IS THE COLUMN'S OTHER TWO THIRDS. Two python test paths and thirteen recipe names live in
  * the Where column, and a measurement showed a nonexistent path and a nonexistent recipe both leaving this
@@ -21,8 +22,10 @@
  * widenings of this same guard have now been needed, which is the argument for checking rather than
  * proofreading.
  *
- * WHAT IS STILL NOT BOUNDED, stated so the next reader does not have to measure it: the OBSERVATION cell is
- * prose and nothing here reads it. Three of the table's four columns are asserted.
+ * THE OBSERVATION CELL joined that bound next: it is prose, but a backticked repository path or a
+ * backticked `just <recipe>` inside it is a citation a reader follows, and the same measurement showed a
+ * nonexistent one passing there too. What stays unbounded is the prose itself, not the citations in it.
+ * Four of the table's four columns are now asserted.
  *
  * THE TITLES COME FROM PLAYWRIGHT, NOT FROM A REGEX OVER THE SOURCE. The first version matched
  * `test("S...` textually, which counted a COMMENTED-OUT case as coverage: the exact defect this file
@@ -65,7 +68,12 @@ const NAMED_RECIPE = /`just ([\w-]+)`/g;
 const AUTOMATED = "automated";
 const PARTLY = "partly automated";
 
-type Row = { readonly status: string; readonly where: string; readonly line: number };
+type Row = {
+  readonly status: string;
+  readonly where: string;
+  readonly observation: string;
+  readonly line: number;
+};
 
 const asStatus = (cell: string): string => {
   const stated = cell.replaceAll("*", "").trim().toLowerCase();
@@ -91,6 +99,9 @@ const tableRows = async (): Promise<Map<string, Row>> => {
     rows.set(match[1]!, {
       status: asStatus(cells.at(-2) ?? ""),
       where: cells.at(-1) ?? "",
+      // The observation cell is everything between the # cell and the status cell. Recovering it from
+      // the middle rather than as a fixed index keeps a pipe inside the observation from shifting it.
+      observation: cells.slice(1, -2).join("|"),
       line: index + 1,
     });
   }
@@ -175,19 +186,29 @@ for (const [scenario, row] of rows) {
     );
   }
 
-  // The Where column's other two thirds: a repository path and a `just` recipe are both citations a reader
-  // follows, and neither was checked until a measurement showed a fake one passing.
-  for (const cited of [...row.where.matchAll(NAMED_PATH)].map((match) => match[1]!)) {
-    if (cited.endsWith(".spec.ts")) continue;
-    if (!(await existsFromRoot(cited))) {
-      problems.push(`line ${row.line}: ${scenario} cites ${cited}, which does not exist`);
+  // A repository path and a `just` recipe are both citations a reader follows, and neither was checked
+  // until a measurement showed a fake one passing. The Where column and the OBSERVATION cell both hold
+  // them, so both are bounded: the same two regexes run over both, and a planted nonexistent path in
+  // either cell reddens the check.
+  const checkCitations = async (text: string, column: string): Promise<void> => {
+    for (const cited of [...text.matchAll(NAMED_PATH)].map((match) => match[1]!)) {
+      if (cited.endsWith(".spec.ts")) continue;
+      if (!(await existsFromRoot(cited))) {
+        problems.push(
+          `line ${row.line}: ${scenario} cites ${cited} in the ${column}, which does not exist`,
+        );
+      }
     }
-  }
-  for (const cited of [...row.where.matchAll(NAMED_RECIPE)].map((match) => match[1]!)) {
-    if (!recipes.has(cited)) {
-      problems.push(`line ${row.line}: ${scenario} cites \`just ${cited}\`, which is not a recipe`);
+    for (const cited of [...text.matchAll(NAMED_RECIPE)].map((match) => match[1]!)) {
+      if (!recipes.has(cited)) {
+        problems.push(
+          `line ${row.line}: ${scenario} cites \`just ${cited}\` in the ${column}, which is not a recipe`,
+        );
+      }
     }
-  }
+  };
+  await checkCitations(row.where, "Where column");
+  await checkCitations(row.observation, "observation cell");
 }
 
 for (const [scenario, files] of namedBy) {
