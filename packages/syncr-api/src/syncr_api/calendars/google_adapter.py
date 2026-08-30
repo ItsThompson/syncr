@@ -106,6 +106,10 @@ CURSOR_INVALIDATED: Final = (
 CURSOR_UNSTORABLE: Final = (
     "Google issued a sync token too long to store, so the next read will be a full one"
 )
+DELTA_OVER_MAX_PAGES: Final = (
+    "Google's incremental read did not finish within the page bound, "
+    "so the next read will be a full one"
+)
 
 
 class GoogleAdapter:
@@ -196,6 +200,11 @@ class GoogleAdapter:
         replaces the one that produced it, dropped when it will not fit, which costs one full read
         on the next poll rather than a failed write.
 
+        A delta that exceeds the page bound did not finish, so the cursor that produced it is
+        dropped rather than retained: retaining it would make the next poll re-page through the
+        same bound and never finish. The next read is full, and the state's ``resync_reason``
+        names why.
+
         ``at`` is passed rather than read from the clock here, so a poll records one instant rather
         than two microseconds apart.
         """
@@ -203,6 +212,8 @@ class GoogleAdapter:
             source.external_id, sync_token=since, window=self._horizon
         )
         if isinstance(answer, GoogleReadFailed):
+            if answer.bounded:
+                return self._bounded_delta_failure(source, answer, at=at)
             return self._failed(source, answer, at=at)
         if isinstance(answer, SyncTokenExpired):
             _log.info("calendars.google.sync_token_invalidated", **_identity(source))
@@ -429,6 +440,30 @@ class GoogleAdapter:
             reason=self._stated(answer, at=at),
             attempts=answer.attempts,
         )
+
+    def _bounded_delta_failure(
+        self, source: CalendarSourceRecord, answer: GoogleReadFailed, *, at: datetime
+    ) -> GoogleFetch:
+        """Record an incremental read that did not finish, dropping the cursor that produced it.
+
+        A bounded read did not complete, so the cursor it was started from cannot claim the
+        read finished: retaining it would make the next poll re-page through the same bound
+        and never finish. Dropping it costs one full read on the next poll, and the state
+        names why.
+        """
+        _log.warning(
+            "calendars.google.delta_unbounded",
+            **_identity(source),
+            attempt_count=answer.attempts,
+            anchors_retained=source.sync_state.anchors_current,
+        )
+        state = recorded_failure(
+            source.sync_state,
+            at=at,
+            reason=self._stated(answer, at=at),
+            attempts=answer.attempts,
+        )
+        return FetchOutcome(), replace(state, cursor=None, resync_reason=DELTA_OVER_MAX_PAGES)
 
     def _stated(self, answer: GoogleReadFailed, *, at: datetime) -> str:
         """The failure as the source's panel reads it, with the next attempt named when it helps."""
