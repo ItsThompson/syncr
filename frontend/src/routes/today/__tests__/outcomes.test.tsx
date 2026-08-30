@@ -425,7 +425,22 @@ describe("the minutes a block really took", () => {
     );
   });
 
-  /* The common case in two keystrokes: open the stepper, step down once, record. */
+  /* A modifier chord is not the bare Escape the field hears, matching the keyboard module's rule that a bare
+     key is the only one a field answers. */
+  it("does not cancel on a modified Escape inside the field", async () => {
+    await renderToday(onHostToday(buildDay()));
+    const sent = stubRecording();
+    await focusRow(GYM);
+    const user = userEvent.setup();
+
+    await user.keyboard("{Shift>}X{/Shift}");
+    const field = await screen.findByLabelText(`actual minutes for ${GYM}`);
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    await user.keyboard("{Meta>}{Escape}{/Meta}");
+
+    expect(screen.getByLabelText(`actual minutes for ${GYM}`)).toBeInTheDocument();
+    expect(sent.bodies).toEqual([]);
+  });
   it("records the figure the stepper holds", async () => {
     await renderToday(onHostToday(buildDay()));
     const sent = stubRecording();

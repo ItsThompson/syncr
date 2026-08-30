@@ -44,7 +44,9 @@ export function MovedInterval({ row, form, actions }: MovedIntervalProps) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === "Escape") {
+    /* A bare Escape cancels; a modifier chord does not, matching the keyboard module's rule that a bare key is
+       the only one a field hears. */
+    if (event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       actions.onCancel();
     }
