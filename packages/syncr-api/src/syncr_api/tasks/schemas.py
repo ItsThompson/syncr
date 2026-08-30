@@ -167,7 +167,7 @@ class TasksResponse(WireModel):
 
     A wrapper rather than a bare array, so the header counts travel with the rows they describe
     and a caller cannot render a count derived from a filtered page. Not paginated: a personal
-    backlog is bounded by what one person can hold, and `13-http-api.md` reserves cursors for the
+    backlog is bounded by what one person can hold, and the route table reserves cursors for the
     collections that grow without a ceiling.
     """
 

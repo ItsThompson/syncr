@@ -85,7 +85,7 @@ class SyncrError(Exception):
         self.detail = detail
         self.errors = list(errors) if errors else None
         self.instance = instance
-        # Response headers this error needs beyond `Retry-After`. Section 13 requires
+        # Response headers this error needs beyond `Retry-After`. the route table requires
         # none, but an OAuth 401 needs `WWW-Authenticate`, so the seam exists here
         # rather than having the slice that needs it edit the error contract.
         self.headers = dict(headers) if headers else {}

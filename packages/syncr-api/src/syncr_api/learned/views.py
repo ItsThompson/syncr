@@ -29,7 +29,7 @@ class LearnedReading:
 
     ``unlocks_count_confirmed_volume`` is here for the same reason. A user has to understand that
     honesty is not penalised, or the whole dataset's integrity is at risk. So is
-    ``collecting_is_normal``: section 11's Learned-screen table asks for it explicitly, in prose, on
+    ``collecting_is_normal``: the Learned-screen table asks for it explicitly, in prose, on
     the screen.
 
     ``area_names`` names every Area this tenant holds. A row names the Area it is about inside the

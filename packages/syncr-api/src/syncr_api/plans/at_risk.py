@@ -1,6 +1,6 @@
 """Which tasks a verdict puts at risk. One rule, read by the backlog and by nothing else.
 
-``US-TASK-03``: a task is at risk **when and only when the verdict reports a ``deadline_capacity``
+: a task is at risk **when and only when the verdict reports a ``deadline_capacity``
 shortfall naming it**. The backlog computes no comparison of its own, and this module computes none
 either: it reads a verdict the probe produced and decides which of the tenant's tasks each gap was
 raised against. A second comparison of a deadline against a capacity is exactly how a task comes to
@@ -19,10 +19,10 @@ no demand at all, so it is absent from the names even though it shares the pair.
 Area sharing a title and a deadline are one demand and are both at risk, which is correct: the
 demand is their sum.
 
-**Only ``deadline_capacity``**, which is the story's own word. A packing failure is a fourth
+**Only ``deadline_capacity``**. A packing failure is a fourth
 shortfall kind that also names a task by title and carries a deadline, and it is deliberately not
 read here: it says the capacity exists and could not be USED, which is a different statement from
-the work not fitting before the instant it is due, and the story names one of the two.
+the work not fitting before the instant it is due, and only one of the two is named here.
 """
 
 from __future__ import annotations

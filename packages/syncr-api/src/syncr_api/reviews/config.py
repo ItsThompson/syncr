@@ -17,11 +17,10 @@ BUDGET_PATH: Final = "/budget"
 APPLY_PATH: Final = "/budget/apply"
 
 # The weekly session's payload, addressed by the week it PLANS. The retrospective half covers the
-# week before it, which is what makes planning and retrospective one sitting: `US-REV-01`.
+# week before it, which is what makes planning and retrospective one sitting.
 #
-# The parameter is spelled `iso_week` for the reason ticket 1363 settled across the week routes: one
-# spelling, so the guard that drives every parameterized read can substitute a week into any of
-# them.
+# The parameter is spelled `iso_week` so the guard that drives every parameterized read can
+# substitute a week into any of them: one spelling across the week routes.
 SESSION_PATH: Final = "/week/{iso_week}"
 ISO_WEEK_FIELD: Final = "isoWeek"
 
@@ -46,11 +45,11 @@ SESSION_P95_BUDGET_SECONDS: Final = 0.4
 # honest answer for a read that cannot see past its own bound.
 SESSION_LOOKBACK_WEEKS: Final = QUARTER_WEEKS
 
-# `US-REV-02`: an item proposed and skipped for six consecutive weeks is raised.
+# An item proposed and skipped for six consecutive weeks is raised.
 CHRONIC_SKIP_WEEKS: Final = 6
 
-# `US-REV-05`: one commitment meeting one block in three or more weeks is raised. Weeks, not rows,
-# and not necessarily consecutive: the story's own words.
+# One commitment meeting one block in three or more weeks is raised. Weeks, not rows,
+# and not necessarily consecutive.
 REPEATED_COLLISION_WEEKS: Final = 3
 
 # The period is an ISO week identifier, `2026-W07`. It names the week the review is anchored at:

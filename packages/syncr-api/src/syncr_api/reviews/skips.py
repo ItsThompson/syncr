@@ -1,6 +1,6 @@
 """Chronic skips: the run of weeks in which one item was proposed and then skipped.
 
-``US-REV-02``: an item proposed and skipped for six consecutive weeks is raised in the weekly
+An item proposed and skipped for six consecutive weeks is raised in the weekly
 session, stating the item and the number of consecutive weeks, and **syncr never reduces its
 priority or removes it automatically**. Whether to reschedule, reduce scope, or drop is left to the
 user, so nothing here writes and nothing here ranks: it counts weeks and names the item.
@@ -29,7 +29,7 @@ skipped four times in one week is not four weeks behind.
 The run is :func:`syncr_domain.weeks.longest_consecutive_run`, which is the one statement of it.
 This and repeated-pin promotion are two raises counting the same thing, and a user reading two
 different counts of it has no way to tell which is right. A week that did not propose the item holds
-no skip of it, so it ends the run: the story's words are "proposed and skipped", and an item the
+no skip of it, so it ends the run: the words are "proposed and skipped", and an item the
 plan stopped offering is not one the user kept declining.
 """
 

@@ -10,7 +10,7 @@ rendered on both the Week and the Today surfaces, and the honest unbounded readi
 day that holds a block and has not been answered for", which is a read over every revision the
 tenant has ever stored on a request path with a 400 ms budget. Four weeks is bounded by what the
 product's own late-confirmation case reaches: a user confirming three weeks late is the case
-recorded in ticket 1144, so the window covers it with a week to spare. A day older than the window
+so the window covers it with a week to spare. A day older than the window
 can still be confirmed by naming it; what the window bounds is the COUNT, not the act.
 
 ``MAX_CONFIRM_RANGE_DAYS`` is the same figure for the same reason. The control that offers a

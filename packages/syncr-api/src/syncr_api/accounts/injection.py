@@ -89,7 +89,7 @@ def require_trusted_origin(request: Request) -> None:
     not: a hostile page cannot put a header on a form post at all, and adding one through ``fetch``
     makes the request non-simple, so the browser preflights it and this deployment answers no CORS
     headers. Requiring an origin of a bearer request would instead refuse every CLI mutation, since
-    the CLI is not a browser and sends no ``Origin`` header at all. Ticket 6 exempted
+    the CLI is not a browser and sends no ``Origin`` header at all. The CLI exemption handles
     ``/oauth/token`` by route for exactly this reason; stating it once, here, is what keeps a later
     CLI route from needing its own exemption.
 

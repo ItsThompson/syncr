@@ -5,7 +5,7 @@ user, and they are the reason the product exists.
 
 ## Why the label carries a tenant and an Area IDENTIFIER
 
-Section 18's table gives three of these no labels, because the deployment holds one user. A gauge
+The table gives three of these no labels, because the deployment holds one user. A gauge
 set in a loop over tenants would then hold whichever tenant was read last while reading as the
 deployment's own figure, so the tenant is a label: the same reason every log line carries one.
 

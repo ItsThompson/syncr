@@ -5,7 +5,7 @@ method, and maps the result. A week's own shape is validated in the service, by 
 that owns the identifier, so no pattern is declared here that could drift from it.
 
 **Both reads write nothing.** No row, no input version bump, and no verdict event: reading a review
-is a read. The apply is the one write, and it is what US-REV-03's "syncr never re-cuts the budget on
+is a read. The apply is the one write, and it is what "syncr never re-cuts the budget on
 its own" means in code: nothing moves a share except a request the user made.
 """
 

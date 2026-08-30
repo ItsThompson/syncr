@@ -64,8 +64,8 @@ be resolved as its own week resolves it or the two weeks disagree about how long
 ## One resolution costs four statements, and the read figure counts the call
 
 *The live plan, its pins and its outcomes* are read for real. One collaborator call, and four
-statements behind it: that gap is stated on the seam itself, because the p95 budgets in section 19
-are calibrated against the collaborator figure above, and this is the collaborator the two figures
+statements behind it: that gap is stated on the seam itself, because the p95 budgets are
+calibrated against the collaborator figure above, and this is the collaborator the two figures
 differ over most.
 
 ## What this method never does

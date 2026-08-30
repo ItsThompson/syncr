@@ -16,7 +16,7 @@ column, no request field, and no response field here could hold one.
 **At-risk marking is not computed here.** A task is at risk when the feasibility probe reports a
 ``deadline_capacity`` shortfall naming it, so the backlog reads the verdict's shortfalls rather
 than comparing a deadline against a capacity of its own: two comparisons would put a task at risk
-on one screen and fine on another. The header's ``atRiskCount`` is present and zero, and ticket 46
+on one screen and fine on another. The header's ``atRiskCount`` is present and zero
 wires it once the probe exists.
 
 Import layout, so a reader knows where to look:

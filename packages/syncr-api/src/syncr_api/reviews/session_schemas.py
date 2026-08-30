@@ -16,7 +16,7 @@ disagree about the same week.
 
 **Nothing here is addressable and nothing here is an action.** A raised item is a reading rather
 than a row, and accepting or declining a promotion is a route of its own. The payload says so in
-words, which is what ``US-TPL-05``'s "nothing is applied to the template without the user accepting"
+words, which is what "nothing is applied to the template without the user accepting"
 means on a read."""
 
 from __future__ import annotations
@@ -38,12 +38,12 @@ class RaisedItemResponse(WireModel):
     """One thing the session raises, at amber panel volume and in session mode only.
 
     Every category is one shape with a ``kind`` rather than one shape per category, because they
-    render as rows of one panel: section 16's notice-volume table gives the whole set one volume and
+    render as rows of one panel: the notice-volume table gives the whole set one volume and
     one pigment.
 
     **There is no count field, and every figure is in ``statement``.** A count of weeks on the wire
     as well as in the words would be one fact twice, and a surface rendering both would put the same
-    number on the screen in two places, which is the drift ticket 49's own band was corrected for.
+    number on the screen in two places, which is the drift a later display band was corrected for.
     """
 
     key: str = Field(
@@ -53,7 +53,7 @@ class RaisedItemResponse(WireModel):
     kind: RaisedKind = Field(description="What this item is about.")
     title: str = Field(
         description="The thing itself, in the words the user knows it by. A repeated collision "
-        "names BOTH ends here, as 'Standup over Leetcode', which is US-REV-05's own form."
+        "names BOTH ends here, as 'Standup over Leetcode', which is the written form."
     )
     statement: str = Field(
         description="What to make of it, in the words an interface renders, including every figure "
@@ -64,7 +64,7 @@ class RaisedItemResponse(WireModel):
 class PromotionCandidateResponse(WireModel):
     """One repeated pin the session offers to promote into the template.
 
-    ``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a
+    Pinning the same binding to the same time for three consecutive weeks raises a
     proposal naming the binding, the time, and the number of weeks. Accepting or declining is a
     route of its own, addressed by the ``id`` below, and this shape carries no state: it is the
     question, plus what can be done about it.
@@ -146,7 +146,7 @@ class WeeklySessionResponse(WireModel):
     """The weekly session, as one read that writes nothing at all.
 
     Addressed by the week it PLANS. The retrospective covers the week before it, which is what
-    ``US-REV-01``'s "planning and retrospective in one pass" means on the wire: one request, both
+    "planning and retrospective in one pass" means on the wire: one request, both
     halves, so last week informs next week without a second sitting.
     """
 

@@ -1,6 +1,6 @@
 """A proposal on the wire: the changes waiting for assent, and the slot they are held in.
 
-Section 13's ``ProposalDiff``, and it is what the grid renders proposal targets from: a target draws
+The ``ProposalDiff``, and it is what the grid renders proposal targets from: a target draws
 with no fill plus a dashed outline, which is the only state without a fill, so the client needs the
 placement the plan WANTS and the one it would replace.
 

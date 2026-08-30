@@ -1,6 +1,6 @@
 """The wire shapes the week routes answer with.
 
-``WeekViewResponse`` is section 13's ``WeekView``, field for field, so the generated TypeScript
+``WeekViewResponse`` is the ``WeekView``, field for field, so the generated TypeScript
 needs no hand-written companion type. The document it carries is ``document_schemas.py``, the diff
 is ``proposal_schemas.py``, and the verdict is ``verdict_schemas.py``.
 
@@ -14,7 +14,7 @@ declaration of any of them is how two surfaces would come to render one value di
 
 **``emptyReason`` is a word and ``emptyWeek`` is the facts.** The word is the closed vocabulary the
 screen has an empty state for; the object beside it carries what the two actions need, which no
-field of section 13's interface can hold: which input is missing, how long the horizon is, and
+field of the interface can hold: which input is missing, how long the horizon is, and
 whether it reaches this week.
 
 **Every duration is integer minutes**, which is this api's convention throughout: never a string and
@@ -147,7 +147,7 @@ class EmptyWeekResponse(WireModel):
 class WeekViewResponse(WireModel):
     """The Week screen's whole read, in one request.
 
-    **Every field is required and the nullable ones are nullable**, which is section 13's own shape
+    **Every field is required and the nullable ones are nullable**, which is the wire shape's own rule
     and the one thirty-six other response fields in this api already take. A field with a default is
     OPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as
     ``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The

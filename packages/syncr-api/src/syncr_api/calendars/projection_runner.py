@@ -62,8 +62,8 @@ _log = get_logger("syncr.calendars")
 
 # A tenant whose drain raised outside the reconciliation's own stated failures. Counted rather than
 # only logged, because the boundary exists to stop the exception, and a fault that answers with a
-# tally is invisible unless something counts it. `18-observability.md` defines no alert on this
-# family, and it is the ONLY signal for a fault this path can still produce, so ticket 1302 names it
+# tally is invisible unless something counts it. defines no alert on this
+# family, and it is the ONLY signal for a fault this path can still produce, so it is named here
 # as a family needing a rule rather than leaving it to the convention its three siblings follow.
 TENANT_PROJECTION_FAILURES = Counter(
     "syncr_projection_tenant_failures_total",

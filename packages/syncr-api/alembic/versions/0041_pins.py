@@ -24,8 +24,8 @@ document always knows it: nullable made that a rule a writer remembers, and this
 
 **The price stays nullable, which is now vestigial.** The delta is known before the hold since the
 pre-pin frame fix, so the two-statement write and the nullable column can be collapsed into one
-insert with NOT NULL: ticket 1410 owns that simplification. Until then both writes happen in one
-transaction and no reader sees a pin without its cost.
+insert with NOT NULL. Until then both writes happen in one transaction and no reader sees a pin
+without its cost.
 
 The check constraint over the superseded pair is restated with the nullability. Paired nullability
 is what it could say while either column could be absent, and with neither absent that reading is

@@ -1,6 +1,6 @@
 """conflicts: the commitment a retained row names, so a repetition is computable across weeks
 
-One change, and it closes the half of ``US-REV-05`` revision ``0039_conflicts`` could not.
+One change, and it closes the half that revision ``0039_conflicts`` could not.
 
 **The commitment is denormalized onto the row.** The weekly session raises a repeated collision when
 "the same anchor and the same binding have conflicted in three or more weeks". Revision

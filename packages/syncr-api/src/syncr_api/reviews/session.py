@@ -1,6 +1,6 @@
 """The weekly session's reading: last week's retrospective, next week's raises, and the verdict.
 
-``US-REV-01``: planning and retrospective happen in one pass, so last week informs next week without
+Planning and retrospective happen in one pass, so last week informs next week without
 a second sitting. That is why one payload carries both halves, and why the week it is addressed by
 is the week being PLANNED: the retrospective covers the week before it.
 
@@ -79,7 +79,8 @@ class SessionRetro:
     ``discretionary_minutes`` is the reviewed week's own stored figure, or ``None`` when that week
     held no plan of record: a target divides a denominator such a week does not have.
 
-    ``days`` is what ``US-REV-04`` asks for, and the three counts are three quantities. Off-plan
+    ``days`` is the count of confirmed and unconfirmed days, and the three counts are three
+    quantities. Off-plan
     days are reported separately from unconfirmed ones, because a day the user declared away is not
     a day they failed to answer for."""
 
@@ -200,7 +201,7 @@ def raised_of(
     titles: Mapping[ContentKey, str],
     now: datetime,
 ) -> tuple[RaisedItem, ...]:
-    """Every raised item, in the order section 16's `raised` list gives them.
+    """Every raised item, in the order the `raised` list gives them.
 
     The order is the payload's, not a client's: a panel renders rows in the order it receives them,
     and two clients choosing their own would give one week two shapes.

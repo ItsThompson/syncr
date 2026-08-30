@@ -13,7 +13,7 @@ project(horizon)
   └── ReconcileResult { inserted, patched, deleted, foreign_deleted, duration_ms }
 ```
 
-**The tenant is on the repositories, not on the method.** The ticket states
+**The tenant is on the repositories, not on the method.** The route states
 ``project(tenant_id, horizon)``; every repository this holds is already scoped to a tenant at
 construction, and the boundary suite enforces that no scoped statement can be built without one. A
 second statement of the tenant on the method could only ever disagree with the scope the statements

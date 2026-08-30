@@ -1,6 +1,6 @@
 """``StoredPinRelease``: the pin release a conflict resolution reaches through.
 
-Section 07's resolution table says answering ``moved`` on a PINNED block removes the pin and
+The resolution table says answering ``moved`` on a PINNED block removes the pin and
 requests a solve, so the block is free to move, and that the removed pin's record is retained as
 training data. The conflict path declares the seam and this is the pin feature's answer to it, which
 is where the lifecycle question belongs: what a release does to the row is decided where pins are

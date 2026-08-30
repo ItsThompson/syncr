@@ -13,9 +13,9 @@ assembly should acquire that answer rather than reach into another module's tabl
 
 ``StoredPlacements`` performs FOUR statements per call, and the assembler counts the seam as one
 collaborator read. The two figures answer different questions and both are true; what matters is
-that the p95 budgets in section 19 are calibrated against a collaborator count, and this is the
+that the p95 budgets are calibrated against a collaborator count, and this is the
 collaborator whose count and whose statement count differ most. Recalibrating those budgets against
-measured statements is ticket 1253's, and stating the gap here is not doing it.
+measured statements is a separate task, and stating the gap here is not doing it.
 
 ## A pin stops constraining its week once the week has reached the placement it names
 

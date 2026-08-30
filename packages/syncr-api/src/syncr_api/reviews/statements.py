@@ -72,7 +72,7 @@ def denominator_statement(discretionary_minutes: int | None) -> str | None:
 def period_statement(*, confirmed: int, unconfirmed: int, off_plan: int) -> str:
     """How much of the reviewed period the retrospective rests on. Always a sentence.
 
-    ``US-REV-04``: every review states the number of confirmed and unconfirmed days in its period,
+    Every review states the number of confirmed and unconfirmed days in its period,
     and reports off-plan days SEPARATELY from unconfirmed ones. Always present, because "most of
     this week was answered for" and "almost none of it was" are two readings the figures beside them
     do not distinguish, and a caller that had to infer which it was reading would be inferring it.

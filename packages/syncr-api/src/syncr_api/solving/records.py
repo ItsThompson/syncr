@@ -3,8 +3,8 @@
 ``failed_input_snapshot`` is absent on purpose. It exists so a failed solve is reproducible
 locally, it is a whole resolved week, and every reader of an operation on the wire or in the
 worker wants the status and the attempt rather than the snapshot. Loading it into every read
-would carry a week of plan data through paths that never look at it, so the ticket that
-builds the failure runbook reads it by identifier instead.
+would carry a week of plan data through paths that never look at it, so the failure
+runbook reads it by identifier instead.
 """
 
 from __future__ import annotations

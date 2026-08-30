@@ -82,7 +82,7 @@ reports both figures, which is what makes the discrepancy visible rather than hi
 
 ## Infeasibility is not consulted, anywhere on this path
 
-``US-FEAS-05``: approval of a knowingly-broken week is permitted, so there is no verdict read
+Approval of a knowingly-broken week is permitted, so there is no verdict read
 here, no shortfall check, and nothing to make one. Syncr informs; it does not govern.
 """
 

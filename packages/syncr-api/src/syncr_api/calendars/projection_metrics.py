@@ -4,15 +4,15 @@
 two members. A reconciliation refused before it started is recorded as **failed**, not as a member
 of its own, because the consequence is identical: the plan is not reaching the phone.
 ``ProjectionFailing`` alerts on failures over fifteen minutes, so a third value would make that
-alert silent for a deployment whose writes are switched off -- the same alert inversion ticket 27
-shipped and ticket 28's closing pass fixed one layer down. Which KIND of stoppage it was lives
+alert silent for a deployment whose writes are switched off -- the same alert inversion a prior fix
+shipped and a closing pass fixed one layer down. Which KIND of stoppage it was lives
 where the repair differs: the operation's error code, and the sentence in the banner.
 
 **Two outcome values alone would trade a silent alert for an always-firing one**, because writes
 are off in every deployment today, so every plan change produces a failure. That is what the third
 family is for: with the arming state exported, the alert is stated as "failures over fifteen minutes
 AND writes enabled", which inhibits a deliberately-off deployment without the outcome label having
-to lie about what happened. Ticket 1302 carries the rule.
+to lie about what happened. The rule is stated here.
 
 ``syncr_projection_events`` is a histogram labeled by action, observed once per action per
 reconciliation, including the zeroes and including the partial counts of one that failed part way
@@ -57,7 +57,7 @@ PROJECTION_EVENTS = Histogram(
     registry=REGISTRY,
 )
 
-# Whether this deployment may write to the calendar it owns: 1 or 0. Not in `18-observability.md`'s
+# Whether this deployment may write to the calendar it owns: 1 or 0. Not in the
 # table, and named here because the alert that table defines cannot be stated correctly without it.
 #
 # A property of the DEPLOYMENT rather than of a tenant, and set on every pass rather than where a

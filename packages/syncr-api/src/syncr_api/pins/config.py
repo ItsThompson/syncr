@@ -4,7 +4,7 @@ The prefix and the week's field name are the concession module's, not restated h
 routes hang off the same week collection the verdict, the solve and the tradeoff routes do, so the
 spelling of the path parameter and the field a refusal names are read from where they were settled.
 
-``/{iso_week}`` is snake_cased, as every path parameter this api declares is. Section 13's route
+``/{iso_week}`` is snake_cased, as every path parameter this api declares is. The route
 table writes ``{isoWeek}``, which is the same URL with a different parameter NAME, and the generated
 client reads the name.
 

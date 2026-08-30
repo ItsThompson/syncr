@@ -1,11 +1,11 @@
 """The wire shapes the pin routes take and answer with.
 
-``PinnedResponse`` is section 03's ``PinResponse``: the pin, the verdict, and the operation, which
+``PinnedResponse`` is the ``PinResponse``: the pin, the verdict, and the operation, which
 is everything a client needs to redraw once. The verdict shape is the plan package's, because that
 shape crosses the wire from the week view and from a tradeoff request too: a second declaration of
 it is how two surfaces would come to render one verdict differently.
 
-**A pin carries both halves of its counterfactual**, because ``US-PIN-05`` is what a pin is for: the
+**A pin carries both halves of its counterfactual**, because that is what a pin is for: the
 reason panel renders an ``instead of`` clause and a ``cost`` reading from the pin itself rather than
 by walking the edit log.
 

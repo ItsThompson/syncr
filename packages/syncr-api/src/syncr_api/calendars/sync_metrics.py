@@ -1,8 +1,8 @@
 """The six calendar families beside the projection's three, and the two that are gauges.
 
-Section 18 names ``syncr_calendar_sync_duration_seconds``, ``syncr_calendar_sync_total``,
+``syncr_calendar_sync_duration_seconds``, ``syncr_calendar_sync_total``,
 ``syncr_calendar_events_read``, ``syncr_calendar_events_rejected_total``, ``syncr_anchors_current``
-and ``syncr_source_staleness_seconds``. Nothing declared any of them, so the Calendar dashboard had
+and ``syncr_source_staleness_seconds`` are named here. Nothing declared any of them, so the Calendar dashboard had
 nothing to draw and ``SourceStale``, one of the twelve alerts, read a series no process produced.
 
 Mirrors ``projection_metrics``, which is the sibling to match: two outcome values, the zeroes

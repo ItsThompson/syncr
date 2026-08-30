@@ -1,8 +1,8 @@
 """``syncr_write_target_token_age_seconds``: why the age is the CONDITION's, not a token's.
 
-Section 18 defines the gauge and ``WriteTargetTokenExpiring`` as the critical alert on it: "the plan
-silently stops reaching the phone. The most dangerous failure in the product." Ticket 30 found that
-no process exported the metric, so that alert could not fire, and filed ticket 1302. This is it.
+The gauge and ``WriteTargetTokenExpiring`` are defined here as the critical alert on it: "the plan
+silently stops reaching the phone. The most dangerous failure in the product." An audit found that
+no process exported the metric, so that alert could not fire. This is it.
 
 **The age measured is the age of the FAILURE, not of the credential.** A refresh token has no
 expiry a client can read, and a healthy credential that has been connected for a year is not a
@@ -12,7 +12,7 @@ calendar since that instant. A credential refreshing normally reports zero.
 
 **Set from stored rows on a duty that runs whether or not anything else happens.** A gauge written
 where a refresh is attempted is absent exactly when refreshes have stopped being attempted, which
-is ticket 30's other finding stated as a rule. So the reading is one row per tenant, taken from the
+is the other finding stated as a rule. So the reading is one row per tenant, taken from the
 credential table on a schedule, and a deployment with no Google connection reports zero rather than
 nothing: an absent series and a healthy one must not be the same reading.
 

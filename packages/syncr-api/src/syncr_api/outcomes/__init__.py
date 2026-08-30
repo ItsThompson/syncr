@@ -34,5 +34,5 @@ answering for it over HTTP.
 the probe's demand reads. Nothing in this package decides what a state means.
 
 **The Today SCREEN is not here either.** This package ships the API and its read model; the screen
-is ticket 45's.
+is the horizon pass.
 """

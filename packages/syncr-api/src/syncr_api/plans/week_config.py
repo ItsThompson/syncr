@@ -9,7 +9,7 @@ routes hang off one week and three of them shipped first, so the spelling of the
 and the field a refusal names are read from where they were settled: a second statement of
 either is how the seven routes would come to have two shapes for one parameter.
 
-``/{iso_week}`` is snake_cased, as every path parameter this api declares is. Section 13's route
+``/{iso_week}`` is snake_cased, as every path parameter this api declares is. The route
 table writes ``{isoWeek}``, which is the same URL with a different parameter NAME, and the
 generated client reads the name.
 """

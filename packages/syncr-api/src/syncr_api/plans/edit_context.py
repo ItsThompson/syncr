@@ -15,7 +15,7 @@ and nesting them would put a walk in front of every one.
 **``E3``: every span here is an OFFSET from the accepted placement, in signed minutes.** An event
 has to stay meaningful without reconstructing the week it came from, and an absolute instant is only
 meaningful beside the frame, the anchors and the zone profile of the day it fell on. That includes
-the rejected windows, which section 11 types as intervals: a record whose other spans are relative
+the rejected windows, which are typed as intervals: a record whose other spans are relative
 would leave that one field needing a zone nobody stored.
 
 **``E4``: an edit inside an off-plan span is recorded and flagged here.** The flag is a field rather

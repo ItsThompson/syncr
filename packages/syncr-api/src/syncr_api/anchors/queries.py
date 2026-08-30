@@ -5,7 +5,7 @@ interval algebra refuses a reversed or zero-length span by raising a domain erro
 maps a domain error to a status, so a route that built an ``Interval`` straight from two query
 parameters would answer 500 to `?from=X&to=X`.
 
-**A span bound states its offset.** `13-http-api.md` requires an instant to carry one always, and
+**A span bound states its offset.** An instant carries one always, and
 the interval algebra refuses a naive datetime by raising a domain error nothing maps, so a route
 that built an ``Interval`` straight from two query parameters would answer 500 to a bound written
 without one. Refused here instead, naming the parameter. This covers this route's own PARAMETERS

@@ -1,7 +1,7 @@
 """What a caller states when it pins a block, and when it rejects one proposed move.
 
 Two values rather than loose arguments, and the second carries less than the first for a reason that
-is the whole of ``US-PLAN-05``: rejecting a proposed move is pinning the block where it already is,
+is the whole of the rule: rejecting a proposed move is pinning the block where it already is,
 so the caller names the block and nothing else. The interval comes from the plan of record, which is
 the only definition of "where it already is" that a client cannot get wrong.
 """

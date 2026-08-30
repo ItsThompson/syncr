@@ -4,7 +4,7 @@ These sit between the route that read the request and the service that applies i
 service never imports a wire schema and the route never decides anything.
 
 Every field of a change is three-valued: absent leaves the stored value alone, a value replaces
-it, and null clears it where the column is nullable. That is `13-http-api.md`'s explicit-null
+it, and null clears it where the column is nullable. That is the explicit-null
 convention, and it is why a deadline can be removed at all.
 
 Two things are absent from :class:`TaskChange` and each absence is a rule.

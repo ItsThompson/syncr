@@ -458,7 +458,7 @@ def _require_selectable_setpos(rule: _Rule) -> None:
     costs 1,290 seconds in one call, with eight further legal shapes over 200. Every value in it is
     inside the range its property allows, so nothing here reaches it, and an impossibility check for
     one pairing would read as though it closed the class. It is a known issue with its measurement,
-    and the ticket that bounds the expander from outside is what retires this function.
+    and an outer bound on the expander is what retires this function.
     """
     positions = rule.parts.get(_SETPOS)
     frequency = rule.parts.get(_FREQ, "")

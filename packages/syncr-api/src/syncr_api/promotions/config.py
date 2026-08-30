@@ -2,7 +2,7 @@
 
 ## The interval a decline suppresses for, and why it is a quarter
 
-Section 11 says a decline "does not re-raise for a stated interval" and states no length; ticket
+a decline "does not re-raise for a stated interval" and states no length; ticket
 1530 recorded that choosing one without the screen that renders the raise would be choosing it
 blind.
 

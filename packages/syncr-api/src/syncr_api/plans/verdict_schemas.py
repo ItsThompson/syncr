@@ -1,6 +1,6 @@
 """The verdict on the wire: what a panel renders, and what a shortfall says it cannot satisfy.
 
-Section 09's ``Verdict``, field for field, plus the two readings a client must not compute for
+The ``Verdict``, field for field, plus the two readings a client must not compute for
 itself.
 
 **``feasible`` and ``capacityIsSufficient`` are two fields because they are two claims.** Capacity

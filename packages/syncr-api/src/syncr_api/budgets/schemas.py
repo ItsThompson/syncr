@@ -1,6 +1,6 @@
 """The wire shape of one period's budget report.
 
-Every duration is integer minutes, which is section 13's convention throughout: never a string
+Every duration is integer minutes, which is the convention throughout: never a string
 and never a float, so a client can add two of them without narrowing anything first.
 
 The four figures are separately named on purpose. ``unallocatedMinutes`` is discretionary time

@@ -50,6 +50,6 @@ off-plan spans excluded entirely. `coverage.py` and `history.py` each state thei
 **syncr never re-cuts the budget on its own, and it never quietly deprioritizes anything either.**
 The pie review's read proposes and writes nothing; its apply writes only what a request named. The
 session raises a chronically skipped item and changes neither its priority nor its presence, and it
-renders a promotion candidate without applying one. Those are US-REV-03, US-REV-02 and US-TPL-05,
-and they are why every proposal here is a separate route from its application.
+renders a promotion candidate without applying one. Those three rules are
+why every proposal here is a separate route from its application.
 """

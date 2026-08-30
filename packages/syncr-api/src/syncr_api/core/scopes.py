@@ -40,7 +40,7 @@ class Scope(StrEnum):
 SCOPE_ORDER: tuple[Scope, ...] = (Scope.PLAN_READ, Scope.PLAN_WRITE, Scope.ADMIN)
 ALL_SCOPES: frozenset[Scope] = frozenset(SCOPE_ORDER)
 
-# What each scope grants, in the words a consent screen shows. Section 12's table, in
+# What each scope grants, in the words a consent screen shows. The consent table, in
 # one place, because a screen that renders a raw `plan:write` is asking the user to
 # consent to a string.
 SCOPE_DESCRIPTIONS: dict[Scope, str] = {

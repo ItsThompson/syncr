@@ -1,6 +1,6 @@
 """The wire shapes the two pie-review routes exchange.
 
-Every duration is integer minutes, which is section 13's convention throughout, so a client can add
+Every duration is integer minutes, which is the convention throughout, so a client can add
 two of them without narrowing anything first. Every share is a percentage of discretionary time,
 never of scheduled time: measuring against scheduled time would inflate every Area's share by
 excluding exactly the hours nobody planned.
@@ -60,7 +60,7 @@ class ReviewDayCounts(WireModel):
 
     The three are separate quantities. Off-plan days are reported SEPARATELY from unconfirmed days
     because an off-plan day is one the user declared away rather than one they failed to answer for,
-    and counting a holiday as a lapse is what US-REV-04 exists to prevent.
+    and counting a holiday as a lapse is what the day-count separation exists to prevent.
 
     They need not sum to the period's length: a day holding no block is none of the three, since
     there is nothing to answer for and counting it would report a backlog of days on which nothing

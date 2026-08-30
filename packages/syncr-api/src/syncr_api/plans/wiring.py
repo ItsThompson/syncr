@@ -1,7 +1,7 @@
 """Composition for the week routes: the one factory the app factory calls.
 
 The prefix is the week collection, which the concession routes already hang off, so the seven
-routes of section 13's week table are one collection served by two modules rather than two
+routes of the week table are one collection served by two modules rather than two
 collections that happen to share a URL.
 
 The tag, the origin check, and the statuses these routes answer are attached here rather than

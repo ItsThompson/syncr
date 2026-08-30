@@ -39,11 +39,12 @@ lock.
 ## The classification is made against the SAME live plan the solver read
 
 ``inputs.live_plan`` rather than a second read of the revision table. The producer and the guard
-then agree by construction: a candidate is judged against the plan it was built to improve on. Read
-again in the write transaction, the pair could differ by anything that landed in between, and every
-such difference would report as the solver having dropped or moved a block it never saw.
+then agree by construction: the guard reads the input VERSION, which was stamped when the plan was
+loaded, so a version that holds means the plan is the same one the candidate was built to improve
+on. Read again in the write transaction, the pair could differ by anything that landed in between,
+and every such difference would report as the solver having dropped or moved a block it never saw.
 
-**The plan both of them read is the one the week holds.** The assembler's placement seam is wired
+**The plan the producer read is the one the week holds.** The assembler's placement seam is wired
 to ``StoredPlacements``, which reads the newest revision, so a candidate that moves a block the live
 plan already placed is held back to the pending slot rather than auto-applied. A week that holds no
 plan classifies as a first plan for its week, and the authority rule has nothing to hold back.

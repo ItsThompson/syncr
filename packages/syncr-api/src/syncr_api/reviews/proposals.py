@@ -6,8 +6,8 @@ denominator over all seven, so its observed share is understated by exactly the 
 answered for. Proposing from that figure reads a lapse in confirming as a change in behaviour.
 
 **Until a quarter of such weeks exists there is no proposal at all**, and the review says so.
-`02-user-stories.md` US-REV-03 is explicit: before a quarter of confirmed data exists, the review
-shows the gap only and states that proposals need more data. The gap is the deviation chart, which
+Before a quarter of confirmed data exists, the review shows the gap only and states that proposals
+need more data. The gap is the deviation chart, which
 this module has no part in, so a period below the gate simply carries no shares.
 
 **The observed share is one ratio over the whole quarter, not the mean of thirteen ratios.** A week

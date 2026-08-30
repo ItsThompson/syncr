@@ -5,7 +5,7 @@ answer are attached here rather than repeated per route, so a route added to ``a
 set its own router declares.
 
 The prefix is the week collection, because both paths hang off one week and the week is the resource
-they belong to. The route table's other week routes are ticket 31's and join the same prefix from
+they belong to. The route table's other week routes are and join the same prefix from
 their own module.
 
 **The 409 is declared on the tradeoff route alone**, because it is the only route here that can send

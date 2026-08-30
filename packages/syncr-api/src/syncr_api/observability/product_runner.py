@@ -22,11 +22,12 @@ would read lowest on Monday every week for no reason anyone can act on.
 ## Where the session statement comes from, and the one limit that remains
 
 The engagement streak and the early-catch numerator both read ``VerdictEvent.session_mode_active``.
-A client states whether a weekly session is open through a request header, each solve-scheduling
-operation carries the statement its request made, and the solve's recorder writes it onto every
-verdict row it emits, so both figures follow what callers actually stated rather than assuming
-silence. One attribution limit remains: an episode opened by an act carrying no session flag counts
-as a late discovery, because the ratio can only credit what the caller stated.
+A client states whether a weekly session is open through a request header, and a solve-scheduling
+operation carries a flag that widens to true when any requesting caller stated the session was open
+and never narrows back; the solve's recorder writes that flag onto every verdict row it emits, so
+both figures follow what callers actually stated rather than assuming silence. One attribution
+limit remains: an episode opened by an act carrying no session flag counts as a late discovery,
+because the ratio can only credit what the caller stated.
 """
 
 from __future__ import annotations

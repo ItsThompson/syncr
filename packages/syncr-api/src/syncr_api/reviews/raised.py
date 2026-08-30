@@ -1,6 +1,6 @@
 """The raised items the weekly session opens with, and the sentence each one states.
 
-Section 16's `SessionMode` lists the categories under one heading, and the notice-volume table gives
+The `SessionMode` list names the categories under one heading, and the notice-volume table gives
 the panel they sit in one volume and one pigment: **panel, amber, in weekly-session mode only**. So
 they are one collection with a kind on each member rather than one shape per category, and the
 sentence a member renders is composed HERE rather than on a client: two clients would compose two
@@ -15,7 +15,7 @@ rather than a figure.
 **Nothing here is an action, and that absence is the design.** There is deliberately no "carry
 forward": an overdue task already surfaces as a raised item, so the backlog carries it implicitly
 and the affordance would be a second way to say the same thing. A chronic skip offers nothing
-either, because ``US-REV-02`` leaves reschedule, reduce scope, or drop to the user. A repeated
+either, because the rule leaves reschedule, reduce scope, or drop to the user. A repeated
 collision offers nothing because the fix could be a template change, an anchor-type change, or
 nothing.
 
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
 
 class RaisedKind(StrEnum):
-    """What a raised item is about. One member per row of section 16's `raised` list."""
+    """What a raised item is about. One member per row of the `raised` list."""
 
     CHRONIC_SKIP = "chronic_skip"
     HABIT_AT_DEBT_CAP = "habit_at_debt_cap"
@@ -94,7 +94,7 @@ def habit_debt_items(
 ) -> list[RaisedItem]:
     """One item per habit its own policy raises, through the surface chronic skips use.
 
-    ``US-HAB-07`` asks for exactly that: reaching the cap raises the habit "through the same surface
+    Reaching the cap raises the habit "through the same surface
     chronic skips use", so this is a kind of raised item rather than a second mechanism. The reading
     decides whether a habit is raised at all, because the policy table lives in
     ``syncr_domain.debt`` and a condition restated here would be a second copy of it.

@@ -7,8 +7,8 @@ document's docstring says so and every scalar column beside it is derived from i
 
 That choice is the reason this module reads a document rather than recomputing a denominator, and
 it is deliberate rather than incidental. Recomputing one needs the frame, the anchors, the
-absolutely forbidden windows and the overhang assembled again on a read path; ticket 1310 records
-that the reader which would do it understates by the whole circadian frame today and that a
+absolutely forbidden windows and the overhang assembled again on a read path; the
+reader which would do it understates by the whole circadian frame today and a
 document-only recomputation overstates by the overhang. Reading the stored figure has neither
 error, because it is the figure the week was solved against.
 

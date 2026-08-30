@@ -24,7 +24,7 @@ once the parts' deadlines or their Areas do. The figure is 168 hours for the sam
 
 **The estimate's bounds are not multiples of the grid step**, and that is deliberate. An
 estimate is a quantity of work, not a span the solver places: the snap grid governs the instants
-a placement starts and ends on, and `04-domain-model.md`'s own elasticity example puts one
+a placement starts and ends on, and the elasticity example puts one
 task at 25, 45, and 90 minutes of work. The minimum chunk is different: it is the smallest
 PLACEMENT a splittable task may take, so it owes the same grid every placement lands on, which
 is why ``MIN_CHUNK_MINUTES_MIN`` is one grid step and why the stored value must be a whole

@@ -7,8 +7,8 @@ would be the one that quietly disagreed.
 
 **Two windows, and they answer different questions.** Composition and deviation are the NAMED
 week's, because "composition now" is a statement about now. The trend and the proposal are the
-quarter ending with that week, because a bad week and a bad quarter are the two things US-AREA-05
-exists to tell apart.
+quarter ending with that week, because a bad week and a bad quarter are the two things
+the area review exists to tell apart.
 
 **The share compared against is the one in effect now, not the one each week was solved under.**
 The review exists to decide whether to change the current budget, so the current budget is what
@@ -125,8 +125,8 @@ def categories_of(
     """One row per declared Area, then the vacancy, which is the order the wedges are drawn in.
 
     The vacancy is last so it closes the circle rather than splitting the Areas, and it is present
-    whatever it holds: discretionary time no block covers is shown rather than hidden, which is the
-    whole reason US-AREA-03 exists.
+    whatever it holds: discretionary time no block covers is shown rather than hidden, which is
+    the whole reason the area review exists.
     """
     declared = targets(week, shares)
     return (

@@ -5,7 +5,7 @@ service never imports a wire schema and the route never decides anything.
 
 Every field of a change is three-valued: absent leaves the stored value alone, a value
 replaces it, and null clears it where the column is nullable. That is
-`13-http-api.md`'s explicit-null convention, and it is why a floor can be removed at all.
+the explicit-null convention, and it is why a floor can be removed at all.
 
 Neither change carries a parent or an Area. An Area's place in the hierarchy and a Project's
 Area are declared once: the hours already spent were attributed to the Area the row was

@@ -55,7 +55,7 @@ identifier into a 404 rather than an edit.
 ``require_scope`` denies nothing over HTTP today, and that is a property of the credential rather
 than of the check: every route reaching these methods resolves a browser session, and a session
 carries every scope because the user is acting directly. Reading the backlog needs ``plan:read``
-and changing it needs ``plan:write``, which is `12-auth-and-tenancy.md`'s mapping: capture is a
+and changing it needs ``plan:write``, which is the mapping: capture is a
 plan change rather than an administrative one, which is why it is not ``admin`` the way a budget
 edit is.
 """

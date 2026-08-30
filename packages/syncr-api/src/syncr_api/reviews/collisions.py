@@ -1,6 +1,6 @@
 """Repeated collisions: one commitment meeting one block, week after week.
 
-``US-REV-05``: the weekly session raises a repeated collision when the same commitment and the same
+The weekly session raises a repeated collision when the same commitment and the same
 binding have conflicted in three or more weeks, naming the commitment, the block, and the number of
 weeks -- ``repeated collision: Standup over Leetcode, 4 weeks``.
 
@@ -46,7 +46,7 @@ reader cannot check.
 
 ## The count is a count of WEEKS, and they need not be consecutive
 
-The story's words are "three or more weeks", which is deliberately weaker than the consecutive run
+The words are "three or more weeks", which is deliberately weaker than the consecutive run
 a repeated pin and a chronic skip are stated over. A collision the user resolved one week and met
 again two weeks later is the same pattern: the commitment did not stop landing there, and a gap in
 the middle is often the resolution that did not hold rather than evidence against the pattern.
@@ -141,9 +141,9 @@ def repeated_collisions(
 def repeated_collision_items(
     collisions: Iterable[RepeatedCollision], *, titles: Mapping[ContentKey, str]
 ) -> list[RaisedItem]:
-    """One item per pair that keeps meeting, in the form ``US-REV-05`` writes out.
+    """One item per pair that keeps meeting, in the written form.
 
-    The story's own example is ``repeated collision: Standup over Leetcode, 4 weeks``, so the item
+    The canonical example is ``repeated collision: Standup over Leetcode, 4 weeks``, so the item
     names BOTH ends and the count: ``Standup over Leetcode`` as the title, and the two names again
     in the sentence that carries the count and the week it last happened in.
 

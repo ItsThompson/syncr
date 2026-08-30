@@ -19,7 +19,7 @@ value signed under one key for two purposes is a value one purpose can forge for
 per-use key from HKDF-like derivation costs one hash and closes that.
 
 No PKCE. syncr is a confidential client here: the code is exchanged with a client secret Google
-verifies, so a code intercepted at the browser cannot be redeemed. Ticket 1181 holds the case for
+verifies, so a code intercepted at the browser cannot be redeemed. A separate case exists for
 adding it anyway, which needs the verifier to survive the round trip.
 """
 

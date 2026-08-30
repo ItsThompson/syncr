@@ -7,8 +7,8 @@ the week's current one, and otherwise computes a live probe verdict from a fresh
 
 The alternative is what the route table describes, and it computes a probe verdict on every read.
 That yields ``provenance = "probe"`` always, so a week that passed the probe and then failed to
-PACK would report the capacity check forever and never the stronger finding. ``US-FEAS-02``
-requires the opposite: the stronger finding replaces the reading once the solve lands, and states
+PACK would report the capacity check forever and never the stronger finding.
+The opposite is required: the stronger finding replaces the reading once the solve lands, and states
 that the earlier reading was a capacity check. The maintainer writing on a change in feasibility
 and never on a change in provenance exists for the same reason from the metric's side -- a fresh
 probe would flip provenance back from ``solver`` after every solve.

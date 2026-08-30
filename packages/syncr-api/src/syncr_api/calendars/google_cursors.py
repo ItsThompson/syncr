@@ -6,7 +6,7 @@ sends an unprefixed cursor as no conditional header at all rather than guessing,
 sent as an ``If-None-Match`` would make a conditional request that silently stops being conditional.
 
 **The bound is the important half.** A sync token is a value Google chooses the length of, and it
-reaches a column with a width. Ticket 11 measured what an oversize write costs on this exact column:
+reaches a column with a width. An oversize write was measured on this exact column:
 it raises at the flush, which rolls back the whole tenant's sync pass, so every sibling source loses
 the sync state it had already earned and the failure is attributable to no source at all. Dropping
 the token instead costs one full read on the next poll, and the sync state states why.

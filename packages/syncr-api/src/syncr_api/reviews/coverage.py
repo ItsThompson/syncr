@@ -2,8 +2,8 @@
 
 This is the pie review's numerator, and it is a different figure from the budget report's. The
 budget report asks what a week PLANS to give each Area. A review asks what each Area actually
-got, which is a narrower question in two ways, both of them stated by
-`02-user-stories.md` US-AREA-04.
+got, which is a narrower question in two ways, both stated
+by the area-review requirement.
 
 **Only a confirmed day contributes.** A day the user never answered for is a day whose blocks are
 presumed, and presuming a week and then reporting it as behaviour is how a review comes to propose
@@ -31,7 +31,7 @@ A day is classified in one pass, and the order of the questions is the order of 
 
 Off-plan outranks the rest because an off-plan day is a day the user declared away, and reporting
 it among the unconfirmed ones would name a holiday as a lapse. That is exactly the separation
-US-REV-04 asks for: off-plan days are reported separately from unconfirmed days.
+required: off-plan days are reported separately from unconfirmed days.
 """
 
 from __future__ import annotations

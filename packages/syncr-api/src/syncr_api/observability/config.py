@@ -27,7 +27,7 @@ PRODUCT_INTERVAL: Final = timedelta(hours=1)
 # One week is too few: a week with two partial outcomes gives a median absolute percentage error
 # that swings on one block, and a week with no infeasibility gives a ratio with no denominator at
 # all. Four gives every figure a denominator worth reading while staying short enough that the
-# gauge's own history shows a trend rather than a smear. The targets in section 18 are stated by
+# gauge's own history shows a trend rather than a smear. The targets are stated by
 # week number, which a trend over this window answers and a single week's noise does not.
 MEASUREMENT_WEEKS: Final = 4
 

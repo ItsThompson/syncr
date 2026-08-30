@@ -1,7 +1,7 @@
 """Composition for the approve route: the one factory the app factory calls.
 
 The prefix is the week collection, which the week, concession and pin routes already hang off, so
-section 13's week table stays one collection served by four modules rather than four collections
+the week table stays one collection served by four modules rather than four collections
 that happen to share a URL.
 
 The tag, the origin check, and the statuses this route answers are attached here rather than on the

@@ -2,7 +2,7 @@
 
 **Neither read writes anything at all.** No row, no input version bump, and no verdict event. Each
 reads the plan of record, the outcome log, the off-plan periods and the Areas, and hands them to the
-review's own arithmetic. The apply is the one write in this module, and it is what US-REV-03's
+review's own arithmetic. The apply is the one write in this module, and it is what
 "syncr never re-cuts the budget on its own" means in code: nothing moves a share except a request
 the user made.
 

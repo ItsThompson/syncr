@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 # A tenant whose horizon could not be read at all. Contained, so it reaches neither the loop's own
 # failure counter nor `measured`: a fault that answers with a tally is invisible unless something
-# counts it. `18-observability.md` defines no alert on this family yet, which ticket 54 owns.
+# counts it. defines no alert on this family yet.
 TENANT_PASS_FAILURES = Counter(
     "syncr_horizon_tenant_failures_total",
     "Plan horizon passes that raised for one tenant before reaching its weeks.",

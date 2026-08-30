@@ -50,7 +50,7 @@ recorded on the commit path, and the one time passing produces is the maintainer
 
 ## Rejecting a proposed move is pinning the block where it already is
 
-``US-PLAN-05``, and it needs no mechanism of its own: the rejection resolves the accepted interval
+Rejecting a proposed move is pinning the block where it already is, and it needs no mechanism of its own: the rejection resolves the accepted interval
 from the plan of record and then takes exactly the path above. So the pairwise preference falls out
 -- the solver proposed there, the user chose here -- and there is no rejection record, no rejection
 column, and no second code path that could disagree with this one.
@@ -439,7 +439,7 @@ def _starting_at(start: datetime, block: Block) -> Interval:
 def _require_a_placement_the_week_has_not_reached(
     block: Block, accepted: Interval, now: datetime
 ) -> None:
-    """``US-PLAN-06``, in both directions, and the two are different refusals.
+    """A placement the week has already reached is refused, in both directions, and the two are different refusals.
 
     The block having begun is a fact about the week: the moment has passed, so where that block ran
     is not a placement anybody has authority over, and the checker would refuse the move anyway.

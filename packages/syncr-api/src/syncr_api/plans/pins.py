@@ -3,7 +3,7 @@
 A pin is two things at once, and this table holds only the first: it is the constraint this week's
 solve may not move, and it is a training label. The label is the ``edit_events`` row written in the
 same transaction, which is append-only and never pruned. So the rules that look contradictory in
-section 07 are one rule once the pair is read together:
+are one rule once the pair is read together:
 
 | Rule | What holds it |
 |---|---|

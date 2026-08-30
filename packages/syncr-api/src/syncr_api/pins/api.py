@@ -17,7 +17,7 @@ than duplicating; the event is append-only, so it is the write the guard protect
 
 ``POST /reject-block`` answers with the same shape as ``POST /pins``, because it creates the same
 thing. There is no rejection resource, no rejection status, and no field on the response that says a
-pin came from a rejection: section 07 settled that partial rejection is a pin, and a client that
+pin came from a rejection: partial rejection is a pin, and a client that
 could tell them apart would be a client that could treat them differently.
 """
 

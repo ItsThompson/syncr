@@ -5,9 +5,8 @@ pin rows, and the weekly session runs it on every read, so the candidates are al
 pins they are computed from. A table of them would be a cache of a computation nobody asked to
 cache.
 
-What cannot be recomputed is the reader's ANSWER. Section 11 says a declined candidate "does not
-re-raise for a stated interval", and there was nothing for a decline to write, which is what
-``tickets/1530`` recorded.
+What cannot be recomputed is the reader's ANSWER. A declined candidate "does not
+re-raise for a stated interval", and there was nothing for a decline to write.
 
 | Column | Holds |
 |---|---|

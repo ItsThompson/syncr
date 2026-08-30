@@ -1,6 +1,6 @@
 """The two database families: the pool gauge and the per-repository read histogram.
 
-Section 18 names ``syncr_db_pool_in_use`` and ``syncr_db_query_duration_seconds``. Neither was
+``syncr_db_pool_in_use`` and ``syncr_db_query_duration_seconds`` are named here. Neither was
 declared by anything, so the System dashboard's "database pool and query duration" had nothing to
 draw and a connection pool running at its ceiling was invisible.
 
@@ -16,16 +16,16 @@ missing.
 
 Every repository over a tenant-scoped table extends :class:`~syncr_api.core.repository.
 TenantScopedReader`, so wrapping its public coroutine methods instruments whatever repositories
-exist rather than whatever a decorator was remembered on. A repository added by a later ticket is
+exist rather than whatever a decorator was remembered on. A repository added later is
 measured with no change here.
 
-**It measures the repository METHOD, which is not always one statement.** The label pair section 18
+**It measures the repository METHOD, which is not always one statement.** The label pair
 states is repository and method, so that is the unit: a method issuing four statements is one
 observation, and the count is calls rather than queries. That is the reading an operator can act on,
 because a method is what a call site names.
 
 The buckets are stated rather than left at the client library's defaults, and they are the latency
-budgets in section 19: a read that has crossed 100 ms is the assembly's whole budget spent in one
+budgets: a read that has crossed 100 ms is the assembly's whole budget spent in one
 call. Stating them also bounds the exposition, which carries one line per bucket per series.
 """
 

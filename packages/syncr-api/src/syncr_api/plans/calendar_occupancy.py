@@ -148,7 +148,7 @@ def calendar_occupancy(
     over one of those products: a journey home ending before the read begins truncates a prep block
     in the week that reads both and not in the week that reads only the prep. The consequence is two
     derived blocks covering the same minutes, which is a state the grid draws, and it is measured in
-    the suite rather than argued. Ticket 1262 carries the rule.
+    the suite rather than argued.
     """
     cast = regenerate(loaded)
     return CalendarOccupancy(

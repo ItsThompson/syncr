@@ -1,6 +1,6 @@
 """The three HTTP families and the middleware that records them.
 
-Section 18 names ``syncr_http_request_duration_seconds``, ``syncr_http_requests_total`` and
+``syncr_http_request_duration_seconds`` is named here, ``syncr_http_requests_total`` and
 ``syncr_http_errors_total``. They sit here rather than beside the ``/metrics`` exposition because
 the exposition RENDERS a registry and this RECORDS onto one, and the two change on different
 schedules.
