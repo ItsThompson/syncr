@@ -42,10 +42,12 @@ from syncr_api.calendars.config import (
 from syncr_api.calendars.google_adapter import (
     CURSOR_INVALIDATED,
     CURSOR_UNSTORABLE,
+    DELTA_OVER_MAX_PAGES,
     GoogleAdapter,
 )
 from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import CalendarsRead, GoogleCalendarClient, GoogleReadFailed
+from syncr_api.calendars.google_config import MAX_PAGES
 from syncr_api.calendars.google_cursors import CURSOR_PREFIX
 from syncr_api.calendars.injection import READS_ONLY
 from syncr_api.calendars.projection_errors import ProjectionRefused
@@ -736,6 +738,35 @@ async def test_a_failed_read_retains_the_anchors_the_cursor_and_the_last_success
     assert state.cursor == held.cursor
     assert state.last_error is not None
     assert RETAINED_NOTICE in state.last_error
+
+
+async def test_a_delta_over_max_pages_does_not_retain_the_cursor() -> None:
+    # A delta that exceeds the page bound did not finish, so the cursor that produced it cannot
+    # claim the read completed. Retaining it would make the next poll re-page through the same
+    # bound and never finish; dropping it costs one full read instead, and the source's
+    # resync_reason names why. This is the exposure the one-page detector closed by construction
+    # and a paging delta path reopens.
+    google, transport = adapter([ok(events_page(event("change"), page_token="always-another"))])
+    held = synced()
+
+    outcome, state = await google.fetch(source(sync_state=held))
+
+    # MAX_PAGES pages were read, each carrying a change and another page token. The 41st page
+    # is the one the bound stops at.
+    assert len(transport.calls) == MAX_PAGES
+    # A bounded failure is not a delta: its events do not reach the anchor writer.
+    assert outcome.events == ()
+    assert outcome.incremental is False
+    assert outcome.reparsed is False
+    # The cursor that produced the read is NOT retained: the next poll reads fully.
+    assert state.cursor is None
+    assert state.resync_reason == DELTA_OVER_MAX_PAGES
+    # The failure is still recorded: the read did not succeed, and the anchors are retained.
+    assert state.last_error is not None
+    assert RETAINED_NOTICE in state.last_error
+    assert state.last_success_at == EARLIER
+    assert state.anchors_current == held.anchors_current
+    assert state.attempts == MAX_PAGES
 
 
 async def test_a_rate_limited_read_states_that_it_backed_off_and_when_it_will_try_again() -> None:
