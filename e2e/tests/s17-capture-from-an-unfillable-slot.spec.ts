@@ -182,7 +182,7 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
     (each) =>
       each.slots.length === 1 &&
       each.labelled === 0 &&
-      each.slots[0]!.reason === "no_eligible_content",
+      each.slots[0]!.reason === "no_fitting_content",
   );
   expect(
     unambiguous.length,

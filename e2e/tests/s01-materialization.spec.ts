@@ -64,7 +64,7 @@ test("S1 and S24 every Area slot is present, drawn as not solved because nobody 
   }
 });
 
-test("S17 a slot whose Area has no eligible content is drawn as unfillable, naming that Area", async ({
+test("S17 a slot whose Area has content that cannot take its duration is drawn as unfillable, naming that Area", async ({
   api,
 }) => {
   const week = planWeek();
@@ -72,8 +72,9 @@ test("S17 a slot whose Area has no eligible content is drawn as unfillable, nami
   const view = await weekView(api, week);
 
   // The solve looked at the backlog, so a slot it could not fill carries the reason that says so. The
-  // reference week declares a Transit slot and no Transit content, which is the case S17 opens with.
-  const unfillable = view.live!.emptySlots.filter((slot) => slot.reason === "no_eligible_content");
+  // reference week declares a Fitness slot of sixty minutes and a Gym habit of forty-five, so the
+  // Area holds content but none of it can take the slot's duration, which is the case S17 opens with.
+  const unfillable = view.live!.emptySlots.filter((slot) => slot.reason === "no_fitting_content");
   expect(
     unfillable.length,
     `no slot was drawn unfillable; the reasons present were ` +
