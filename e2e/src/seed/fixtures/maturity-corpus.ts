@@ -16,12 +16,10 @@
  * observations of one binding is therefore reachable on a Friday and not on a Monday, and the print
  * says which.
  *
- * IT TOLERATES ONE NAMED REFUSAL RATHER THAN EXITING ON IT, AND THE TOLERANCE NOW GUARDS NOTHING.
- * `past_disagreement` is what a solve draws when its candidate would restate a week's past. The binding
- * phase leaves a slot the week has already reached unbound, so a first solve of a partly lived week no
- * longer draws it, and `docs/smoke-scenarios.md` records a run in which every week solved and the
- * tolerance was never taken. The tolerance stays ONE named code rather than a blanket allowance: the
- * refusal is named, printed, and continued past, and any OTHER failure still stops the seed.
+ * EVERY WEEK SOLVES, AND ANY FAILURE STOPS THE SEED. The binding phase leaves a slot the week has
+ * already reached unbound, so a first solve of a partly lived week succeeds rather than drawing
+ * `past_disagreement`. The seed no longer tolerates that refusal: a solve that fails for any reason
+ * stops the seed, because the tolerance was the record of the defect and the defect is closed.
  */
 
 import type { ApiClient } from "../../api/client.ts";
@@ -52,32 +50,25 @@ const WEEKS_AHEAD = 2;
 
 const hasEnded = (block: Block, now: Date): boolean => new Date(block.interval.end) < now;
 
-/* The one refusal this seed tolerates. Named as a value, so tolerating it is a decision about ONE known
- * state rather than a blanket "any failure is acceptable". */
-const KNOWN_REFUSAL = "past_disagreement";
-
-/** Solve `isoWeek` and say what happened, tolerating only `KNOWN_REFUSAL`.
+/** Solve `isoWeek` and refuse anything but success, so a failure stops the seed.
  *
- * It waits for the refusal to APPEAR rather than for the operation to reach a terminal status: the queue
- * retries three times with a doubling backoff, so a permanently refused solve takes minutes to report
- * `failed` while its answer is already on the row after the first attempt. */
-const solveTolerating1570 = async (
-  client: ApiClient,
-  isoWeek: string,
-): Promise<"solved" | "refused"> => {
+ * It waits for the operation to reach a terminal status: the queue retries three times with a
+ * doubling backoff, so a permanently refused solve takes minutes to report `failed`. */
+const solveWeek = async (client: ApiClient, isoWeek: string): Promise<void> => {
   const started = await solveNow(client, isoWeek);
-  const answered = await until(
-    `${isoWeek}'s solve to succeed or to state a reason`,
+  const settled = await until(
+    `${isoWeek}'s solve to reach a terminal status`,
     () => operation(client, started.id),
-    (seen) => seen.status === "succeeded" || seen.error !== null,
+    (seen) =>
+      seen.status === "succeeded" || seen.status === "failed" || seen.status === "superseded",
     45_000,
   );
-  if (answered.status === "succeeded") return "solved";
-  if (answered.error?.code === KNOWN_REFUSAL) return "refused";
-  throw new Error(
-    `solving ${isoWeek} ended ${answered.status}: ${answered.statement} ` +
-      JSON.stringify(answered.error),
-  );
+  if (settled.status !== "succeeded") {
+    throw new Error(
+      `solving ${isoWeek} ended ${settled.status}: ${settled.statement} ` +
+        JSON.stringify(settled.error),
+    );
+  }
 };
 
 export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
@@ -134,24 +125,21 @@ export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
 
   const now = new Date();
   const solved: string[] = [];
-  const refused: string[] = [];
   const unplanned: string[] = [];
   const refusedRecordings: string[] = [];
   let recorded = 0;
   for (const isoWeek of weeks) {
     const view: WeekView = await weekView(client, isoWeek);
     if (view.live === null) {
-      // A DIFFERENT STATE FROM A REFUSED SOLVE, and kept in its own list for that reason. This week is
-      // outside the horizon, which is what happens to the third week early in a week: `today + 14 days`
-      // stops short of it. Putting it in `refused` would make the print attribute it to
-      // `past_disagreement`, which is a different cause and would be a lie on a Monday.
+      // OUTSIDE THE HORIZON, which is what happens to the third week early in a week: `today + 14 days`
+      // stops short of it. Kept in its own list for that reason, because it is a different state from a
+      // solved week: the maintainer has not reached it and there is nothing to record against.
       unplanned.push(isoWeek);
       continue;
     }
-    const outcome = await solveTolerating1570(client, isoWeek);
-    (outcome === "solved" ? solved : refused).push(isoWeek);
-    // Read again whatever happened: a refused solve leaves the materialized plan, whose blocks are a
-    // smaller corpus and a real one.
+    await solveWeek(client, isoWeek);
+    solved.push(isoWeek);
+    // Read again after the solve: the solved plan's blocks are the corpus to record against.
     const current = await weekView(client, isoWeek);
     for (const block of current.live?.blocks ?? []) {
       if (!hasEnded(block, now)) continue;
@@ -176,18 +164,11 @@ export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
   const learned = await client.get<Learned>("/api/v1/learned");
   console.log(`maturity_corpus: recorded ${recorded} outcomes`);
   console.log(`maturity_corpus: solved ${solved.join(", ") || "no week"}`);
-  if (refused.length > 0) {
-    console.log(
-      `maturity_corpus: NOT solved: ${refused.join(", ")}. A week whose earlier days are already ` +
-        `past is refused with ${KNOWN_REFUSAL}, permanently, which is ticket 1570. Its materialized ` +
-        "blocks are still recorded against.",
-    );
-  }
   if (unplanned.length > 0) {
     console.log(
       `maturity_corpus: NOT planned: ${unplanned.join(", ")}. Outside the horizon, so the maintainer ` +
-        "has not reached it and there is nothing to record against. Not the same state as a refused " +
-        "solve.",
+        "has not reached it and there is nothing to record against. Not the same state as a solved " +
+        "week.",
     );
   }
   if (refusedRecordings.length > 0) {
