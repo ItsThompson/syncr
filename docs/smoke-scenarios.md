@@ -202,10 +202,14 @@ figures the way the two netting rules say it must. What is still missing from th
 the exactly-0.5 ratio's half: a verdict-flipping mutation through a route that carries the session
 header, which ticket 1571 owns.
 
+**S29 has been closed by giving the clock its recipe.** `just e2e-clock <offset>` (ticket SR-DEPLOY-10)
+shifts the stack clock and restarts api and worker, and `clock/s29-sunday-to-monday-boundary.spec.ts`
+moves it across a Sunday-to-Monday boundary, asserts the newly covered week acquires a plan with no
+user action, and counts a frame span crossing the boundary exactly once across the two-week horizon.
+
 | Gap | Why | Where it should land |
 |---|---|---|
 | S17's capture flow | Driven now, and expected to fail: the label an empty slot's band does not carry, the reader of the capture URL the week screen writes, and the task-addressed preference write. The grid canvas these rows used to name as a fourth obstacle no longer grows: the grid measures the space the display offers rather than the element its own output sizes | `s17-capture-from-an-unfillable-slot.spec.ts`, tickets 1350 and 1490 |
 | The exactly-0.5 early-catch ratio | Needs a mutation that flips a verdict through a route that carries the session header; the three-step sequence this row used to share its cell with is automated in `s25-progress-does-not-manufacture-a-shortfall.spec.ts` | ticket 1572 |
-| S29 | Needs the clock moved across a Sunday-to-Monday boundary. Nothing in the stack takes an injected clock from outside the process | ticket 1573 |
 | One intermittent failure, anywhere an operation is awaited | A route that answers an operation identifier can answer one that `GET /operations/{id}` 404s for. Reached from all three such routes, at roughly one red run in five to ten. Not tolerated and not retried: `operation()` reports it by name | ticket 1575 |
 | Google, and the deployed host | A real account, a real token to revoke, and a real systemd unit. Neither is a mock this suite could add honestly | S2, S3, S19, S23 |

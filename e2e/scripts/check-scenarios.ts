@@ -56,7 +56,7 @@ const tableFile = path.join(repoRoot, "docs", "smoke-scenarios.md");
 const ROW = /^\|\s*(S\d{1,2})\s*\|.*\|.*\|.*\|\s*$/;
 
 /* A spec file named in the Where column, inside a backtick span. */
-const NAMED_SPEC = /`([\w.-]+\.spec\.ts)`/g;
+const NAMED_SPEC = /`([\w./-]+\.spec\.ts)`/g;
 
 /* A repository path named in the Where column: a backtick span holding a slash and no space. Catches
  * `packages/syncr-api/tests/test_approval_during_a_solve.py`, which the S30 row names. */
