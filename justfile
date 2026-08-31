@@ -563,8 +563,8 @@ seed-recovery-scopes:
 seed-shadow-geometry:
     node e2e/src/seed/cli.ts shadow_geometry
 
-# Outcomes recorded on every block the horizon's weeks have ended. Prints what it reached, and names the
-# one refusal it tolerates: a solve of the current week is refused permanently, which is ticket 1570
+# Outcomes recorded on every block the horizon's weeks have ended. Prints what it reached.
+# Every week solves; any failure stops the seed.
 seed-maturity-corpus:
     node e2e/src/seed/cli.ts maturity_corpus
 
