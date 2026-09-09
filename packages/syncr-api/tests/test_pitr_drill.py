@@ -211,6 +211,31 @@ class TestTheRecoveryInstance:
         )
 
 
+# --- The seeder identity handoff ---------------------------------------------
+
+
+class TestTheSeederIdentityHandoff:
+    def test_marker_rows_use_the_application_seeders_runtime_identity(self) -> None:
+        """Both marker writes use identifiers resolved after the write-path seeder runs."""
+        body = _commands_of(_recipe_body(RECIPE))
+        seeded = body.index("just drill-seed")
+        tenant_resolution = body.index("drill_tenant_id=")
+        habit_resolution = body.index("drill_habit_id=")
+        first_marker = body.index("insert into public.edit_events")
+        second_marker = body.index("insert into public.edit_events", first_marker + 1)
+
+        assert seeded < tenant_resolution < habit_resolution < first_marker < second_marker
+        assert "drill-seeder@localhost" in body
+        assert "select tenant_id::text from public.users" in body
+        assert body.count("$drill_tenant_id") >= 2
+        assert body.count("$drill_habit_id") >= 2
+
+        retired_tenant = "11111111-1111-4111-" + "8111-111111111111"
+        retired_habit = "44444444-4444-4444-" + "8444-444444444444"
+        assert retired_tenant not in body
+        assert retired_habit not in body
+
+
 # --- The recipe's guards, read from the justfile -----------------------------
 
 
@@ -233,8 +258,11 @@ class TestTheRehearsalRefusesWhatItMust:
         """
         from ops.config import EVIDENCE_TABLES
 
-        listed = set(re.findall(r"public\.[a-z_]+", _commands_of(_recipe_body(RECIPE))))
+        commands = _commands_of(_recipe_body(RECIPE))
+        listed_loop = re.search(r"for table in (.+?); do", commands)
 
+        assert listed_loop is not None, "the evidence check no longer loops over named tables"
+        listed = set(re.findall(r"public\.[a-z_]+", listed_loop.group(1)))
         assert listed == set(EVIDENCE_TABLES)
 
     def test_it_refuses_an_empty_wal_archive(self) -> None:

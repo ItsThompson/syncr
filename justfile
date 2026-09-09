@@ -1366,6 +1366,25 @@ drill-pitr-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     live up -d --wait postgres || exit 1
     live run --rm --no-deps api alembic upgrade head || exit 1
     just drill-seed || exit 1
+    # The application seeder provisions a random tenant, so marker rows must use the identity it
+    # actually created rather than an identifier from a fixture. A second query resolves the seeded
+    # habit for the same reason: its binding is also application-owned.
+    drill_email='drill-seeder@localhost'
+    uuid_pattern='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+    require_uuid() {
+      label="$1"
+      value="$2"
+      if [[ ! "$value" =~ $uuid_pattern ]]; then
+        echo "the seeded $label is not a UUID: $value" >&2
+        exit 1
+      fi
+    }
+    drill_tenant_id="$(psql_live -tAc "select tenant_id::text from public.users where email = '$drill_email'")" \
+      || { echo "could not resolve the seeded tenant for $drill_email" >&2; exit 1; }
+    require_uuid tenant "$drill_tenant_id"
+    drill_habit_id="$(psql_live -tAc "select id::text from public.habits where tenant_id = '$drill_tenant_id' and title = 'Gym' order by created_at, id limit 1")" \
+      || { echo "could not resolve the seeded habit for $drill_email" >&2; exit 1; }
+    require_uuid habit "$drill_habit_id"
     # REFUSE OVER AN EMPTY EVIDENCE SET, as `just restore-drill` refuses through the verdict's
     # `_there_was_data_to_lose`: a recovery of an empty table always succeeds, so a rehearsal over
     # empty evidence tables is the most convincing false pass there is. The five names are crossed
@@ -1413,7 +1432,7 @@ drill-pitr-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     # The dump instant must be strictly BEFORE this commit, at any clock or truncation: the sleep
     # is what keeps the control recovery below from including the marker at equal resolution.
     sleep 2
-    psql_live -c "insert into public.edit_events (id, tenant_id, iso_week, binding, proposed_starts_at, proposed_ends_at, accepted_starts_at, accepted_ends_at, objective_delta, context, weight_set_version, created_at) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-4111-8111-111111111111', '2026-W32', '{\"kind\": \"habit\", \"entity_id\": \"44444444-4444-4444-8444-444444444444\", \"occurrence_key\": \"09\", \"split_index\": null}'::jsonb, now(), now() + interval '1 hour', now() + interval '2 hours', now() + interval '3 hours', 0.5, '{\"note\": \"written after the base backup: the instant the rehearsal asks for\"}'::jsonb, 1, now())" || exit 1
+    psql_live -c "insert into public.edit_events (id, tenant_id, iso_week, binding, proposed_starts_at, proposed_ends_at, accepted_starts_at, accepted_ends_at, objective_delta, context, weight_set_version, created_at) values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '$drill_tenant_id', '2026-W32', '{\"kind\": \"habit\", \"entity_id\": \"$drill_habit_id\", \"occurrence_key\": \"09\", \"split_index\": null}'::jsonb, now(), now() + interval '1 hour', now() + interval '2 hours', now() + interval '3 hours', 0.5, '{\"note\": \"written after the base backup: the instant the rehearsal asks for\"}'::jsonb, 1, now())" || exit 1
     asked_for="$(instant)"
     # ONE MORE TRANSACTION, COMMITTED PAST THE INSTANT ASKED FOR, and deleted again before the
     # manifest below is read. Not decoration: a recovery reaches its target by finding a COMMIT
@@ -1422,7 +1441,7 @@ drill-pitr-local: _refuse-a-local-drill-on-a-deployed-host drill-keys
     # shipping an empty switched-out segment changed nothing, because an empty segment carries no
     # commit. The delete makes the live database's own contents identical either side of the
     # instant, so the EIGHT claims still hold against the copy recovered to the target.
-    psql_live -c "insert into public.edit_events (id, tenant_id, iso_week, binding, proposed_starts_at, proposed_ends_at, accepted_starts_at, accepted_ends_at, objective_delta, context, weight_set_version, created_at) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', '2026-W32', '{\"kind\": \"habit\", \"entity_id\": \"44444444-4444-4444-8444-444444444444\", \"occurrence_key\": \"10\", \"split_index\": null}'::jsonb, now(), now() + interval '1 hour', now() + interval '2 hours', now() + interval '3 hours', 0.5, '{\"note\": \"committed past the target so the target is reachable\"}'::jsonb, 1, now())" || exit 1
+    psql_live -c "insert into public.edit_events (id, tenant_id, iso_week, binding, proposed_starts_at, proposed_ends_at, accepted_starts_at, accepted_ends_at, objective_delta, context, weight_set_version, created_at) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '$drill_tenant_id', '2026-W32', '{\"kind\": \"habit\", \"entity_id\": \"$drill_habit_id\", \"occurrence_key\": \"10\", \"split_index\": null}'::jsonb, now(), now() + interval '1 hour', now() + interval '2 hours', now() + interval '3 hours', 0.5, '{\"note\": \"committed past the target so the target is reachable\"}'::jsonb, 1, now())" || exit 1
     psql_live -c "delete from public.edit_events where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'" || exit 1
     psql_live -c 'select pg_switch_wal()' >/dev/null || exit 1
     SYNCR_OPS_COMPOSE="$backup_overlays" just wal-ship || exit 1
