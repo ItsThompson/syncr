@@ -34,6 +34,7 @@ from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.habits.records import HabitRecord
 from syncr_api.habits.repository import HabitRepository
+from syncr_api.plans.resolved_preferences import resolved_preferences
 from syncr_api.preferences.declarations import DeclaredWindow, PreferenceDeclaration
 from syncr_api.preferences.owners import (
     MAX_AREA_DEPTH,
@@ -54,6 +55,7 @@ from syncr_api.tasks.records import TaskRecord
 from syncr_api.tasks.repository import TaskRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
+from syncr_domain.identity import BindingRef
 from syncr_domain.preferences import (
     MAX_WINDOWS,
     LocalTimeWindow,
@@ -64,7 +66,9 @@ from syncr_domain.preferences import (
     PreferenceStrength,
 )
 from syncr_domain.tasks import Priority, TaskStatus
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.weeks import IsoWeek, active_zone_by_date
+from syncr_domain.zones import ZoneProfile
+from syncr_solver.inputs import EligibleTask
 from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
 
 if TYPE_CHECKING:
@@ -491,6 +495,81 @@ class TestTheChainClimbsTheAncestry:
         assert read.in_effect is not None
         assert read.in_effect.owner == world.area_owner
         assert read.in_effect.windows == (EARLY,)
+
+    async def test_the_route_and_assembler_agree_for_every_owner_in_three_area_levels(self) -> None:
+        world = World()
+        trail = area(
+            world.tenant_id,
+            name="Fitness / Running / Trail",
+            parent_id=world.child_area.id,
+        )
+        trail_habit = habit(world.tenant_id, trail.id)
+        trail_task = task(world.tenant_id, trail.id)
+        areas = [world.area, world.child_area, trail]
+        habits = [world.habit, world.child_habit, trail_habit]
+        tasks = [world.task, world.child_task, trail_task]
+        world.service = PreferenceService(
+            preferences=world.preferences,
+            owners=PreferenceOwners(
+                areas=FakeAreaRepository(world.tenant_id, areas),
+                habits=FakeHabitRepository(world.tenant_id, habits),
+                tasks=FakeTaskRepository(world.tenant_id, tasks),
+            ),
+            bump=BacklogWideBump(
+                versions=world.versions,
+                settings=FakeSettingsRepository(world.tenant_id),
+            ),
+            clock=lambda: NOW,
+        )
+        await world.service.replace(
+            world.principal, PreferenceOwnerKind.AREA, world.area.id, declaration()
+        )
+        route_answers = {
+            read.owner: read.in_effect
+            for read in [
+                await world.service.read(world.principal, PreferenceOwnerKind.AREA, area.id)
+                for area in areas
+            ]
+            + [
+                await world.service.read(world.principal, PreferenceOwnerKind.HABIT, habit.id)
+                for habit in habits
+            ]
+            + [
+                await world.service.read(world.principal, PreferenceOwnerKind.TASK, task.id)
+                for task in tasks
+            ]
+        }
+        assembled = resolved_preferences(
+            world.preferences.rows,
+            areas=areas,
+            habits=habits,
+            tasks=[
+                EligibleTask(
+                    binding=BindingRef.for_task(task.id),
+                    remaining_minutes=task.estimate_minutes,
+                    priority=task.priority,
+                    min_chunk_minutes=task.min_chunk_minutes,
+                    splittable=task.splittable,
+                    area_id=task.area_id,
+                    title=task.title,
+                    deadline=task.deadline,
+                )
+                for task in tasks
+            ],
+            zone_by_date=active_zone_by_date(WEEK_31, ZoneProfile(LONDON)),
+        )
+
+        assert all(preference is not None for preference in route_answers.values())
+        assert {preference.owner for preference in assembled} == set(route_answers)
+        assert {
+            preference.owner: (preference.strength, preference.preferred_duration_minutes)
+            for preference in assembled
+        } == {
+            owner: (preference.strength, preference.preferred_duration_minutes)
+            for owner, preference in route_answers.items()
+            if preference is not None
+        }
+        assert {len(preference.windows) for preference in assembled} == {7}
 
     async def test_the_nearest_ancestor_wins_over_its_own_ancestors(self) -> None:
         world = World()
