@@ -126,6 +126,37 @@ const SCREENS = [
   { what: "settings", path: "/settings" },
 ] as const;
 
+const SHELL_MOUNTED_SCREENS = [
+  { what: "the week", path: week },
+  { what: "today", path: () => "/today" },
+  { what: "the backlog", path: () => "/backlog" },
+  { what: "the areas screen", path: () => "/areas" },
+  { what: "templates", path: () => "/templates" },
+  { what: "the learned screen", path: () => "/learned" },
+  { what: "settings", path: () => "/settings" },
+  { what: "setup", path: () => "/setup" },
+  { what: "the not-found screen", path: () => "/not-found" },
+] as const;
+
+const MAIN_HAS_FOCUS = `(() => {
+  const main = document.querySelector('main');
+  return main !== null && main.contains(document.activeElement);
+})()`;
+
+const BYPASSED_FOCUS_STOP_COUNT = `(() => {
+  const main = document.querySelector('main');
+  const skipLink = document.activeElement;
+  if (main === null || skipLink === null) return null;
+  const selector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),' +
+    ' textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return [...document.querySelectorAll(selector)]
+    .filter((element) =>
+      skipLink.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING &&
+      element.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    .length;
+})()`;
+
 /* WHERE THE TWO COLUMNS MEET, read off the element the shell gives the sidebar rather than from `--w-sidebar`:
  * what decides whether a tab stop crossed into the main column is where the sidebar actually ends on this render. */
 const COLUMN_EDGE = `(() => {
@@ -197,6 +228,23 @@ interface Ring {
   readonly color: string;
   readonly onInk: boolean;
 }
+
+test.describe("the skip link", () => {
+  for (const screen of SHELL_MOUNTED_SCREENS) {
+    test(`S21 moves focus into main from ${screen.what}`, async ({ api, page }) => {
+      expect(api.sessionCookie.length).toBeGreaterThan(0);
+      await render(page, screen.path());
+      await expect(page.locator("main")).not.toBeFocused();
+
+      await page.keyboard.press("Tab");
+      await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
+      expect(await page.evaluate(BYPASSED_FOCUS_STOP_COUNT)).toBe(8);
+
+      await page.keyboard.press("Enter");
+      await expect.poll(async () => page.evaluate(MAIN_HAS_FOCUS)).toBe(true);
+    });
+  }
+});
 
 test.describe("the focus ring", () => {
   test("is drawn at a 2px offset on every tab stop of the week screen, in the surface's own ink", async ({
