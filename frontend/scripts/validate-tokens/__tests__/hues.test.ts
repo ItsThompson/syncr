@@ -1,10 +1,9 @@
 /* THE AREA RAMP'S HUE LEDGER, AND THE THREE THINGS THIS CHECK REFUSES.
  *
  * The ledger drifted once and the drift was invisible: an earlier version of the pigment comment misreported the
- * tightest pair as 02/03 at 23 degrees, and `docs/design/specimen.html` kept a hardcoded copy that reproduced
- * exactly that stale figure while the comment claimed the sheet computed it. Both are derived from the hexes now, so
- * the fixtures below plant the shapes that would let either happen again: a stated hue that disagrees with its
- * pigment, a ramp with a pair too close to separate, and a deal order whose first four are not far apart.
+ * tightest pair as 02/03 at 23 degrees, and `docs/design/specimen.html` kept a hardcoded copy while the sheet
+ * claimed it computed the result. Reference sheets now derive hue from linked tokens, so the fixtures below plant
+ * the shapes that would let a token statement, a sheet ledger, or the ramp's spacing drift.
  *
  * The shipped ramp is asserted too, with the figures the design language states, because a check whose only cases
  * are fixtures says nothing about the pigments that ship. */
@@ -126,29 +125,30 @@ describe("a hue stated beside a pigment", () => {
 });
 
 describe("a reference sheet holding its own ledger", () => {
-  /* The specimen sheet's exact shape: a hardcoded array of hues beside the tokens it renders from. Two of the
-   * three entries in the fixture are the pre-retune figures, and the third agrees with its pigment, so a check that
-   * flagged every entry would be as useless as one that flagged none. */
-  it("is refused entry by entry, against the pigments it claims to describe", async () => {
+  it("is refused entry by entry, including figures that match the token", async () => {
     const outcome = await checkAreaHues({
       pigmentFile,
       sheetFiles: [fixture("sheet-with-ledger.html")],
     });
 
     expect(checksOf(outcome.findings)).toEqual(["area-hue-ledger"]);
-    expect(outcome.findings.map((finding) => /pigment (\d\d)/.exec(finding.message)?.[1])).toEqual([
-      "01",
-      "02",
-    ]);
+    expect(outcome.findings).toHaveLength(3);
+    expect(outcome.findings.map((finding) => finding.message)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("01 at 355 degrees"),
+        expect.stringContaining("02 at 25 degrees"),
+        expect.stringContaining("07 at 176 degrees"),
+      ]),
+    );
   });
 
-  it("says which ledger it read, so the finding names the file to correct", async () => {
+  it("names the stored figure and tells the reader to derive it at load", async () => {
     const outcome = await checkAreaHues({
       pigmentFile,
       sheetFiles: [fixture("sheet-with-ledger.html")],
     });
 
-    expect(outcome.findings[0].message).toContain("this sheet's hardcoded ledger");
+    expect(outcome.findings[0].message).toContain("derive it from the linked Area token at load");
     expect(outcome.findings[0].file).toContain("sheet-with-ledger.html");
   });
 });

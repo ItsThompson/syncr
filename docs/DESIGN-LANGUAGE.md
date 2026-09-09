@@ -376,7 +376,7 @@ Three layers, in `frontend/src/tokens/`:
 
 ## The reference sheets
 
-Five artifacts in `docs/design/`, all of which **link** the token files rather than copying values, so a value cannot drift between the reference and the build.
+Six artifacts in `docs/design/`, all of which **link** the token files rather than copying values, so a value cannot drift between the reference and the build.
 
 | Sheet | What it is for |
 |---|---|

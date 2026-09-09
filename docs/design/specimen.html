@@ -717,6 +717,15 @@ function val(name, depth = 0){
   return v;
 }
 const hex = n => val(n);
+const hueOf = h => {
+  const value = parseInt(h.slice(1), 16);
+  const red = ((value >> 16) & 255) / 255, green = ((value >> 8) & 255) / 255, blue = (value & 255) / 255;
+  const high = Math.max(red, green, blue), span = high - Math.min(red, green, blue);
+  if(span === 0) return 0;
+  const sixth = high === red ? ((green - blue) / span) % 6
+    : high === green ? (blue - red) / span + 2 : (red - green) / span + 4;
+  return Number(((((sixth * 60) % 360) + 360) % 360).toFixed(1));
+};
 const lum = h => {
   const c = [1,3,5].map(i => parseInt(h.substr(i,2),16)/255)
     .map(v => v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4));
@@ -742,28 +751,26 @@ const HATCH = {
   fwd:['--hatch-fwd',null], back:['--hatch-back',null], vert:['--hatch-vert',null],
   horz:['--hatch-horz',null], cross:['--hatch-cross',null], dot:['--hatch-dot','--hatch-dot-size']
 };
-/* The hue beside each pigment is the hue its HEX resolves to, and `just tokens-validate` refuses a figure here
-   that disagrees with the pigment it describes. This array held the pre-retune ledger for a while -- 07 at 180
-   where the shipped teal is 176, and 02/03 reading 23 degrees apart where they are 19.4 -- and the sheet printed
-   those figures as measurements. The check is what makes this a rendering of the ramp rather than a second copy
-   of it. */
+/* The ramp records Area identity and hatch assignment only. Its hue is read from each linked token at load so the
+   figures below cannot become a second pigment ledger. */
 const AREAS = [
-  {n:'01', hue:350, pigment:'madder',   name:'Career',   hatch:'fwd',   order:1},
-  {n:'02', hue:23,  pigment:'sienna',   name:'unassigned', hatch:'vert',  order:9},
-  {n:'03', hue:42,  pigment:'ochre',    name:'Projects', hatch:'dot',   order:5},
-  {n:'04', hue:64,  pigment:'olive',    name:'unassigned', hatch:'cross', order:10},
-  {n:'05', hue:96,  pigment:'moss',     name:'Study',    hatch:'back',  order:2},
-  {n:'06', hue:156, pigment:'viridian', name:'unassigned', hatch:'fwd',   order:8},
-  {n:'07', hue:176, pigment:'teal',     name:'Admin',    hatch:'horz',  order:6},
-  {n:'08', hue:196, pigment:'cerulean', name:'Fitness',  hatch:'vert',  order:3},
-  {n:'09', hue:250, pigment:'indigo',   name:'unassigned', hatch:'dot',   order:11},
-  {n:'10', hue:275, pigment:'violet',   name:'Research', hatch:'cross', order:4},
-  {n:'11', hue:304, pigment:'magenta',  name:'unassigned', hatch:'horz',  order:12},
-  {n:'12', hue:330, pigment:'wine',     name:'Transit',  hatch:'back',  order:7}
+  {n:'01', pigment:'madder',   name:'Career',   hatch:'fwd',   order:1},
+  {n:'02', pigment:'sienna',   name:'unassigned', hatch:'vert',  order:9},
+  {n:'03', pigment:'ochre',    name:'Projects', hatch:'dot',   order:5},
+  {n:'04', pigment:'olive',    name:'unassigned', hatch:'cross', order:10},
+  {n:'05', pigment:'moss',     name:'Study',    hatch:'back',  order:2},
+  {n:'06', pigment:'viridian', name:'unassigned', hatch:'fwd',   order:8},
+  {n:'07', pigment:'teal',     name:'Admin',    hatch:'horz',  order:6},
+  {n:'08', pigment:'cerulean', name:'Fitness',  hatch:'vert',  order:3},
+  {n:'09', pigment:'indigo',   name:'unassigned', hatch:'dot',   order:11},
+  {n:'10', pigment:'violet',   name:'Research', hatch:'cross', order:4},
+  {n:'11', pigment:'magenta',  name:'unassigned', hatch:'horz',  order:12},
+  {n:'12', pigment:'wine',     name:'Transit',  hatch:'back',  order:7}
 ];
 const areaTok = a => '--area-' + a.n;
+const AREA_RAMP = AREAS.map(a => ({...a, hue:hueOf(hex(areaTok(a)))}));
 const AREA_BY_NAME = {};
-for(const a of AREAS) AREA_BY_NAME[a.name] = a;
+for(const a of AREA_RAMP) AREA_BY_NAME[a.name] = a;
 /* hatchInk stays for the SVG pie patterns, which set stroke and fill directly because a pattern does not
    inherit from the element that paints it. The CSS hatches take their ink from the painter's own color:
    --hatch-ink is substituted where it is declared (:root), so writing it on an element is dead. */
@@ -795,7 +802,7 @@ const PRIM = [
   ['--amber-500','amber at marker weight. --signal-amber. no text step exists'],
   ['--amber-100','amber wash. --amber-wash, the tradeoff panel surface']
 ];
-const AREA_PRIM = AREAS.map(a => ['--pigment-area-' + a.n,
+const AREA_PRIM = AREA_RAMP.map(a => ['--pigment-area-' + a.n,
   a.hue + '&deg; ' + a.pigment + '. dealt ' + ord(a.order) + ', hatch ' + a.hatch]);
 const swatch = ([tok, use]) => '<div><span class="sw" style="background:var(' + tok + ')"></span>'
   + '<span><b>' + tok + '</b><span class="hex">' + hex(tok).toUpperCase() + '</span>'
@@ -842,7 +849,7 @@ const SEM = [
   ['--grid-line-quarter-drag','the quarter line while a drag is in progress'],
   ['--forbidden-hatch-ink','the forbidden window hatch: a span the solver may not fill']
 ];
-const SEM_AREA = AREAS.map(a => [areaTok(a),
+const SEM_AREA = AREA_RAMP.map(a => [areaTok(a),
   'Area ' + a.n + ' &middot; ' + a.pigment + '. carrier-sealed: see section 6']);
 const SEM_ALL = SEM.concat(SEM_AREA);
 set('sw-sem', SEM_ALL.map(swatch).join(''));
@@ -1021,7 +1028,7 @@ set('r-ring-wash', r2('--ink-bright','--amber-wash'));
 const SURFACES = [['--paper','the page, behind a pie wedge or a stacked bar'],
                   ['--paper-raised',"a block fill behind the 2px top rule, and a ledger row's chip"]];
 let areaFails = 0;
-const areaRows = AREAS.flatMap(a => SURFACES.map(([s, where]) => {
+const areaRows = AREA_RAMP.flatMap(a => SURFACES.map(([s, where]) => {
   const r = ratio(hex(areaTok(a)), hex(s));
   const ok = r >= 3;
   if(!ok) areaFails++;
@@ -1034,14 +1041,14 @@ const areaRows = AREAS.flatMap(a => SURFACES.map(([s, where]) => {
 set('ratios-area', '<table class="led"><thead><tr><th>Area ink</th><th>Against</th><th>Where</th>'
   + '<th class="r">Ratio</th><th class="r">Needs</th><th>Verdict</th></tr></thead><tbody>'
   + areaRows.join('')
-  + '<tr class="sum"><td colspan="6"><b>' + (AREAS.length * SURFACES.length)
+  + '<tr class="sum"><td colspan="6"><b>' + (AREA_RAMP.length * SURFACES.length)
   + ' pairs computed &middot; ' + (areaFails === 0
     ? 'every one clears 3:1. Both counts are computed from the ramp this sheet renders.'
     : areaFails + ' FAIL and must be retuned in primitives.css before any sheet ships.')
   + '</b></td></tr></tbody></table>');
-const onPaper = AREAS.map(a => ratio(hex(areaTok(a)), hex('--paper')));
+const onPaper = AREA_RAMP.map(a => ratio(hex(areaTok(a)), hex('--paper')));
 const lo = Math.min(...onPaper), hi = Math.max(...onPaper);
-set('ramp-spread', 'across the ' + word(AREAS.length).toLowerCase() + ' inks the range is <b>'
+set('ramp-spread', 'across the ' + word(AREA_RAMP.length).toLowerCase() + ' inks the range is <b>'
   + lo.toFixed(2) + ':1 to ' + hi.toFixed(2) + ':1</b>, a spread of ' + (hi - lo).toFixed(2)
   + ', computed from the tokens at load. The first draft of the ramp ran 4.42:1 to 7.25:1 and '
   + 'the violet group looked like it held more time than the moss group at equal area.');
@@ -1231,7 +1238,7 @@ set('titles-count', 'The count in the line above is the length of the navigation
   + 'section 5, so the serif cannot acquire an eighth use without a destination to justify it.');
 
 /* ---------- 6, the ramp ---------- */
-set('ramp', AREAS.map(a =>
+set('ramp', AREA_RAMP.map(a =>
   '<div style="' + hatchStyle(a) + '">'
   + '<span class="sw"><span class="chip" style="background:var(' + areaTok(a) + ')"></span>'
   + '<span class="fill"></span></span>'
@@ -1240,13 +1247,13 @@ set('ramp', AREAS.map(a =>
   + ratio(hex(areaTok(a)), hex('--paper')).toFixed(2) + ':1 on paper</span>'
   + '<span class="use">dealt ' + ord(a.order) + ' &middot; hatch <code>' + a.hatch
   + '</code> &middot; ' + a.name + '</span></span></div>').join(''));
-const hatchUsed = new Set(AREAS.map(a => a.hatch));
+const hatchUsed = new Set(AREA_RAMP.map(a => a.hatch));
 /* The claim that a pattern only repeats between distant hues is checked rather than made:
    this is the smallest circular hue gap between any two Areas that share a pattern. */
 const hueGap = (a, b) => { const d = Math.abs(a.hue - b.hue); return Math.min(d, 360 - d); };
 /* Adjacent gaps around the hue circle, which is where both the vacancy at cobalt's hue and
    the tight yellow-brown pairs show up. Sorted, so the extremes are read rather than typed. */
-const byHue = [...AREAS].sort((x, y) => x.hue - y.hue);
+const byHue = [...AREA_RAMP].sort((x, y) => x.hue - y.hue);
 const adjacent = byHue.map((a, i) => { const b = byHue[(i + 1) % byHue.length];
   return {a, b, gap: hueGap(a, b)}; }).sort((x, y) => x.gap - y.gap);
 const widest = adjacent[adjacent.length - 1];
@@ -1260,8 +1267,8 @@ set('tight-pairs', '<b>The tightest adjacent hues are <code>' + tight[0].a.n + '
   + tight[0].b.n + '</code> at ' + tight[0].gap + '&deg; and <code>' + tight[1].a.n
   + '</code>/<code>' + tight[1].b.n + '</code> at ' + tight[1].gap + '&deg;</b>, which is a '
   + 'computed result rather than a repeated one: the comment in <code>primitives.css</code> names '
-  + '<code>02</code>/<code>03</code> at ' + hueGap(AREAS[1], AREAS[2]) + '&deg; and <code>03</code>/'
-  + '<code>04</code> at ' + hueGap(AREAS[2], AREAS[3]) + '&deg; as the tightest, and both pairs '
+  + '<code>02</code>/<code>03</code> at ' + hueGap(AREA_RAMP[1], AREA_RAMP[2]) + '&deg; and <code>03</code>/'
+  + '<code>04</code> at ' + hueGap(AREA_RAMP[2], AREA_RAMP[3]) + '&deg; as the tightest, and both pairs '
   + 'above sit below them. <b>Deal order is not what protects a tight pair either</b>, since '
   + tight.slice(0, 2).map(p => '<code>' + p.a.n + '</code> is dealt ' + ord(p.a.order)
       + ' and <code>' + p.b.n + '</code> ' + ord(p.b.order)).join(', while ')
@@ -1273,23 +1280,23 @@ set('tight-pairs', '<b>The tightest adjacent hues are <code>' + tight[0].a.n + '
       + p.b.n + '</code> ' + p.b.hatch).join(', ')
   + '. On a ledger surface the Area\'s name carries it instead. The muddy yellow-brown group '
   + '<code>02</code>, <code>03</code>, <code>04</code> is dealt '
-  + [AREAS[1], AREAS[2], AREAS[3]].map(a => ord(a.order)).join(', ')
+  + [AREA_RAMP[1], AREA_RAMP[2], AREA_RAMP[3]].map(a => ord(a.order)).join(', ')
   + ', and each of them carries a different hatch, which is what separates them.');
 const repeatGaps = [...hatchUsed].map(h => {
-  const pair = AREAS.filter(a => a.hatch === h);
+  const pair = AREA_RAMP.filter(a => a.hatch === h);
   return {h, pair, gap: Math.min(...pair.flatMap((x, i) =>
     pair.slice(i + 1).map(y => hueGap(x, y))))};
 });
 const minGap = Math.min(...repeatGaps.map(g => g.gap));
 set('hatch-count', '<b>' + word(hatchUsed.size) + ' patterns carry '
-  + word(AREAS.length).toLowerCase() + ' inks</b>, so each pattern carries '
-  + word(AREAS.length / hatchUsed.size).toLowerCase() + ' of them; both numbers are counted '
+  + word(AREA_RAMP.length).toLowerCase() + ' inks</b>, so each pattern carries '
+  + word(AREA_RAMP.length / hatchUsed.size).toLowerCase() + ' of them; both numbers are counted '
   + 'from the ramp above. The repeats are '
   + repeatGaps.map(g => '<code>' + g.h + '</code> on ' + g.pair.map(a => a.n).join(' and ')
       + ' at ' + g.gap + '&deg;').join(', ')
   + ', so <b>the tightest repeat is ' + minGap + '&deg; of hue apart</b>, computed from the ramp '
   + 'rather than asserted. The tightest hue pair in the whole ramp, <code>02</code>/<code>03</code> '
-  + 'at ' + hueGap(AREAS[1], AREAS[2]) + '&deg;, therefore carries two different patterns.');
+  + 'at ' + hueGap(AREA_RAMP[1], AREA_RAMP[2]) + '&deg;, therefore carries two different patterns.');
 
 /* carrier 1: the 2px top rule on a proportional surface */
 set('carrier-blocks',

@@ -86,7 +86,7 @@ table.led code{font-size:9.5px}
 .ramp .chip{width:10px;height:10px;border-radius:50%;display:inline-block}
 /* Carrier 3 of 3: a wedge or bar fill, always hatched in a lighter step of its own ink. */
 .ramp .fill{height:22px;margin-top:4px;background-color:var(--ai);background-image:var(--hx);
-  background-size:var(--hxs,auto)}
+  background-size:var(--hxs,auto);color:color-mix(in srgb,var(--ai) var(--hatch-mix),var(--paper-raised))}
 .ramp b{display:block;font-weight:400;color:var(--ink-deep)}
 .ramp .hex{color:var(--ink);font-variant-numeric:tabular-nums;font-size:9.5px}
 .ramp .use{display:block;color:var(--text-muted);font-size:9.5px;line-height:1.5;margin-top:2px}
@@ -208,7 +208,7 @@ table.led code{font-size:9.5px}
    of a block that this exists to explain -- so it takes no fill, no Area rule and no state.
    A hatched band plus a gutter label, sitting under every block in z-order. */
 .forbid{position:absolute;left:0;right:0;pointer-events:none;z-index:0;
-  --hatch-ink:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
+  color:var(--forbidden-hatch-ink);background-image:var(--hatch-back);
   border-top:var(--hairline) dotted var(--rule);border-bottom:var(--hairline) dotted var(--rule)}
 .forbid span{position:absolute;left:4px;top:2px;font-size:var(--fs-eyebrow);
   letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--text-muted);
@@ -464,7 +464,7 @@ document.getElementById('ramp').innerHTML = AREAS.map(a => {
   const style = `--ai:var(${a.tok});--hx:var(${hv})` + (hs ? `;--hxs:var(${hs})` : '');
   return `<div style="${style}">
     <span class="sw"><span class="chip" style="background:var(${a.tok})"></span>
-      <span class="fill" style="--hatch-ink:color-mix(in srgb, var(${a.tok}) var(--hatch-mix), var(--paper-raised))"></span></span>
+      <span class="fill"></span></span>
     <span><b>${a.tok} &middot; ${a.hue}&deg;</b><span class="hex">${hex(a.tok).toUpperCase()}</span>
       <span class="use">assigned ${a.order}${a.order===1?'st':a.order===2?'nd':a.order===3?'rd':'th'}
       &middot; hatch <code>${a.hatch}</code> &middot; ${a.name}</span></span></div>`;

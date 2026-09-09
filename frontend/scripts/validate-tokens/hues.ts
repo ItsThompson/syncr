@@ -2,14 +2,11 @@
  *
  * `tokens/primitives.css` states a hue for each of the twelve Area pigments, and the spacing between them is the
  * reason the ramp is legible at all: twelve dark colours at five-to-one on paper separate by hue and by nothing
- * else. Every figure in that comment used to be asserted, and it drifted: an earlier version misreported the
- * tightest pair as 02/03 at 23 degrees, and `docs/design/specimen.html` still holds a hardcoded ledger that
- * disagrees with the retuned pigments on all twelve steps and reproduces exactly that stale 23.
+ * else. An earlier version misreported the tightest pair as 02/03 at 23 degrees, because the specimen carried a
+ * second ledger beside the tokens it rendered.
  *
- * So the hue is COMPUTED FROM THE HEX. There is one authority, the pigment itself, and both ledgers are checked
- * against it: a comment that disagrees is a finding, and a second copy in a reference sheet is a finding. That is
- * the same rule check 6 applies to the sheets, which exists to stop a sheet becoming the second copy of the values
- * it was built to avoid.
+ * The hue is computed from the hex. The pigment comment must agree with that source, while a reference sheet may
+ * not hold a hue ledger at all. That keeps every rendered figure tied to the linked tokens.
  *
  * TWO FLOORS ARE ENFORCED, and each is a rule the design language states rather than a number chosen here:
  *
@@ -49,7 +46,7 @@ const DEAL_ORDER = ["01", "05", "08", "10", "03", "07", "12", "06", "02", "04", 
 const AREA_PIGMENT = /^--pigment-area-(\d{2})$/;
 /** The hue each pigment's own trailing comment claims, as `#AB4757; /* 350  madder`. */
 const COMMENTED_HUE = /--pigment-area-(\d{2}):\s*(#[0-9a-fA-F]{6});\s*\/\*\s*(\d{1,3})\b/g;
-/** The hardcoded ledger in a reference sheet: `{n:'01', hue:355, ...}`, in either quote style. */
+/** The prohibited hue ledger in a reference sheet: `{n:'01', hue:355, ...}`, in either quote style. */
 const SHEET_HUE = /\{\s*n:\s*["'](\d{2})["']\s*,\s*hue:\s*(\d{1,3})/g;
 
 export interface AreaHue {
@@ -142,7 +139,7 @@ export interface HueCheckOutcome {
   readonly notes: readonly string[];
 }
 
-/** A stated hue that disagrees with the pigment it is written beside. */
+/** A hue in the token declaration that disagrees with the pigment it describes. */
 function statedHueFindings(
   file: string,
   source: string,
@@ -171,6 +168,23 @@ function statedHueFindings(
   return findings;
 }
 
+/** A reference sheet must derive its hue from linked tokens instead of storing a second ledger. */
+function sheetLedgerFindings(file: string, source: string): Finding[] {
+  const at = createPositionResolver(source);
+  const findings: Finding[] = [];
+  for (const match of source.matchAll(SHEET_HUE)) {
+    findings.push({
+      file,
+      ...at(match.index),
+      check: "area-hue-ledger",
+      message:
+        `this sheet holds ${match[1]} at ${match[2]} degrees beside the tokens it renders. ` +
+        "Remove the stored hue and derive it from the linked Area token at load.",
+    });
+  }
+  return findings;
+}
+
 export async function checkAreaHues(input: HueCheckInput): Promise<HueCheckOutcome> {
   const pigmentSource = await readFile(input.pigmentFile, "utf8");
   const hues = areaHues(pigmentSource);
@@ -189,10 +203,7 @@ export async function checkAreaHues(input: HueCheckInput): Promise<HueCheckOutco
   );
 
   for (const sheet of input.sheetFiles) {
-    const source = await readFile(sheet, "utf8");
-    findings.push(
-      ...statedHueFindings(sheet, source, SHEET_HUE, 2, byId, "this sheet's hardcoded ledger"),
-    );
+    findings.push(...sheetLedgerFindings(sheet, await readFile(sheet, "utf8")));
   }
 
   const gaps = adjacentGaps(hues);
