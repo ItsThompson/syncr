@@ -13,8 +13,8 @@ from __future__ import annotations
 from typing import Final
 
 THRESHOLDS_ARE_ESTIMATES: Final = (
-    "These thresholds are estimates rather than measurements. Revising one is a configuration "
-    "change and needs no migration."
+    "These thresholds are estimates rather than measurements. Revising one can move a gate in "
+    "either direction without losing any confirmation you have recorded."
 )
 """Because they are guesses, and asserting a guess as a measurement would break the product's own
 standard."""

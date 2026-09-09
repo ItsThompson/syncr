@@ -281,7 +281,10 @@ class TestTheLearnedRead:
         assert body["origin"] == HAND_TUNED
         assert body["fittedAt"] is None
         assert body["parameters"] == []
-        assert "estimates rather than measurements" in body["thresholdsAreEstimates"]
+        assert body["thresholdsAreEstimates"] == (
+            "These thresholds are estimates rather than measurements. Revising one can move a gate "
+            "in either direction without losing any confirmation you have recorded."
+        )
         assert "skipped everything and said so" in body["unlocksCountConfirmedVolume"]
         assert "still collecting is normal" in body["collectingIsNormal"].lower()
 

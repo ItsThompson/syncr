@@ -16,8 +16,6 @@ the documented default and every parameter takes it until one is measured to nee
 **The maturity thresholds. THESE ARE UNVALIDATED ESTIMATES.** They are guesses at how fast each
 parameter converges rather than measurements of it, and they are stated as such on the Learned
 screen. Where ``docs/prd.md``'s maturity table states a figure, the gate below is that figure.
-Revising one against real data is a change to this file and nothing else: no migration, no schema
-change, and no reprocessing of history, because every run refits from the log.
 
 ## Why the vocabulary is restated here rather than imported
 
@@ -176,7 +174,8 @@ MAX_CHURN_TOLERANCE: Final = 40.0
 # ---------------------------------------------------------------------------
 # The maturity thresholds. UNVALIDATED ESTIMATES, and the screen says so. A gate that
 # ``docs/prd.md``'s maturity table gives a figure for takes that figure; the skip-probability and
-# switch-price gates have no figure there and are stated from the corpus each one needs.
+# switch-price gates have no figure there and are stated from the corpus each one needs. Revising a
+# threshold needs no migration, schema change, or history reprocessing: every run refits the log.
 # ---------------------------------------------------------------------------
 
 THRESHOLD_DURATION_MULTIPLIER: Final = 12

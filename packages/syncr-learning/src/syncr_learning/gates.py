@@ -36,8 +36,8 @@ COLLECTING: Literal["collecting"] = "collecting"
 READY: Literal["ready"] = "ready"
 
 THRESHOLDS_ARE_ESTIMATES = (
-    "These thresholds are estimates rather than measurements. Revising one is a configuration "
-    "change and needs no migration."
+    "These thresholds are estimates rather than measurements. Revising one can move a gate in "
+    "either direction without losing any confirmation you have recorded."
 )
 """What the Learned screen states about every threshold on it, because they are unvalidated guesses.
 

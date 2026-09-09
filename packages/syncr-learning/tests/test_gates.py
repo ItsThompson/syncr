@@ -105,7 +105,10 @@ class TestEveryParameterHasAThreshold:
         # They are the PRD author's guesses, and asserting a guess as a measurement would violate
         # the product's own standard.
         assert "estimates rather than measurements" in THRESHOLDS_ARE_ESTIMATES
-        assert "no migration" in THRESHOLDS_ARE_ESTIMATES
+        assert (
+            "can move a gate in either direction without losing any confirmation you have recorded"
+            in THRESHOLDS_ARE_ESTIMATES
+        )
 
 
 class TestBelowTheThresholdNothingIsApplied:
