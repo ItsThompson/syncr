@@ -385,7 +385,7 @@ class TestTheEvidenceTheFingerprintReads:
         assert after_two.row_counts == after_one.row_counts
         # And the digests beside the counts, from the same reading. A row an upsert rewrote in place
         # moves no count, and the drill's own verdict compares a table's bytes rather than its size:
-        # `seed-local.sql` states its property as "running it twice is running it once".
+        # The seeder's convergence property is "running it twice is running it once".
         assert after_two.content_digests == after_one.content_digests
         assert first.materialized and first.solved and first.pinned and first.conceded
         assert not second.materialized and not second.solved

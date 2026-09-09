@@ -1185,10 +1185,9 @@ drill-keys:
 
 # Seed the local database with something a drill can lose.
 #
-# The seed is hand-written rows, and the drill's own evidence checks are what validate them: a binding
-# spelled differently from the one the product writes would derive no cursor, and the verdict refuses
-# a drill with no advanced cursor rather than reporting a pass. `deployments/drill/seed-local.sql` says
-# so at the top.
+# The application seeder writes through the product's own paths, and the drill's evidence checks are
+# what validate them: a binding spelled differently from the one the product writes would derive no
+# cursor, and the verdict refuses a drill with no advanced cursor rather than reporting a pass.
 #
 # BASE FILE ONLY, deliberately. The dev overlay publishes 5432, and a host-local Postgres owning that
 # port makes a compose route silently reach the wrong database: the most expensive hazard in this
@@ -1199,9 +1198,7 @@ drill-keys:
 # history. So it carries the same refusal `just drill-local` does, as a dependency, for the reason
 # stated where that refusal is declared.
 drill-seed: _refuse-a-local-drill-on-a-deployed-host
-    docker compose -f docker-compose.yml exec -T postgres \
-      psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-syncr}" -d "${POSTGRES_DB:-syncr}" \
-      -f /dev/stdin < deployments/drill/seed-local.sql
+    docker compose -f docker-compose.yml run --rm --no-deps api syncr-drill-seed
 
 # REFUSE ON A DEPLOYED HOST, on EITHER of two facts a workstation does not have.
 #

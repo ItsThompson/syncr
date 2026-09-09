@@ -82,7 +82,7 @@ SECTION_21_RUNBOOKS: Final = (
 
 SYSTEMD: Final = Path("deployments/systemd")
 
-# The refusal `just drill-local` and `just drill-seed` both carry, spelled once because the rule in
+# The refusal all local seed recipes carry, spelled once because the rule in
 # `TestEveryRecipeThatSeedsRefusesADeployedHost` is stated over a derived set of recipes.
 DEPLOYED_HOST_REFUSAL: Final = "_refuse-a-local-drill-on-a-deployed-host"
 
@@ -976,14 +976,19 @@ def _commands_of(body: str) -> str:
     return "\n".join(line for line in body.splitlines() if not line.strip().startswith("#"))
 
 
-def _seed_artifacts() -> frozenset[str]:
-    """Every file in the repository that IS seed data, which is every tracked SQL file.
+def _seed_commands(*, text: str | None = None) -> frozenset[str]:
+    """Every command that seeds drill evidence, read from the recipes that invoke it."""
+    import re
 
-    The schema is Alembic's, so SQL in this tree means hand-written rows rather than a migration.
-    Read from the index rather than listed, because the defect a list cannot catch is a SECOND seed
-    file arriving with a recipe of its own and no refusal.
-    """
-    return frozenset(name for name in _files_git_has() if name.endswith(".sql"))
+    justfile = _justfile_text(text)
+    return frozenset(
+        command
+        for name in _recipe_names(text=justfile)
+        for command in re.findall(
+            r"(?<![\w-])syncr-drill-seed(?![\w-])",
+            _commands_of(_recipe_body(name, text=justfile)),
+        )
+    )
 
 
 def _recipes_invoked_in(body: str) -> frozenset[str]:
@@ -1013,11 +1018,13 @@ def _recipes_reaching_seed_data(*, text: str | None = None) -> frozenset[str]:
     afterwards.
     """
     justfile = _justfile_text(text)
-    artifacts = _seed_artifacts()
+    seed_commands = _seed_commands(text=justfile)
     names = _recipe_names(text=justfile)
     statements = {name: _commands_of(_recipe_body(name, text=justfile)) for name in names}
     reaching = {
-        name for name, body in statements.items() if any(artifact in body for artifact in artifacts)
+        name
+        for name, body in statements.items()
+        if any(command in body for command in seed_commands)
     }
     while True:
         grown = reaching | {
@@ -1056,16 +1063,13 @@ def _drill_seed_in_a_tree_of_its_own(
     project `syncr`, so a run here reaches whichever `syncr` Postgres is up on the machine and
     writes the seed into it. That is the defect, executed.
 
-    The tree gets the justfile, the seed file the recipe redirects, the evidence files the case is
-    about, and a `docker` that records being reached.
+    The tree gets the justfile, the evidence files the case is about, and a `docker` that records
+    being reached.
     """
     assert shutil.which("just") is not None, (
         "`just` is not on PATH, and it is what CI and the hooks run every gate through"
     )
     (root / "justfile").write_bytes((repo_root() / "justfile").read_bytes())
-    seed = root / "deployments" / "drill" / "seed-local.sql"
-    seed.parent.mkdir(parents=True)
-    seed.write_bytes((repo_root() / "deployments" / "drill" / "seed-local.sql").read_bytes())
     for fact in evidence:
         (root / fact).parent.mkdir(parents=True, exist_ok=True)
         (root / fact).write_text("", encoding="utf-8")
@@ -2104,8 +2108,8 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
     a deployed host `syncr` is the live stack. So the recipe whose own comment calls a compose route
     reaching the wrong database "the most expensive hazard in this repository" WAS that route, and
     nothing refused: `just drill-seed` on a host writes invented tenants, weeks and outcomes
-    into real plan history. `drill-local` seeds through the product's write paths now, and
-    `drill-pitr-local` still invokes this one for its evidence.
+    into real plan history. `drill-local`, `drill-seed`, and `drill-pitr-local` all use the
+    product's write paths.
 
     THE RULE IS STATED OVER A DERIVED SET RATHER THAN OVER A LIST, because the defect a list cannot
     catch is a forgotten member: a second seeding recipe added beside the two that exist.
@@ -2119,20 +2123,31 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
     """
 
     def test_the_seed_data_the_repository_holds(self) -> None:
-        """The positive control: an empty artifact set makes every reading below vacuous."""
-        assert _seed_artifacts() == {"deployments/drill/seed-local.sql"}, (
-            "a second hand-written seed arrived, so whichever recipe loads it is a member of the "
-            "rule below and this figure is where that is acknowledged"
+        """The positive control: an empty command set makes every reading below vacuous."""
+        assert _seed_commands() == {"syncr-drill-seed"}, (
+            "the write-path seeder disappeared, so the refusal rule below is vacuous"
         )
+
+    def test_the_retired_handwritten_seeder_is_gone(self) -> None:
+        """The old file and every tracked reference to it are absent."""
+        retired_name = "seed-" + "local.sql"
+        retired_path = repo_root() / "deployments" / "drill" / retired_name
+
+        assert not retired_path.exists()
+        references = tuple(
+            path
+            for path in _files_git_has()
+            if retired_name.encode() in (repo_root() / path).read_bytes()
+        )
+        assert references == ()
 
     def test_the_recipes_that_reach_it(self) -> None:
         """The derived set, stated whole so a member that stops being derived is visible.
 
-        A parametrization derived from this set SHRINKS silently: rewiring `drill-local` onto
-        the write-path seeder dropped its case here rather than reddening it. SR-DEPLOY-18's
-        rehearsal reaches the seed too, which is how it has evidence to lose.
+        A parametrization derived from this set SHRINKS silently, so each local drill recipe must
+        remain visible here. The point-in-time rehearsal reaches the seed through `drill-seed`.
         """
-        assert _recipes_reaching_seed_data() == {"drill-seed", "drill-pitr-local"}
+        assert _recipes_reaching_seed_data() == {"drill-local", "drill-seed", "drill-pitr-local"}
 
     @pytest.mark.parametrize("recipe", sorted(_recipes_reaching_seed_data()))
     def test_it_refuses_before_any_other_dependency(self, recipe: str) -> None:
@@ -2217,9 +2232,11 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
 
         assert done.returncode == 0, done.stderr
         assert "this host is a deployment" not in done.stderr
-        assert "compose -f docker-compose.yml exec" in (tmp_path / DOCKER_LOG).read_text(
-            encoding="utf-8"
-        ), "the recipe refused a tree holding neither fact, so it refuses a workstation too"
+        assert "compose -f docker-compose.yml run --rm --no-deps api syncr-drill-seed" in (
+            tmp_path / DOCKER_LOG
+        ).read_text(encoding="utf-8"), (
+            "the recipe refused a tree holding neither fact, so it refuses a workstation too"
+        )
 
     def test_the_reading_follows_a_recipe_that_only_calls_the_seeder(self) -> None:
         """The derivation's own controls, over a justfile the case wrote.
@@ -2233,7 +2250,7 @@ class TestEveryRecipeThatSeedsRefusesADeployedHost:
         """
         justfile = (
             "loads:\n"
-            "    psql -f deployments/drill/seed-local.sql\n"
+            "    syncr-drill-seed\n"
             "calls-it:\n"
             "    just loads\n"
             "depends-on-it: loads\n"
