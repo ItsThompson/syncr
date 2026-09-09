@@ -12,12 +12,15 @@ join returns a series.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.error
 import urllib.request
 from base64 import b64encode
+from pathlib import Path
 
 EXPECTED_JOBS = frozenset({"syncr-api", "syncr-worker", "node", "cadvisor", "postgres"})
+_ALERT_RULE = re.compile(r"^\s*- alert:\s*\w+\s*$", re.MULTILINE)
 
 # The join the System dashboard draws container memory with. A panel over a join that returns
 # nothing is a panel that says nothing, and neither name is ours to declare.
@@ -54,13 +57,19 @@ def report_targets(base: str) -> bool:
     return not missing
 
 
+def declared_rule_count(alerts_path: Path | None = None) -> int:
+    path = alerts_path or Path(__file__).resolve().parents[1] / "prometheus" / "alerts.yml"
+    return len(_ALERT_RULE.findall(path.read_text()))
+
+
 def report_rules(base: str) -> bool:
     groups = fetch(f"{base}/api/v1/rules")["data"]["groups"]  # type: ignore[index]
     rules = [rule for group in groups for rule in group["rules"]]
-    print(f"\nALERT RULES LOADED ({len(rules)})")
+    expected = declared_rule_count()
+    print(f"\nALERT RULES LOADED ({len(rules)}/{expected})")
     for rule in sorted(rules, key=lambda one: one["name"]):
         print(f"  {rule['name']:<26}{rule['labels']['severity']:<10}state={rule['state']}")
-    return len(rules) == 12
+    return len(rules) == expected
 
 
 def report_query(base: str, query: str, *, label: str) -> bool:
