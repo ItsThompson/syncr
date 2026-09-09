@@ -46,6 +46,9 @@ export type SyncrRun = {
   readonly stderr: string;
 };
 
+/** One noun and verb that the CLI parser builds. */
+export type SyncrCommand = readonly [noun: string, verb: string];
+
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 const spawnWorkspaceTool = ({ args, cwd, env, timeoutMs }: SpawnTarget): SyncrProcess => {
@@ -126,4 +129,54 @@ export const resolveSyncrSource = async (
     throw new Error(`resolving the child's sources failed (${probe.code}).\n${probe.stderr}`);
   }
   return probe.stdout.trim();
+};
+
+const CATALOG_SCRIPT = `
+import json
+from syncr_cli.parser import build_parser
+
+
+def subparsers(parser):
+    for action in parser._actions:
+        choices = getattr(action, "choices", None)
+        if isinstance(choices, dict):
+            return choices
+    return {}
+
+
+print(json.dumps([
+    [noun, verb]
+    for noun, noun_parser in subparsers(build_parser()).items()
+    for verb in subparsers(noun_parser)
+]))
+`;
+
+const isSyncrCommand = (value: unknown): value is SyncrCommand =>
+  Array.isArray(value) &&
+  value.length === 2 &&
+  typeof value[0] === "string" &&
+  typeof value[1] === "string";
+
+/** The command set the installed parser builds, not a second hand-maintained catalog. */
+export const readSyncrCatalog = async (): Promise<readonly SyncrCommand[]> => {
+  const probe = await runWorkspaceTool(["python", "-c", CATALOG_SCRIPT]);
+  if (probe.code !== 0) {
+    throw new Error(`reading the CLI parser catalog failed (${probe.code}).\n${probe.stderr}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(probe.stdout);
+  } catch (error) {
+    throw new Error(`the CLI parser catalog was not JSON.\n${probe.stdout}`, { cause: error });
+  }
+  if (!Array.isArray(parsed) || !parsed.every(isSyncrCommand)) {
+    throw new Error(`the CLI parser catalog had an invalid shape.\n${probe.stdout}`);
+  }
+
+  const commandKeys = parsed.map(([noun, verb]) => `${noun}\u0000${verb}`);
+  if (commandKeys.length === 0 || new Set(commandKeys).size !== commandKeys.length) {
+    throw new Error(`the CLI parser catalog was empty or duplicated a command.\n${probe.stdout}`);
+  }
+  return parsed;
 };
