@@ -306,11 +306,9 @@ def _minutes(verdict: Verdict, key: tuple[ShortfallKind, AreaId | None]) -> int:
     )
 
 
-async def test_breaching_a_floor_closes_the_floors_gap_the_probe_reports() -> None:
-    # The floor pair, end to end. The user clicks "Breach the Fitness floor", approves, and
-    # the verdict panel must stop reporting the same gap: the probe reads the reservation and the
-    # solver's floor check reads the floor, so a breach that lowered one and not the other would
-    # change no reading the user can see.
+async def test_breaching_a_floor_moves_all_three_floor_figures() -> None:
+    # The three floor figures, end to end. The user approves the breach, so no floor figure may
+    # retain the pre-concession value.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
     career = an_area(name="Career", floor_hours=Decimal(3))
     tight = FakeOffPlan([an_off_plan_period(interval=between(15, 24 * 4 + 24, day=2))])
@@ -329,6 +327,7 @@ async def test_breaching_a_floor_closes_the_floors_gap_the_probe_reports() -> No
     assert gap_of(probe(after.for_probe()), ShortfallKind.FLOORS_EXCEED_CAPACITY) is None
     assert after.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR - 120
     assert after.areas[0].floor_reservation_minutes == 5 * MINUTES_PER_HOUR - 120
+    assert after.areas[0].declared_floor_minutes == 5 * MINUTES_PER_HOUR - 120
 
 
 async def test_reducing_a_routine_closes_the_gap_the_nights_were_chosen_for() -> None:
@@ -487,9 +486,10 @@ async def test_folding_one_concession_twice_applies_it_twice() -> None:
     assert twice.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR - 120
 
 
-async def test_a_breach_of_no_minutes_lowers_nothing() -> None:
-    # Zero beside the negative figure already measured: neither lowers a floor, and for the same
-    # reason. A concession that concedes nothing must not read as one that did.
+@pytest.mark.parametrize("delta_minutes", [0, -60])
+async def test_a_breach_of_no_usable_minutes_lowers_nothing(delta_minutes: int) -> None:
+    # A zero or negative concession cannot relax a floor. The negative guard prevents a malformed
+    # row from turning a concession into a floor increase.
     fitness = an_area(name="Fitness", floor_hours=Decimal(5))
 
     inputs = await an_assembler(
@@ -497,7 +497,9 @@ async def test_a_breach_of_no_minutes_lowers_nothing() -> None:
         adjustments=FakeAdjustments(
             [
                 an_adjustment(
-                    kind=AdjustmentKind.BREACH_FLOOR.value, target_id=fitness.id, delta_minutes=0
+                    kind=AdjustmentKind.BREACH_FLOOR.value,
+                    target_id=fitness.id,
+                    delta_minutes=delta_minutes,
                 )
             ]
         ),
@@ -505,6 +507,7 @@ async def test_a_breach_of_no_minutes_lowers_nothing() -> None:
 
     assert inputs.areas[0].floor_minutes == 5 * MINUTES_PER_HOUR
     assert inputs.areas[0].floor_reservation_minutes == 5 * MINUTES_PER_HOUR
+    assert inputs.areas[0].declared_floor_minutes == 5 * MINUTES_PER_HOUR
 
 
 async def test_dropping_and_excusing_one_task_compose_to_one_answer_in_either_order() -> None:
