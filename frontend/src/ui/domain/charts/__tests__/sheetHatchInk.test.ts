@@ -1,9 +1,8 @@
-/* THE THREE SHEETS A REVIEWER READS DRAW EACH HATCH IN ITS OWN INK, THROUGH THE PAINTER'S `color`.
+/* THE SIX REFERENCE SHEETS DRAW EACH HATCH IN ITS OWN INK, THROUGH THE PAINTER'S `color`.
  *
  * A token-layer gradient resolves its var()s where it is DECLARED (`:root`), so an element-level
- * `--hatch-ink` write is dead: the ink arrives through `color` on the element that paints, the same shape
- * `charts.css` gives `.chart-ink`. The legend and swatch rows keep their text ink because only the painter
- * spends `color` on the channel, and `.forbid span` re-declares its own so the band label stays legible. */
+ * `--hatch-ink` write is dead: the ink arrives through `color` on the element that paints. Text inside a
+ * painter re-declares its own color when it must remain legible. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,16 +10,35 @@ import { describe, expect, it } from "vitest";
 
 import { designSheetDir } from "../../../../../scripts/lib/paths.ts";
 
-/** Each sheet and the selectors whose rules must carry the hatch ink on `color`. */
-const PAINTERS: Readonly<Record<string, readonly string[]>> = {
-  "specimen.html": [".ramp .fill", ".stack>span"],
-  "components.html": [".legend .sw", ".pie .w", ".sbar>span"],
-  "screens.html": [".stack>span"],
-};
+interface Painter {
+  readonly selector: string;
+  readonly ink: RegExp;
+}
 
-/** The declaration a painter rule has to spend on the hatch ink. */
-const INK =
+const areaHatchInk =
   /color:\s*color-mix\(in srgb,\s*var\(--ai\)\s*var\(--hatch-mix\),\s*var\(--paper-raised\)\)/;
+const forbiddenHatchInk = /color:\s*var\(--forbidden-hatch-ink\)/;
+const frameHatchInk = /color:\s*var\(--rule\)/;
+
+/** Each sheet and the selectors whose rules must carry the hatch ink on `color`. */
+const PAINTERS: Readonly<Record<string, readonly Painter[]>> = {
+  "specimen.html": [
+    { selector: ".ramp .fill", ink: areaHatchInk },
+    { selector: ".stack>span", ink: areaHatchInk },
+  ],
+  "components.html": [
+    { selector: ".legend .sw", ink: areaHatchInk },
+    { selector: ".pie .w", ink: areaHatchInk },
+    { selector: ".sbar>span", ink: areaHatchInk },
+  ],
+  "screens.html": [{ selector: ".stack>span", ink: areaHatchInk }],
+  "decisions.html": [{ selector: "[data-framefill=hatch] .blk.frame", ink: frameHatchInk }],
+  "scratch/block-states.html": [
+    { selector: ".ramp .fill", ink: areaHatchInk },
+    { selector: ".forbid", ink: forbiddenHatchInk },
+  ],
+  "scratch/week-density.html": [{ selector: ".forbid", ink: forbiddenHatchInk }],
+};
 
 const escapeRegExp = (selector: string): string => selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -45,20 +63,33 @@ describe("the reference sheets draw each hatch through the painter's own color",
       expect(css.match(/--hatch-ink\s*:/g) ?? []).toEqual([]);
     });
 
-    for (const selector of painters) {
-      it(`${sheet}: ${selector} spends color on the hatch ink`, () => {
-        const rule = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(text);
-        expect(rule, `${sheet} no longer styles ${selector}`).not.toBeNull();
-        expect(rule?.[1]).toMatch(INK);
+    for (const painter of painters) {
+      it(`${sheet}: ${painter.selector} spends color on the hatch ink`, () => {
+        const rule = new RegExp(`${escapeRegExp(painter.selector)}\\s*\\{([^}]*)\\}`).exec(text);
+        expect(rule, `${sheet} no longer styles ${painter.selector}`).not.toBeNull();
+        expect(rule?.[1]).toMatch(painter.ink);
       });
     }
   }
 
-  it("keeps the forbidden band's label off the hatch channel", () => {
-    for (const sheet of ["components.html", "screens.html"]) {
+  it("keeps text inside forbidden bands off the hatch channel", () => {
+    for (const sheet of [
+      "components.html",
+      "screens.html",
+      "scratch/block-states.html",
+      "scratch/week-density.html",
+    ]) {
       const span = /\.forbid\s+span\s*\{([^}]*)\}/.exec(TEXTS.get(sheet) ?? "");
       expect(span, `${sheet} no longer styles .forbid span`).not.toBeNull();
       expect(span?.[1]).toMatch(/color:\s*var\(--text-muted\)/);
     }
+  });
+
+  it("keeps frame labels off the hatch channel", () => {
+    const frameLabel = /\[data-framefill=hatch\]\s+\.blk\.frame\s+\.t\s*\{([^}]*)\}/.exec(
+      TEXTS.get("decisions.html") ?? "",
+    );
+    expect(frameLabel, "decisions.html no longer styles hatched frame labels").not.toBeNull();
+    expect(frameLabel?.[1]).toMatch(/color:\s*var\(--ink-soft\)/);
   });
 });
