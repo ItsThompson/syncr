@@ -23,6 +23,8 @@ CONTRACT = Path(__file__).resolve().parents[3] / "frontend" / "openapi.json"
 
 ROUTINE_REQUESTS = (RoutineCreateRequest, RoutinePatchRequest)
 TASK_REQUESTS = (TaskCreateRequest, TaskPatchRequest)
+ROUTINE_BOUNDS = {"durationMinutes": (15, 1440), "minDurationMinutes": (15, 1440)}
+TASK_BOUNDS = {"minChunkMinutes": (15, 10080)}
 
 
 def field_schema(model: type[BaseModel], name: str) -> dict[str, Any]:
@@ -30,19 +32,35 @@ def field_schema(model: type[BaseModel], name: str) -> dict[str, Any]:
     return cast("dict[str, Any]", schema["properties"][name])
 
 
+def declared_bound(schema: dict[str, Any], name: str) -> int:
+    direct = schema.get(name)
+    if direct is not None:
+        return cast("int", direct)
+
+    variants = schema.get("anyOf", [])
+    values = {variant[name] for variant in variants if name in variant}
+    assert len(values) == 1
+    return cast("int", values.pop())
+
+
 @pytest.mark.parametrize("model", ROUTINE_REQUESTS, ids=lambda model: model.__name__)
 def test_routine_requests_state_the_grid_on_time_and_durations(model: type[BaseModel]) -> None:
     for field in ("targetTime", "durationMinutes", "minDurationMinutes"):
         assert "quarter hour" in field_schema(model, field)["description"]
 
-    for field in ("durationMinutes", "minDurationMinutes"):
-        assert field_schema(model, field)["multipleOf"] == SNAP_MINUTES
+    for field, (minimum, maximum) in ROUTINE_BOUNDS.items():
+        schema = field_schema(model, field)
+        assert declared_bound(schema, "minimum") == minimum
+        assert declared_bound(schema, "maximum") == maximum
+        assert schema["multipleOf"] == SNAP_MINUTES
 
 
 @pytest.mark.parametrize("model", TASK_REQUESTS, ids=lambda model: model.__name__)
 def test_task_requests_state_the_grid_on_the_minimum_chunk(model: type[BaseModel]) -> None:
     minimum = field_schema(model, "minChunkMinutes")
 
+    assert declared_bound(minimum, "minimum") == TASK_BOUNDS["minChunkMinutes"][0]
+    assert declared_bound(minimum, "maximum") == TASK_BOUNDS["minChunkMinutes"][1]
     assert minimum["multipleOf"] == SNAP_MINUTES
     assert "quarter hour" in minimum["description"]
 
@@ -77,5 +95,9 @@ def test_committed_document_publishes_the_same_grid_contract() -> None:
         properties = schemas[model_name]["properties"]
         for field in fields:
             assert "quarter hour" in properties[field]["description"]
+        bounds = ROUTINE_BOUNDS if model_name.startswith("Routine") else TASK_BOUNDS
         for field in set(fields) - {"targetTime"}:
+            minimum, maximum = bounds[field]
+            assert declared_bound(properties[field], "minimum") == minimum
+            assert declared_bound(properties[field], "maximum") == maximum
             assert properties[field]["multipleOf"] == SNAP_MINUTES
