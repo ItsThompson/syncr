@@ -20,14 +20,13 @@ otherwise a holiday and a week nobody planned are the same response.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
 
-from syncr_api.areas.records import AreaRecord
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.budgets.occupancy import UnplannedWeek, WeekOccupancy
 from syncr_api.budgets.service import BudgetService
@@ -41,9 +40,11 @@ from syncr_domain.fixtures.dst_weeks import FALL_BACK, LONDON, SPRING_FORWARD
 from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.weeks import IsoWeek, week_span
+from tests.service_builders import an_area
 
 if TYPE_CHECKING:
-    from syncr_domain.identifiers import AreaId, TenantId
+    from syncr_api.areas.records import AreaRecord
+    from syncr_domain.identifiers import TenantId
 
 # An ordinary 168-hour week in Europe/London: 2026-W10 holds no transition.
 ORDINARY_WEEK = "2026-W10"
@@ -109,26 +110,6 @@ class HeldWeek:
 @pytest.fixture
 def principal() -> Principal:
     return Principal(tenant_id=uuid4(), user_id=uuid4(), scopes=ALL_SCOPES)
-
-
-def an_area(
-    area_id: AreaId,
-    *,
-    percent: str | None = None,
-    floor_hours: str | None = None,
-    parent_id: AreaId | None = None,
-    name: str | None = None,
-) -> AreaRecord:
-    return AreaRecord(
-        id=area_id,
-        tenant_id=uuid4(),
-        parent_id=parent_id,
-        name=name if name is not None else f"Area {area_id}",
-        pigment_index=0,
-        budget_percent=None if percent is None else Decimal(percent),
-        floor_hours=None if floor_hours is None else Decimal(floor_hours),
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-    )
 
 
 def build_service(
@@ -241,7 +222,10 @@ async def test_a_frame_only_week_reports_a_zero_target_for_every_area(
     span = week_span(IsoWeek.parse(ORDINARY_WEEK), SPRING_FORWARD.profile)
     service = build_service(
         principal,
-        areas=[an_area(FITNESS, percent="40"), an_area(CAREER, percent="60")],
+        areas=[
+            an_area(area_id=FITNESS, budget_percent=Decimal("40")),
+            an_area(area_id=CAREER, budget_percent=Decimal("60")),
+        ],
         occupancy=WeekOccupancy(frame=blocks(span)),
     )
 
@@ -264,7 +248,10 @@ async def test_shares_summing_to_exactly_one_hundred_leave_time_unallocated(
     # 100% every week, however many hours sat in no block.
     service = build_service(
         principal,
-        areas=[an_area(FITNESS, percent="40"), an_area(CAREER, percent="60")],
+        areas=[
+            an_area(area_id=FITNESS, budget_percent=Decimal("40")),
+            an_area(area_id=CAREER, budget_percent=Decimal("60")),
+        ],
         occupancy=WeekOccupancy(
             by_area={
                 FITNESS: blocks(
@@ -287,7 +274,11 @@ async def test_shares_summing_past_one_hundred_are_reported_as_oversubscription(
     principal: Principal,
 ) -> None:
     service = build_service(
-        principal, areas=[an_area(FITNESS, percent="80"), an_area(CAREER, percent="50")]
+        principal,
+        areas=[
+            an_area(area_id=FITNESS, budget_percent=Decimal("80")),
+            an_area(area_id=CAREER, budget_percent=Decimal("50")),
+        ],
     )
 
     view = await service.read(principal, ORDINARY_WEEK)
@@ -304,8 +295,12 @@ async def test_a_floor_and_a_share_divide_the_week_the_way_the_formula_states(
     service = build_service(
         principal,
         areas=[
-            an_area(FITNESS, floor_hours="4", percent="25"),
-            an_area(CAREER, percent="75"),
+            an_area(
+                area_id=FITNESS,
+                floor_hours=Decimal("4"),
+                budget_percent=Decimal("25"),
+            ),
+            an_area(area_id=CAREER, budget_percent=Decimal("75")),
         ],
     )
 
@@ -322,8 +317,12 @@ async def test_a_child_areas_time_rolls_up_into_its_parent(principal: Principal)
     service = build_service(
         principal,
         areas=[
-            an_area(CAREER, percent="50"),
-            an_area(LEARNING, percent="10", parent_id=CAREER),
+            an_area(area_id=CAREER, budget_percent=Decimal("50")),
+            an_area(
+                area_id=LEARNING,
+                budget_percent=Decimal("10"),
+                parent_id=CAREER,
+            ),
         ],
         occupancy=WeekOccupancy(
             by_area={
@@ -354,7 +353,7 @@ async def test_an_areas_actual_never_counts_time_that_left_the_denominator(
     off_plan = Interval(at(ORDINARY_WEEK, day=4, hour=0), at(ORDINARY_WEEK, day=7, hour=0))
     service = build_service(
         principal,
-        areas=[an_area(FITNESS, percent="100")],
+        areas=[an_area(area_id=FITNESS, budget_percent=Decimal("100"))],
         occupancy=WeekOccupancy(
             off_plan=blocks(off_plan),
             by_area={
@@ -453,7 +452,12 @@ async def test_the_view_names_every_declared_area_from_the_read_that_divides_the
     Counted as well as compared: a surface naming an Area pays no read of its own, so a week's gaps
     and its wedges cannot disagree about which Areas this tenant has.
     """
-    declared = StoredAreas([an_area(FITNESS, percent="40", name="Fitness"), an_area(CAREER)])
+    declared = StoredAreas(
+        [
+            an_area(area_id=FITNESS, name="Fitness", budget_percent=Decimal("40")),
+            an_area(area_id=CAREER, name=f"Area {CAREER}"),
+        ]
+    )
     service = BudgetService(
         areas=declared,
         settings=StoredSettings(principal.tenant_id),
@@ -499,7 +503,10 @@ async def test_a_week_entirely_off_plan_reports_zero_discretionary_time_and_zero
     span = week_span(IsoWeek.parse(ORDINARY_WEEK), SPRING_FORWARD.profile)
     service = build_service(
         principal,
-        areas=[an_area(FITNESS, percent="40"), an_area(CAREER, percent="60")],
+        areas=[
+            an_area(area_id=FITNESS, budget_percent=Decimal("40")),
+            an_area(area_id=CAREER, budget_percent=Decimal("60")),
+        ],
         occupancy=WeekOccupancy(off_plan=blocks(span)),
     )
 
@@ -523,7 +530,7 @@ async def test_an_area_declaring_a_floor_still_reports_that_floor_in_an_off_plan
     span = week_span(IsoWeek.parse(ORDINARY_WEEK), SPRING_FORWARD.profile)
     service = build_service(
         principal,
-        areas=[an_area(FITNESS, floor_hours="4")],
+        areas=[an_area(area_id=FITNESS, floor_hours=Decimal("4"))],
         occupancy=WeekOccupancy(off_plan=blocks(span)),
     )
 
@@ -547,7 +554,7 @@ async def test_a_partly_off_plan_week_reports_the_minutes_without_a_statement(
     off_plan = Interval(at(ORDINARY_WEEK, day=4, hour=14), at(ORDINARY_WEEK, day=7, hour=0))
     service = build_service(
         principal,
-        areas=[an_area(FITNESS, percent="100")],
+        areas=[an_area(area_id=FITNESS, budget_percent=Decimal("100"))],
         occupancy=WeekOccupancy(off_plan=blocks(off_plan)),
     )
 

@@ -24,7 +24,6 @@ from syncr_api.reviews.naming import a_kind, block_titles
 from syncr_api.reviews.raised import RaisedKind, floor_items, habit_debt_items, overdue_items
 from syncr_api.reviews.skips import chronic_skip_items, chronic_skips
 from syncr_api.reviews.statements import period_statement
-from syncr_api.tasks.records import TaskRecord
 from syncr_domain.debt import DebtReading
 from syncr_domain.feasibility import Provenance, Shortfall, ShortfallKind, Verdict
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
@@ -32,8 +31,8 @@ from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.outcomes import OutcomeState
 from syncr_domain.reasons import Bound, ReasonRecord
-from syncr_domain.tasks import Priority, TaskStatus
 from syncr_domain.weeks import IsoWeek
+from tests.service_builders import a_task
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -129,26 +128,6 @@ def skipped_run(weeks: Sequence[IsoWeek], *, title: str = "Gym") -> list[Reviewe
         block = a_block(iso_week=week, index=offset, title=title)
         built.append(a_week(week, blocks=[block], states=[OutcomeState.SKIPPED]))
     return built
-
-
-def a_task(*, title: str, deadline: datetime | None) -> TaskRecord:
-    """One open task, with only the fields the overdue raise reads set to anything meaningful."""
-    return TaskRecord(
-        id=uuid4(),
-        tenant_id=uuid4(),
-        area_id=uuid4(),
-        project_id=None,
-        title=title,
-        estimate_minutes=60,
-        deadline=deadline,
-        priority=Priority.NORMAL,
-        min_chunk_minutes=30,
-        splittable=True,
-        status=TaskStatus.OPEN,
-        recorded_minutes=0,
-        completed_at=None,
-        created_at=CONFIRMED_AT,
-    )
 
 
 def a_habit(*, title: str) -> HabitRecord:

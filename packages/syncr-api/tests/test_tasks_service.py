@@ -50,6 +50,7 @@ from syncr_domain.tasks import (
     TaskStatus,
 )
 from syncr_domain.weeks import IsoWeek
+from tests.service_builders import a_task, an_area
 from tests.service_fakes import (
     FakeAreaRepository,
     FakeProjectRepository,
@@ -240,19 +241,6 @@ def versions() -> RecordingWeekInputVersions:
     return RecordingWeekInputVersions()
 
 
-def an_area(tenant_id: TenantId, name: str = "Career") -> AreaRecord:
-    return AreaRecord(
-        id=uuid4(),
-        tenant_id=tenant_id,
-        parent_id=None,
-        name=name,
-        pigment_index=0,
-        budget_percent=None,
-        floor_hours=None,
-        created_at=NOW,
-    )
-
-
 def a_project(tenant_id: TenantId, area_id: AreaId) -> ProjectRecord:
     return ProjectRecord(
         id=uuid4(),
@@ -263,33 +251,6 @@ def a_project(tenant_id: TenantId, area_id: AreaId) -> ProjectRecord:
         status=ProjectStatus.ACTIVE,
         created_at=NOW,
     )
-
-
-def a_task(
-    tenant_id: TenantId, area_id: AreaId, *, clock: DateTime = NOW, **changes: object
-) -> TaskRecord:
-    """A stored task, for the states no route in this module can produce.
-
-    Recorded minutes and an ended status are what confirmed outcomes and the ending routes write;
-    seeding them directly is how a read path over one is asserted here.
-    """
-    fields: dict[str, object] = {
-        "id": uuid4(),
-        "tenant_id": tenant_id,
-        "area_id": area_id,
-        "project_id": None,
-        "title": "Leetcode",
-        "estimate_minutes": AN_HOUR,
-        "deadline": None,
-        "priority": Priority.NORMAL,
-        "min_chunk_minutes": 15,
-        "splittable": True,
-        "status": TaskStatus.OPEN,
-        "recorded_minutes": NO_RECORDED_MINUTES,
-        "completed_at": None,
-        "created_at": clock,
-    }
-    return TaskRecord(**{**fields, **changes})  # type: ignore[arg-type]
 
 
 def build(
@@ -1026,8 +987,8 @@ async def test_the_list_is_oldest_first_so_two_identical_reads_agree(
     principal: Principal, versions: RecordingWeekInputVersions
 ) -> None:
     area = an_area(principal.tenant_id)
-    first = a_task(principal.tenant_id, area.id, title="first", clock=NOW)
-    second = a_task(principal.tenant_id, area.id, title="second", clock=LATER)
+    first = a_task(principal.tenant_id, area.id, title="first", created_at=NOW)
+    second = a_task(principal.tenant_id, area.id, title="second", created_at=LATER)
     service, _ = build(principal, versions, areas=[area], tasks=[second, first])
 
     backlog = await service.list_all(principal)
