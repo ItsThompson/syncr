@@ -347,56 +347,11 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
     # and walks off the end, raising IndexError: not a value error, so not in the caught set.
     "a byday ordinal past the period": ("DURATION:PT1H", "RRULE:FREQ=MONTHLY;BYDAY=8MO"),
     "a byday ordinal far past the period": ("DURATION:PT1H", "RRULE:FREQ=YEARLY;BYDAY=99MO"),
-    # A BYSETPOS reaching past the set its own period holds. It selects nothing, so the rule yields
-    # nothing and a bound on yielded occurrences never fires while dateutil walks to year 9999.
-    "a setpos past a sub-daily set": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2",
-    ),
-    "a setpos on a secondly rule": ("DURATION:PT1H", "RRULE:FREQ=SECONDLY;BYSETPOS=2"),
-    # The same reach, at the frequencies where the named part LIMITS rather than expands, so the
-    # period holds fewer members than the parts suggest. Crossing the frequency with the part is the
-    # axis: reading BYMINUTE as room on a MINUTELY rule is how three of these walked anyway.
-    "a setpos past a limiting minute list": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=MINUTELY;BYMINUTE=0,30;BYSETPOS=2",
-    ),
-    "a setpos past a limiting second list": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=SECONDLY;BYSECOND=0,30;BYSETPOS=2",
-    ),
-    "a negative setpos past two limiting lists": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=MINUTELY;BYMINUTE=0,30;BYSECOND=0,30;BYSETPOS=-3",
-    ),
-    # A set member written twice, and written twice with padding. dateutil holds a BY list as a set
-    # of integers, so these name ONE member however they are spelled, and a position past one
-    # selects nothing. Counting the spellings rather than the values is what let them through.
-    "a setpos past a repeated set member": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2",
-    ),
-    "a setpos past a zero-padded repeat": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=HOURLY;BYMINUTE=30,030;BYSETPOS=2",
-    ),
     # The accepting mirror on the same axis: one member of the list lands, so the rule yields and
     # must not be refused.
     "a setpos list where only one member lands": (
         "DURATION:PT1H",
         "RRULE:FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5",
-    ),
-    # A position and a set member padded past what any guard's predicate reads. Nothing else in the
-    # corpus crosses a rule value with padding, which is how a predicate that fails open at two of
-    # its three call sites shipped: the same shapes above, spelled with leading zeros, stalled
-    # again.
-    "a padded setpos past its period": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=000000000002",
-    ),
-    "a padded set member inflating the room": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=HOURLY;BYMINUTE=30,000000000030;BYSETPOS=2",
     ),
     "a rule value past the readable width": (
         "DURATION:PT1H",
@@ -405,10 +360,6 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
     # A separator `int` accepts and `str.isdecimal` refuses. The corpus crossed padding with a rule
     # value and never SEPARATORS, which is how a readability predicate that disagreed with the
     # library's own conversion shipped twice.
-    "a setpos written with a digit separator": (
-        "DURATION:PT1H",
-        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2_0",
-    ),
     "a set member written with a digit separator": (
         "DURATION:PT1H",
         "RRULE:FREQ=HOURLY;BYMINUTE=0,2_0;BYSETPOS=2",
@@ -453,7 +404,6 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         "RRULE:FREQ=SECONDLY;BYMONTHDAY=999999999999;BYHOUR=2",
     ),
-    "a setpos past every daily set": ("DURATION:PT1H", "RRULE:FREQ=DAILY;BYSETPOS=2"),
     "a count past the conversion limit": (
         "DURATION:PT1H",
         f"RRULE:FREQ=DAILY;COUNT={PAST_INT_CONVERSION}",

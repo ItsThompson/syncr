@@ -234,7 +234,7 @@ SITES: Final[tuple[Site, ...]] = (
         module="ics_recurrence",
         function="_number",
         constructor="int",
-        reads="an INTERVAL or a BYSETPOS position a feed stated",
+        reads="an INTERVAL a feed stated",
         guard=TOTAL_FOR_ACCEPTED_VALUES,
     ),
     Site(

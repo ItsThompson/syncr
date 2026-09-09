@@ -225,3 +225,44 @@ def test_a_timed_out_expansion_leaves_a_pool_that_still_serves(tight: ExpansionB
     # poison the source after it.
     good = parse_feed(UNIVERSITY_TIMETABLE, horizon=HORIZON, profile=HOME, bound=tight)
     assert len(good.events) == 3
+
+
+# A BYSETPOS reaching past the set its period holds. The selectability guard
+# ``_require_selectable_setpos`` used to refuse this shape with "produces nothing";
+# that guard was deleted (SR-CAL-05) because the bound now answers it instead. This
+# test is the bite: with the guard in place the shape never reaches the bound, so
+# the rejection detail says "produces nothing" rather than "did not finish
+# expanding", and the assertion below fails on the pre-change tree.
+_SETPOS_PAST_SET = "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2"
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        _SETPOS_PAST_SET,
+        "FREQ=SECONDLY;BYSETPOS=2",
+        "FREQ=MINUTELY;BYMINUTE=0,30;BYSETPOS=2",
+        "FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2",
+        "FREQ=DAILY;BYSETPOS=2",
+    ],
+)
+def test_a_setpos_past_its_set_is_answered_by_the_deadline_not_a_guard(
+    rule: str, tight: ExpansionBound
+) -> None:
+    # Every value in these rules is inside the range its property allows; the only fault is
+    # that the position selects nothing, so dateutil walks to its own maximum year inside
+    # one ``next()`` call. The bound interrupts that walk with a stated rejection.
+    outcome = parse_feed(
+        _feed(_rule_event(rule, "setpos@example.org")),
+        horizon=HORIZON,
+        profile=HOME,
+        bound=tight,
+    )
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    detail = outcome.rejected[0].detail
+    assert "did not finish expanding" in detail
+    # The deleted guard's message must not appear: its presence would mean the guard
+    # is still standing and the bound never fired.
+    assert "produces nothing" not in detail

@@ -360,55 +360,6 @@ def test_a_byday_ordinal_past_its_period_is_a_rejection_rather_than_a_fault(rule
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
 
 
-@pytest.mark.parametrize(
-    ("rule", "refused"),
-    [
-        ("FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2", True),
-        ("FREQ=HOURLY;BYSETPOS=2", True),
-        ("FREQ=SECONDLY;BYSETPOS=2", True),
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=3", True),
-        # A part that LIMITS at this frequency adds nothing to the set, so these select nothing
-        # however many values they name.
-        ("FREQ=MINUTELY;BYMINUTE=0,30;BYSETPOS=2", True),
-        ("FREQ=SECONDLY;BYSECOND=0,30;BYSETPOS=2", True),
-        ("FREQ=SECONDLY;BYMINUTE=0,30;BYSECOND=0,15;BYSETPOS=3", True),
-        ("FREQ=MINUTELY;BYMINUTE=0,30;BYSECOND=0,30;BYSETPOS=-3", True),
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=2", False),
-        ("FREQ=HOURLY;BYSETPOS=1", False),
-        # BYSECOND expands a MINUTELY period, so this one has somewhere to land.
-        ("FREQ=MINUTELY;BYSECOND=0,30;BYSETPOS=2", False),
-    ],
-)
-def test_a_setpos_is_refused_only_when_its_period_cannot_hold_it(rule: str, refused: bool) -> None:
-    # BYSETPOS picks the Nth member of each period's set. A position past it selects nothing, the
-    # rule yields nothing, and dateutil walks to its own maximum year INSIDE ONE next() call:
-    # measured at sixty seconds for one component, with the worker tick held open. Neither a step
-    # bound nor an UNTIL can see that, because dateutil compares against UNTIL only when a period
-    # yields.
-    #
-    # WHICH parts build that set is per-frequency: RFC 5545 has BYMINUTE expand an hour and merely
-    # limit which minutes a MINUTELY rule looks at, and nothing expands a second. Counting a
-    # limiting part as room passed three of these shapes through to dateutil, which walked anyway.
-    #
-    # Compared against the set SIZE rather than refused as a shape, so the last three still expand:
-    # selecting the second of two is a rule dateutil answers in milliseconds.
-    body = (
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sp@example.org\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
-        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-    )
-
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
-
-    if refused:
-        assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
-        assert "produces nothing" in outcome.rejected[0].detail
-    else:
-        # Not "nothing was rejected": one of these expands past the per-feed event bound and is
-        # refused BY that bound. What matters is that this guard did not fire.
-        assert all("produces nothing" not in item.detail for item in outcome.rejected)
-
-
 @pytest.mark.parametrize("interval", ["1", "2", "02", "0002", "+1"])
 def test_a_positive_interval_is_expanded_however_it_is_written(interval: str) -> None:
     # The accepting side, including the padded forms RFC 5545's digit grammar permits and the signed
@@ -1291,19 +1242,19 @@ def test_an_occurrence_ending_exactly_at_the_horizon_places_nothing() -> None:
 def test_syncr_s_own_refusal_is_not_re_explained_as_a_library_fault() -> None:
     # IcsRejection is a ValueError by inheritance, so the catch written for a foreign expander's
     # lazily raised faults also catches this package's own refusals and re-wrapped them. The panel
-    # then read "the recurrence rule cannot be expanded: the recurrence rule selects position 2 of a
-    # HOURLY period holding 1", which explains syncr's own decision as something dateutil could not
-    # do, and buries the property the publisher has to fix.
+    # then read "the recurrence rule cannot be expanded: the recurrence rule states an INTERVAL of
+    # 0", which explains syncr's own decision as something dateutil could not do, and buries the
+    # property the publisher has to fix.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:own@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
-        "RRULE:FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        "RRULE:FREQ=DAILY;INTERVAL=0\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
     )
 
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
     detail = outcome.rejected[0].detail
-    assert detail.startswith("the recurrence rule selects position 2")
+    assert detail.startswith("the recurrence rule states an INTERVAL")
     assert "cannot be expanded" not in detail
 
 
@@ -1505,47 +1456,6 @@ def test_a_rule_across_the_spring_forward_stays_at_nine_local_on_both_sides() ->
     assert {event.interval.start.astimezone(ZoneInfo(LONDON)).hour for event in events} == {9}
 
 
-@pytest.mark.parametrize(
-    ("rule", "events"),
-    [
-        # dateutil holds each BY list as a set of integers, so these name one member, not two or
-        # three, and a position past one member selects nothing. `None` means refused.
-        ("FREQ=HOURLY;BYMINUTE=0,0;BYSETPOS=2", None),
-        ("FREQ=MINUTELY;BYSECOND=0,00;BYSETPOS=2", None),
-        ("FREQ=HOURLY;BYMINUTE=30,030;BYSETPOS=2", None),
-        ("FREQ=MINUTELY;BYSECOND=0,0,0;BYSETPOS=3", None),
-        ("FREQ=HOURLY;BYMINUTE=0,0,30;BYSETPOS=3", None),
-        # A list where SOME member lands is legitimate: dateutil skips the ones that do not and
-        # yields for the rest, so refusing on the largest member lost a whole live series.
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,5", 302),
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=1,2,3,4", 604),
-        ("FREQ=HOURLY;BYMINUTE=0,30;BYSETPOS=-1,-5", 302),
-    ],
-)
-def test_a_setpos_is_read_against_the_values_dateutil_will_hold(
-    rule: str, events: int | None
-) -> None:
-    # Two ways to get the room wrong, and each let a rule walk to year 9999 inside one call or lost
-    # a rule that works. The room is the count of DISTINCT VALUES, because that is what dateutil
-    # stores; the reach is the SMALLEST position, because one member landing makes the rule yield.
-    body = (
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sp2@example.org\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
-        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-    )
-
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
-
-    if events is None:
-        assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
-        assert "produces nothing" in outcome.rejected[0].detail
-    else:
-        assert outcome.rejected == ()
-        # The exact count, not "not empty": the guard's docstring used to quote a number for one of
-        # these shapes, three drafts quoted three different ones, and none was asserted anywhere.
-        assert len(outcome.events) == events
-
-
 @pytest.mark.parametrize("padded", ["0" * 4302, "0" * 4301 + "1"])
 def test_a_padded_rule_value_is_refused_without_the_conversion_complaining(padded: str) -> None:
     # The interpreter's conversion limit counts the CHARACTERS handed to int(), not the value, so a
@@ -1661,37 +1571,6 @@ def test_a_feed_cut_short_does_not_blame_a_recurrence_it_does_not_have() -> None
 
 
 @pytest.mark.parametrize(
-    "rule",
-    [
-        # A position padded past what any guard's predicate would read. The predicate that judged
-        # readability was consumed as a REFUSAL by one caller and as a FILTER by two others, so
-        # tightening it made these skip the value they were meant to judge instead of refusing it.
-        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=000000000002",
-        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=+000000000002",
-        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=-000000000002",
-        "FREQ=MINUTELY;BYSECOND=0;BYSETPOS=000000000002",
-        "FREQ=SECONDLY;BYSETPOS=000000000002",
-        # And a padded SET MEMBER, which inflated the room the position is judged against.
-        "FREQ=HOURLY;BYMINUTE=30,000000000030;BYSETPOS=2",
-    ],
-)
-def test_a_padded_rule_member_cannot_walk_past_the_guard_that_reads_it(rule: str) -> None:
-    # Each of these stalled for between a minute and days in one dateutil call, which is past what
-    # MAX_PARSE_SECONDS can see: that bound is checked BETWEEN components, so one component overruns
-    # it by however long the call takes.
-    body = (
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:pad2@example.org\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
-        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-    )
-
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
-
-    assert outcome.events == ()
-    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
-
-
-@pytest.mark.parametrize(
     ("padded", "plain"),
     [
         # Padding is not an error. RFC 5545's digit grammar permits it, and a publisher who writes
@@ -1798,30 +1677,6 @@ def test_a_cancellation_suppresses_one_occurrence_when_two_share_its_instant() -
     ]
 
 
-@pytest.mark.parametrize(
-    "rule",
-    [
-        # int() accepts a PEP 515 underscore and str.isdecimal does not, so a readability predicate
-        # that resembles int() rather than BEING int() dropped the position instead of judging it:
-        # the guard concluded "no position" and dateutil, which converts with int(), walked.
-        "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2_0",
-        "FREQ=MINUTELY;BYSETPOS=1_0",
-        "FREQ=SECONDLY;BYMINUTE=0;BYSETPOS=2_0",
-    ],
-)
-def test_a_separator_a_publisher_can_write_cannot_walk_past_the_guard(rule: str) -> None:
-    body = (
-        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:sep@example.org\r\n"
-        "DTSTART:20260210T100000Z\r\nDTEND:20260210T103000Z\r\n"
-        f"RRULE:{rule}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-    )
-
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
-
-    assert outcome.events == ()
-    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
-
-
 def test_a_separator_in_a_set_member_reads_as_the_number_dateutil_reads() -> None:
     # The paired direction of the same disagreement. Dropping an unreadable member SHRANK the room,
     # so this rule was refused while dateutil would have expanded it. One accept-set disagreement,
@@ -1868,10 +1723,6 @@ def test_a_separator_in_a_set_member_reads_as_the_number_dateutil_reads() -> Non
         "FREQ=SECONDLY;BYMONTHDAY=999999999999;BYHOUR=2",
         "FREQ=SECONDLY;BYYEARDAY=999999999999;BYHOUR=2",
         "FREQ=SECONDLY;BYWEEKNO=0000000000999999999999;BYHOUR=2",
-        # And a position past every set a daily period can hold, stated 365 times: two seconds each,
-        # measured at 160 seconds in one call, at the frequency the guard used to leave alone.
-        "FREQ=DAILY;BYSETPOS=2",
-        "FREQ=DAILY;BYHOUR=9,10;BYSETPOS=3",
     ],
 )
 def test_a_rule_that_can_never_match_is_refused_rather_than_walked(rule: str) -> None:
