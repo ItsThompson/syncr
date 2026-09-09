@@ -32,6 +32,7 @@ dependencies = [
     "syncr-common[http]",
     "syncr-domain",
     "syncr-solver",
+    "pyyaml>=6.0.3,<7",
 ]
 
 [tool.uv.sources]
@@ -58,6 +59,7 @@ dev = [
     "ruff>=0.8.0,<1",
     "mypy>=1.13.0,<3",
     "types-python-dateutil>=2.9.0,<3",
+    "types-pyyaml>=6.0.12.20250915,<7",
 ]
 
 [build-system]
