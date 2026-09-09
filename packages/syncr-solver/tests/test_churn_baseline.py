@@ -13,7 +13,6 @@ from syncr_solver.churn_baseline import ChurnBaseline
 
 WEEK = IsoWeek(2026, 7)
 LONDON = "Europe/London"
-MONDAY_MIDNIGHT = datetime(2026, 2, 9, tzinfo=UTC)
 NOW = datetime(2026, 2, 11, 9, 0, tzinfo=UTC)
 
 
