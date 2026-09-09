@@ -39,15 +39,20 @@ def test_declared_rule_count_reads_the_alert_file(tmp_path: Path) -> None:
     assert load_stack_probe().declared_rule_count(alerts_path) == 2
 
 
-@pytest.mark.parametrize(
-    ("loaded_rule_count", "expected"),
-    [(14, True), (13, False)],
-)
+@pytest.mark.parametrize("missing_rules", [0, 1])
 def test_report_rules_requires_every_declared_rule(
-    monkeypatch: pytest.MonkeyPatch, loaded_rule_count: int, expected: bool
+    monkeypatch: pytest.MonkeyPatch, missing_rules: int
 ) -> None:
     stack_probe = load_stack_probe()
-    monkeypatch.setattr(stack_probe, "declared_rule_count", lambda: 14)
+    expected_rule_count = stack_probe.declared_rule_count()
+    calls = 0
+
+    def declared_rule_count() -> int:
+        nonlocal calls
+        calls += 1
+        return expected_rule_count
+
+    monkeypatch.setattr(stack_probe, "declared_rule_count", declared_rule_count)
     monkeypatch.setattr(
         stack_probe,
         "fetch",
@@ -61,7 +66,7 @@ def test_report_rules_requires_every_declared_rule(
                                 "labels": {"severity": "warning"},
                                 "state": "firing",
                             }
-                            for position in range(loaded_rule_count)
+                            for position in range(expected_rule_count - missing_rules)
                         ]
                     }
                 ]
@@ -69,4 +74,5 @@ def test_report_rules_requires_every_declared_rule(
         },
     )
 
-    assert stack_probe.report_rules("http://prometheus:9090") is expected
+    assert stack_probe.report_rules("http://prometheus:9090") is (missing_rules == 0)
+    assert calls == 1
