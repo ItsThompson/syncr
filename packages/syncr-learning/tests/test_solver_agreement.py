@@ -18,6 +18,9 @@ from datetime import UTC, datetime
 import pytest
 
 from syncr_api.learned.config import P0_WEIGHTS
+from syncr_api.learned.gate_statements import (
+    THRESHOLDS_ARE_ESTIMATES as API_THRESHOLDS_ARE_ESTIMATES,
+)
 from syncr_api.learned.models import WeightSet as WeightSetRow
 from syncr_api.learned.subjects import subject_of
 from syncr_api.plans import stored_contexts
@@ -25,6 +28,7 @@ from syncr_api.plans.edit_context import EditContext
 from syncr_learning import artifact, config
 from syncr_learning.fitting import fit_everything
 from syncr_learning.fixtures import AREA, at_the_gate
+from syncr_learning.gates import THRESHOLDS_ARE_ESTIMATES as LEARNING_THRESHOLDS_ARE_ESTIMATES
 from syncr_learning.gates import ParameterMaturity, parameter_of
 from syncr_learning.storage import spelling
 from syncr_solver import weights as solver_weights
@@ -35,6 +39,11 @@ AREA_NAME = "Fitness"
 FIT_AT = datetime(2026, 2, 16, 3, 0, tzinfo=UTC)
 SWITCH_COST_IN_FORCE = 1.0
 CHURN_TOLERANCE_IN_FORCE = 3.0
+
+
+class TestTheThresholdStatement:
+    def test_the_learning_and_api_copies_are_byte_identical(self) -> None:
+        assert LEARNING_THRESHOLDS_ARE_ESTIMATES.encode() == API_THRESHOLDS_ARE_ESTIMATES.encode()
 
 
 class TestTheObjectiveVocabulary:
