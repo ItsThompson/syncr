@@ -75,6 +75,7 @@ from syncr_solver.inputs import (
     EligibleTask,
     EntryBinding,
     FrameEntry,
+    FrameOverhang,
     HabitOccurrence,
     MaterializedEntry,
     Pin,
@@ -228,6 +229,14 @@ def _read_frame_entry(value: object, *, field: str) -> FrameEntry:
         min_duration_minutes=held("min_duration_minutes", read_whole_number),
         flex_band_minutes=held("flex_band_minutes", read_whole_number),
         title=held("title", read_text),
+    )
+
+
+def _read_frame_overhang(value: object, *, field: str) -> FrameOverhang:
+    held = _fields_of(value, field=field)
+    return FrameOverhang(
+        interval=held("interval", read_interval),
+        label=held("label", read_text),
     )
 
 
@@ -474,7 +483,7 @@ FORMS: Final[tuple[tuple[str, _Read], ...]] = (
     ("zone_by_date", _by_date(read_text)),
     ("input_version", read_whole_number),
     ("frame", _every(_read_frame_entry)),
-    ("frame_overhang", _every(read_interval)),
+    ("frame_overhang", _every(_read_frame_overhang)),
     ("anchors", _every(_read_anchor)),
     ("shadow_blocks", _every(_read_shadow_block)),
     ("forbidden_windows", _every(_read_forbidden_window)),

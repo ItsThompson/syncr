@@ -33,10 +33,9 @@ it complete is a domain invariant on the routine's span.
 | A frame occurrence | here |
 | An off-plan period | one row, clipped per week, so each week reads its own part |
 | An anchor and its shadows | the calendar resolution, which loads by overlap |
-| A block the solver placed in the preceding week | the week's placements, which no reader
-  supplies yet |
-| A template entry | nothing yet. Its ownership rule is unstated, and it is recorded rather
-  than assumed |
+| A block the solver placed in the preceding week | its own week: solver placements cannot cross
+  the week's span |
+| A concrete template entry | here, labelled with the entry's resolved title |
 """
 
 from __future__ import annotations
@@ -45,7 +44,9 @@ from typing import TYPE_CHECKING
 
 from syncr_api.plans.folding import Concessions, fold
 from syncr_api.plans.materialization import OffPlanSuppression, frame_entries, periods_of
+from syncr_domain.templates import TemplateEntryKind
 from syncr_domain.weeks import active_zone_by_date, week_span
+from syncr_solver.inputs import FrameOverhang
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -55,7 +56,7 @@ if TYPE_CHECKING:
     from syncr_domain.intervals import Interval
     from syncr_domain.weeks import IsoWeek
     from syncr_domain.zones import ZoneProfile
-    from syncr_solver.inputs import WeekAdjustment
+    from syncr_solver.inputs import MaterializedEntry, WeekAdjustment
 
 
 def frame_overhang(
@@ -66,7 +67,7 @@ def frame_overhang(
     profile: ZoneProfile,
     periods: Sequence[OffPlanPeriodRecord],
     adjustments: Sequence[WeekAdjustment],
-) -> tuple[Interval, ...]:
+) -> tuple[FrameOverhang, ...]:
     """The spans ``preceding``'s frame occupies inside ``into``, clipped to it.
 
     Empty for a week whose predecessor's occurrences all end inside it, which is every week of a
@@ -84,5 +85,20 @@ def frame_overhang(
         Concessions(frame=resolved, eligible_tasks=(), demands=(), areas=()),
     )
     return tuple(
-        inside for entry in folded.frame if (inside := entry.interval.clipped_to(into)) is not None
+        FrameOverhang(interval=inside)
+        for entry in folded.frame
+        if (inside := entry.interval.clipped_to(into)) is not None
+    )
+
+
+def concrete_entry_overhang(
+    entries: Sequence[MaterializedEntry], *, into: Interval
+) -> tuple[FrameOverhang, ...]:
+    """Concrete entries' preceding-week minutes inside ``into``, with their resolved title."""
+    return tuple(
+        FrameOverhang(interval=inside, label=entry.title)
+        for entry in entries
+        if entry.kind is TemplateEntryKind.CONCRETE
+        and entry.title is not None
+        and (inside := entry.interval.clipped_to(into)) is not None
     )

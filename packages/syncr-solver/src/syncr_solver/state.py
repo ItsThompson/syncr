@@ -70,7 +70,7 @@ if TYPE_CHECKING:
     from syncr_domain.off_plan import OffPlanPeriod
     from syncr_domain.plan import Block
     from syncr_domain.weeks import LocalDay
-    from syncr_solver.inputs import Anchor, AreaBudget, FrameEntry, SolveInputs
+    from syncr_solver.inputs import Anchor, AreaBudget, FrameEntry, FrameOverhang, SolveInputs
 
 # The two kinds of content whose size the solver chooses. A task is divided and re-sized as work
 # is placed; a habit occurrence is sized within its elastic range. Every other kind arrives at a
@@ -183,8 +183,8 @@ class PartialPlan:
     days: tuple[LocalDay, ...]
     # H3, and H11 for a routine occurrence
     frame: tuple[FrameEntry, ...]
-    # H3. The preceding week's occurrences as the spans they occupy here, which carry no title
-    inherited: tuple[Interval, ...]
+    # H3. The preceding week's occupancy, with the name its clause must render.
+    inherited: tuple[FrameOverhang, ...]
     # H1, and H11 for an imported commitment
     anchors: tuple[Anchor, ...]
     # H2 for the windows that forbid every Area, H13 for the ones that name some, and H9 for the
@@ -239,7 +239,9 @@ class PartialPlan:
             span=inputs.span,
             days=local_days(inputs.iso_week, inputs.zone_by_date, inputs.span),
             frame=tuple(sorted(inputs.frame, key=frame_key)),
-            inherited=tuple(sorted(inputs.frame_overhang, key=span_key)),
+            inherited=tuple(
+                sorted(inputs.frame_overhang, key=lambda entry: span_key(entry.interval))
+            ),
             anchors=tuple(sorted(inputs.anchors, key=anchor_key)),
             forbidden_windows=tuple(sorted(inputs.forbidden_windows, key=window_key)),
             off_plan=tuple(sorted(inputs.off_plan, key=period_key)),

@@ -99,7 +99,7 @@ from syncr_api.plans.materialization import (
 )
 from syncr_api.plans.multipliers import DurationMultipliers
 from syncr_api.plans.netting import PlacedTime, areas_of_content, placements
-from syncr_api.plans.overhang import frame_overhang
+from syncr_api.plans.overhang import concrete_entry_overhang, frame_overhang
 from syncr_api.plans.placements import constraining
 from syncr_api.plans.reservations import area_budgets
 from syncr_api.plans.resolved_preferences import area_caps, resolved_preferences
@@ -112,7 +112,13 @@ from syncr_domain.discretionary import discretionary_time
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.weeks import active_zone_by_date, week_span
-from syncr_solver.inputs import ChurnBaseline, SolveInputs, WeekAdjustment, frame_occupancy
+from syncr_solver.inputs import (
+    ChurnBaseline,
+    FrameOverhang,
+    SolveInputs,
+    WeekAdjustment,
+    frame_occupancy,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -272,6 +278,8 @@ class WeekAssembler:
         zone_by_date = active_zone_by_date(iso_week, profile)
         dates = iso_week.dates()
         preceding = iso_week.preceding()
+        preceding_span = week_span(preceding, profile)
+        preceding_zone_by_date = active_zone_by_date(preceding, profile)
 
         input_version = await self._versions.current(iso_week) or UNVERSIONED_WEEK
         churn_baseline = _churn_baseline(await self._revisions.latest_approved(iso_week))
@@ -283,12 +291,11 @@ class WeekAssembler:
         # Both weeks in one read. The inherited occurrence is judged against the periods of the
         # week that owns it, and reading only this week's would suppress it by a period this week
         # holds or fail to suppress it by one the week before does.
-        declared_periods = await self._off_plan.for_span(
-            Interval(week_span(preceding, profile).start, span.end)
-        )
+        declared_periods = await self._off_plan.for_span(Interval(preceding_span.start, span.end))
         off_plan = periods_of(declared_periods, span)
 
         suppression = OffPlanSuppression(off_plan)
+        preceding_suppression = OffPlanSuppression(periods_of(declared_periods, preceding_span))
         routines = await self._routines.list_all()
         frame = frame_entries(
             routines,
@@ -296,7 +303,7 @@ class WeekAssembler:
             zone_by_date=zone_by_date,
             off_plan=suppression,
         )
-        inherited = frame_overhang(
+        inherited_frame = frame_overhang(
             routines,
             into=span,
             preceding=preceding,
@@ -307,16 +314,30 @@ class WeekAssembler:
             ),
         )
         habits = await self._habits.list_all()
+        pattern = await self._week_pattern.read()
+        day_types = await self._day_types.list_all()
+        templates = await self._templates.list_all()
         template_entries = materialized_entries(
-            pattern=await self._week_pattern.read(),
-            day_types=await self._day_types.list_all(),
-            templates=await self._templates.list_all(),
+            pattern=pattern,
+            day_types=day_types,
+            templates=templates,
             routines=routines,
             habits=habits,
             dates=dates,
             zone_by_date=zone_by_date,
             off_plan=suppression,
         )
+        preceding_entries = materialized_entries(
+            pattern=pattern,
+            day_types=day_types,
+            templates=templates,
+            routines=routines,
+            habits=habits,
+            dates=preceding.dates(),
+            zone_by_date=preceding_zone_by_date,
+            off_plan=preceding_suppression,
+        )
+        inherited = (*inherited_frame, *concrete_entry_overhang(preceding_entries, into=span))
 
         multipliers = DurationMultipliers.of(await self._weights.active())
         habit_ids = [record.id for record in habits]
@@ -486,7 +507,7 @@ def _discretionary_minutes(
     span: Interval,
     *,
     frame: Sequence[FrameEntry],
-    inherited: Sequence[Interval],
+    inherited: Sequence[FrameOverhang],
     calendar: CalendarOccupancy,
     off_plan: Sequence[OffPlanPeriod],
 ) -> int:

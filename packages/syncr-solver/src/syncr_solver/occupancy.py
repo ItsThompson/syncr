@@ -32,17 +32,13 @@ from typing import TYPE_CHECKING, Final
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope
 from syncr_domain.identity import BindingKind
 from syncr_solver.constraints import Blocked, ConstraintRule
+from syncr_solver.inputs import INHERITED_FRAME as INHERITED_FRAME
 from syncr_solver.ordering import held_key
 
 if TYPE_CHECKING:
     from syncr_domain.gaps import ForbiddenWindow
     from syncr_solver.constraints import Rule
     from syncr_solver.state import Held, PartialPlan, Placement
-
-# What a rejection names when the span that rejected a candidate is a routine occurrence the
-# preceding week owns. It carries no title of its own: the week that owns the occurrence holds the
-# whole interval and materializes the one block, so this week has the span and not the name.
-INHERITED_FRAME: Final = "a routine the preceding week owns"
 
 # The kinds a commitment derives, which are the ones its own recovery window does not forbid. The
 # commitment itself is not among them: an anchor is the space rather than a candidate inside it,
@@ -87,9 +83,9 @@ def frame_overlap(candidate: Placement, state: PartialPlan) -> Blocked | None:
     for entry in state.frame:
         if entry.interval.overlaps(candidate.interval):
             return Blocked(ConstraintRule.FRAME_OVERLAP, candidate.interval, entry.title)
-    for span in state.inherited:
-        if span.overlaps(candidate.interval):
-            return Blocked(ConstraintRule.FRAME_OVERLAP, candidate.interval, INHERITED_FRAME)
+    for inherited in state.inherited:
+        if inherited.interval.overlaps(candidate.interval):
+            return Blocked(ConstraintRule.FRAME_OVERLAP, candidate.interval, inherited.label)
     return None
 
 

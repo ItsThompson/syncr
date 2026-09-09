@@ -52,6 +52,10 @@ week it runs into carries the spans without carrying the occurrence. ``frame_occ
 is the one reading of the two together, which is what keeps this pair from becoming the
 kind above.
 
+| Labelled field | Label reader |
+| --- | --- |
+| ``frame_overhang`` | ``occupancy.frame_overlap`` |
+
 ## What is deliberately absent
 
 No identifier of the tenant, because a snapshot is already one tenant's. No clock: ``now``
@@ -66,7 +70,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 # ``DeadlineDemand`` is defined beside the probe that reads it, and re-exported here so a reader
 # of this struct's fields finds the type next to them. The redundant alias is the explicit
@@ -80,7 +84,7 @@ from syncr_domain.gaps import EmptySlot, ForbiddenScope
 # explicit re-export form, and the runtime import is what makes the re-export reachable.
 from syncr_domain.habits import BindingSource as BindingSource  # noqa: TC001
 from syncr_domain.identity import BindingKind, BindingRef
-from syncr_domain.intervals import IntervalSet, as_instant
+from syncr_domain.intervals import Interval, IntervalSet, as_instant
 from syncr_domain.plan import PlanError, require_a_zone_for_every_day
 from syncr_domain.templates import TemplateEntryKind
 from syncr_solver.churn_baseline import ChurnBaseline as ChurnBaseline
@@ -110,6 +114,17 @@ if TYPE_CHECKING:
 # How many bytes of the identity digest the seed takes. Eight gives a 64-bit integer,
 # which is the width a caller can hand to any generator without truncating it further.
 _SEED_BYTES = 8
+
+# The owning week has the occurrence but the following week still needs a truthful H3 clause.
+INHERITED_FRAME: Final = "a routine the preceding week owns"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FrameOverhang:
+    """A preceding week's occupied span, with the name H3 gives its refusal."""
+
+    interval: Interval
+    label: str = INHERITED_FRAME
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -465,7 +480,7 @@ class SolveInputs:
     # Read through `frame_occupancy()` together with `frame` above. Both consumers ask the same
     # question of both fields, and a consumer reading `frame` alone would place work inside a
     # night the preceding week already spent.
-    frame_overhang: tuple[Interval, ...] = ()
+    frame_overhang: tuple[FrameOverhang, ...] = ()
     # Hard occupancy: an immovable external fact. Every anchor OVERLAPPING the span, at its own
     # real time and unclipped, because a commitment's duration is the source's fact rather than
     # this week's reading of it. Every figure taken over these subtracts within the span.
@@ -499,6 +514,14 @@ class SolveInputs:
     def __post_init__(self) -> None:
         object.__setattr__(self, "now", as_instant(self.now))
         object.__setattr__(self, "zone_by_date", dict(self.zone_by_date))
+        object.__setattr__(
+            self,
+            "frame_overhang",
+            tuple(
+                entry if isinstance(entry, FrameOverhang) else FrameOverhang(interval=entry)
+                for entry in self.frame_overhang
+            ),
+        )
         require_a_zone_for_every_day(self.iso_week, self.zone_by_date)
         _require_the_overhang_inside_the_span(self.span, self.frame_overhang)
 
@@ -624,17 +647,21 @@ def _require_content_matching_the_kind(
         )
 
 
-def frame_occupancy(frame: Sequence[FrameEntry], overhang: Sequence[Interval]) -> IntervalSet:
+def frame_occupancy(frame: Sequence[FrameEntry], overhang: Sequence[FrameOverhang]) -> IntervalSet:
     """The spans a week's circadian frame occupies, its own occurrences and the inherited ones.
 
     Stated here rather than at each call site, because the producer needs it before the struct
     exists: the discretionary denominator subtracts the frame, and it is computed while the
     fields are still being resolved.
     """
-    return IntervalSet([*(entry.interval for entry in frame), *overhang])
+    return IntervalSet(
+        [*(entry.interval for entry in frame), *(entry.interval for entry in overhang)]
+    )
 
 
-def _require_the_overhang_inside_the_span(span: Interval, overhang: Sequence[Interval]) -> None:
+def _require_the_overhang_inside_the_span(
+    span: Interval, overhang: Sequence[FrameOverhang]
+) -> None:
     """The inherited spans describe THIS week, so none of them may name time outside it.
 
     A member reaching past the span would be the preceding week's occurrence carried whole
@@ -642,7 +669,11 @@ def _require_the_overhang_inside_the_span(span: Interval, overhang: Sequence[Int
     taken over it. Refused rather than clipped here: which week owns an occurrence is the
     producer's question, and silently correcting it would hide a producer that answered wrongly.
     """
-    outside = [member for member in overhang if member.start < span.start or member.end > span.end]
+    outside = [
+        member
+        for member in overhang
+        if member.interval.start < span.start or member.interval.end > span.end
+    ]
     if outside:
         raise PlanError(
             f"{len(outside)} of {len(overhang)} inherited frame spans reach outside "
