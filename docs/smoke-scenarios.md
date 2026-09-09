@@ -41,15 +41,6 @@ Every seed recipe is self-contained: it empties the database, provisions the ten
 script a first deployment runs, declares the fixture over the HTTP API, and ticks the plan-horizon
 maintainer. The suite loads its own fixture per file, so `just e2e` needs no seed run first.
 
-**One intermittent failure runs through the whole harness, and it is a product defect rather than a flake in
-a recipe.** A route that answers an operation identifier can answer one that `GET /operations/{id}` then
-404s for, which is ticket 1575. Reached from all three routes that answer one, and measured by two people; the
-planning figure is **one red run in five to ten full-suite runs**, and one occurrence ended a run after a
-single case because the identifier was drawn during a fixture load. Ticket 1575 carries every sample. It is
-never retried and never tolerated: the harness
-reports it by name, so a run that draws it reads as the known defect rather than as a fault in whichever
-case was running. Every seed recipe but one has never failed.
-
 ## What is mocked, and what is not
 
 One thing: the external calendar provider, **at the network boundary**. `e2e/docker-compose.e2e.yml`
@@ -211,5 +202,4 @@ user action, and counts a frame span crossing the boundary exactly once across t
 |---|---|---|
 | S17's capture flow | Driven now, and expected to fail: the label an empty slot's band does not carry, the reader of the capture URL the week screen writes, and the task-addressed preference write. The grid canvas these rows used to name as a fourth obstacle no longer grows: the grid measures the space the display offers rather than the element its own output sizes | `s17-capture-from-an-unfillable-slot.spec.ts`, tickets 1350 and 1490 |
 | The exactly-0.5 early-catch ratio | Needs a mutation that flips a verdict through a route that carries the session header; the three-step sequence this row used to share its cell with is automated in `s25-progress-does-not-manufacture-a-shortfall.spec.ts` | ticket 1572 |
-| One intermittent failure, anywhere an operation is awaited | A route that answers an operation identifier can answer one that `GET /operations/{id}` 404s for. Reached from all three such routes, at roughly one red run in five to ten. Not tolerated and not retried: `operation()` reports it by name | ticket 1575 |
 | Google, and the deployed host | A real account, a real token to revoke, and a real systemd unit. Neither is a mock this suite could add honestly | S2, S3, S19, S23 |

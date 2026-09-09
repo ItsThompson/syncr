@@ -53,30 +53,9 @@ export const solveNow = (client: ApiClient, isoWeek: string): Promise<Operation>
 export const solveDebounced = (client: ApiClient, isoWeek: string): Promise<Operation> =>
   client.post<Operation>(`/api/v1/weeks/${isoWeek}/solve`);
 
-/** One operation by identifier.
- *
- * A 404 HERE IS REPORTED AS THE KNOWN DEFECT IT PROBABLY IS, AND IT IS STILL A FAILURE. A route that
- * answers an operation identifier can answer one this read then 404s for, from more than one route. The
- * reason this wrapper exists is legibility rather than tolerance: `awaitTerminal` is on the hot path of
- * almost every scenario, so without a message naming the defect the same phantom identifier reads like a
- * product bug in whichever case happens to draw it.
- *
- * NO RATE IS PRINTED HERE. Every measurement of it has come out different and each new sample has been worse
- * than the last, from one in twenty-five to one in five; a figure in a message is the one number a future
- * reader trusts, and it cannot be kept current in source. `docs/smoke-scenarios.md` states the one figure
- * this repository publishes, and it says how it was arrived at.
- *
- * It deliberately does NOT retry. A read that answers 404 for an identifier the api has just handed out is
- * a product defect, and a silent retry would convert it into a slow test instead of a red one. */
+/** One operation by identifier. A non-200 fails, with the problem document in the message. */
 export const operation = async (client: ApiClient, id: string): Promise<Operation> => {
   const reply = await client.attempt<Operation>("GET", `/api/v1/operations/${id}`);
-  if (reply.status === 404) {
-    throw new Error(
-      `operation ${id} answered 404, and it is the identifier the api had just returned. That is the ` +
-        "phantom-operation defect in ticket 1575, which names its measured rate; it is not a fault in " +
-        "this scenario. Re-run it, and add the run to that ticket's evidence.",
-    );
-  }
   if (reply.status !== 200) {
     throw new Error(stated("GET", `/api/v1/operations/${id}`, reply));
   }
