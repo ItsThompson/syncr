@@ -25,7 +25,7 @@ import { useState } from "react";
 import { client } from "../client";
 import { calendarSourcesKey, googleConnectionKey } from "../keys";
 import { answered, apply, read } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -81,7 +81,9 @@ export function useSourceAddition(): Write<CalendarSourceBody> {
   const { mutate } = useSWRConfig();
 
   return useWrite(async (body: CalendarSourceBody) => {
-    const refusal = await apply(() => client.POST("/api/v1/calendar-sources", { body }));
+    const refusal = await apply(() =>
+      client.POST("/api/v1/calendar-sources", { headers: idempotentHeaders(), body }),
+    );
     if (refusal !== null) return refusal;
     await mutate(calendarSourcesKey());
     return null;
@@ -127,6 +129,7 @@ export function useSourceSync(): Write<SourceReference> {
     const refusal = await apply(() =>
       client.POST("/api/v1/calendar-sources/{source_id}/sync", {
         params: { path: { source_id: sourceId } },
+        headers: idempotentHeaders(),
       }),
     );
     if (refusal !== null) return refusal;
