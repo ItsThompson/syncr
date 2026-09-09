@@ -555,6 +555,25 @@ class TestABoundClauseNamesTheDayShape:
 
 
 # --------------------------------------------------------------------------------------
+# The type and commitment that cast a shadow block, named by the clause
+# --------------------------------------------------------------------------------------
+
+
+class TestABoundClauseNamesAnAnchorType:
+    def test_the_clause_names_the_anchor_type_and_commitment_before_the_buffer(self) -> None:
+        document = materialize(
+            a_week(
+                shadow_blocks=(a_prep_block(anchor_type_name="Exam", anchor_title="Analysis Exam"),)
+            ),
+            cause=MaterializeCause.SOLVE_FAILED,
+        )
+        bound = only(Bound, document.blocks[0].reason.clauses)
+
+        assert isinstance(bound, Bound)
+        assert bound.selected == "Exam · Analysis Exam"
+
+
+# --------------------------------------------------------------------------------------
 # The floor clause, and the reservation it may not disagree with
 # --------------------------------------------------------------------------------------
 

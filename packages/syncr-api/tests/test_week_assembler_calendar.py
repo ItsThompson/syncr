@@ -57,6 +57,7 @@ from syncr_domain.identity import NO_OCCURRENCE, BindingKind, TransitLeg, date_o
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.routines import MAX_DURATION_MINUTES
+from syncr_solver.clauses import bound_to_anchor_type
 from syncr_solver.inputs import WeekAdjustment
 from tests.anchor_specifications import (
     ATTRIBUTED_EXAM,
@@ -187,6 +188,37 @@ async def test_a_monday_morning_exam_casts_its_sunday_evening_prep_into_the_week
     assert prep.interval == Interval(on_sunday(19, 30), on_sunday(20, 30))
     assert prep.area_id == STUDY
     assert prep.title == "Prep for Analysis Exam"
+
+
+async def test_a_boundary_crossing_buffer_keeps_its_anchor_clause_in_both_weeks() -> None:
+    anchor_type, anchor = a_commitment(
+        ATTRIBUTED_LECTURE, start=on_monday(0, 20), minutes=60, title="Compilers Lecture"
+    )
+
+    before = await assemble_before(types=[anchor_type], anchors=[anchor])
+    this_week = await an_assembler(
+        settings=FakeSettings(LONDON),
+        anchors=FakeAnchors([anchor]),
+        anchor_types=FakeAnchorTypes([anchor_type]),
+        routines=FakeRoutines(),
+        off_plan=FakeOffPlan(),
+    ).assemble(WEEK, NOW)
+    before_block = next(
+        block for block in before.shadow_blocks if block.binding.kind is BindingKind.ANCHOR_TRANSIT
+    )
+    this_week_block = next(
+        block
+        for block in this_week.shadow_blocks
+        if block.binding.kind is BindingKind.ANCHOR_TRANSIT
+    )
+
+    assert [
+        (block.anchor_type_name, block.anchor_title, bound_to_anchor_type(block).selected)
+        for block in (before_block, this_week_block)
+    ] == [
+        ("Lecture", "Compilers Lecture", "Lecture · Compilers Lecture"),
+        ("Lecture", "Compilers Lecture", "Lecture · Compilers Lecture"),
+    ]
 
 
 async def test_the_read_reaches_past_the_week_by_the_largest_lead_and_not_by_a_sum() -> None:
