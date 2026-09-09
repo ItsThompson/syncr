@@ -1,18 +1,14 @@
 /* The Today screen's state, its writes, and the keys that reach them.
  *
  * THE ROUTE IS COMPOSITION AND THIS IS THE BEHAVIOUR. Everything that is not "where does this sit on the
- * page" lives here: the two reads, the two pieces of state, the four bare keys, and the three writes.
+ * page" lives here: the two reads, the two pieces of state, the six bare keys, and the three writes.
  *
- * ONE OPEN FORM, AND THE ROW A KEY ACTS ON IS THE FOCUSED ONE. A ledger has no cursor: the design language
- * gives a row no channel for one, and inventing a focus ring outside the kit would be a second definition of
- * a state the kit already assigns. So the row a bare keystroke lands on is the row whose controls hold
- * focus, claimed as focus enters the row and RELEASED AS FOCUS LEAVES IT. The release is half of the rule
- * rather than tidiness: without it the row a key acts on is the last row focus ever entered, which never
- * expires, so a keystroke meant for nothing would skip a block the reader had moved away from.
+ * ONE OPEN FORM, AND ONE CURRENT ROW. A row claims the cursor as focus enters its controls and releases it as
+ * focus leaves. `j` and `k` also move it without moving DOM focus, so a reader can choose a row before they
+ * record its exception. The row takes the kit's `data-current` state; this screen owns only which row is current.
  *
- * A KEY WITH NO FOCUSED ROW DOES NOTHING, deliberately. The alternative is defaulting to a row the reader was
+ * A KEY WITH NO CURRENT ROW DOES NOTHING, deliberately. The alternative is defaulting to a row the reader was
  * not looking at, and skipping the wrong block is a correction they have to notice before they can make it.
- * The premise panel states which row the keys act on.
  *
  * `c` APPLIES THE RULE ITS OWN BUTTON APPLIES. Confirming a day with no block stores nothing and confirming
  * one that has not been read cannot know what it is answering for, and both bump the solve-input version of
@@ -69,6 +65,8 @@ export interface TodayLedger {
   readonly reading: Reading<LedgerReads>;
   /** The form open on one row, or null when none is. */
   readonly form: OutcomeForm | null;
+  /** The row the cursor marks, or null before a row has been chosen. */
+  readonly currentBlockId: string | null;
   readonly actions: RowActions;
   /** The last refused recording and the row it belongs to. */
   readonly rowRefusal: OutcomeRefusal | null;
@@ -96,13 +94,15 @@ const NO_SOURCE_NOTICES: readonly WireNotice[] = [];
 export function useTodayLedger(): TodayLedger {
   const [date] = useState(() => hostDateOf(new Date()));
   const [form, setForm] = useState<OutcomeForm | null>(null);
-  const [current, setCurrent] = useState<DayRow | null>(null);
+  const [currentBlockId, setCurrentBlockId] = useState<string | null>(null);
 
   const day = useDay(date);
   const areas = useAreas();
   const sources = useCalendarSources();
 
   const held = day.status === "ready" ? day.data : null;
+  const rows = held === null ? [] : [...held.behind, ...held.ahead];
+  const current = rows.find((row) => row.blockId === currentBlockId) ?? null;
   const recording = useOutcomeRecording(date, held);
   const confirmation = useDayConfirmation(date, held);
   const backfill = useBackfill(date);
@@ -117,9 +117,7 @@ export function useTodayLedger(): TodayLedger {
   };
 
   const rowOf = (blockId: string): DayRow | undefined =>
-    held === null
-      ? undefined
-      : [...held.behind, ...held.ahead].find((row) => row.blockId === blockId);
+    rows.find((row) => row.blockId === blockId);
 
   const actions: RowActions = {
     onSkip: (row) => record(row, stateBody("skipped", isoWeek)),
@@ -132,8 +130,8 @@ export function useTodayLedger(): TodayLedger {
     },
     onDraft: setForm,
     onCancel: () => setForm(null),
-    onEnter: setCurrent,
-    onLeave: () => setCurrent(null),
+    onEnter: (row) => setCurrentBlockId(row.blockId),
+    onLeave: () => setCurrentBlockId(null),
     onRecord: () => {
       if (form === null || held === null) return;
       const row = rowOf(form.blockId);
@@ -147,6 +145,21 @@ export function useTodayLedger(): TodayLedger {
     void confirmation.submit();
   };
 
+  const moveCurrent = (direction: 1 | -1): void => {
+    if (rows.length === 0) return;
+
+    const currentIndex = rows.findIndex((row) => row.blockId === currentBlockId);
+    if (currentIndex === -1) {
+      setCurrentBlockId(rows.at(direction === 1 ? 0 : -1)?.blockId ?? null);
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, currentIndex + direction));
+    setCurrentBlockId(rows[nextIndex]?.blockId ?? null);
+  };
+
+  useKeyBinding({ key: "j" }, () => moveCurrent(1));
+  useKeyBinding({ key: "k" }, () => moveCurrent(-1));
   useKeyBinding({ key: "x" }, () => {
     if (current !== null) actions.onSkip(current);
   });
@@ -164,6 +177,7 @@ export function useTodayLedger(): TodayLedger {
     nowIso,
     reading: readingOf<LedgerReads>({ day, Areas: areas }),
     form,
+    currentBlockId: current?.blockId ?? null,
     actions,
     rowRefusal: recording.refusal,
     confirmationRefusal: confirmation.problem,

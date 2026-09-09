@@ -27,6 +27,8 @@ export interface LedgerSectionProps {
   readonly form: OutcomeForm | null;
   /** The last refused recording, which at most one of these rows holds. */
   readonly refusal: { readonly blockId: string; readonly notice: Notice } | null;
+  /** The row the route's cursor marks, if it belongs to this section. */
+  readonly currentBlockId: string | null;
   readonly actions: RowActions;
   /** A count, a provenance line, or the keys this run answers to. */
   readonly footer?: string | undefined;
@@ -52,6 +54,7 @@ export function LedgerSection({
   emptyStatement,
   form,
   refusal,
+  currentBlockId,
   actions,
   footer,
 }: LedgerSectionProps) {
@@ -69,6 +72,7 @@ export function LedgerSection({
             area={areaOf(row, pigments)}
             form={form?.blockId === row.blockId ? form : null}
             refusal={refusal?.blockId === row.blockId ? refusal.notice : null}
+            isCurrent={currentBlockId === row.blockId}
             actions={actions}
           />
         ))

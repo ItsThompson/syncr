@@ -102,13 +102,14 @@ const WEEK_ENTRIES: readonly KeyBindingEntry[] = [
   { keys: "Escape", action: "Clear the selection and close the panel", scope: "/week" },
 ];
 
-/* THE TODAY SCREEN'S OWN ROWS. A ledger has no cursor: the row these keys land on is the one whose controls
- * hold focus, so each action names the focused row rather than a selection. */
+/* THE TODAY SCREEN'S OWN ROWS. `j` and `k` choose the row the cursor marks, then the outcome keys act on it. */
 const TODAY_ENTRIES: readonly KeyBindingEntry[] = [
+  { keys: "j", action: "Move the cursor to the next row", scope: "/today" },
+  { keys: "k", action: "Move the cursor to the previous row", scope: "/today" },
   { keys: "c", action: "Confirm the day", scope: "/today" },
-  { keys: "x", action: "Skip the focused row", scope: "/today" },
-  { keys: "Shift+X", action: "Open the partial form on the focused row", scope: "/today" },
-  { keys: "m", action: "Open the moved form on the focused row", scope: "/today" },
+  { keys: "x", action: "Skip the current row", scope: "/today" },
+  { keys: "Shift+X", action: "Open the partial form on the current row", scope: "/today" },
+  { keys: "m", action: "Open the moved form on the current row", scope: "/today" },
 ];
 
 export const KEYBOARD_MAP: readonly KeyBindingEntry[] = [

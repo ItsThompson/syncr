@@ -139,6 +139,7 @@ export function TodayRoute() {
               emptyStatement="No block of this day has ended yet."
               form={ledger.form}
               refusal={refusal}
+              currentBlockId={ledger.currentBlockId}
               actions={ledger.actions}
             />
             <LedgerSection
@@ -150,6 +151,7 @@ export function TodayRoute() {
               emptyStatement="Every block of this day has ended."
               form={ledger.form}
               refusal={refusal}
+              currentBlockId={ledger.currentBlockId}
               actions={ledger.actions}
             />
           </>

@@ -41,10 +41,21 @@ export interface OutcomeRowProps {
   readonly form: OutcomeForm | null;
   /** The refusal that belongs to THIS row, or null when none does. */
   readonly refusal: Notice | null;
+  /** Whether the route's keyboard cursor currently marks this row. */
+  readonly isCurrent: boolean;
   readonly actions: RowActions;
 }
 
-export function OutcomeRow({ row, zone, section, area, form, refusal, actions }: OutcomeRowProps) {
+export function OutcomeRow({
+  row,
+  zone,
+  section,
+  area,
+  form,
+  refusal,
+  isCurrent,
+  actions,
+}: OutcomeRowProps) {
   /* Which side of the swap the row is on, so the controls know to take focus back from a form that closed
      rather than on every render of the ledger. */
   const wasOpen = useRef(false);
@@ -60,6 +71,7 @@ export function OutcomeRow({ row, zone, section, area, form, refusal, actions }:
         duration={minutesRead(row.durationMinutes)}
         title={row.title}
         area={area}
+        isCurrent={isCurrent}
       >
         {/* Focus reaches this span from the controls inside it, which is how the row becomes the one a
             bare keystroke acts on. */}
