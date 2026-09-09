@@ -789,7 +789,7 @@ def test_dropping_a_task_answers_with_it_rather_than_removing_the_row(
     assert row.status is TaskStatus.DROPPED
 
 
-def test_completing_a_dropped_task_is_a_409_that_says_what_still_reads(
+def test_completing_a_dropped_task_is_a_409_naming_the_reopen_route(
     http: TestClient, signed_in: dict[str, str], area: str
 ) -> None:
     created = capture(http, signed_in, areaId=area, title="Leetcode")
@@ -801,6 +801,7 @@ def test_completing_a_dropped_task_is_a_409_that_says_what_still_reads(
     problem = response.json()
     assert problem["type"] == Conflict.type
     assert "already dropped" in problem["detail"]
+    assert "POST /api/v1/tasks/{task_id}/reopen" in problem["detail"]
     assert "still reads as it did" in problem["detail"]
 
 

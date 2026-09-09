@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from syncr_api.core.errors import Conflict, FieldError, ValidationFailed
-from syncr_api.tasks.config import TASK_RESOURCE
+from syncr_api.tasks.config import TASK_REOPEN_PATH, TASK_RESOURCE, TASKS_PREFIX
 from syncr_domain.projects import ProjectAreaMismatch
 from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.tasks import (
@@ -96,7 +96,8 @@ def stated_rejection() -> Iterator[None]:
         raise Conflict(
             f"That {TASK_RESOURCE} was not changed: {error}. A completed task is work that "
             "happened and survives in reports, and a dropped one is work that will not, so one "
-            "cannot become the other. The task still reads as it did."
+            f"cannot become the other. Reopen it with POST {TASKS_PREFIX}{TASK_REOPEN_PATH}. "
+            "The task still reads as it did."
         ) from error
     except TaskIsCompleted as error:
         raise Conflict(

@@ -14,8 +14,11 @@ they are in the pure package rather than at the boundary:
 | a minimum chunk is a whole number of grid steps | :func:`require_a_chunk_on_the_grid` |
 | T3, remaining work, never negative | :func:`remaining_minutes` |
 | T4, a completed task is not placed again | :func:`is_eligible_for_solving` |
-| a task leaves the backlog by one door only | :func:`require_a_compatible_ending` |
-| only a dropped task comes back | :func:`require_a_reopenable_task` |
+| ending transitions are guarded | :func:`require_a_compatible_ending` |
+| reopening is guarded | :func:`require_a_reopenable_task` |
+
+**``DROPPED`` -> ``COMPLETED`` and ``COMPLETED`` -> ``DROPPED`` are refused.**
+**``DROPPED`` -> ``OPEN`` is reversible; ``COMPLETED`` -> ``OPEN`` is refused.**
 
 **A task carries no preferred time.** Preferred times are a ``Preference``, whose owner is an
 Area, a Habit, or a Task, so a task inherits its Area's windows unless it overrides them.
