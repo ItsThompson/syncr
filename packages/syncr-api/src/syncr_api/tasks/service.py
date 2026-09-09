@@ -87,18 +87,29 @@ from syncr_domain.tasks import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from syncr_api.areas.repository import AreaRepository, ProjectRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.tasks.declarations import TaskChange, TaskDeclaration
     from syncr_api.tasks.records import TaskRecord
     from syncr_api.tasks.repository import TaskRepository
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.feasibility import Verdict
     from syncr_domain.identifiers import AreaId, ProjectId, TaskId
     from syncr_domain.tasks import TaskEnding
+    from syncr_domain.weeks import IsoWeek
 
 _log = get_logger("syncr.tasks")
+
+
+class ProjectionHorizon(Protocol):
+    """The future weeks a backlog mutation can change."""
+
+    async def weeks_at(self, now: datetime) -> tuple[IsoWeek, ...]:
+        """Answer the projection horizon at ``now``."""
+        ...
 
 
 class WeekVerdict(Protocol):
@@ -154,6 +165,8 @@ class TaskService:
         areas: AreaRepository,
         projects: ProjectRepository,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         verdict: WeekVerdict,
         clock: Clock,
     ) -> None:
@@ -161,6 +174,8 @@ class TaskService:
         self._areas = areas
         self._projects = projects
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._verdict = verdict
         self._clock = clock
 
@@ -254,7 +269,7 @@ class TaskService:
             estimate_minutes=created.estimate_minutes,
             splittable=created.splittable,
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return created
 
     @measured("tasks")
@@ -296,7 +311,7 @@ class TaskService:
             solve_input_changed=changes_a_solve_input(current, merged),
         )
         if changes_a_solve_input(current, merged):
-            await self._bump.from_the_week_holding(now)
+            await self._request_solves_after(now)
         return merged
 
     @measured("tasks")
@@ -341,7 +356,7 @@ class TaskService:
             solve_input_changed=changes_a_solve_input(current, reopened),
         )
         if changes_a_solve_input(current, reopened):
-            await self._bump.from_the_week_holding(now)
+            await self._request_solves_after(now)
         return reopened
 
     async def _end(
@@ -384,8 +399,18 @@ class TaskService:
             solve_input_changed=changes_a_solve_input(current, ended),
         )
         if changes_a_solve_input(current, ended):
-            await self._bump.from_the_week_holding(now)
+            await self._request_solves_after(now)
         return ended
+
+    async def _request_solves_after(self, now: datetime) -> None:
+        """Bump first, then request the horizon's tracked weeks.
+
+        A task is backlog-wide, so its changed inputs can affect every week in the projection
+        horizon. Weeks outside that horizon are not requested. A backlog mutation is not a weekly
+        session action, so the solve request carries the adapter's explicit inactive state.
+        """
+        await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
     async def _require_task(self, principal: Principal, task_id: TaskId) -> TaskRecord:
         found = await self._tasks.find(task_id)

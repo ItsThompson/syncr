@@ -34,9 +34,12 @@ from syncr_api.areas.config import AREAS_PREFIX, PROJECTS_PREFIX
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict, NotFound, ValidationFailed
-from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS, DEV_ALLOWED_ORIGINS
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.models import WeekInputVersion
+from syncr_api.solving.config import PENDING, SOLVE
+from syncr_api.solving.injection import debounce_window
+from syncr_api.solving.models import Operation
 from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.tasks.models import TaskRow
 from syncr_api.tasks.schemas import TaskCreateRequest
@@ -48,6 +51,7 @@ from syncr_domain.tasks import (
     is_eligible_for_solving,
     remaining_minutes,
 )
+from syncr_domain.weeks import IsoWeek
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 
 if TYPE_CHECKING:
@@ -166,6 +170,29 @@ def version_rows(database_url: str, tenant_id: TenantId) -> dict[str, int]:
                     select(WeekInputVersion).where(WeekInputVersion.tenant_id == tenant_id)
                 )
                 return {row.iso_week: row.version for row in found}
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
+def pending_solves(database_url: str, tenant_id: TenantId) -> list[tuple[str | None, datetime]]:
+    """The tenant's pending solve operations, ordered by their target week."""
+
+    async def read() -> list[tuple[str | None, datetime]]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                found = await session.scalars(
+                    select(Operation)
+                    .where(
+                        Operation.tenant_id == tenant_id,
+                        Operation.kind == SOLVE,
+                        Operation.status == PENDING,
+                    )
+                    .order_by(Operation.iso_week)
+                )
+                return [(row.iso_week, row.scheduled_for) for row in found]
         finally:
             await database.engine.dispose()
 
@@ -1005,6 +1032,32 @@ def test_one_key_across_two_tasks_does_not_silently_skip_the_second(
     stored = {row.title: row for row in task_rows(live_database_url, owner.tenant_id)}
     assert not landed[method](stored["second"])
     assert landed[method](stored["first"]), "the first request is the one that owns the key"
+
+
+def test_a_task_mutation_requests_each_tracked_horizon_week_after_the_debounce_window(
+    http: TestClient,
+    signed_in: dict[str, str],
+    area: str,
+    owner: UserRecord,
+    live_database_url: str,
+) -> None:
+    created = capture(http, signed_in, areaId=area, title="Leetcode")
+    current = IsoWeek.parse(this_week())
+    next_week = current.following()
+    outside_horizon = next_week.following().following().following()
+    for week in (current, next_week, outside_horizon):
+        track_week(live_database_url, owner.tenant_id, str(week))
+
+    before = datetime.now(tz=UTC)
+    response = http.patch(f"{TASKS}/{created['id']}", json={"title": "Renamed"}, headers=signed_in)
+    after = datetime.now(tz=UTC)
+    assert response.status_code == HTTPStatus.OK, response.text
+
+    solves = pending_solves(live_database_url, owner.tenant_id)
+    assert [week for week, _due_at in solves] == [str(current), str(next_week)]
+    debounce = debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    for _week, due_at in solves:
+        assert before + debounce <= due_at <= after + debounce
 
 
 def test_the_week_input_version_is_bumped_by_every_mutating_route(

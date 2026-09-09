@@ -98,7 +98,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="tasks/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "habit added or edited",
@@ -298,6 +298,7 @@ TENANT_ZONE_SOURCES: Final = frozenset({"profile", "settings"})
 ANCHOR_DELTA_ROW: Final = "anchor delta from a calendar sync"
 SOLVES_ELSEWHERE: Final = {
     ANCHOR_DELTA_ROW: "calendars/solve_requests.py",
+    "task added, edited, completed, dropped": "solving/injection.py",
 }
 
 
@@ -541,12 +542,12 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
-        """Twelve rows ask for a solve and reach none, all twelve a person's own mutation."""
+        """Eleven rows ask for a solve and reach none, all eleven a person's own mutation."""
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 12
-        assert len(by_a_person) == 12
+        assert len(unwired) == 11
+        assert len(by_a_person) == 11
 
     @pytest.mark.parametrize(
         "trigger",
@@ -576,11 +577,11 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
                 continue
             assert one.owner == "1403", one.row
 
-    def test_only_eight_rows_reach_the_coordinator_today(self) -> None:
-        # The eight live triggers, one of which bypasses the debounce by design. The burst of pins
-        # the window was measured against is the first, which is now wired. The calendar sync and
-        # the week entering the horizon are the two triggers here that no person performs: a poll
-        # asks for the weeks its own read moved, and time passing asks for the weeks it brought in.
+    def test_only_nine_rows_reach_the_coordinator_today(self) -> None:
+        # The nine live triggers, one of which bypasses the debounce by design. The calendar sync
+        # and the week entering the horizon are the two triggers here that no person performs: a
+        # poll asks for the weeks its own read moved, and time passing asks for the weeks it brought
+        # in.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
         assert sorted(wired) == [
@@ -589,12 +590,13 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
             "conflict resolved as moved or retyped",
             "pin, unpin, drag, keyboard move",
             "re-solve control",
+            "task added, edited, completed, dropped",
             "tradeoff requested",
             "week adjustment revoked",
             "weight set activated or reverted",
         ]
 
-    def test_the_only_row_whose_solve_lives_outside_its_own_module_is_the_anchor_delta(
+    def test_the_only_rows_whose_solves_live_outside_their_own_modules_are_declared(
         self,
     ) -> None:
         """The hole ``solves_in`` opens, bounded to the rows it was written for.
@@ -622,6 +624,13 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
 
         assert row.solves_in == SOLVES_ELSEWHERE[ANCHOR_DELTA_ROW]
         assert "self._solves.request(delta.occupied_weeks)" in module_source("calendars/sync.py")
+        assert REQUESTS_A_SOLVE in module_source(row.solves_in)
+
+    def test_the_task_row_asks_the_composed_solve_request_adapter(self) -> None:
+        row = next(one for one in TRIGGER_TABLE if one.row.startswith("task added"))
+
+        assert row.solves_in == SOLVES_ELSEWHERE[row.row]
+        assert "self._solve_requests.request(" in module_source(row.module)
         assert REQUESTS_A_SOLVE in module_source(row.solves_in)
 
     def test_the_solve_kind_has_exactly_one_creation_path(self) -> None:

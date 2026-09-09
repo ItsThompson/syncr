@@ -94,6 +94,14 @@ class WeekInputVersions(Protocol):
         ...
 
 
+class RequestsASolve(Protocol):
+    """Ask for a solve of each tracked week in an explicit requested set."""
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        """Queue one debounced solve for every tracked week in ``weeks``."""
+        ...
+
+
 class TrackedWeekInputVersions:
     """The counter, over plan storage's version rows.
 

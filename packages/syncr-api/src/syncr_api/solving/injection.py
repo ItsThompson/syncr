@@ -31,6 +31,7 @@ from syncr_api.accounts.injection import (  # noqa: TC001
     TransactionDep,
 )
 from syncr_api.core.clock import utc_now
+from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.coordinator import SolveCoordinator
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.queue import OperationQueue
@@ -41,7 +42,31 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio.session import AsyncSession
 
     from syncr_api.core.clock import Clock
+    from syncr_api.user_settings.solve_inputs import RequestsASolve
     from syncr_domain.identifiers import TenantId
+    from syncr_domain.weeks import IsoWeek
+
+
+class TrackedWeekSolveRequests:
+    """Queue debounced solves for tracked weeks in a caller's requested set."""
+
+    def __init__(self, versions: WeekInputVersionRepository, coordinator: SolveCoordinator) -> None:
+        self._versions = versions
+        self._coordinator = coordinator
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        """Ask only for tracked weeks the caller named, earliest first."""
+        if not weeks:
+            return ()
+        tracked = await self._versions.tracked_weeks(min(weeks), max(weeks))
+        asked = tuple(week for week in tracked if week in weeks)
+        for week in asked:
+            await self._coordinator.request_solve(
+                week,
+                await self._versions.tracked_version(week),
+                session_mode_active=False,
+            )
+        return asked
 
 
 def get_operation_service(
@@ -74,6 +99,21 @@ def build_solve_coordinator(
         lifecycle=OperationLifecycle(operations, clock),
         clock=clock,
         debounce=debounce,
+    )
+
+
+def build_solve_requests(
+    transaction: AsyncSession,
+    tenant_id: TenantId,
+    *,
+    clock: Clock,
+    debounce: timedelta,
+) -> RequestsASolve:
+    """Compose the one adapter that carries a version bump into a debounced solve request."""
+    versions = WeekInputVersionRepository(transaction, tenant_id)
+    return TrackedWeekSolveRequests(
+        versions,
+        build_solve_coordinator(transaction, tenant_id, clock=clock, debounce=debounce),
     )
 
 

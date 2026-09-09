@@ -213,6 +213,28 @@ class RecordingWeekInputVersions:
         self.bumped.append(weeks)
 
 
+class RecordingSolveRequests:
+    """Every projection horizon a task mutation asked to solve."""
+
+    def __init__(self) -> None:
+        self.requested: list[frozenset[IsoWeek]] = []
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        self.requested.append(weeks)
+        return tuple(sorted(weeks))
+
+
+class StatedProjectionHorizon:
+    """A projection horizon stated by the test."""
+
+    def __init__(self, weeks: tuple[IsoWeek, ...] = (WEEK_31,)) -> None:
+        self._weeks = weeks
+
+    async def weeks_at(self, now: DateTime) -> tuple[IsoWeek, ...]:
+        del now
+        return self._weeks
+
+
 class StatedVerdict:
     """The current week's verdict, stated rather than assembled.
 
@@ -262,6 +284,8 @@ def build(
     tasks: list[TaskRecord] | None = None,
     verdict: Verdict | None = None,
     now: DateTime = NOW,
+    solve_requests: RecordingSolveRequests | None = None,
+    horizon: tuple[IsoWeek, ...] = (WEEK_31,),
 ) -> tuple[TaskService, FakeTaskRepository]:
     stored = FakeTaskRepository(principal.tenant_id, tasks)
     service = TaskService(
@@ -271,6 +295,8 @@ def build(
         bump=BacklogWideBump(
             versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
         ),
+        solve_requests=solve_requests or RecordingSolveRequests(),
+        horizon=StatedProjectionHorizon(horizon),
         verdict=StatedVerdict(verdict),
         clock=lambda: now,
     )
@@ -343,6 +369,24 @@ async def test_a_captured_task_is_immediately_eligible_for_the_next_solve(
 
     assert captured.is_eligible_for_solving() is True
     assert captured.remaining_minutes() == DEFAULT_ESTIMATE_MINUTES
+
+
+async def test_capturing_requests_solves_for_the_projection_horizon(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    requests = RecordingSolveRequests()
+    area = an_area(principal.tenant_id)
+    service, _ = build(
+        principal,
+        versions,
+        areas=[area],
+        solve_requests=requests,
+        horizon=(WEEK_31, WEEK_31.following()),
+    )
+
+    await service.capture(principal, a_declaration(area.id))
+
+    assert requests.requested == [frozenset({WEEK_31, WEEK_31.following()})]
 
 
 async def test_capturing_bumps_the_current_week_and_every_week_after_it(
@@ -1423,6 +1467,8 @@ async def test_reading_the_backlog_reads_the_verdict_once(
         bump=BacklogWideBump(
             versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
         ),
+        solve_requests=RecordingSolveRequests(),
+        horizon=StatedProjectionHorizon(),
         verdict=reader,
         clock=lambda: NOW,
     )
