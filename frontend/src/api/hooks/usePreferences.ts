@@ -19,7 +19,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { areaPreferencesKey, budgetReviewKey } from "../keys";
 import { apply, read } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -109,6 +109,7 @@ export function useAreaPreferenceDeclaration(
     const refusal = await apply(() =>
       client.PUT("/api/v1/areas/{area_id}/preference", {
         params: { path: { area_id: areaId } },
+        headers: idempotentHeaders(),
         body: preference,
       }),
     );
@@ -129,6 +130,7 @@ export function useAreaPreferenceRemoval(
     const refusal = await apply(() =>
       client.DELETE("/api/v1/areas/{area_id}/preference", {
         params: { path: { area_id: areaId } },
+        headers: idempotentHeaders(),
       }),
     );
     if (refusal !== null) return refusal;

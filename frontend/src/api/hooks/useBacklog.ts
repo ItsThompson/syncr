@@ -27,7 +27,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { backlogKey, backlogQuery, isBacklogKey, type BacklogFilters } from "../keys";
 import { apply, read } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -74,7 +74,10 @@ export function useTaskCompletion(): Write<string> {
 
   return useWrite(async (taskId: string) => {
     const refusal = await apply(() =>
-      client.POST("/api/v1/tasks/{task_id}/complete", { params: { path: { task_id: taskId } } }),
+      client.POST("/api/v1/tasks/{task_id}/complete", {
+        params: { path: { task_id: taskId } },
+        headers: idempotentHeaders(),
+      }),
     );
     if (refusal !== null) return refusal;
     await mutate(isBacklogKey);

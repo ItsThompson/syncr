@@ -13,7 +13,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { routinesKey } from "../keys";
 import { apply, read } from "./request";
-import { useWrite, nothingSelectedProblem, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, nothingSelectedProblem, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -45,6 +45,7 @@ export function useRoutineEdit(routineId: string | null): Write<RoutinePatchBody
     const refusal = await apply(() =>
       client.PATCH("/api/v1/routines/{routine_id}", {
         params: { path: { routine_id: routineId } },
+        headers: idempotentHeaders(),
         body,
       }),
     );

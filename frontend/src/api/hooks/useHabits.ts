@@ -14,7 +14,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { habitsKey } from "../keys";
 import { apply, read } from "./request";
-import { useWrite, nothingSelectedProblem, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, nothingSelectedProblem, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -38,6 +38,7 @@ export function useHabitEdit(habitId: string | null): Write<HabitEdit> {
     const refusal = await apply(() =>
       client.PATCH("/api/v1/habits/{habit_id}", {
         params: { path: { habit_id: habitId } },
+        headers: idempotentHeaders(),
         body,
       }),
     );

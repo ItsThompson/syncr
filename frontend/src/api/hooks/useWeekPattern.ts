@@ -17,7 +17,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { weekPatternKey } from "../keys";
 import { apply } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import {
   toProblem,
   toResource,
@@ -52,7 +52,9 @@ export function useWeekPatternDeclaration(): Write<WeekPatternBody> {
   const { mutate } = useSWRConfig();
 
   return useWrite(async (body: WeekPatternBody) => {
-    const refusal = await apply(() => client.PUT("/api/v1/week-pattern", { body }));
+    const refusal = await apply(() =>
+      client.PUT("/api/v1/week-pattern", { headers: idempotentHeaders(), body }),
+    );
     if (refusal !== null) return refusal;
     await mutate(weekPatternKey());
     return null;

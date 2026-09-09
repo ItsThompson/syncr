@@ -12,7 +12,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { offPlanKey } from "../keys";
 import { apply, read } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -44,7 +44,9 @@ export function useOffPlanDeclaration(): Write<OffPlanCreateBody> {
   const { mutate } = useSWRConfig();
 
   return useWrite(async (body: OffPlanCreateBody) => {
-    const refusal = await apply(() => client.POST("/api/v1/off-plan", { body }));
+    const refusal = await apply(() =>
+      client.POST("/api/v1/off-plan", { headers: idempotentHeaders(), body }),
+    );
     if (refusal !== null) return refusal;
     await mutate(offPlanKey());
     return null;
@@ -58,6 +60,7 @@ export function useOffPlanEdit(): Write<OffPlanEdit> {
     const refusal = await apply(() =>
       client.PATCH("/api/v1/off-plan/{period_id}", {
         params: { path: { period_id: periodId } },
+        headers: idempotentHeaders(),
         body: patch,
       }),
     );
@@ -74,6 +77,7 @@ export function useOffPlanRemoval(): Write<OffPlanRemoval> {
     const refusal = await apply(() =>
       client.DELETE("/api/v1/off-plan/{period_id}", {
         params: { path: { period_id: periodId } },
+        headers: idempotentHeaders(),
       }),
     );
     if (refusal !== null) return refusal;

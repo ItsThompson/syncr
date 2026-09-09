@@ -31,6 +31,7 @@ import { useSWRConfig } from "swr";
 import { client } from "../client";
 import { isBacklogKey } from "../keys";
 import { apply, answered } from "./request";
+import { idempotentHeaders } from "./useWrite";
 import type { TaskCaptureBody } from "./useBacklog";
 import type { PreferenceStrength } from "./usePreferences";
 import type { Problem } from "../../contract";
@@ -98,7 +99,9 @@ async function sent(
   { task, preferredWindow }: TaskCapture,
   invalidate: () => Promise<unknown>,
 ): Promise<CaptureOutcome> {
-  const captured = await answered(() => client.POST("/api/v1/tasks", { body: task }));
+  const captured = await answered(() =>
+    client.POST("/api/v1/tasks", { headers: idempotentHeaders(), body: task }),
+  );
   if (captured.problem !== null) return { refused: "task", problem: captured.problem };
 
   const refusal =
@@ -120,6 +123,7 @@ async function declared(taskId: string, window: PreferredWindow): Promise<Proble
   return apply(() =>
     client.PUT("/api/v1/tasks/{task_id}/preference", {
       params: { path: { task_id: taskId } },
+      headers: idempotentHeaders(),
       body,
     }),
   );

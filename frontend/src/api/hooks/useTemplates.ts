@@ -20,7 +20,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { dayShapeKey, dayShapesKey, dayTypesKey } from "../keys";
 import { apply, read } from "./request";
-import { useWrite, nothingSelectedProblem, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, nothingSelectedProblem, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -84,6 +84,7 @@ export function useEntryDeclaration(templateId: string | null): Write<EntryBody>
     const refusal = await apply(() =>
       client.POST("/api/v1/templates/{template_id}/entries", {
         params: { path: { template_id: templateId } },
+        headers: idempotentHeaders(),
         body,
       }),
     );

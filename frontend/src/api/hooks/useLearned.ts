@@ -5,7 +5,7 @@
  * under the first would make the screen's own path the address of a row it does not render.
  *
  * ACTIVATION IS ONE ACTION AND IT IS THE SAME ONE A REVERT IS. There is no separate revert route: putting version 1
- * back in force is activating version 1, so a rollback is the flip nobody has to build twice. `US-LEARN-07`.
+ * back in force is activating version 1, so a rollback is the flip nobody has to build twice.
  *
  * WHAT AN ACTIVATION INVALIDATES IS NAMED, INCLUDING THE WEEKS THE SERVER SAYS IT RE-SOLVED. The response carries
  * them, so the invalidation is exact rather than blanket: a week the activation did not touch is not refetched, and a
@@ -18,7 +18,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { client } from "../client";
 import { learnedKey, weekKey, weightSetsKey } from "../keys";
 import { answered, read } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -65,6 +65,7 @@ export function useWeightSetActivation(): Write<ActivationBody> {
     const result = await answered(() =>
       client.POST("/api/v1/weight-sets/{version}/activate", {
         params: { path: { version } },
+        headers: idempotentHeaders(),
       }),
     );
     if (result.problem !== null) return result.problem;

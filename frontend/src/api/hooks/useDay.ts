@@ -38,7 +38,7 @@ import {
   type Day,
 } from "./dayProjection";
 import { apply, read } from "./request";
-import { useWrite, type Write } from "./useWrite";
+import { idempotentHeaders, useWrite, type Write } from "./useWrite";
 import { toResource, type Problem, type Resource } from "../../contract";
 import type { components } from "../schema";
 
@@ -142,6 +142,7 @@ export function useOutcomeRecording(date: string, day: Day | null): OutcomeRecor
         apply(() =>
           client.PUT("/api/v1/blocks/{block_id}/outcome", {
             params: { path: { block_id: draft.blockId } },
+            headers: idempotentHeaders(),
             body: draft.outcome,
           }),
         ),
@@ -176,7 +177,13 @@ export function useDayConfirmation(date: string, day: Day | null): Write<void> {
             project: (latest) => withConfirmedDay(latest, new Date().toISOString()),
             restore: (latest) => withRestoredOutcomes(latest, before),
           },
-      () => apply(() => client.POST("/api/v1/days/{date}/confirm", { params: { path: { date } } })),
+      () =>
+        apply(() =>
+          client.POST("/api/v1/days/{date}/confirm", {
+            params: { path: { date } },
+            headers: idempotentHeaders(),
+          }),
+        ),
     );
   });
 }
@@ -197,7 +204,10 @@ export function useBackfill(date: string): BackfillWrite {
      * it is shared infrastructure, and one write wanting a response body is not yet a pattern. */
     let answered: Backfill | undefined;
     const refusal = await apply(async () => {
-      const result = await client.POST("/api/v1/days/confirm-range", { body: range });
+      const result = await client.POST("/api/v1/days/confirm-range", {
+        headers: idempotentHeaders(),
+        body: range,
+      });
       answered = result.data;
       return result;
     });
