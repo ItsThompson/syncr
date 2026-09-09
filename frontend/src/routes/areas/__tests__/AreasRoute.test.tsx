@@ -39,6 +39,7 @@ import {
   buildDayCounts,
   buildNoPreference,
   buildPreference,
+  buildPreferences,
   buildReadyProposal,
   buildReview,
   buildThirteenAreas,
@@ -69,7 +70,11 @@ function chartWithCaption(caption: RegExp): HTMLElement {
   return found as HTMLElement;
 }
 
-function screenHandlers(areas: Areas, review: BudgetReview): RequestHandler[] {
+function screenHandlers(
+  areas: Areas,
+  review: BudgetReview,
+  preferences = buildPreferences(),
+): RequestHandler[] {
   return [
     readyz(),
     jsonHandler("/api/v1/areas", { status: 200, body: areas }),
@@ -77,17 +82,17 @@ function screenHandlers(areas: Areas, review: BudgetReview): RequestHandler[] {
     ...areas.areas.map((area) =>
       jsonHandler(`/api/v1/areas/${area.id}/preference`, {
         status: 200,
-        body: area.id === CAREER ? buildPreference() : buildNoPreference(area.id),
+        body: preferences[area.id] ?? buildNoPreference(area.id),
       }),
     ),
   ];
 }
 
 async function renderAreas(
-  { areas = buildAreas(), review = buildReview(), path = "/areas" } = {},
+  { areas = buildAreas(), review = buildReview(), preferences = buildPreferences(), path = "/areas" } = {},
   extra: RequestHandler[] = [],
 ) {
-  apiServer.use(...screenHandlers(areas, review), ...extra);
+  apiServer.use(...screenHandlers(areas, review, preferences), ...extra);
   renderAt(path);
   return screen.findByRole("table", { name: /Every Area/ });
 }
@@ -455,7 +460,7 @@ describe("declaring an Area", () => {
 });
 
 describe("the preference cell", () => {
-  it("reads the form the ticket names, and states where the preference came from", async () => {
+  it("reads the form, and states where the preference came from", async () => {
     const table = await renderAreas();
 
     const row = within(table).getByRole("row", { name: /Career/ });
@@ -466,6 +471,24 @@ describe("the preference cell", () => {
     });
     expect(control).toHaveTextContent("05:30 \u00b7 strong");
     expect(within(row).getByText(/Set on this area/)).toBeInTheDocument();
+  });
+
+  it("renders an inherited statement verbatim", async () => {
+    const table = await renderAreas({
+      preferences: {
+        [CAREER]: buildPreference({
+          effective: {
+            ...buildPreference().effective!,
+            statement: "Inherited from `Fitness`: 05:30-07:00, strong, ideally 90 minutes at a time.",
+          },
+        }),
+      },
+    });
+
+    const row = within(table).getByRole("row", { name: /Career/ });
+    expect(
+      within(row).getByText("Inherited from `Fitness`: 05:30-07:00, strong, ideally 90 minutes at a time."),
+    ).toBeInTheDocument();
   });
 
   it("reads a dash for an Area with no preference in effect, and still names the act", async () => {
@@ -516,7 +539,7 @@ describe("the preference cell", () => {
   });
 
   it("writes the daily cap the reader typed, because a cap owes no grid", async () => {
-    /* Ticket 21 settled that a cap is a budget figure rather than a geometry, so 100 minutes is legal and
+    /* A cap is a budget figure rather than a geometry, so 100 minutes is legal and
      * admits six blocks. The quarter-hour stepper this replaces wrote 105 for a typed 100, which is a hard
      * constraint the reader did not declare. The ideal session is the opposite case and keeps its stepper. */
     const declared = recordingHandler("put", `/api/v1/areas/${CAREER}/preference`, {
