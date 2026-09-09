@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 # What the document names the encoded value, so a reader knows what shape to expect before it
 # starts. Bumped when the walk changes shape rather than when a field is added, because a reader
 # that walks the same way needs no warning about a new key.
-SNAPSHOT_FORM: Final = 2
+SNAPSHOT_FORM: Final = 3
 FORM = "form"
 INPUTS = "inputs"
 

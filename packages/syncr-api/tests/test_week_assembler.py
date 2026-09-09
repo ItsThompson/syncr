@@ -38,6 +38,7 @@ from syncr_api.plans.assembler import (
     WeekAssembler,
 )
 from syncr_api.plans.cadence import log_window, occurrences_in_a_week
+from syncr_api.plans.netting import placements
 from syncr_domain.fixtures.dst_weeks import DST_WEEKS, FALL_BACK, LONDON, SPRING_FORWARD
 from syncr_domain.habits import (
     BindingSource,
@@ -47,11 +48,12 @@ from syncr_domain.habits import (
     MissPolicy,
     TimesPerWeek,
 )
-from syncr_domain.identity import date_occurrence_key, index_occurrence_key
+from syncr_domain.identity import BindingRef, date_occurrence_key, index_occurrence_key
 from syncr_domain.intervals import Interval, IntervalError
 from syncr_domain.outcomes import HabitOutcome, OutcomeState
 from syncr_domain.templates import BindingTarget, TemplateEntryKind, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_solver.state import PartialPlan
 from tests.assembly_fakes import (
     MONDAY,
     MONDAY_MIDNIGHT,
@@ -63,16 +65,22 @@ from tests.assembly_fakes import (
     FakeOffPlan,
     FakeOutcomes,
     FakeOverrides,
+    FakePlacements,
     FakeRoutines,
     FakeSettings,
+    FakeTasks,
     FakeTemplates,
     FakeVersions,
     FakeWeekPattern,
     a_concrete_entry,
     a_day_type,
     a_habit,
+    a_pin,
+    a_plan,
     a_routine,
     a_slot_entry,
+    a_task,
+    a_task_block,
     a_template,
     a_travel_override,
     an_area,
@@ -123,6 +131,47 @@ async def test_now_is_the_argument_rather_than_a_clock_read() -> None:
     inputs = await an_assembler().assemble(WEEK, past)
 
     assert inputs.now == past
+
+
+async def test_the_assemblers_immovable_bindings_equal_the_solvers_already_netted_set() -> None:
+    area = an_area()
+    started_task = a_task(area_id=area.id, title="Started")
+    pinned_task = a_task(area_id=area.id, title="Pinned")
+    orphaned_task = a_task(area_id=area.id, title="Orphaned pin")
+    started = a_task_block(
+        task_id=started_task.id,
+        area_id=area.id,
+        interval=between(9, 10, day=2),
+    )
+    pinned = a_task_block(
+        task_id=pinned_task.id,
+        area_id=area.id,
+        interval=between(10, 11, day=3),
+    )
+    pin = a_pin(binding=pinned.binding, interval=between(14, 15, day=3))
+    orphaned_pin = a_pin(
+        binding=BindingRef.for_task(orphaned_task.id),
+        interval=between(10, 11, day=4),
+    )
+    inputs = await an_assembler(
+        areas=FakeAreas([area]),
+        tasks=FakeTasks([started_task, pinned_task, orphaned_task]),
+        placements=FakePlacements(
+            live_plan=a_plan(blocks=[started, pinned]),
+            pins=[pin, orphaned_pin],
+        ),
+    ).assemble(WEEK, NOW)
+
+    assembled = placements(inputs.live_plan, inputs.pins, now=inputs.now)
+    assembler_immovable = {placement.binding for placement in assembled if placement.immovable}
+    solver_already_netted = {
+        placement.binding
+        for placement in assembled
+        if PartialPlan.of(inputs).already_netted(placement.binding)
+    }
+
+    assert assembler_immovable == solver_already_netted
+    assert assembler_immovable == {started.binding, pin.binding, orphaned_pin.binding}
 
 
 async def test_two_assemblies_of_unchanged_data_against_one_instant_are_equal() -> None:

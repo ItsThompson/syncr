@@ -1085,6 +1085,17 @@ def test_a_snapshot_of_another_form_is_refused() -> None:
         inputs_of(snapshot)
 
 
+def test_a_form_two_shadow_block_is_refused_before_its_missing_fields_are_read() -> None:
+    snapshot = deepcopy(as_snapshot(a_week_holding_one_of_everything()))
+    snapshot[FORM] = 2
+    shadow_block = snapshot[INPUTS]["shadow_blocks"][0]
+    del shadow_block["anchor_type_name"]
+    del shadow_block["anchor_title"]
+
+    with pytest.raises(StoredDocumentCorrupt, match=r"form names 2 and this reader rebuilds 3"):
+        inputs_of(snapshot)
+
+
 def test_a_snapshot_stating_no_form_is_refused() -> None:
     snapshot = dict(as_snapshot(a_week_holding_one_of_everything()))
     del snapshot[FORM]
