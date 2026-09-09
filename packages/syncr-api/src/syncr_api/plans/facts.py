@@ -98,11 +98,7 @@ class Pin(Base, TenantScoped):
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     superseded_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     superseded_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Stored, never recomputed later: the weight set that produced it is versioned and
-    # will have moved on, so a recomputation would answer a different question. Nullable
-    # for one statement's width: the writer holds the row a statement before it states the
-    # cost, inside the transaction that writes both.
-    objective_delta: Mapped[float | None] = mapped_column(nullable=True)
+    objective_delta: Mapped[float] = mapped_column(nullable=False)
     weight_set_version: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

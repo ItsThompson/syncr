@@ -115,10 +115,9 @@ class PinRecord:
     a JSONB object and four columns, for the reason :class:`BlockOutcomeRecord` does: every reader
     wants the identity as one value and each span as one.
 
-    Neither half of the counterfactual is optional once the pin is complete: a pin states the
-    placement it replaced and what replacing it cost, so the reason panel renders both from the pin
-    rather than by walking the edit log. ``objective_delta`` stays nullable here because the
-    column does: every writer states the cost, so the nullability describes stored history only.
+    Neither half of the counterfactual is optional: a pin states the placement it replaced and what
+    replacing it cost, so the reason panel renders both from the pin rather than by walking the edit
+    log.
     """
 
     id: PinId
@@ -128,7 +127,7 @@ class PinRecord:
     binding: BindingRef
     interval: Interval
     superseded_placement: Interval
-    objective_delta: float | None
+    objective_delta: float
     weight_set_version: int
     created_at: datetime
 
