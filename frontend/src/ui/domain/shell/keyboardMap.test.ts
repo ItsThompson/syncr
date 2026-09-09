@@ -256,6 +256,17 @@ describe("the keyboard map", () => {
 
     expect(unknown).toEqual([]);
   });
+
+  it("lists the Today cursor movements on Today, not on the week grid", () => {
+    const cursorRows = KEYBOARD_MAP.filter(
+      (entry) => entry.scope === "/today" && (entry.keys === "j" || entry.keys === "k"),
+    );
+
+    expect(cursorRows).toEqual([
+      { keys: "j", action: "Move the cursor to the next row", scope: "/today" },
+      { keys: "k", action: "Move the cursor to the previous row", scope: "/today" },
+    ]);
+  });
 });
 
 describe("the screen a row answers on, as the overlay says it", () => {
