@@ -25,6 +25,7 @@ from hypothesis import strategies as st
 from syncr_domain.feasibility import Provenance
 from syncr_domain.identity import BindingRef
 from syncr_domain.reasons import Pinned, ReasonRecord
+from syncr_domain.templates import TemplateEntryKind
 from syncr_solver import solve
 from syncr_solver.budget import SolveBudget
 from syncr_solver.derivation import shadow_blocks
@@ -162,6 +163,37 @@ def canonical(document: PlanDocument) -> str:
     return repr(document)
 
 
+def a_week_for_the_pin_property() -> SolveInputs:
+    """A week that names every kind of content a pin can honor, including a refused buffer."""
+    anchor = an_anchor(interval=between(10, 11, day=1))
+    refused_buffer = a_transit_block(anchor_id=anchor.anchor_id, interval=between(9.5, 11, day=1))
+    return a_week_with_ties(anchors=(anchor,), shadow_blocks=(refused_buffer,))
+
+
+def bindings_the_week_names(week: SolveInputs) -> tuple[BindingRef, ...]:
+    """Every binding that names pin-able content in this week."""
+    return (
+        *(entry.block_binding for entry in week.frame),
+        *(BindingRef.for_anchor(anchor.anchor_id) for anchor in week.anchors),
+        *(block.binding for block in week.shadow_blocks),
+        *(
+            entry.block_binding
+            for entry in week.template_entries
+            if entry.kind is TemplateEntryKind.CONCRETE
+        ),
+        *(occurrence.binding for occurrence in week.habit_occurrences),
+        *(task.binding for task in week.eligible_tasks),
+    )
+
+
+@st.composite
+def weeks_holding_a_pin_on_every_binding_they_name(draw: st.DrawFn) -> SolveInputs:
+    """A week carrying one pin drawn from every binding its content names."""
+    week = a_week_for_the_pin_property()
+    binding = draw(st.sampled_from(bindings_the_week_names(week)))
+    return replace(week, pins=(a_pin(binding=binding, interval=between(15, 16, day=5)),))
+
+
 # --------------------------------------------------------------------------------------
 # The entry point and what it answers with
 # --------------------------------------------------------------------------------------
@@ -261,17 +293,11 @@ def test_the_same_inputs_consume_the_same_number_of_iterations() -> None:
 # --------------------------------------------------------------------------------------
 
 
-def test_every_pin_in_the_input_appears_at_exactly_its_interval_in_the_output() -> None:
-    week = a_week_with_ties(
-        pins=(
-            a_pin(binding=BindingRef.for_task(A_TASK), interval=between(15, 16, day=5)),
-            a_pin(
-                binding=BindingRef.for_habit(ANOTHER_HABIT, index=0),
-                interval=between(8, 8.75, day=6),
-            ),
-        )
-    )
-
+@given(week=weeks_holding_a_pin_on_every_binding_they_name())
+@settings(max_examples=100, deadline=None, derandomize=True)
+def test_every_pin_in_the_input_appears_at_exactly_its_interval_in_the_output(
+    week: SolveInputs,
+) -> None:
     held = solved(week).document.blocks
 
     for pin in week.pins:
