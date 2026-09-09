@@ -50,8 +50,9 @@ recorded on the commit path, and the one time passing produces is the maintainer
 
 ## Rejecting a proposed move is pinning the block where it already is
 
-Rejecting a proposed move is pinning the block where it already is, and it needs no mechanism of its own: the rejection resolves the accepted interval
-from the plan of record and then takes exactly the path above. So the pairwise preference falls out
+Rejecting a proposed move is pinning the block where it already is. It needs no mechanism of its
+own: the rejection resolves the accepted interval from the plan of record and then takes exactly the
+path above. So the pairwise preference falls out
 -- the solver proposed there, the user chose here -- and there is no rejection record, no rejection
 column, and no second code path that could disagree with this one.
 
@@ -78,22 +79,26 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from syncr_api.concessions.config import ISO_WEEK_FIELD
-from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
-from syncr_api.core.errors import FieldError as WireFieldError
+from syncr_api.core.errors import Conflict, NotFound
 from syncr_api.core.iso_weeks import require_an_iso_week
 from syncr_api.core.principal import authorize_tenant, require_scope
 from syncr_api.core.scopes import Scope
 from syncr_api.learned.weight_reading import as_weight_set
-from syncr_api.pins.config import BLOCK_RESOURCE, PIN_RESOURCE, START_FIELD
+from syncr_api.pins.config import PIN_RESOURCE
 from syncr_api.pins.costs import pin_price
 from syncr_api.pins.features import edit_context
+from syncr_api.pins.pre_edit import resolve_pre_edit
+from syncr_api.pins.request_shape import (
+    _block_of,
+    _require_a_placement_inside_the_week,
+    _require_a_placement_the_week_has_not_reached,
+    _starting_at,
+)
 from syncr_api.plans.declarations import EditToRecord, PinToHold
-from syncr_api.plans.placements import constrains_a_solve
 from syncr_api.plans.production import NoWeightSetInForce
 from syncr_api.plans.stored_documents import plan_document
 from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
-from syncr_domain.intervals import Interval
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -117,7 +122,7 @@ if TYPE_CHECKING:
     from syncr_api.solving.records import OperationRecord
     from syncr_api.tasks.repository import TaskRepository
     from syncr_domain.feasibility import Verdict
-    from syncr_domain.identity import BlockId
+    from syncr_domain.intervals import Interval
     from syncr_domain.plan import Block, PlanDocument
     from syncr_domain.weeks import IsoWeek
 
@@ -260,9 +265,13 @@ class PinService:
             )
 
         # Pre-edit state, resolved BEFORE the pin enters the assembly.
-        task_deadline = await self._task_deadline(block)
-        area_floor_declared = await self._declared_floor(block)
-        pinned_blocks_before = len(await self._pins.for_week(week))
+        pre_edit = await resolve_pre_edit(
+            block,
+            week,
+            tasks=self._tasks,
+            areas=self._areas,
+            pins=self._pins,
+        )
 
         # PRE-PIN ASSEMBLY: the frame the price and the context are measured in.
         pre_pin_inputs = await self._assembler.assemble(week, now)
@@ -305,9 +314,9 @@ class PinService:
                     accepted=accepted,
                     breakdown=price.breakdown,
                     measurement_delta=price.measurement_delta,
-                    task_deadline=task_deadline,
-                    area_floor_declared=area_floor_declared,
-                    pinned_blocks_before=pinned_blocks_before,
+                    task_deadline=pre_edit.task_deadline,
+                    area_floor_declared=pre_edit.area_floor_declared,
+                    pinned_blocks_before=pre_edit.pinned_blocks_before,
                 ),
                 created_at=now,
             )
@@ -333,42 +342,6 @@ class PinService:
                 week, version, session_mode_active=self._session_mode_active
             ),
         )
-
-    async def _task_deadline(self, block: Block) -> datetime | None:
-        """The deadline on the task this block holds, read from the entity itself.
-
-        Not from ``eligible_tasks`` or ``deadline_demands``, because both net placements and the
-        pin makes its block immovable: a fully-placed task would vanish from either list, falsifying
-        the feature by the act of recording it. The task record is what the pin does not perturb.
-
-        Returns ``None`` for content that is not a task, which is what ``edit_context`` writes as
-        ``was_deadline_constrained=False``.
-        """
-        from syncr_domain.identity import BindingKind
-
-        if block.binding.kind != BindingKind.TASK:
-            return None
-        found = await self._tasks.find(block.binding.entity_id)
-        return None if found is None else found.deadline
-
-    async def _declared_floor(self, block: Block) -> int | None:
-        """The Area's declared floor in minutes, read from the entity itself.
-
-        Not from ``AreaBudget.floor_minutes``, because that field is the SOLVER's quantity: it nets
-        immovable placements, and a pin makes its block immovable, so the recorded figure would be
-        short by exactly the dragged block's duration. The Area's own declaration is what the pin
-        does not perturb.
-
-        Returns ``None`` for content carrying no Area (frame, commitment).
-        """
-        if block.area_id is None:
-            return None
-        found = await self._areas.find(block.area_id)
-        if found is None:
-            return None
-        from syncr_domain.budgets import floor_minutes
-
-        return floor_minutes(found.floor_hours)
 
     async def _last_produced(self, week: IsoWeek) -> PlanDocument:
         """The plan the solver last produced for this week: the pending slot, or the plan of record.
@@ -416,76 +389,3 @@ class PinService:
                 "proposal, or drag the block where you want it."
             )
         return held.interval
-
-
-def _block_of(document: PlanDocument, block_id: BlockId) -> Block:
-    """The block this request names, or a 404 that says the plan does not hold one."""
-    found = document.blocks_by_id().get(block_id)
-    if found is None:
-        raise NotFound(
-            f"No {BLOCK_RESOURCE} in the plan for {document.iso_week} matches that identifier."
-        )
-    return found
-
-
-def _starting_at(start: datetime, block: Block) -> Interval:
-    """The placement a drag names: this block's own length, beginning where the request says.
-
-    The length is the block's rather than the caller's, because a drag moves and does not resize.
-    """
-    return Interval(start, start + block.interval.duration)
-
-
-def _require_a_placement_the_week_has_not_reached(
-    block: Block, accepted: Interval, now: datetime
-) -> None:
-    """A placement the week has already reached is refused, in both directions, and the two are different refusals.
-
-    The block having begun is a fact about the week: the moment has passed, so where that block ran
-    is not a placement anybody has authority over, and the checker would refuse the move anyway.
-    The requested start having gone is a fact about the request: nothing can be scheduled into time
-    that no longer exists, so the field the caller sent is what the refusal names.
-    """
-    if not constrains_a_solve(block.interval, now):
-        raise Conflict(
-            f"{block.title} began at {block.interval.start.isoformat()}, and the past is not a "
-            "placement this product may change. Nothing was moved: the block stays where it ran, "
-            "and what happened in it is recorded on the day it belongs to."
-        )
-    if not constrains_a_solve(accepted, now):
-        raise ValidationFailed(
-            "That start has already passed, so nothing can be scheduled into it. Nothing was "
-            "changed.",
-            errors=[
-                WireFieldError(
-                    field=START_FIELD,
-                    message="a pin names time the week has not reached yet",
-                )
-            ],
-        )
-
-
-def _require_a_placement_inside_the_week(accepted: Interval, span: Interval) -> None:
-    """A pin binds ONE week, so a placement whose start falls outside that week's span is refused.
-
-    The pin constrains the week it was made in and the next week's solve is unconstrained
-    by it, so a placement starting outside the span would be a constraint on a week no row names.
-    Checked against the assembled span rather than a span derived here, because a week's real length
-    is a resolution of the zone profile: it is 167 or 169 hours across a daylight-saving transition
-    and something else again across a travel boundary.
-
-    The START is what decides ownership rather than the whole interval, because a Sunday-night frame
-    occurrence starts inside the week and ends after it: its overhang into the next week is modelled
-    by the assembler already, and refusing a pin at its own placement would make a block unpinnable.
-    """
-    if span.start <= accepted.start < span.end:
-        return
-    raise ValidationFailed(
-        "That start puts the block outside the week it belongs to, and a pin binds one week. "
-        "Nothing was changed: pin it inside this week, or pin the next week's own occurrence.",
-        errors=[
-            WireFieldError(
-                field=START_FIELD, message="a pin names a placement inside the week it is made in"
-            )
-        ],
-    )
