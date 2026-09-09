@@ -3356,7 +3356,7 @@ export interface components {
              * @description How long one session should ideally run, 15 to 1440 minutes in whole 15-minute steps. An IDEAL only: a task's minimum chunk stays a hard constraint, so a split shorter than this is placed and charged to the fragmentation cost rather than refused. Null means no ideal length, and on a habit's or a task's preference null is a statement rather than an omission, because a preference replaces its Area's ideal duration wholly.
              */
             preferredDurationMinutes: number | null;
-            /** @description Which Area, Habit, or Task declared the preference that is in effect. Equal to the owner in the path when this owner declared its own, and its Area otherwise. */
+            /** @description Which Area, Habit, or Task declared the preference that is in effect. Equal to the owner in the path when this owner declared its own, and an Area ancestor otherwise. */
             source: components["schemas"]["PreferenceOwnerResponse"];
             /**
              * Statement
@@ -4363,12 +4363,12 @@ export interface components {
          *     a removal, and the answer to "what changed" is the whole state rather than a diff.
          *
          *     ``declared`` is null when this owner declares none of its own; ``effective`` is null only when
-         *     neither it nor its Area declares one.
+         *     neither it nor an Area ancestor declares one.
          */
         PreferenceResponse: {
             /** @description The preference set on this owner, or null when it declares none of its own. */
             declared: components["schemas"]["DeclaredPreferenceResponse"] | null;
-            /** @description The preference in effect: this owner's own, or its Area's, or null when neither declares one. Never a merge of the two. */
+            /** @description The preference in effect: this owner's own, or one from its Area ancestry, or null when neither declares one. Never a merge of the two. */
             effective: components["schemas"]["EffectivePreferenceResponse"] | null;
             /** @description The Area, Habit, or Task the path named. Always present: these routes 404 on an owner that does not exist and never on a preference that is not set. */
             owner: components["schemas"]["PreferenceOwnerResponse"];
@@ -4500,7 +4500,7 @@ export interface components {
          * PromotionCandidateResponse
          * @description One repeated pin the session offers to promote into the template.
          *
-         *     ``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a
+         *     Pinning the same binding to the same time for three consecutive weeks raises a
          *     proposal naming the binding, the time, and the number of weeks. Accepting or declining is a
          *     route of its own, addressed by the ``id`` below, and this shape carries no state: it is the
          *     question, plus what can be done about it.
@@ -4650,12 +4650,12 @@ export interface components {
          * @description One thing the session raises, at amber panel volume and in session mode only.
          *
          *     Every category is one shape with a ``kind`` rather than one shape per category, because they
-         *     render as rows of one panel: section 16's notice-volume table gives the whole set one volume and
+         *     render as rows of one panel: the notice-volume table gives the whole set one volume and
          *     one pigment.
          *
          *     **There is no count field, and every figure is in ``statement``.** A count of weeks on the wire
          *     as well as in the words would be one fact twice, and a surface rendering both would put the same
-         *     number on the screen in two places, which is the drift ticket 49's own band was corrected for.
+         *     number on the screen in two places, which is the drift a later display band was corrected for.
          */
         RaisedItemResponse: {
             /**
@@ -4672,13 +4672,13 @@ export interface components {
             statement: string;
             /**
              * Title
-             * @description The thing itself, in the words the user knows it by. A repeated collision names BOTH ends here, as 'Standup over Leetcode', which is US-REV-05's own form.
+             * @description The thing itself, in the words the user knows it by. A repeated collision names BOTH ends here, as 'Standup over Leetcode', which is the written form.
              */
             title: string;
         };
         /**
          * RaisedKind
-         * @description What a raised item is about. One member per row of section 16's `raised` list.
+         * @description What a raised item is about. One member per row of the `raised` list.
          * @enum {string}
          */
         RaisedKind: "chronic_skip" | "habit_at_debt_cap" | "repeated_collision" | "overdue_task" | "at_risk_task" | "floor_at_risk" | "new_anchor" | "cadence_due";
@@ -4864,7 +4864,7 @@ export interface components {
          *
          *     The three are separate quantities. Off-plan days are reported SEPARATELY from unconfirmed days
          *     because an off-plan day is one the user declared away rather than one they failed to answer for,
-         *     and counting a holiday as a lapse is what US-REV-04 exists to prevent.
+         *     and counting a holiday as a lapse is what the day-count separation exists to prevent.
          *
          *     They need not sum to the period's length: a day holding no block is none of the three, since
          *     there is nothing to answer for and counting it would report a backlog of days on which nothing
@@ -5450,7 +5450,7 @@ export interface components {
          *
          *     A wrapper rather than a bare array, so the header counts travel with the rows they describe
          *     and a caller cannot render a count derived from a filtered page. Not paginated: a personal
-         *     backlog is bounded by what one person can hold, and `13-http-api.md` reserves cursors for the
+         *     backlog is bounded by what one person can hold, and the route table reserves cursors for the
          *     collections that grow without a ceiling.
          */
         TasksResponse: {
@@ -6064,7 +6064,7 @@ export interface components {
          * WeekViewResponse
          * @description The Week screen's whole read, in one request.
          *
-         *     **Every field is required and the nullable ones are nullable**, which is section 13's own shape
+         *     **Every field is required and the nullable ones are nullable**, which is the wire shape's own rule
          *     and the one thirty-six other response fields in this api already take. A field with a default is
          *     OPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as
          *     ``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The
@@ -6129,7 +6129,7 @@ export interface components {
          * @description The weekly session, as one read that writes nothing at all.
          *
          *     Addressed by the week it PLANS. The retrospective covers the week before it, which is what
-         *     ``US-REV-01``'s "planning and retrospective in one pass" means on the wire: one request, both
+         *     "planning and retrospective in one pass" means on the wire: one request, both
          *     halves, so last week informs next week without a second sitting.
          */
         WeeklySessionResponse: {
