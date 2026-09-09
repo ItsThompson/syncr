@@ -5030,6 +5030,7 @@
           },
           "type": {
             "enum": [
+              "syncr:block-already-started",
               "syncr:conflict",
               "syncr:dependency-unavailable",
               "syncr:forbidden",

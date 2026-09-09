@@ -39,9 +39,11 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.identity import Origin, is_placed_by_the_solver
+from syncr_domain.intervals import has_started
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from syncr_domain.identity import BlockId
     from syncr_domain.plan import Block, PlanDocument
@@ -83,6 +85,7 @@ class Overlapped:
 
     block: Block | None
     movable_by: Movability
+    is_reached: bool
 
     @property
     def origin(self) -> Origin | None:
@@ -90,15 +93,19 @@ class Overlapped:
         return None if self.block is None else self.block.origin
 
 
-def overlapped_block(live: PlanDocument | None, block_id: BlockId) -> Overlapped:
-    """The block ``block_id`` names in ``live``, and who can move it.
+def overlapped_block(live: PlanDocument | None, block_id: BlockId, now: datetime) -> Overlapped:
+    """The block ``block_id`` names in ``live``, who can move it, and whether it has begun.
 
-    A pure function of the document and the id, because the id is a digest of the week and the
-    binding: pairing needs no lookup and no clock.
+    The id is a digest of the week and binding, so pairing needs no lookup. Whether a resolution
+    may move the held block depends on the supplied instant: a started block is a fact, not a
+    placement the resolution may change.
     """
     held = None if live is None else live.blocks_by_id().get(block_id)
     if held is None:
-        return Overlapped(block=None, movable_by=Movability.THE_SOLVER)
-    if held.pinned:
-        return Overlapped(block=held, movable_by=Movability.THE_USER)
-    return Overlapped(block=held, movable_by=MOVABILITY_BY_ORIGIN[held.origin])
+        return Overlapped(block=None, movable_by=Movability.THE_SOLVER, is_reached=False)
+    movable_by = Movability.THE_USER if held.pinned else MOVABILITY_BY_ORIGIN[held.origin]
+    return Overlapped(
+        block=held,
+        movable_by=movable_by,
+        is_reached=has_started(held.interval, now),
+    )

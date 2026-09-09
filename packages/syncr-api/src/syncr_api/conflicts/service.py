@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING
 
 from syncr_api.anchors.declarations import TypeAssignment
 from syncr_api.conflicts.config import ANCHOR_TYPE_FIELD, CONFLICT_RESOURCE
+from syncr_api.conflicts.errors import BlockAlreadyStarted
 from syncr_api.conflicts.overlapped import Movability, overlapped_block
 from syncr_api.conflicts.views import Resolved
 from syncr_api.core.errors import Conflict, FieldError, NotFound, ValidationFailed
@@ -169,7 +170,17 @@ class ConflictService:
         about the plan as it stands now: a later revision may have relocated it, and a pin may have
         been released since the conflict was raised.
         """
-        overlapped = overlapped_block(await self._live(found.iso_week), found.block_id)
+        overlapped = overlapped_block(
+            await self._live(found.iso_week), found.block_id, self._clock()
+        )
+        if overlapped.is_reached and overlapped.block is not None:
+            raise BlockAlreadyStarted(
+                "Nothing was moved. This block began at "
+                f"{overlapped.block.interval.start.isoformat()}, so the week has reached it and "
+                "its time is no longer a placement this product may "
+                "change. The block stays where it ran, and what happened in it is recorded on the "
+                "day it belongs to."
+            )
         if overlapped.movable_by is Movability.NOBODY:
             raise Conflict(
                 "Nothing was moved. This block's time is fixed by something you declared rather "
