@@ -21,22 +21,21 @@ import { NOTHING_SELECTED_PROBLEM_TYPE, type Problem } from "../../contract";
  * each live exactly here, so no call site spells either for itself and no resource hook is ever
  * asked for them.
  *
- * EVERY WRITE TO A GUARDED ROUTE CARRIES THE HEADER, because a retried write must not become a
- * second act. The api reads the key off the request rather than declaring it a parameter, so it
- * appears nowhere in the OpenAPI document and no generated client types it; `openapi-fetch` sends
- * what the document does not know about just the same.
+ * THE GUARDED WRITES CARRY THE HEADER: pin, unpin, approval, rejected-move, and conflict-resolution.
+ * A route that reads no key is sent none. `/api/v1/weeks/{iso_week}/tradeoffs` declares no key reader,
+ * so whatever was sent there would be ignored, and a dead header would claim a protection the route does
+ * not offer. The api reads the key off the request rather than declaring it a parameter, so it appears
+ * nowhere in the OpenAPI document and no generated client types it; `openapi-fetch` sends what the
+ * document does not know about just the same.
  *
- * A ROUTE THAT READS NO KEY IS SENT NONE. `/api/v1/weeks/{iso_week}/tradeoffs` declares no key
- * reader, so whatever was sent there would be ignored, and a dead header would claim a protection
- * the route does not offer.
- *
- * THE KEY IS MINTED FRESH FOR EACH ATTEMPT. What a retry of one gesture reuses is this layer's
- * policy rather than a caller's decision, so it changes beside the minter or nowhere. */
+ * THE KEY IS MINTED WHEN THE READER COMMITS A GESTURE. A transport retry resends the original request,
+ * so it reuses that key until the request settles. A reload is not covered: it abandons the gesture.
+ * Per-document-session idempotency is the named successor when a key must survive that boundary. */
 
 export const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
 /**
- * The headers one keyed write carries: the api's chosen name, and a key minted for this attempt.
+ * The headers one keyed write carries: the api's chosen name, and a key minted for this gesture.
  */
 export function idempotentHeaders(): { [IDEMPOTENCY_KEY_HEADER]: string } {
   return { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() };

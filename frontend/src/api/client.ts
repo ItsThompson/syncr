@@ -23,6 +23,7 @@
 
 import createClient from "openapi-fetch";
 
+import { IDEMPOTENCY_KEY_HEADER } from "./hooks/useWrite";
 import { isSessionModeOpen, SESSION_MODE_HEADER, SESSION_MODE_OPEN } from "./sessionMode";
 import type { paths } from "./schema";
 
@@ -30,9 +31,20 @@ import type { paths } from "./schema";
  * nobody thought about carries no header rather than carrying one. */
 const UNSAFE_METHODS: ReadonlySet<string> = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
+async function fetchWithIdempotentWriteRetry(request: Request): Promise<Response> {
+  const retry = request.clone();
+  try {
+    return await fetch(request);
+  } catch (error) {
+    if (!(error instanceof TypeError) || !request.headers.has(IDEMPOTENCY_KEY_HEADER)) throw error;
+    return fetch(retry);
+  }
+}
+
 export const client = createClient<paths>({
   baseUrl: window.location.origin,
   credentials: "include",
+  fetch: fetchWithIdempotentWriteRetry,
 });
 
 client.use({
