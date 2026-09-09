@@ -68,8 +68,6 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
-from syncr_solver.churn_baseline import ChurnBaseline as ChurnBaseline
-
 # ``DeadlineDemand`` is defined beside the probe that reads it, and re-exported here so a reader
 # of this struct's fields finds the type next to them. The redundant alias is the explicit
 # re-export form: an implicit one is invisible to a strict type checker.
@@ -85,6 +83,7 @@ from syncr_domain.identity import BindingKind, BindingRef
 from syncr_domain.intervals import IntervalSet, as_instant
 from syncr_domain.plan import PlanError, require_a_zone_for_every_day
 from syncr_domain.templates import TemplateEntryKind
+from syncr_solver.churn_baseline import ChurnBaseline as ChurnBaseline
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
