@@ -16,10 +16,11 @@ from typing import TYPE_CHECKING
 from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingRef
 from syncr_domain.preferences import PreferenceStrength
-from syncr_domain.reasons import Bound
+from syncr_domain.reasons import CLAUSE_BUDGET, Blocked, Bound
 from syncr_solver.attempt import Attempt, Placed
 from syncr_solver.budget import SolveBudget
 from syncr_solver.candidates import Candidate
+from syncr_solver.constraints import ConstraintRule
 from syncr_solver.filling import fill_gaps
 from syncr_solver.moves import RELOCATE, moves
 from syncr_solver.offering import offers_in
@@ -28,6 +29,7 @@ from syncr_solver.state import Sizing
 from tests.materialized_weeks import (
     FITNESS,
     a_block,
+    a_concrete_entry,
     a_frame_entry,
     an_area_budget,
     at,
@@ -40,7 +42,7 @@ from tests.objective_weeks import (
     an_occurrence,
     hand_tuned_weights,
 )
-from tests.solve_weeks import a_week, solved
+from tests.solve_weeks import a_week, slot_spans, solved
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -72,9 +74,7 @@ def a_gym_candidate() -> Candidate:
 
 def preferences_of(windows: tuple[Interval, ...]) -> ResolvedPreferences:
     """One strong Fitness preference over these windows, resolved the way a solve receives it."""
-    return ResolvedPreferences(
-        (a_preference(windows=windows, strength=PreferenceStrength.STRONG),)
-    )
+    return ResolvedPreferences((a_preference(windows=windows, strength=PreferenceStrength.STRONG),))
 
 
 def offered_starts(week: SolveInputs, declared: tuple[Interval, ...]) -> list[datetime]:
@@ -205,6 +205,43 @@ def test_one_fitness_occurrence_lands_in_its_strong_wednesday_window() -> None:
 
     assert len(gym) == 1
     assert gym[0].interval == between(13, 14, day=WEDNESDAY)
+
+
+def test_a_preferred_window_the_area_cap_refuses_reaches_a_blocked_clause() -> None:
+    """The offered Wednesday window is refused by the daily cap, not a template slot."""
+    declared = between(13, 14, day=WEDNESDAY)
+    another_declared_window = between(15, 16, day=WEDNESDAY)
+    week = a_week(
+        template_entries=(
+            a_concrete_entry(
+                interval=between(8, 9, day=WEDNESDAY),
+                area_id=FITNESS,
+                title="Swim",
+            ),
+        ),
+        habit_occurrences=(an_occurrence(minutes=60, title="Gym"),),
+        areas=(an_area_budget(target_minutes=120, floor_minutes=0, max_per_day_minutes=60),),
+        preferences=(
+            a_preference(
+                windows=(declared, another_declared_window),
+                strength=PreferenceStrength.STRONG,
+            ),
+        ),
+    )
+
+    result = solved(week)
+    gym = next(block for block in result.document.blocks if block.title == "Gym")
+    blocked = [clause for clause in gym.reason.clauses if isinstance(clause, Blocked)]
+
+    assert slot_spans(week) == ()
+    assert (declared, ConstraintRule.AREA_DAILY_CAP) in {
+        (clause.window, clause.rule) for clause in blocked
+    }
+    assert len(result.blocked_log) == CLAUSE_BUDGET[Blocked]
+    assert all(
+        sum(row.binding == binding for row in result.blocked_log) <= CLAUSE_BUDGET[Blocked]
+        for binding in {row.binding for row in result.blocked_log}
+    )
 
 
 def test_solving_the_measurement_week_twice_yields_the_same_plan() -> None:
