@@ -45,6 +45,19 @@ describe("unsafe client call policy", () => {
     ]);
   });
 
+  it("refuses an idempotency header on an exempt route", async () => {
+    const outcome = await check(["header-on-exempt-route.ts"]);
+
+    expect(outcome.findings).toMatchObject([
+      {
+        check: "idempotency-header-on-exempt-route",
+        message: expect.stringContaining(
+          "POST /api/v1/weeks/{iso_week}/tradeoffs is exempt: the route carries no guard",
+        ),
+      },
+    ]);
+  });
+
   it("names the route and reason for an exempt call", () => {
     expect(policyForUnsafeClientCall("POST", "/api/v1/weeks/{iso_week}/tradeoffs")).toEqual({
       method: "POST",
