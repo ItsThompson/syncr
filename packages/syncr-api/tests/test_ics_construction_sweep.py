@@ -82,7 +82,7 @@ def test_the_walk_finds_a_construction_call_and_ignores_other_calls(source_root:
     # The interval the placement half builds, named here rather than only in the table, because this
     # assertion reads the SOURCE. A row moving module with its call is a table edit; a call moving
     # module is what the two directions above are for, and this is the site they are about.
-    assert ("ics_series", "_window", "Interval") in found
+    assert ("ics_placement", "_window", "Interval") in found
     # And it is a filter rather than a firehose: most of the package's calls construct nothing, so
     # the walk finds far fewer sites than the package has modules times three. Asserting the found
     # NAMES are all in `CONSTRUCTORS` would be wrong: an attribute on a datetime type counts however

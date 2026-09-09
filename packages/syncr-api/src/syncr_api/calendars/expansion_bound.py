@@ -37,13 +37,14 @@ from typing import TYPE_CHECKING, Final, cast
 
 from syncr_api.calendars.config import EXPANSION_DEADLINE_SECONDS, EXPANSION_POOL_SIZE
 from syncr_api.calendars.ics_errors import UnparseableRecurrence
-from syncr_api.calendars.ics_series import expand
+from syncr_api.calendars.ics_placement import expand
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection
 
     from syncr_api.calendars.ics_components import EventComponent
-    from syncr_api.calendars.ics_series import Placement, Series
+    from syncr_api.calendars.ics_partition import Series
+    from syncr_api.calendars.ics_placement import Placement
     from syncr_domain.intervals import Interval
     from syncr_domain.zones import ZoneProfile
 

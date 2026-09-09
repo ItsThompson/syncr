@@ -255,7 +255,7 @@ SITES: Final[tuple[Site, ...]] = (
     # length, and the length is a feed's magnitude, so the row belongs here rather than with the
     # constants: what keeps it from inverting is a refusal in another module.
     Site(
-        module="ics_series",
+        module="ics_placement",
         function="_window",
         constructor="Interval",
         reads="the horizon widened backwards by the whole days or the span a feed stated",

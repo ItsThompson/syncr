@@ -1,6 +1,7 @@
 """Reading a whole feed into events, and stating why each rejected component produced none.
 
-What one component MEANS to another is :mod:`syncr_api.calendars.ics_series`. What this module owns
+What one component MEANS to another is :mod:`syncr_api.calendars.ics_partition`. What this
+module owns
 is the reading: the order of the passes, the per-feed bound, and the one rule the whole package is
 built on.
 
@@ -53,7 +54,8 @@ from syncr_api.calendars.ics_errors import (
     as_rejection,
 )
 from syncr_api.calendars.ics_lines import VEVENT, events_in, parse_components
-from syncr_api.calendars.ics_series import expand, place_replacement, sort_components, stranded
+from syncr_api.calendars.ics_partition import sort_components
+from syncr_api.calendars.ics_placement import expand, place_replacement, stranded
 from syncr_api.calendars.rejections import RejectionAccumulator, one_rejection
 
 if TYPE_CHECKING:
@@ -63,7 +65,8 @@ if TYPE_CHECKING:
     from syncr_api.calendars.events import RawEvent
     from syncr_api.calendars.ics_components import EventComponent
     from syncr_api.calendars.ics_lines import Component
-    from syncr_api.calendars.ics_series import OccurrenceKey, Placement, Series
+    from syncr_api.calendars.ics_partition import OccurrenceKey, Series
+    from syncr_api.calendars.ics_placement import Placement
     from syncr_domain.intervals import Interval
     from syncr_domain.zones import ZoneProfile
 

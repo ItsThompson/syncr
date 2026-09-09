@@ -27,12 +27,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import syncr_api.calendars.ics_series as ics_series_module
+import syncr_api.calendars.ics_partition as ics_partition_module
+import syncr_api.calendars.ics_placement as ics_placement_module
 from syncr_api.calendars.ics_components import read_component
 from syncr_api.calendars.ics_errors import UNREPRESENTABLE, IcsRejection
 from syncr_api.calendars.ics_lines import events_in, parse_components
 from syncr_api.calendars.ics_parse import parse_feed
-from syncr_api.calendars.ics_series import Series, replaced_key, sort_components
+from syncr_api.calendars.ics_partition import Series, replaced_key, sort_components
 from syncr_domain.intervals import Interval
 from syncr_domain.zones import ZoneProfile
 from tests.hostile_ics import (
@@ -48,7 +49,7 @@ from tests.hostile_ics import (
 if TYPE_CHECKING:
     from syncr_api.calendars.events import FetchOutcome
     from syncr_api.calendars.ics_components import EventComponent
-    from syncr_api.calendars.ics_series import OccurrenceKey
+    from syncr_api.calendars.ics_partition import OccurrenceKey
 
 HOME = ZoneProfile(home_zone="Europe/London")
 
@@ -331,12 +332,18 @@ _RESOLVING_FUNCTIONS = ("_compete", "_resolve", "_across_forms")
 
 
 def _module_functions() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
-    tree = ast.parse(Path(ics_series_module.__file__).read_text(encoding="utf-8"))
-    return {
-        node.name: node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-    }
+    """Function defs from both the partition and the placement modules."""
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for module in (ics_partition_module, ics_placement_module):
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        functions.update(
+            {
+                node.name: node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            }
+        )
+    return functions
 
 
 def test_precedence_is_decided_once_and_not_again_at_match_time() -> None:
