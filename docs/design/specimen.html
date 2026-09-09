@@ -1259,17 +1259,14 @@ const adjacent = byHue.map((a, i) => { const b = byHue[(i + 1) % byHue.length];
 const widest = adjacent[adjacent.length - 1];
 const tight = adjacent.slice(0, 4);
 const hatchSeparates = tight.every(p => p.a.hatch !== p.b.hatch);
+const tightPairList = tight.map(p => '<code>' + p.a.n + '</code>/<code>' + p.b.n + '</code> at '
+  + Number(p.gap.toFixed(1)) + '&deg;').join(', ');
 set('hue-gaps', 'The vacancy is measurable: <b>the widest gap in the ramp is ' + widest.gap
   + '&deg;, between <code>' + widest.a.n + '</code> at ' + widest.a.hue + '&deg; and <code>'
   + widest.b.n + '</code> at ' + widest.b.hue + '&deg;</b>, and 225&deg; sits inside it. '
   + 'Every gap on this sheet is computed from the ramp at load.');
-set('tight-pairs', '<b>The tightest adjacent hues are <code>' + tight[0].a.n + '</code>/<code>'
-  + tight[0].b.n + '</code> at ' + tight[0].gap + '&deg; and <code>' + tight[1].a.n
-  + '</code>/<code>' + tight[1].b.n + '</code> at ' + tight[1].gap + '&deg;</b>, which is a '
-  + 'computed result rather than a repeated one: the comment in <code>primitives.css</code> names '
-  + '<code>02</code>/<code>03</code> at ' + hueGap(AREA_RAMP[1], AREA_RAMP[2]) + '&deg; and <code>03</code>/'
-  + '<code>04</code> at ' + hueGap(AREA_RAMP[2], AREA_RAMP[3]) + '&deg; as the tightest, and both pairs '
-  + 'above sit below them. <b>Deal order is not what protects a tight pair either</b>, since '
+set('tight-pairs', '<b>The tightest adjacent hues are ' + tightPairList + '</b>. Every figure is '
+  + 'computed from the linked Area tokens at load. <b>Deal order is not what protects a tight pair either</b>, since '
   + tight.slice(0, 2).map(p => '<code>' + p.a.n + '</code> is dealt ' + ord(p.a.order)
       + ' and <code>' + p.b.n + '</code> ' + ord(p.b.order)).join(', while ')
   + '. <b>What protects them is the hatch</b>, and that is checkable: '

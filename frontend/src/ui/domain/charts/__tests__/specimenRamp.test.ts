@@ -43,6 +43,10 @@ describe("the specimen's Area ramp", () => {
     const shipped = await renderedTightPairs();
     const retuned = await renderedTightPairs({ "03": "#0000ff" });
 
+    expect(shipped).toContain(
+      "The tightest adjacent hues are 02/03 at 19.4°, 07/08 at 20°, 12/01 at 20.4°, 06/07 at 20.6°",
+    );
+    expect(shipped).not.toContain("03/04 at 21.1°");
     expect(shipped).toContain("all four of the tightest pairs carry different patterns");
     expect(retuned).not.toBe(shipped);
   });
