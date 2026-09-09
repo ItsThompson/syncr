@@ -3,7 +3,7 @@
  * Two observations, in one case:
  *
  * 1. The newly covered week acquires a plan with no user action, observed as a live plan appearing.
- *    The clock moves from inside one ISO week to inside the next, the rolling horizon advances, and
+ *    The clock moves to the first Monday boundary that advances the rolling horizon, and
  *    the maintainer materializes the week that just entered it -- no solve, no pin, no read asked for.
  *
  * 2. A frame span crossing the boundary is emitted exactly ONCE across the two-week horizon,
@@ -23,18 +23,20 @@
  */
 
 import { expect, test, usingFixture } from "../harness.ts";
+import { signIn } from "../../src/api/client.ts";
 import { setStackClock, stackInstant } from "../../src/harness/clock.ts";
 import { tickHorizon } from "../../src/harness/compose.ts";
 import {
   civilDateIn,
+  dateShift,
   instantAt,
   isoWeekOf,
   isoWeekShift,
   mondayOf,
   type IsoWeekId,
 } from "../../src/api/weeks.ts";
-import { HOME_ZONE } from "../../src/config.ts";
-import { weekView } from "../../src/harness/week.ts";
+import { E2E_EMAIL, E2E_PASSWORD, HOME_ZONE } from "../../src/config.ts";
+import { awaitLivePlan, weekView } from "../../src/harness/week.ts";
 import type { Block } from "../../src/api/schemas.ts";
 
 /* Reset the clock to the real instant before the fixture loads, so the initial horizon is the real
@@ -51,16 +53,14 @@ usingFixture("dst_weeks");
 test.describe.configure({ mode: "serial" });
 test.setTimeout(300_000);
 
-/** Does this block's interval cross an ISO week boundary, read in the tenant's home zone?
- *
- * A frame span like Sleep 23:00 + 8h crosses midnight every night, but only on Sunday night does it
- * cross from one ISO week into the next. The check is on the civil dates in the home zone, not on
- * the raw instants, because a UTC midnight and a London midnight are different dates in summer. */
-const crossesWeekBoundary = (block: Block): boolean => {
-  const startDate = civilDateIn(HOME_ZONE, new Date(block.interval.start));
-  const endDate = civilDateIn(HOME_ZONE, new Date(block.interval.end));
-  return isoWeekOf(startDate) !== isoWeekOf(endDate);
-};
+/** Return the ISO week for an instant as read in the tenant's home zone. */
+const weekOfInstant = (instant: string): IsoWeekId =>
+  isoWeekOf(civilDateIn(HOME_ZONE, new Date(instant)));
+
+const crossesBoundaryBetween = (block: Block, startWeek: IsoWeekId, endWeek: IsoWeekId): boolean =>
+  block.origin === "frame" &&
+  weekOfInstant(block.interval.start) === startWeek &&
+  weekOfInstant(block.interval.end) === endWeek;
 
 test("S29 the clock crosses a Sunday-to-Monday boundary; the newly covered week acquires a plan, and a frame span crossing the boundary is emitted exactly once", async ({
   api,
@@ -70,20 +70,24 @@ test("S29 the clock crosses a Sunday-to-Monday boundary; the newly covered week 
   const civilNow = civilDateIn(HOME_ZONE, stackNow);
   const currentWeek = isoWeekOf(civilNow);
 
-  // 2. Before the shift, record which weeks hold a live plan. The initial tick materialized every
-  //    week inside the real horizon; a week beyond it holds none.
-  const hadPlan = new Set<string>();
-  for (let i = 0; i < 5; i++) {
-    const week = isoWeekShift(currentWeek, i);
-    const view = await weekView(api, week);
-    if (view.live !== null) hadPlan.add(week);
-  }
+  // 2. Choose the first Monday that moves exactly one new ISO week into the horizon. If today is
+  //    Monday, next Monday leaves the following week new. On every other weekday, the following
+  //    Monday would leave no new week, so use the Monday after it. Both targets are deterministic
+  //    Monday boundaries, and the selected entering week is outside today's 14-day date set.
+  const targetWeekOffset = civilNow === mondayOf(currentWeek) ? 1 : 2;
+  const shiftedWeek = isoWeekShift(currentWeek, targetWeekOffset);
+  const followingWeek = isoWeekShift(shiftedWeek, 1);
+  const currentHorizonWeeks = new Set(
+    Array.from({ length: 14 }, (_, dayOffset) => isoWeekOf(dateShift(civilNow, dayOffset))),
+  );
+  expect(currentHorizonWeeks.has(followingWeek)).toBe(false);
+  const beforeShift = await weekView(api, followingWeek);
+  expect(beforeShift.live, `${followingWeek} was already planned before the shift`).toBeNull();
+  expect(beforeShift.emptyReason).toBe("outside_horizon");
 
-  // 3. Compute the offset to the Monday that opens the next ISO week, one minute past midnight.
-  //    Monday 00:01 is one minute past the Sunday-to-Monday boundary, so the shift always crosses it.
-  const nextWeek = isoWeekShift(currentWeek, 1);
-  const nextMonday = mondayOf(nextWeek);
-  const targetInstant = instantAt(nextMonday, "00:01:00", HOME_ZONE);
+  // 3. Land one minute after Monday midnight. The local boundary is crossed while the exact entering
+  //    week remains known before the shift.
+  const targetInstant = instantAt(mondayOf(shiftedWeek), "00:01:00", HOME_ZONE);
   const offsetMs = Date.parse(targetInstant) - stackNow.getTime();
   const totalSeconds = Math.max(60, Math.floor(offsetMs / 1000));
   const offset = `PT${totalSeconds}S`;
@@ -104,52 +108,35 @@ test("S29 the clock crosses a Sunday-to-Monday boundary; the newly covered week 
   // 5. Tick the horizon maintainer. The one-shot runs two iterations: the first sets the runner's
   //    due time and the second plans every week inside the shifted horizon.
   await tickHorizon();
-
-  // 6. Compute the shifted week and find the weeks that newly hold a plan.
   const shifted = await stackInstant("api");
-  const shiftedCivil = civilDateIn(HOME_ZONE, shifted);
-  const shiftedWeek = isoWeekOf(shiftedCivil);
+  const shiftedDate = civilDateIn(HOME_ZONE, shifted);
+  expect(shiftedDate).toBe(mondayOf(shiftedWeek));
+  expect(isoWeekOf(shiftedDate)).toBe(shiftedWeek);
 
-  let newlyCovered = 0;
-  for (let i = 0; i < 5; i++) {
-    const week = isoWeekShift(shiftedWeek, i);
-    const view = await weekView(api, week);
-    if (view.live !== null && !hadPlan.has(week)) {
-      newlyCovered++;
-      // The plan holds blocks: the frame materialized, which is what "a live plan appearing" means.
-      expect(view.live.blocks.length, `${week} acquired a plan holding no blocks`).toBeGreaterThan(
-        0,
-      );
-      expect(view.emptyWeek, `${week} reports an empty week despite holding a plan`).toBeNull();
-    }
-  }
-  expect(newlyCovered, "no newly covered week acquired a plan with no user action").toBeGreaterThan(
-    0,
-  );
+  // The original session was issued before the shift and can expire under the shifted clock. Sign in
+  // again after the shift so a session-expiry response cannot hide the plan assertion.
+  const shiftedApi = await signIn(api.baseUrl, E2E_EMAIL, E2E_PASSWORD);
 
-  // 7. Count frame spans crossing the boundary across the two-week horizon. After a shift to Monday
-  //    00:01, the 14-day horizon covers exactly two whole ISO weeks: the shifted week and the one
-  //    after it. The Sunday night between them has one Sleep occurrence that crosses the boundary.
-  //
-  //    The count is the figure that can vary: 0 if the span is not emitted, 2 if it is emitted in
-  //    both weeks. The overhang module's rule -- a boundary-crossing occurrence belongs to the week
-  //    its START falls in, and the week it runs into carries the time as occupancy rather than as a
-  //    block -- is what makes it 1.
-  const horizonWeeks: IsoWeekId[] = [shiftedWeek, isoWeekShift(shiftedWeek, 1)];
-  let crossingCount = 0;
-  for (const week of horizonWeeks) {
-    const view = await weekView(api, week);
-    if (!view.live) continue;
-    for (const block of view.live.blocks) {
-      if (block.origin === "frame" && crossesWeekBoundary(block)) {
-        crossingCount++;
-      }
-    }
+  // 6. Read both complete plans in the shifted two-week horizon. Missing either plan is a setup
+  //    failure, not an empty contribution to the count.
+  const owningView = await awaitLivePlan(shiftedApi, shiftedWeek);
+  const followingView = await awaitLivePlan(shiftedApi, followingWeek);
+  expect(owningView.live, `${shiftedWeek} did not acquire a live plan`).not.toBeNull();
+  expect(followingView.live, `${followingWeek} did not acquire a live plan`).not.toBeNull();
+  if (!owningView.live || !followingView.live) {
+    throw new Error("the selected two-week horizon must contain two live plans");
   }
+
+  // 7. Count only the Sunday-to-Monday boundary between these two selected weeks. A frame block
+  //    belongs to the week its start falls in, so exactly one matching span must occur across both
+  //    complete plans. A duplicate in the following plan, or no span in the owning plan, changes the
+  //    count to two or zero.
+  const crossingCount = [...owningView.live.blocks, ...followingView.live.blocks].filter((block) =>
+    crossesBoundaryBetween(block, shiftedWeek, followingWeek),
+  ).length;
 
   expect(
     crossingCount,
-    `expected exactly 1 frame span crossing the boundary across ${horizonWeeks.join(" and ")}, ` +
-      `got ${crossingCount} (0 = not emitted, 2 = emitted in both weeks)`,
+    `expected exactly 1 frame span from ${shiftedWeek} into ${followingWeek}, got ${crossingCount}`,
   ).toBe(1);
 });
