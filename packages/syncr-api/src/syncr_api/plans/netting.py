@@ -105,6 +105,7 @@ class Placement:
     binding: BindingRef
     interval: Interval
     area_id: AreaId | None
+    # The same set PartialPlan.already_netted answers for the solver.
     immovable: bool
     attributed: Interval | None
 
