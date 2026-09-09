@@ -23,9 +23,9 @@ and the task stays marked at risk.
 first, the panel goes quiet while the objective still strains against the deadline the user
 excused, because deadline risk reads the eligibility and not the demand.
 
-``breach_floor`` lowers the Area's floor minutes AND its floor reservation. Without the second,
-the concession does not close the shortfall it was offered for: the user approves the breach and
-the panel reports the same gap, because the probe reads the other field.
+``breach_floor`` lowers the Area's declared floor, floor minutes, AND floor reservation. Without
+one, a reader sees the declaration drift from the resolved constraint or the probe reports the
+same gap after the user approves the breach.
 
 ``reduce_routine`` shortens the frame occurrence on each named date, and nothing further. The
 frame is one field.
@@ -99,7 +99,11 @@ FOLDED_FIELDS: Final[Mapping[AdjustmentKind, frozenset[str]]] = {
     AdjustmentKind.DROP_ITEM: frozenset({"eligible_tasks", "deadline_demands", "preferences"}),
     AdjustmentKind.REDUCE_ROUTINE: frozenset({"frame.interval"}),
     AdjustmentKind.BREACH_FLOOR: frozenset(
-        {"areas.floor_minutes", "areas.floor_reservation_minutes"}
+        {
+            "areas.declared_floor_minutes",
+            "areas.floor_minutes",
+            "areas.floor_reservation_minutes",
+        }
     ),
     AdjustmentKind.ACCEPT_PARTIAL: frozenset({"eligible_tasks.deadline", "deadline_demands"}),
 }
@@ -173,7 +177,7 @@ def _deadline_excused(into: Concessions, *, task_id: UUID) -> Concessions:
 
 
 def _floor_breached(into: Concessions, *, area_id: UUID, by_minutes: int | None) -> Concessions:
-    """Both of the Area's floor quantities fall by the approved minutes, clamped at zero.
+    """All three of the Area's floor quantities fall by the approved minutes, clamped at zero.
 
     A concession that stated no minutes lowers nothing. The size of a breach is what the user
     approved, so inferring one here would be the assembler choosing how far to breach a floor.
@@ -190,6 +194,7 @@ def _floor_breached(into: Concessions, *, area_id: UUID, by_minutes: int | None)
         areas=tuple(
             replace(
                 budget,
+                declared_floor_minutes=max(0, budget.declared_floor_minutes - by_minutes),
                 floor_minutes=max(0, budget.floor_minutes - by_minutes),
                 floor_reservation_minutes=max(0, budget.floor_reservation_minutes - by_minutes),
             )
