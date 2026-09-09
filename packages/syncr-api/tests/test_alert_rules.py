@@ -34,9 +34,8 @@ So no direction is a list anyone maintains:
 What IS declared, in `tests/metric_declarations.py`, is the set of DECISIONS, each with a written
 reason and each crossed as an exact equality.
 
-Nothing here needs a running Prometheus, and nothing here needs a YAML library. The two config
-files' shape is fixed and this repository owns them, so the readers below are narrow parsers over
-that shape.
+Nothing here needs a running Prometheus. The readers load the deployment configuration through
+PyYAML, so their view has the same structure as the configuration Prometheus and Alertmanager load.
 What the files MEAN to Prometheus and Alertmanager is checked by `just monitoring-check`; what
 Alertmanager DOES with a firing alert is checked by `deployments/bin/alertmanager-probe.py`, because
 that is the one thing `amtool` cannot judge.
@@ -50,9 +49,10 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 import pytest
+import yaml
 
 import syncr_api
 from syncr_api.reviews.config import SESSION_P95_BUDGET_SECONDS
@@ -87,7 +87,8 @@ def member_roots() -> Mapping[str, str]:
     _, _, region = text.partition("[tool.uv.workspace]")
     listed, _, _ = region.partition("]")
     found: dict[str, str] = {}
-    for member in re.findall(r'"([^"]+)"', listed):
+    for match in re.finditer(r'"([^"]+)"', listed):
+        member = match.group(1)
         (package,) = sorted((root / member / "src").glob("*/__init__.py"))
         found[package.parent.name] = f"{member}/src"
     return found
@@ -141,22 +142,27 @@ def deployments() -> Path:
 # Reading the two configuration files
 # ---------------------------------------------------------------------------
 
-# The rule file is a sequence of blocks, each opened by `- alert: <Name>`. Every field this test
-# reads is a `key: value` line inside one, and an `expr` may be a folded scalar spanning several.
-_BLOCK = re.compile(r"^\s*- alert:\s*(?P<name>\w+)\s*$", re.MULTILINE)
-_FIELD = re.compile(r"^\s*(?P<key>[a-z_]+):\s*(?P<value>.*)$", re.MULTILINE)
-# `- alertname = "X"` and `- alertname =~ "X|Y"`, as an inhibit rule's matchers are written.
-_MATCHER = re.compile(r'^\s*-\s*(?P<label>[a-z_]+)\s*(?:=~|=)\s*"?(?P<value>[^"\n]*)"?\s*$')
+
+def yaml_document(relative_path: str) -> Mapping[str, Any]:
+    """Load one deployment configuration document."""
+    document = yaml.safe_load((deployments() / relative_path).read_text())
+    assert isinstance(document, dict), f"{relative_path} must contain a YAML mapping"
+    return cast("Mapping[str, Any]", document)
 
 
 def alert_rules() -> list[Rule]:
     """Every rule the deployed file declares, in file order."""
-    text = (deployments() / "prometheus" / "alerts.yml").read_text()
-    openers = list(_BLOCK.finditer(text))
-    bounds = [*(one.start() for one in openers), len(text)]
+    document = yaml_document("prometheus/alerts.yml")
     return [
-        _rule(opener.group("name"), text[opener.end() : bounds[position + 1]])
-        for position, opener in enumerate(openers)
+        Rule(
+            alert=rule["alert"],
+            expr=rule["expr"],
+            holds_for=rule["for"],
+            severity=rule["labels"]["severity"],
+            annotations=rule["annotations"],
+        )
+        for group in document["groups"]
+        for rule in group["rules"]
     ]
 
 
@@ -166,133 +172,36 @@ def named(name: str) -> Rule:
     return found
 
 
-def _rule(name: str, body: str) -> Rule:
-    expression, _, remainder = body.partition("labels:")
-    _, _, annotated = remainder.partition("annotations:")
-    return Rule(
-        alert=name,
-        expr=_folded(expression, key="expr"),
-        holds_for=_stated(expression, key="for"),
-        severity=_stated(remainder, key="severity"),
-        annotations={
-            found.group("key"): _folded(annotated, key=found.group("key"))
-            for found in _FIELD.finditer(annotated)
-            if not found.group("key").startswith("#")
-        },
-    )
-
-
-def _stated(region: str, *, key: str) -> str:
-    """One single-line field's value, or the empty string when the region does not carry it."""
-    for found in _FIELD.finditer(region):
-        if found.group("key") == key:
-            return found.group("value").strip()
-    return ""
-
-
-def _folded(region: str, *, key: str) -> str:
-    """One field's value including the continuation lines a folded scalar spans."""
-    lines = region.splitlines()
-    for position, line in enumerate(lines):
-        found = _FIELD.match(line)
-        if found is None or found.group("key") != key:
-            continue
-        stated = found.group("value").strip()
-        if stated and stated not in (">-", ">", "|", "|-"):
-            return stated
-        opened = len(line) - len(line.lstrip())
-        continued = []
-        for following in lines[position + 1 :]:
-            if not following.strip():
-                break
-            if len(following) - len(following.lstrip()) <= opened:
-                break
-            continued.append(following.strip())
-        return " ".join(continued)
-    return ""
-
-
 def inhibitions() -> list[Inhibition]:
-    """Every inhibit rule the Alertmanager configuration declares.
-
-    Read at all, which is the point: the crossing above says nothing about whether a firing rule
-    reaches anyone, and the defect that shipped lived in `alertmanager.yml` and nowhere else.
-
-    This reads the `*_matchers:` spelling ONLY, which is why
-    :meth:`TestDelivery.test_no_inhibit_rule_uses_the_legacy_matcher_syntax` forbids the other one,
-    and :meth:`TestDelivery.test_this_file_s_reader_sees_every_rule_alertmanager_will_load` counts
-    the list entries independently of any spelling. Alertmanager still honours the pre-0.22
-    `source_match:` map form, so a rule written that way was loaded, suppressed all seven warnings,
-    and was invisible to this function.
-    """
-    return [_inhibition(block) for block in _inhibit_blocks(inhibit_region())]
+    """Every inhibit rule that uses Alertmanager's supported matcher-list syntax."""
+    rules = yaml_document("alertmanager/alertmanager.yml")["inhibit_rules"]
+    return [_inhibition(rule) for rule in rules if "source_matchers" in rule]
 
 
-def inhibit_region() -> str:
-    """The inhibit-rules region of `alertmanager.yml`, as text."""
-    text = (deployments() / "alertmanager" / "alertmanager.yml").read_text()
-    _, _, region = text.partition("inhibit_rules:")
-    region, _, _ = region.partition("\nreceivers:")
-    return region
+def inhibit_entries() -> int:
+    """How many inhibit rules Alertmanager's YAML configuration declares."""
+    rules = yaml_document("alertmanager/alertmanager.yml")["inhibit_rules"]
+    return len(rules)
 
 
-def inhibit_entries(region: str) -> int:
-    """How many list entries the inhibit-rules region holds, whatever spelling each one uses.
-
-    A YAML sequence entry opens with `- ` at the sequence's own indentation, and a matcher is a
-    nested sequence indented further, so the outermost `- ` depth in the region IS the rule level.
-    Counting there reads the file the way Alertmanager's loader does, by structure rather than by
-    the key that follows, so a rule written in ANY accepted spelling is counted. It is the figure
-    :func:`inhibitions` must agree with, and `amtool check-config` reports the same number.
-    """
-    openers = [
-        len(line) - len(line.lstrip())
-        for line in region.splitlines()
-        if re.match(r"^\s*-\s+\S", line)
-    ]
-    if not openers:
-        return 0
-    return openers.count(min(openers))
-
-
-def _inhibit_blocks(region: str) -> Iterator[str]:
-    """Each `- source_matchers:` block of the inhibit-rules region."""
-    opener = re.compile(r"^\s*-\s*source_matchers:\s*$", re.MULTILINE)
-    openers = list(opener.finditer(region))
-    bounds = [*(one.start() for one in openers), len(region)]
-    for position, found in enumerate(openers):
-        yield region[found.start() : bounds[position + 1]]
-
-
-def _inhibition(block: str) -> Inhibition:
-    sources: list[str] = []
-    targets: list[str] = []
-    section = "source"
-    for line in block.splitlines():
-        if "target_matchers:" in line:
-            section = "target"
-            continue
-        if "equal:" in line:
-            section = "equal"
-            continue
-        found = _MATCHER.match(line)
-        if found is None or section == "equal":
-            continue
-        (sources if section == "source" else targets).append(
-            f"{found.group('label')}={found.group('value')}"
-        )
-    stated = _stated(block, key="equal")
+def _inhibition(rule: Mapping[str, Any]) -> Inhibition:
     return Inhibition(
-        sources=tuple(sources),
-        targets=tuple(targets),
-        equal=tuple(re.findall(r'"([^"]+)"', stated)),
+        sources=_matchers(rule, "source_matchers"),
+        targets=_matchers(rule, "target_matchers"),
+        equal=tuple(rule["equal"]),
     )
+
+
+def _matchers(rule: Mapping[str, Any], key: str) -> tuple[str, ...]:
+    values = rule[key]
+    assert isinstance(values, list), f"{key} must be a YAML list"
+    assert all(isinstance(value, str) for value in values), f"{key} must contain strings"
+    return tuple(value.replace(" ", "").replace("=~", "=").replace('"', "") for value in values)
 
 
 def scrape_jobs() -> set[str]:
     """Every job name `prometheus.yml` declares."""
-    text = (deployments() / "prometheus" / "prometheus.yml").read_text()
-    return set(re.findall(r"^\s*-\s*job_name:\s*(\S+)\s*$", text, re.MULTILINE))
+    return {job["job_name"] for job in yaml_document("prometheus/prometheus.yml")["scrape_configs"]}
 
 
 # Our own processes' jobs are named for the application; an exporter's job is named for what it
@@ -385,7 +294,7 @@ def comparisons(expr: str) -> list[Comparison]:
         # The last range in the term. Every rule here bounds one range per comparison, and a ratio
         # of two ranges would report only the divisor's, so read `windows` below before relying on
         # this field for an expression that divides one window by a different one.
-        windows = _WINDOW.findall(term)
+        windows = [window.group("window") for window in _WINDOW.finditer(term)]
         read.append(
             Comparison(
                 families=frozenset(families_in(term)),
@@ -700,7 +609,8 @@ def matchers_on_an_undeclared_label() -> set[str]:
 
 def liveness_jobs() -> set[str]:
     """Every job an alert rule reads the liveness of."""
-    return set(re.findall(r'up\{job="([^"]+)"\}', " ".join(rule.expr for rule in alert_rules())))
+    expressions = " ".join(rule.expr for rule in alert_rules())
+    return {match.group(1) for match in re.finditer(r'up\{job="([^"]+)"\}', expressions)}
 
 
 class TestTheExtractionItself:
@@ -789,6 +699,13 @@ class TestTheExtractionItself:
         with pytest.raises(ValueError, match=r"Synthetic states 2 comparisons over"):
             comparison_on(both_sides, "syncr_source_staleness_seconds")
 
+    def test_the_rule_reader_preserves_a_folded_expression(self) -> None:
+        assert named("ProjectionFailing").expr == (
+            '(increase(syncr_projection_duration_seconds_count{outcome="failed"}[15m]) > 0\n'
+            "  and on() syncr_projection_writes_enabled == 1)\n"
+            "or increase(syncr_projection_tenant_failures_total[15m]) > 0"
+        )
+
     def test_a_family_no_process_exports_is_not_in_the_exported_set(self) -> None:
         """The synthetic input the containment assertions would otherwise never see."""
         assert families_in("increase(syncr_not_a_family_total[5m]) > 0") == {"syncr_not_a_family"}
@@ -860,23 +777,21 @@ class TestTheExtractionItself:
         for package, source in roots.items():
             assert (repo_root() / source / package / "__init__.py").is_file()
 
-    def test_the_entry_count_sees_a_rule_the_block_reader_cannot_open(self) -> None:
-        """The positive control for the count equality, and the escape it was built for.
-
-        Without this, an entry counter that always returned `len(inhibitions())` would satisfy the
-        equality forever. The legacy map form below is what a real Alertmanager loaded and honoured
-        while this file's block reader saw nothing, so the counter must see two where the reader
-        sees one.
-        """
-        legacy = (
-            '\n  - source_matchers:\n      - alertname = "A"\n    target_matchers:\n'
-            '      - alertname = "B"\n'
-            "  - source_match:\n      alertname: WriteTargetTokenExpiring\n"
-            "    target_match:\n      severity: warning\n"
-        )
-
-        assert inhibit_entries(legacy) == 2
-        assert len(list(_inhibit_blocks(legacy))) == 1
+    def test_the_yaml_reader_preserves_each_inhibit_rule(self) -> None:
+        assert inhibitions() == [
+            Inhibition(
+                sources=("alertname=DatabaseUnreachable",),
+                targets=(
+                    "alertname=SolveFailing|ProjectionFailing|HorizonNotMaintained|SourceStale",
+                ),
+                equal=("deployment",),
+            ),
+            Inhibition(
+                sources=("alertname=WriteTargetTokenExpiring",),
+                targets=("alertname=SourceStale|ProjectionFailing",),
+                equal=("deployment",),
+            ),
+        ]
 
     def test_every_collector_in_the_workspace_names_its_family_with_a_literal(self) -> None:
         """The closing half of the literal reading, and the shape it could not see.
@@ -1022,12 +937,11 @@ class TestDelivery:
         same figure, which is how the escape was found: amtool said three and :func:`inhibitions`
         said two.
         """
-        region = inhibit_region()
-
-        assert inhibit_entries(region) == len(inhibitions()), (
-            f"the inhibit-rules region holds {inhibit_entries(region)} entries and this file's "
+        assert inhibit_entries() == len(inhibitions()), (
+            f"the YAML document holds {inhibit_entries()} inhibit rules and this file's "
             f"reader sees {len(inhibitions())}. A rule it cannot open is a rule it cannot guard, "
-            "and Alertmanager will honour it. Compare `amtool check-config`'s own count."
+            "and "
+            "Alertmanager will honour it. Compare `amtool check-config`'s own count."
         )
 
     def test_every_alert_an_inhibit_rule_names_is_a_rule_that_exists(self) -> None:
