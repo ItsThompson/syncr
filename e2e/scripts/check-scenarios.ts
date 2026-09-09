@@ -152,6 +152,36 @@ if (rows.size !== 37) {
   problems.push(`the table lists ${rows.size} scenarios; section 20 numbers 37`);
 }
 
+/** A repository path and a `just` recipe are both citations a reader follows, and neither was checked
+ * until a measurement showed a fake one passing. The Where column and the OBSERVATION cell both hold
+ * them, so both are bounded: the same two regexes run over both, and a planted nonexistent path in
+ * either cell reddens the check. */
+const checkCitations = async (
+  text: string,
+  column: string,
+  scenario: string,
+  row: Row,
+): Promise<void> => {
+  for (const cited of [...text.matchAll(NAMED_PATH)].map((match) => match[1]!)) {
+    // A `.spec.ts` path in the Where column is already checked by NAMED_SPEC under tests/, so skip it
+    // here to avoid a false positive at the repo root. The observation cell has no NAMED_SPEC pass, so
+    // a `.spec.ts` path there is checked here instead.
+    if (column === "Where column" && cited.endsWith(".spec.ts")) continue;
+    if (!(await existsFromRoot(cited))) {
+      problems.push(
+        `line ${row.line}: ${scenario} cites ${cited} in the ${column}, which does not exist`,
+      );
+    }
+  }
+  for (const cited of [...text.matchAll(NAMED_RECIPE)].map((match) => match[1]!)) {
+    if (!recipes.has(cited)) {
+      problems.push(
+        `line ${row.line}: ${scenario} cites \`just ${cited}\` in the ${column}, which is not a recipe`,
+      );
+    }
+  }
+};
+
 for (const [scenario, row] of rows) {
   const files = namedBy.get(scenario);
   if (isCovered(row.status) && !files) {
@@ -186,29 +216,8 @@ for (const [scenario, row] of rows) {
     );
   }
 
-  // A repository path and a `just` recipe are both citations a reader follows, and neither was checked
-  // until a measurement showed a fake one passing. The Where column and the OBSERVATION cell both hold
-  // them, so both are bounded: the same two regexes run over both, and a planted nonexistent path in
-  // either cell reddens the check.
-  const checkCitations = async (text: string, column: string): Promise<void> => {
-    for (const cited of [...text.matchAll(NAMED_PATH)].map((match) => match[1]!)) {
-      if (cited.endsWith(".spec.ts")) continue;
-      if (!(await existsFromRoot(cited))) {
-        problems.push(
-          `line ${row.line}: ${scenario} cites ${cited} in the ${column}, which does not exist`,
-        );
-      }
-    }
-    for (const cited of [...text.matchAll(NAMED_RECIPE)].map((match) => match[1]!)) {
-      if (!recipes.has(cited)) {
-        problems.push(
-          `line ${row.line}: ${scenario} cites \`just ${cited}\` in the ${column}, which is not a recipe`,
-        );
-      }
-    }
-  };
-  await checkCitations(row.where, "Where column");
-  await checkCitations(row.observation, "observation cell");
+  await checkCitations(row.where, "Where column", scenario, row);
+  await checkCitations(row.observation, "observation cell", scenario, row);
 }
 
 for (const [scenario, files] of namedBy) {
