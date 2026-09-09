@@ -190,9 +190,9 @@ async def test_a_monday_morning_exam_casts_its_sunday_evening_prep_into_the_week
     assert prep.title == "Prep for Analysis Exam"
 
 
-async def test_a_boundary_crossing_buffer_keeps_its_anchor_clause_in_both_weeks() -> None:
+async def test_a_monday_morning_commitments_buffers_keep_the_same_clause_in_both_weeks() -> None:
     anchor_type, anchor = a_commitment(
-        ATTRIBUTED_LECTURE, start=on_monday(0, 20), minutes=60, title="Compilers Lecture"
+        ATTRIBUTED_EXAM, start=on_monday(9, 30), minutes=60, title="Analysis Exam"
     )
 
     before = await assemble_before(types=[anchor_type], anchors=[anchor])
@@ -204,7 +204,7 @@ async def test_a_boundary_crossing_buffer_keeps_its_anchor_clause_in_both_weeks(
         off_plan=FakeOffPlan(),
     ).assemble(WEEK, NOW)
     before_block = next(
-        block for block in before.shadow_blocks if block.binding.kind is BindingKind.ANCHOR_TRANSIT
+        block for block in before.shadow_blocks if block.binding.kind is BindingKind.ANCHOR_PREP
     )
     this_week_block = next(
         block
@@ -216,8 +216,8 @@ async def test_a_boundary_crossing_buffer_keeps_its_anchor_clause_in_both_weeks(
         (block.anchor_type_name, block.anchor_title, bound_to_anchor_type(block).selected)
         for block in (before_block, this_week_block)
     ] == [
-        ("Lecture", "Compilers Lecture", "Lecture · Compilers Lecture"),
-        ("Lecture", "Compilers Lecture", "Lecture · Compilers Lecture"),
+        ("Exam", "Analysis Exam", "Exam · Analysis Exam"),
+        ("Exam", "Analysis Exam", "Exam · Analysis Exam"),
     ]
 
 
