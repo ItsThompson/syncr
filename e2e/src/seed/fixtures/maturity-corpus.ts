@@ -27,7 +27,7 @@ import type { Block, WeekView } from "../../api/schemas.ts";
 import { isoWeekShift } from "../../api/weeks.ts";
 import { tickHorizon } from "../../harness/compose.ts";
 import { currentWeek } from "../../harness/subject-weeks.ts";
-import { operation, solveNow, until, weekView } from "../../harness/week.ts";
+import { awaitLivePlan, operation, solveNow, until, weekView } from "../../harness/week.ts";
 import { declareBaseline } from "../baseline.ts";
 import { declareHabit, declareRoutine, declareSlot, declareTask } from "../declarations.ts";
 
@@ -130,7 +130,9 @@ export const seedMaturityCorpus = async (client: ApiClient): Promise<void> => {
   let recorded = 0;
   for (const isoWeek of weeks) {
     const view: WeekView = await weekView(client, isoWeek);
-    if (view.live === null) {
+    if (view.live === null && view.emptyReason === "awaiting_maintainer") {
+      await awaitLivePlan(client, isoWeek);
+    } else if (view.live === null) {
       // OUTSIDE THE HORIZON, which is what happens to the third week early in a week: `today + 14 days`
       // stops short of it. Kept in its own list for that reason, because it is a different state from a
       // solved week: the maintainer has not reached it and there is nothing to record against.
