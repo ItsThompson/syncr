@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.conflicts.config import CONFLICTS_PREFIX, RESOLVED_PARAMETER
+from syncr_api.conflicts.errors import BlockAlreadyStarted
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict, NotFound, ValidationFailed
@@ -49,6 +50,9 @@ pytestmark = pytest.mark.integration
 
 BROWSER_ORIGIN = DEV_ALLOWED_ORIGINS[0]
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
+FUTURE_BLOCK_INTERVAL = Interval(
+    datetime(2100, 2, 9, 10, 0, tzinfo=UTC), datetime(2100, 2, 9, 11, 0, tzinfo=UTC)
+)
 
 GYM = BindingRef.for_habit(uuid4(), index=0)
 SLEEP = BindingRef.for_routine(uuid4(), on=WEEK.monday())
@@ -109,7 +113,8 @@ def seed_conflict(
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
-                held = block if block is not None else a_block_holding(binding, between(9, 10))
+                default_block = a_block_holding(binding, FUTURE_BLOCK_INTERVAL)
+                held = default_block if block is None else block
                 overlap = Interval(_midpoint(held.interval), held.interval.end)
                 await PlanRepository(session, tenant_id).append(
                     document=stored_document(a_document(blocks=(held,))),
@@ -251,7 +256,7 @@ def test_moving_a_block_a_declaration_fixes_is_refused_and_leaves_it_open(
         live_database_url,
         owner.tenant_id,
         binding=SLEEP,
-        block=a_block_holding(SLEEP, between(0, 7)),
+        block=a_block_holding(SLEEP, FUTURE_BLOCK_INTERVAL),
     )
 
     status, body = resolve(http, signed_in, conflict_id, resolution=MOVED_RESOLUTION)
@@ -259,6 +264,21 @@ def test_moving_a_block_a_declaration_fixes_is_refused_and_leaves_it_open(
     assert status == Conflict.status
     assert body["type"] == Conflict.type
     assert "pin this occurrence somewhere else" in body["detail"]
+    (held,) = stored_conflicts(live_database_url, owner.tenant_id)
+    assert held.resolution is None
+
+
+def test_moving_a_reached_block_is_refused_naming_when_it_began(
+    http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+) -> None:
+    block = a_block_holding(GYM, between(8, 10))
+    conflict_id = seed_conflict(live_database_url, owner.tenant_id, block=block)
+
+    status, body = resolve(http, signed_in, conflict_id, resolution=MOVED_RESOLUTION)
+
+    assert status == BlockAlreadyStarted.status
+    assert body["type"] == BlockAlreadyStarted.type
+    assert f"began at {block.interval.start.isoformat()}" in body["detail"]
     (held,) = stored_conflicts(live_database_url, owner.tenant_id)
     assert held.resolution is None
 

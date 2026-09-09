@@ -45,6 +45,7 @@ from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.conflicts.declarations import ChosenResolution
+from syncr_api.conflicts.errors import BlockAlreadyStarted
 from syncr_api.conflicts.overlapped import MOVABILITY_BY_ORIGIN, Movability, overlapped_block
 from syncr_api.conflicts.service import ConflictService
 from syncr_api.core.db import create_db_engine, create_sessionmaker
@@ -298,7 +299,7 @@ class TestMovedByRowOfTheResolutionTable:
     ) -> None:
         # No window is stored anywhere: the commitment is hard occupancy now, so the rules the
         # solve is subject to already close the window this block was in.
-        await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(9, 10)))
+        await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(10, 11)))
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=GYM)
         pins = ReleasedPins()
 
@@ -311,11 +312,31 @@ class TestMovedByRowOfTheResolutionTable:
         assert resolved.operation.kind == SOLVE
         assert await current_version(sessions, owner.tenant_id) == FIRST_INPUT_VERSION
 
+    async def test_a_block_the_week_has_reached_is_refused_naming_when_it_began(
+        self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord, principal: Principal
+    ) -> None:
+        held = a_block_holding(GYM, between(8, 10))
+        await store_live_plan(sessions, owner.tenant_id, held)
+        conflict = await raise_conflict(sessions, owner.tenant_id, binding=GYM)
+        pins = ReleasedPins(held={GYM})
+
+        with pytest.raises(BlockAlreadyStarted) as refused:
+            await resolve(sessions, principal, conflict, MOVED_RESOLUTION, pins=pins)
+
+        assert f"began at {held.interval.start.isoformat()}" in str(refused.value)
+        assert pins.released == []
+        assert await current_version(sessions, owner.tenant_id) is None
+        assert await in_flight_solve(sessions, owner.tenant_id) is None
+        async with sessions() as session:
+            still_open = await PlanConflictRepository(session, owner.tenant_id).find(conflict.id)
+        assert still_open is not None
+        assert not still_open.is_resolved
+
     async def test_a_pinned_block_has_its_pin_released_first(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord, principal: Principal
     ) -> None:
         await store_live_plan(
-            sessions, owner.tenant_id, pinned(a_block_holding(GYM, between(9, 10)))
+            sessions, owner.tenant_id, pinned(a_block_holding(GYM, between(10, 11)))
         )
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=GYM)
         pins = ReleasedPins(held={GYM})
@@ -355,7 +376,7 @@ class TestMovedByRowOfTheResolutionTable:
     ) -> None:
         # TE3's own rule: a collision raises a conflict rather than displacing the entry, so
         # something has to decide whether this week is an exception or the shape was wrong.
-        await store_live_plan(sessions, owner.tenant_id, a_block_holding(binding, between(9, 10)))
+        await store_live_plan(sessions, owner.tenant_id, a_block_holding(binding, between(10, 11)))
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=binding)
         pins = ReleasedPins()
 
@@ -374,7 +395,7 @@ class TestMovedByRowOfTheResolutionTable:
         # The pin is what put the block where it is, whatever the origin says about where it
         # would otherwise have gone, so releasing the pin is what moves it.
         await store_live_plan(
-            sessions, owner.tenant_id, pinned(a_block_holding(STANDUP_ENTRY, between(9, 10)))
+            sessions, owner.tenant_id, pinned(a_block_holding(STANDUP_ENTRY, between(10, 11)))
         )
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=STANDUP_ENTRY)
         pins = ReleasedPins(held={STANDUP_ENTRY})
@@ -389,7 +410,7 @@ class TestMovedByRowOfTheResolutionTable:
     ) -> None:
         # A buffer's time is measured from its own commitment's, so nothing may move it.
         leg = BindingRef.for_anchor_transit(uuid4(), leg=TransitLeg.OUT)
-        await store_live_plan(sessions, owner.tenant_id, a_block_holding(leg, between(9, 10)))
+        await store_live_plan(sessions, owner.tenant_id, a_block_holding(leg, between(10, 11)))
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=leg)
 
         with pytest.raises(Conflict, match="fixed by something you declared"):
@@ -418,12 +439,12 @@ class TestMovedByRowOfTheResolutionTable:
 
 
 class TestKeptBothChangesNothingElse:
-    async def test_the_overlap_is_left_and_no_solve_is_asked_for(
+    async def test_a_reached_block_can_be_kept_both_without_a_solve(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord, principal: Principal
     ) -> None:
         # The one mutating path in this product that bumps no input version: it changes neither
         # the solve inputs nor the live plan.
-        await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(9, 10)))
+        await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(8, 10)))
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=GYM)
 
         resolved = await resolve(sessions, principal, conflict, KEPT_BOTH_RESOLUTION)
@@ -449,10 +470,10 @@ class TestKeptBothChangesNothingElse:
 
 
 class TestRetypedChangesWhatTheCommitmentReserves:
-    async def test_a_retype_applies_the_type_and_asks_for_a_solve(
+    async def test_a_retype_for_a_reached_block_applies_the_type_and_asks_for_a_solve(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord, principal: Principal
     ) -> None:
-        await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(9, 10)))
+        await store_live_plan(sessions, owner.tenant_id, a_block_holding(GYM, between(8, 10)))
         anchor_id = await add_anchor(sessions, owner.tenant_id)
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=GYM, anchor_id=anchor_id)
         declared = await declare_a_type(sessions, owner.tenant_id)
@@ -614,13 +635,21 @@ class TestWhoCanMoveABlockIsAnsweredForEveryOrigin:
         # where it is, whatever the origin says about where it would otherwise have gone.
         assert set(MOVABILITY_BY_ORIGIN.values()) == {Movability.THE_SOLVER, Movability.NOBODY}
 
+    def test_a_block_the_week_has_reached_reports_that_state(self) -> None:
+        held = a_block_holding(GYM, between(8, 10))
+        document = a_document(blocks=(held,))
+
+        overlapped = overlapped_block(document, held.id, NOW)
+
+        assert overlapped.is_reached
+
     @pytest.mark.parametrize("origin", list(Origin))
     def test_a_pinned_block_of_any_origin_is_the_users_to_move(self, origin: Origin) -> None:
         # The pin-before-origin order, over the whole vocabulary rather than over one row of it.
         held = pinned(a_block(origin, interval=between(9, 10)))
         document = a_document(blocks=(held,))
 
-        assert overlapped_block(document, held.id).movable_by is Movability.THE_USER
+        assert overlapped_block(document, held.id, NOW).movable_by is Movability.THE_USER
 
     @pytest.mark.parametrize("origin", list(Origin))
     def test_an_unpinned_block_of_any_origin_is_answered_without_a_lookup(
@@ -631,7 +660,7 @@ class TestWhoCanMoveABlockIsAnsweredForEveryOrigin:
         held = a_block(origin, interval=between(9, 10))
         document = a_document(blocks=(held,))
 
-        overlapped = overlapped_block(document, held.id)
+        overlapped = overlapped_block(document, held.id, NOW)
 
         assert overlapped.movable_by is MOVABILITY_BY_ORIGIN[origin]
         assert overlapped.origin is origin
