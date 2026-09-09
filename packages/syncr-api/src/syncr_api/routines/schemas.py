@@ -42,7 +42,7 @@ from syncr_domain.routines import (
     MAX_FLEX_BAND_MINUTES,
     MIN_DURATION_MINUTES,
 )
-from syncr_domain.snap import NotAWallTime, not_a_wall_time
+from syncr_domain.snap import SNAP_MINUTES, NotAWallTime, not_a_wall_time
 
 _TITLE_DESCRIPTION = (
     "What the routine is called, as it reads in a block label on the Week grid. Two routines "
@@ -50,18 +50,21 @@ _TITLE_DESCRIPTION = (
 )
 _TARGET_TIME_DESCRIPTION = (
     "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved "
-    "against the zone active on each day. Minute resolution, and an offset is refused."
+    "against the zone active on each day. Minute resolution, on the quarter hour, and an offset "
+    "is refused."
 )
 _DURATION_DESCRIPTION = (
     f"How long the routine runs, {MIN_DURATION_MINUTES} to {MAX_DURATION_MINUTES} minutes. A "
-    "routine is a span rather than a marker, so a creation without one is refused rather than "
+    f"multiple of {SNAP_MINUTES}, so a start and end land on the quarter hour. A routine is a "
+    "span rather than a marker, so a creation without one is refused rather than "
     "defaulted: with no duration there is nothing to subtract from the day and discretionary "
     "time cannot be computed. The upper bound is the day the routine names."
 )
 _DURATION_ON_PATCH = f"{_DURATION_DESCRIPTION} Left out, the stored duration is unchanged."
 _MIN_DURATION_DESCRIPTION = (
-    "The elastic floor: how far the routine may be compressed, at most its target duration. "
-    "On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may "
+    f"The elastic floor: how far the routine may be compressed, at most its target duration. A "
+    f"multiple of {SNAP_MINUTES}, so a start and end land on the quarter hour. On the sleep "
+    "routine this is THE SLEEP FLOOR, the negotiable resource a solver may "
     "propose spending and may never spend silently, and it lives nowhere else: there is no "
     "settings field for it. A routine whose floor equals its target is never offered as a "
     "reduction."
@@ -157,13 +160,17 @@ class RoutineCreateRequest(WireModel):
     )
     target_time: WallTime = Field(description=_TARGET_TIME_DESCRIPTION)
     duration_minutes: int = Field(
-        ge=MIN_DURATION_MINUTES, le=MAX_DURATION_MINUTES, description=_DURATION_DESCRIPTION
+        ge=MIN_DURATION_MINUTES,
+        le=MAX_DURATION_MINUTES,
+        description=_DURATION_DESCRIPTION,
+        json_schema_extra={"multipleOf": SNAP_MINUTES},
     )
     min_duration_minutes: int | None = Field(
         default=None,
         ge=MIN_DURATION_MINUTES,
         le=MAX_DURATION_MINUTES,
         description=_MIN_DURATION_ON_CREATE,
+        json_schema_extra={"multipleOf": SNAP_MINUTES},
     )
     flex_band_minutes: int = Field(
         default=0, ge=0, le=MAX_FLEX_BAND_MINUTES, description=_FLEX_BAND_DESCRIPTION
@@ -195,12 +202,14 @@ class RoutinePatchRequest(WireModel):
         ge=MIN_DURATION_MINUTES,
         le=MAX_DURATION_MINUTES,
         description=_DURATION_ON_PATCH,
+        json_schema_extra={"multipleOf": SNAP_MINUTES},
     )
     min_duration_minutes: int | None = Field(
         default=None,
         ge=MIN_DURATION_MINUTES,
         le=MAX_DURATION_MINUTES,
         description=_MIN_DURATION_ON_PATCH,
+        json_schema_extra={"multipleOf": SNAP_MINUTES},
     )
     flex_band_minutes: int | None = Field(
         default=None, ge=0, le=MAX_FLEX_BAND_MINUTES, description=_FLEX_BAND_DESCRIPTION
