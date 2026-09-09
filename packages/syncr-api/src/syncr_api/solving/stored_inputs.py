@@ -237,6 +237,7 @@ def _read_frame_overhang(value: object, *, field: str) -> FrameOverhang:
     return FrameOverhang(
         interval=held("interval", read_interval),
         label=held("label", read_text),
+        area_id=held("area_id", read_optional_id),
     )
 
 

@@ -514,8 +514,10 @@ def _discretionary_minutes(
     """The week's denominator, which the proportional share of an Area's target is taken from.
 
     Each of the four subtrahends is read from whoever owns the question rather than assembled
-    here: the frame's occupancy is this week's occurrences with the ones it inherited, and which
-    windows leave the denominator is the calendar half's own reading of the subtraction table.
+    here: the frame's occupancy is this week's occurrences with inherited routine spans. A
+    concrete entry carries an Area, so its crossing minutes stay discretionary like its owning
+    week's block. Which windows leave the denominator is the calendar half's own reading of the
+    subtraction table.
 
     Prep and transit BLOCKS are absent, and that is the narrowing the pure package states: they
     carry an Area, so they are discretionary time allocated to it in the same way a task is, and
@@ -523,7 +525,9 @@ def _discretionary_minutes(
     """
     return discretionary_time(
         span,
-        frame=frame_occupancy(frame, inherited),
+        frame=frame_occupancy(
+            frame, tuple(overhang for overhang in inherited if overhang.is_circadian_frame)
+        ),
         anchors=calendar.anchor_spans(),
         absolute_forbidden=calendar.absolute_forbidden(),
         off_plan=IntervalSet(period.interval for period in off_plan),

@@ -96,7 +96,7 @@ def concrete_entry_overhang(
 ) -> tuple[FrameOverhang, ...]:
     """Concrete entries' preceding-week minutes inside ``into``, with their resolved title."""
     return tuple(
-        FrameOverhang(interval=inside, label=entry.title)
+        FrameOverhang(interval=inside, label=entry.title, area_id=entry.area_id)
         for entry in entries
         if entry.kind is TemplateEntryKind.CONCRETE
         and entry.title is not None

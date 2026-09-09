@@ -769,19 +769,27 @@ async def test_a_concrete_entry_crossing_midnight_carries_a_labelled_overhang() 
     sunday = date_occurrence_key(SUNDAY)
 
     assert following.frame_overhang == (
-        FrameOverhang(interval=Interval(following.span.start, on_monday(1, 0)), label="Shower"),
+        FrameOverhang(
+            interval=Interval(following.span.start, on_monday(1, 0)),
+            label="Shower",
+            area_id=area.id,
+        ),
     )
-    assert [
-        block.binding
+    owning_blocks = [
+        block
         for block in materialize(owning, cause=MaterializeCause.PHASE1).blocks
         if block.binding.occurrence_key == sunday
-    ] == [
+    ]
+    assert [block.binding for block in owning_blocks] == [
         next(
             entry.block_binding
             for entry in owning.template_entries
             if entry.occurrence_key == sunday
         )
     ]
+    assert owning_blocks[0].area_id == following.frame_overhang[0].area_id == area.id
+    assert owning.areas[0].target_minutes == owning.span.total_minutes()
+    assert following.areas[0].target_minutes == following.span.total_minutes()
     assert not any(
         block.binding.occurrence_key == sunday
         for block in materialize(following, cause=MaterializeCause.PHASE1).blocks

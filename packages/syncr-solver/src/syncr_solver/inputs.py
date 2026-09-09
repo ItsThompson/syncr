@@ -121,10 +121,15 @@ INHERITED_FRAME: Final = "a routine the preceding week owns"
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class FrameOverhang:
-    """A preceding week's occupied span, with the name H3 gives its refusal."""
+    """A preceding week's occupied span, with the H3 label and optional Area it carries."""
 
     interval: Interval
     label: str = INHERITED_FRAME
+    area_id: AreaId | None = None
+
+    @property
+    def is_circadian_frame(self) -> bool:
+        return self.area_id is None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -469,9 +474,10 @@ class SolveInputs:
     input_version: int
 
     frame: tuple[FrameEntry, ...] = ()
-    # The PRECEDING week's frame occurrences, as the spans they occupy in THIS one, clipped to
-    # the span. A Sunday `Sleep 23:00 + 8h` belongs to the week its start falls in and runs into
-    # the next one, where the time is genuinely occupied.
+    # The PRECEDING week's boundary occupancy, as spans they occupy in THIS one, clipped to the
+    # span. A Sunday `Sleep 23:00 + 8h` belongs to the week its start falls in and runs into the
+    # next one, where the time is genuinely occupied. A concrete entry also carries its Area,
+    # which keeps that time discretionary rather than making it a circadian-frame subtrahend.
     #
     # Spans rather than entries, because one week owns the occurrence: it holds the whole
     # interval at the routine's own duration and materializes the one block. There is nothing

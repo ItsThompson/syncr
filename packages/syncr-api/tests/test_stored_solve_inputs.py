@@ -81,6 +81,7 @@ from syncr_solver.inputs import (
     EligibleTask,
     EntryBinding,
     FrameEntry,
+    FrameOverhang,
     HabitOccurrence,
     MaterializedEntry,
     Pin,
@@ -147,7 +148,7 @@ def a_week_holding_one_of_everything(**overrides: Any) -> SolveInputs:
                 title="Sleep",
             ),
         ),
-        "frame_overhang": (between(0, 7),),
+        "frame_overhang": (FrameOverhang(interval=between(0, 7), area_id=CAREER),),
         "anchors": (
             Anchor(anchor_id=INTERVIEW, interval=between(14, 16, day=2), title="Kontron Interview"),
         ),
@@ -1092,7 +1093,7 @@ def test_a_form_two_shadow_block_is_refused_before_its_missing_fields_are_read()
     del shadow_block["anchor_type_name"]
     del shadow_block["anchor_title"]
 
-    with pytest.raises(StoredDocumentCorrupt, match=r"form names 2 and this reader rebuilds 3"):
+    with pytest.raises(StoredDocumentCorrupt, match=r"form names 2 and this reader rebuilds 4"):
         inputs_of(snapshot)
 
 
