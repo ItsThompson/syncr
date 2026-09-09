@@ -709,7 +709,7 @@ A useful intermediate checkpoint sits at the end of M3: at that point syncr can 
 
 Fill placement is impossible unless blocks declare their own physics. The reference weeks imply all of these:
 
-- **Elasticity.** `Leetcode` appears at 25, 45, and 90 minutes in one week. Those figures are measured actuals, not declared durations. It is splittable and elastic. `Gym - Legs` is atomic: 90 minutes or nothing.
+- **Elasticity.** `Leetcode` appears at 25, 45, and 90 minutes in one week. It is splittable and elastic. `Gym - Legs` is atomic: 90 minutes or nothing.
 - **Placement window.** Gym occurs at 05:30 or 13:15, never 20:00. Deep work does not follow an exam.
 - **Cadence rather than slot.** `Laundry`, `Groceries`, `Wash Sheets`, and `Meal Prep` are once per roughly seven days, placement free.
 - **Rotation state.** The gym split advances on completion, not on weekday.

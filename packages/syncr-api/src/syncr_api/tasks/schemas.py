@@ -41,7 +41,6 @@ from syncr_api.tasks.config import (
     MIN_CHUNK_MINUTES_MIN,
     TITLE_MAX_LENGTH,
 )
-from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.tasks import (
     DEFAULT_ESTIMATE_MINUTES,
     DEFAULT_MIN_CHUNK_MINUTES,
@@ -78,13 +77,11 @@ _PRIORITY_DESCRIPTION = (
 )
 _MIN_CHUNK_DESCRIPTION = (
     f"The smallest placement a splittable task may be divided into, {MIN_CHUNK_MINUTES_MIN} to "
-    f"{MIN_CHUNK_MINUTES_MAX} minutes. A multiple of {SNAP_MINUTES}, so every placement lands "
-    f"on the quarter hour. Defaults to {DEFAULT_MIN_CHUNK_MINUTES}, one grid step, clamped down "
-    "to the estimate when the "
-    "estimate is smaller. A value above the estimate is refused with a stated reason, because "
-    "no placement could satisfy both. Stored but unread on an atomic task, whose only placement "
-    "is the whole estimate: it is kept rather than forced to the estimate so that making the task "
-    "splittable again restores the minimum the user chose."
+    f"{MIN_CHUNK_MINUTES_MAX} minutes. Defaults to {DEFAULT_MIN_CHUNK_MINUTES}, one grid step, "
+    "clamped down to the estimate when the estimate is smaller. A value above the estimate is "
+    "refused with a stated reason, because no placement could satisfy both. Stored but unread on "
+    "an atomic task, whose only placement is the whole estimate: it is kept rather than forced to "
+    "the estimate so that making the task splittable again restores the minimum the user chose."
 )
 _SPLITTABLE_DESCRIPTION = (
     f"Whether the solver may divide this task across several placements. Defaults to "
@@ -207,7 +204,6 @@ class TaskCreateRequest(WireModel):
         le=MIN_CHUNK_MINUTES_MAX,
         strict=True,
         description=_MIN_CHUNK_DESCRIPTION,
-        json_schema_extra={"multipleOf": SNAP_MINUTES},
     )
     splittable: bool = Field(default=DEFAULT_SPLITTABLE, description=_SPLITTABLE_DESCRIPTION)
 
@@ -245,7 +241,6 @@ class TaskPatchRequest(WireModel):
         le=MIN_CHUNK_MINUTES_MAX,
         strict=True,
         description=_MIN_CHUNK_DESCRIPTION,
-        json_schema_extra={"multipleOf": SNAP_MINUTES},
     )
     splittable: bool | None = Field(default=None, description=_SPLITTABLE_DESCRIPTION)
 

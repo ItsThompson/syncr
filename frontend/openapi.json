@@ -1178,7 +1178,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
@@ -2967,7 +2967,7 @@
           },
           "source": {
             "$ref": "#/components/schemas/PreferenceOwnerResponse",
-            "description": "Which Area, Habit, or Task declared the preference that is in effect. Equal to the owner in the path when this owner declared its own, and an Area ancestor otherwise."
+            "description": "Which Area, Habit, or Task declared the preference that is in effect. Equal to the owner in the path when this owner declared its own, and its Area otherwise."
           },
           "statement": {
             "description": "What is in effect and where it came from, in one sentence, for a caller that renders rather than compares.",
@@ -4931,7 +4931,7 @@
         "type": "object"
       },
       "PreferenceResponse": {
-        "description": "What one owner declares, and what is actually in effect for it.\n\nOne shape for all nine routes, so a caller reads the same body from a read, a replacement, and\na removal, and the answer to \"what changed\" is the whole state rather than a diff.\n\n``declared`` is null when this owner declares none of its own; ``effective`` is null only when\nneither it nor an Area ancestor declares one.",
+        "description": "What one owner declares, and what is actually in effect for it.\n\nOne shape for all nine routes, so a caller reads the same body from a read, a replacement, and\na removal, and the answer to \"what changed\" is the whole state rather than a diff.\n\n``declared`` is null when this owner declares none of its own; ``effective`` is null only when\nneither it nor its Area declares one.",
         "properties": {
           "declared": {
             "anyOf": [
@@ -4953,7 +4953,7 @@
                 "type": "null"
               }
             ],
-            "description": "The preference in effect: this owner's own, or one from its Area ancestry, or null when neither declares one. Never a merge of the two."
+            "description": "The preference in effect: this owner's own, or its Area's, or null when neither declares one. Never a merge of the two."
           },
           "owner": {
             "$ref": "#/components/schemas/PreferenceOwnerResponse",
@@ -5238,7 +5238,7 @@
         "type": "object"
       },
       "PromotionCandidateResponse": {
-        "description": "One repeated pin the session offers to promote into the template.\n\nPinning the same binding to the same time for three consecutive weeks raises a\nproposal naming the binding, the time, and the number of weeks. Accepting or declining is a\nroute of its own, addressed by the ``id`` below, and this shape carries no state: it is the\nquestion, plus what can be done about it.",
+        "description": "One repeated pin the session offers to promote into the template.\n\n``US-TPL-05``: pinning the same binding to the same time for three consecutive weeks raises a\nproposal naming the binding, the time, and the number of weeks. Accepting or declining is a\nroute of its own, addressed by the ``id`` below, and this shape carries no state: it is the\nquestion, plus what can be done about it.",
         "properties": {
           "acceptRefusal": {
             "anyOf": [
@@ -5454,7 +5454,7 @@
         "type": "string"
       },
       "RaisedItemResponse": {
-        "description": "One thing the session raises, at amber panel volume and in session mode only.\n\nEvery category is one shape with a ``kind`` rather than one shape per category, because they\nrender as rows of one panel: the notice-volume table gives the whole set one volume and\none pigment.\n\n**There is no count field, and every figure is in ``statement``.** A count of weeks on the wire\nas well as in the words would be one fact twice, and a surface rendering both would put the same\nnumber on the screen in two places, which is the drift a later display band was corrected for.",
+        "description": "One thing the session raises, at amber panel volume and in session mode only.\n\nEvery category is one shape with a ``kind`` rather than one shape per category, because they\nrender as rows of one panel: section 16's notice-volume table gives the whole set one volume and\none pigment.\n\n**There is no count field, and every figure is in ``statement``.** A count of weeks on the wire\nas well as in the words would be one fact twice, and a surface rendering both would put the same\nnumber on the screen in two places, which is the drift ticket 49's own band was corrected for.",
         "properties": {
           "key": {
             "description": "Stable for one raised thing across two reads, so a client keys a list on it. Not an identifier: an item is a reading rather than a row, and nothing addresses one.",
@@ -5471,7 +5471,7 @@
             "type": "string"
           },
           "title": {
-            "description": "The thing itself, in the words the user knows it by. A repeated collision names BOTH ends here, as 'Standup over Leetcode', which is the written form.",
+            "description": "The thing itself, in the words the user knows it by. A repeated collision names BOTH ends here, as 'Standup over Leetcode', which is US-REV-05's own form.",
             "title": "Title",
             "type": "string"
           }
@@ -5486,7 +5486,7 @@
         "type": "object"
       },
       "RaisedKind": {
-        "description": "What a raised item is about. One member per row of the `raised` list.",
+        "description": "What a raised item is about. One member per row of section 16's `raised` list.",
         "enum": [
           "chronic_skip",
           "habit_at_debt_cap",
@@ -5809,7 +5809,7 @@
         "type": "string"
       },
       "ReviewDayCounts": {
-        "description": "How many of a period's days were answered for, left unanswered, and declared away.\n\nThe three are separate quantities. Off-plan days are reported SEPARATELY from unconfirmed days\nbecause an off-plan day is one the user declared away rather than one they failed to answer for,\nand counting a holiday as a lapse is what the day-count separation exists to prevent.\n\nThey need not sum to the period's length: a day holding no block is none of the three, since\nthere is nothing to answer for and counting it would report a backlog of days on which nothing\nwas planned.",
+        "description": "How many of a period's days were answered for, left unanswered, and declared away.\n\nThe three are separate quantities. Off-plan days are reported SEPARATELY from unconfirmed days\nbecause an off-plan day is one the user declared away rather than one they failed to answer for,\nand counting a holiday as a lapse is what US-REV-04 exists to prevent.\n\nThey need not sum to the period's length: a day holding no block is none of the three, since\nthere is nothing to answer for and counting it would report a backlog of days on which nothing\nwas planned.",
         "properties": {
           "confirmed": {
             "description": "Days every block of which carries a confirmation.",
@@ -5870,10 +5870,9 @@
         "description": "A routine to declare.\n\n``minDurationMinutes`` may be left out, in which case it equals the target duration and the\nroutine is inelastic. ``flexBandMinutes`` may be left out, in which case the routine is\npinned to its target time.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "maximum": 1440.0,
             "minimum": 15.0,
-            "multipleOf": 15.0,
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -5896,13 +5895,12 @@
                 "type": "null"
               }
             ],
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.",
-            "multipleOf": 15.0,
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.",
             "title": "Mindurationminutes"
           },
           "targetTime": {
             "$ref": "#/components/schemas/WallTime",
-            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused."
+            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused."
           },
           "title": {
             "$ref": "#/components/schemas/WireText",
@@ -5934,8 +5932,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
-            "multipleOf": 15.0,
+            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
             "title": "Durationminutes"
           },
           "flexBandMinutes": {
@@ -5963,8 +5960,7 @@
                 "type": "null"
               }
             ],
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.",
-            "multipleOf": 15.0,
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.",
             "title": "Mindurationminutes"
           },
           "targetTime": {
@@ -5976,7 +5972,7 @@
                 "type": "null"
               }
             ],
-            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused."
+            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused."
           },
           "title": {
             "anyOf": [
@@ -5999,7 +5995,7 @@
         "description": "One routine: where it targets, how long it runs, and how far it may give.\n\nNo Area and no pigment, and the absence is the contract rather than an omission.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -6014,12 +6010,12 @@
             "type": "string"
           },
           "minDurationMinutes": {
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.",
             "title": "Mindurationminutes",
             "type": "integer"
           },
           "targetTime": {
-            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused.",
+            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused.",
             "format": "time",
             "title": "Targettime",
             "type": "string"
@@ -6578,8 +6574,7 @@
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
-            "multipleOf": 15.0,
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -6660,8 +6655,7 @@
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
-            "multipleOf": 15.0,
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -6764,7 +6758,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
@@ -6839,7 +6833,7 @@
         "type": "string"
       },
       "TasksResponse": {
-        "description": "The backlog: its header counts, and the tasks the filters selected.\n\nA wrapper rather than a bare array, so the header counts travel with the rows they describe\nand a caller cannot render a count derived from a filtered page. Not paginated: a personal\nbacklog is bounded by what one person can hold, and the route table reserves cursors for the\ncollections that grow without a ceiling.",
+        "description": "The backlog: its header counts, and the tasks the filters selected.\n\nA wrapper rather than a bare array, so the header counts travel with the rows they describe\nand a caller cannot render a count derived from a filtered page. Not paginated: a personal\nbacklog is bounded by what one person can hold, and `13-http-api.md` reserves cursors for the\ncollections that grow without a ceiling.",
         "properties": {
           "header": {
             "$ref": "#/components/schemas/BacklogHeader"
@@ -7773,7 +7767,7 @@
         "type": "object"
       },
       "WeekViewResponse": {
-        "description": "The Week screen's whole read, in one request.\n\n**Every field is required and the nullable ones are nullable**, which is the wire shape's own rule\nand the one thirty-six other response fields in this api already take. A field with a default is\nOPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as\n``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The\nserver populates all sixteen on every answer, so the contract says so.",
+        "description": "The Week screen's whole read, in one request.\n\n**Every field is required and the nullable ones are nullable**, which is section 13's own shape\nand the one thirty-six other response fields in this api already take. A field with a default is\nOPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as\n``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The\nserver populates all sixteen on every answer, so the contract says so.",
         "properties": {
           "adjustments": {
             "description": "The approved concessions this week holds, in the order the assembler folds them. Listed above the verdict's shortfalls, so a week that has absorbed a concession does not read as simply feasible.",
@@ -7939,7 +7933,7 @@
         "type": "object"
       },
       "WeeklySessionResponse": {
-        "description": "The weekly session, as one read that writes nothing at all.\n\nAddressed by the week it PLANS. The retrospective covers the week before it, which is what\n\"planning and retrospective in one pass\" means on the wire: one request, both\nhalves, so last week informs next week without a second sitting.",
+        "description": "The weekly session, as one read that writes nothing at all.\n\nAddressed by the week it PLANS. The retrospective covers the week before it, which is what\n``US-REV-01``'s \"planning and retrospective in one pass\" means on the wire: one request, both\nhalves, so last week informs next week without a second sitting.",
         "properties": {
           "concessions": {
             "description": "What the planned week has already given up, listed above the gaps that remain.",
