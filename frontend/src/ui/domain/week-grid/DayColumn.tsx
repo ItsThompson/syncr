@@ -26,6 +26,7 @@ import { ForbiddenBand } from "./ForbiddenBand";
 import { GridLines } from "./GridLines";
 import { InsertionMarker } from "./InsertionMarker";
 import { NowRule } from "./NowRule";
+import { DayMarkSlot } from "./DayMarkSlot";
 import type { DragOrigin } from "./useDiscreteDrag";
 import type { Extent, GridBlock, WeekDay } from "./types";
 import "./grid.css";
@@ -74,6 +75,7 @@ export function DayColumn({
     <div className="week-day max-narrow:shrink-0 max-narrow:grow-0 max-narrow:basis-col-min">
       <div className="week-day__head">
         {label}
+        <DayMarkSlot marks={day.marks ?? []} />
         <span className="week-day__count">{day.blocks.length}</span>
       </div>
       <div

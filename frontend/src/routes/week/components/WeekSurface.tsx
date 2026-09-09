@@ -19,7 +19,7 @@
  * the ledger's seventeen characters however the reader leaves the panel. Above the threshold the panel keeps the
  * reserved column it has always had and the surface is a row rather than a stack. */
 
-import { WeekGrid } from "../../../ui/domain";
+import { NoticeCard, WeekGrid } from "../../../ui/domain";
 import { DetailPanel } from "./DetailPanel";
 import { DetailRail } from "./DetailRail";
 import { columnLabel } from "../labels";
@@ -37,43 +37,52 @@ export interface WeekSurfaceProps {
 
 export function WeekSurface({ screen, interaction, words, nowMs }: WeekSurfaceProps) {
   const dates = screen.days.map((day) => day.date);
+  const dayNotices = screen.days.flatMap((day) => day.marks ?? []).map((mark) => mark.notice);
 
   return (
-    <div
-      className="flex flex-col gap-3.25 wide:flex-row"
-      data-panel={interaction.isDetailOpen ? "open" : "closed"}
-    >
-      <div className="flex min-w-0 grow gap-3.25">
-        <div className="min-w-0 grow">
-          <WeekGrid
-            days={screen.days}
-            extent={screen.extent}
-            interaction={{
-              statesOf: interaction.statesOf,
-              onSelect: interaction.onSelect,
-              onDrop: interaction.onDrop,
-              onBandActivate: interaction.onBandActivate,
-            }}
-            labels={dates.map(columnLabel)}
-            nowMs={nowMs}
-            onZoom={interaction.onZoom}
-            visibleHours={interaction.proposedHours}
+    <>
+      {dayNotices.map((notice) => (
+        <NoticeCard key={notice.id} notice={notice} />
+      ))}
+      <div
+        className="flex flex-col gap-3.25 wide:flex-row"
+        data-panel={interaction.isDetailOpen ? "open" : "closed"}
+      >
+        <div className="flex min-w-0 grow gap-3.25">
+          <div className="min-w-0 grow">
+            <WeekGrid
+              days={screen.days}
+              extent={screen.extent}
+              interaction={{
+                statesOf: interaction.statesOf,
+                onSelect: interaction.onSelect,
+                onDrop: interaction.onDrop,
+                onBandActivate: interaction.onBandActivate,
+              }}
+              labels={dates.map(columnLabel)}
+              nowMs={nowMs}
+              onZoom={interaction.onZoom}
+              visibleHours={interaction.proposedHours}
+            />
+          </div>
+          <DetailRail
+            isPanelOpen={interaction.isDetailOpen}
+            onToggle={interaction.onToggleDetail}
           />
         </div>
-        <DetailRail isPanelOpen={interaction.isDetailOpen} onToggle={interaction.onToggleDetail} />
+        {words.detail === null || !interaction.isDetailOpen ? null : (
+          <div className="wide:w-detail wide:shrink-0">
+            <DetailPanel
+              actions={words.detail.actions}
+              cost={words.detail.cost}
+              definitionRows={words.detail.definitionRows}
+              onClose={interaction.onCloseDetail}
+              reasonRows={words.detail.reasonRows}
+              title={words.detail.title}
+            />
+          </div>
+        )}
       </div>
-      {words.detail === null || !interaction.isDetailOpen ? null : (
-        <div className="wide:w-detail wide:shrink-0">
-          <DetailPanel
-            actions={words.detail.actions}
-            cost={words.detail.cost}
-            definitionRows={words.detail.definitionRows}
-            onClose={interaction.onCloseDetail}
-            reasonRows={words.detail.reasonRows}
-            title={words.detail.title}
-          />
-        </div>
-      )}
-    </div>
+    </>
   );
 }

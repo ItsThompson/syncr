@@ -87,6 +87,19 @@ describe("the band that explains a gap", () => {
   });
 });
 
+describe("the day header", () => {
+  it("keeps its fixed height while a mark uses the label size", async () => {
+    expect(await rule("grid.css", ".week-day__head")).toContainEqual([
+      "height",
+      "var(--day-header-h)",
+    ]);
+    expect(await rule("grid.css", ".week-day__mark")).toContainEqual([
+      "font-size",
+      "var(--fs-label)",
+    ]);
+  });
+});
+
 describe("the grid lines", () => {
   it("draw the hour at rule weight and the quarter faint, at rest", async () => {
     expect(await rule("grid.css", ".week-grid__line--hour")).toContainEqual([

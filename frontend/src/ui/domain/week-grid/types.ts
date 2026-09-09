@@ -12,6 +12,7 @@
  * class of defect the axis rule exists to prevent. */
 
 import type { AreaPigment, BlockOrigin } from "../marks";
+import type { Notice } from "../notices";
 
 /** A half-open interval of instants, in epoch milliseconds, as `[startMs, endMs)`. */
 export interface Instants {
@@ -74,6 +75,12 @@ export interface GridBand {
   readonly reason: BandReason;
 }
 
+/** One condition the day header can mark, paired with the sentence that explains it. */
+export interface DayMark {
+  readonly pigment: "info" | "amber";
+  readonly notice: Notice;
+}
+
 /** One day column: what it holds, and the instant its own axis starts at. */
 export interface WeekDay {
   /** `YYYY-MM-DD`, the key the week's zone map is written against. */
@@ -86,6 +93,8 @@ export interface WeekDay {
   readonly minutes: number;
   readonly blocks: readonly GridBlock[];
   readonly bands: readonly GridBand[];
+  /** Conditions this day carries. The header renders only the loudest one. */
+  readonly marks?: readonly DayMark[] | undefined;
 }
 
 /**

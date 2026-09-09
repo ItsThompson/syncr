@@ -39,6 +39,7 @@ function block(id: string, startMs: number, endMs: number): WeekBlock {
     pigment: null,
     areaName: null,
     isPinned: false,
+    staleSourceId: null,
     startMs,
     endMs,
   };
@@ -372,5 +373,15 @@ describe("a band", () => {
 
     expect(drawn.label).toBe("recovery · Kontron Interview");
     expect(drawn.reason).toBe("recovery");
+  });
+
+  it("marks only the day holding an imported block whose source is possibly stale", () => {
+    const imported = {
+      ...block("imported", wall(week, week.dates[1], "09:00"), wall(week, week.dates[1], "10:00")),
+      staleSourceId: "8c2e0d4f-6a12-4f3a-8b21-7d2b1a904c70",
+    };
+    const { days } = modelOf(week, [imported]);
+
+    expect(days.map((day) => day.marks?.length ?? 0)).toEqual([0, 1, 0, 0, 0, 0, 0]);
   });
 });

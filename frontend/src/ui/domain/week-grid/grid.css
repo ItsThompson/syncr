@@ -104,8 +104,28 @@
   text-transform: uppercase;
 }
 
+.week-day__mark,
 .week-day__count {
   margin-left: auto;
+}
+
+.week-day__mark {
+  font-size: var(--fs-label);
+}
+
+.week-day__mark--info {
+  color: var(--ink-bright);
+}
+
+.week-day__mark--amber {
+  color: var(--signal-amber);
+}
+
+.week-day__mark + .week-day__count {
+  margin-left: 0;
+}
+
+.week-day__count {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }

@@ -30,6 +30,8 @@ type AreaResponse = components["schemas"]["AreaResponse"];
 export interface WeekBlock extends Omit<GridBlock, "span"> {
   readonly startMs: number;
   readonly endMs: number;
+  /** The server-selected source whose retained commitment may be out of date, or null when it is current. */
+  readonly staleSourceId: string | null;
 }
 
 /** The Areas a block can be charged to, by identifier, which is a name and a step each. */
@@ -48,6 +50,7 @@ export function weekBlockOf(block: BlockResponse, areas: AreaIndex): WeekBlock {
     pigment: area === undefined ? null : areaPigment(area.pigmentIndex),
     areaName: area?.name ?? null,
     isPinned: block.pinned,
+    staleSourceId: block.anchorOrigin?.possiblyStale === true ? block.anchorOrigin.sourceId : null,
     startMs: Date.parse(block.interval.start),
     endMs: Date.parse(block.interval.end),
   };

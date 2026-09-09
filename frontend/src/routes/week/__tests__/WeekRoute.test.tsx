@@ -21,6 +21,7 @@ import { GRID_H_PX } from "../../../ui/domain";
 import {
   APPLICATION,
   AWAITING_WEEK_FACTS,
+  BLOCK_APPLICATION,
   DATES,
   EMPTY_WEEK_FACTS,
   ISO_WEEK,
@@ -28,11 +29,13 @@ import {
   SETTINGS,
   SLOT_LABEL,
   WEEK_PATH,
+  buildBlock,
   buildOperation,
   buildPlan,
   buildReadings,
   buildWeekView,
   installWeekReads,
+  monday,
   wholeBandLine,
 } from "./fixtures";
 
@@ -62,6 +65,66 @@ describe("the week the reader asked for", () => {
 
     expect(await screen.findByLabelText(`${LEETCODE} · Career`)).toBeInTheDocument();
     expect(screen.getByLabelText(`${APPLICATION} · Career`)).toBeInTheDocument();
+  });
+
+  it("marks a day whose imported commitment came from a stale source, with its reachable sentence", async () => {
+    installWeekReads(
+      buildWeekView({
+        live: buildPlan({
+          blocks: [
+            buildBlock({
+              areaId: null,
+              anchorOrigin: {
+                sourceId: "8c2e0d4f-6a12-4f3a-8b21-7d2b1a904c70",
+                possiblyStale: true,
+              },
+              origin: "anchor",
+            }),
+          ],
+        }),
+      }),
+    );
+    renderAt(WEEK_PATH);
+
+    const notice = await screen.findByRole("status", {
+      name: "A calendar source could not be read",
+    });
+    const mondayHeader = screen.getByText("MON 09").closest(".week-day__head");
+
+    expect(mondayHeader?.querySelector(".week-day__mark")).toHaveClass("week-day__mark--amber");
+    expect(notice).toHaveTextContent("Imported commitments on this day may be out of date.");
+    expect(notice).toHaveTextContent(
+      "still works · the plan on the grid, which still respects the commitments already read",
+    );
+  });
+
+  it("leaves headers unmarked for healthy imported and solver-placed blocks", async () => {
+    installWeekReads(
+      buildWeekView({
+        live: buildPlan({
+          blocks: [
+            buildBlock({
+              anchorOrigin: {
+                sourceId: "8c2e0d4f-6a12-4f3a-8b21-7d2b1a904c70",
+                possiblyStale: false,
+              },
+              origin: "anchor",
+              areaId: null,
+            }),
+            buildBlock({
+              id: BLOCK_APPLICATION,
+              title: APPLICATION,
+              interval: { start: monday("11:00"), end: monday("12:00") },
+            }),
+          ],
+        }),
+      }),
+    );
+    const { container } = renderAt(WEEK_PATH);
+
+    await screen.findByText("MON 09");
+
+    expect(container.querySelectorAll(".week-day__mark")).toHaveLength(0);
   });
 
   it("draws the forbidden window's STORED label in the gutter", async () => {

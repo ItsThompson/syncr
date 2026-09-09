@@ -12,13 +12,37 @@
  * A PENDING PROPOSAL RAISES NOTHING AT ALL. It is visible when the reader looks -- no fill and a dashed outline -- and
  * a notification for it would spend the one channel a conflict needs. */
 
-import type { Notice } from "../../ui/domain";
+import type { Notice, DayMark } from "../../ui/domain";
 import type { OperationFailure } from "../../api/hooks/useOperation";
 import type { Problem } from "../../contract";
 
 const PLAN_STILL_READS: readonly [string, ...string[]] = [
   "the plan on the grid, which is the plan of record",
 ];
+
+const STALE_SOURCE_STILL_WORKS: readonly [string, ...string[]] = [
+  "the plan on the grid, which still respects the commitments already read",
+  "solving the week around the commitments already read",
+];
+
+/** An imported commitment is retained when its source stops answering, so the day remains usable but uncertain. */
+export function staleDayMark(date: string, sourceId: string): DayMark {
+  return {
+    pigment: "amber",
+    notice: {
+      id: `calendar-source-unreadable:${sourceId}:${date}`,
+      volume: "inline",
+      pigment: "amber",
+      title: "A calendar source could not be read",
+      detail: "Imported commitments on this day may be out of date.",
+      unavailable: ["reading new commitments from this calendar source"],
+      stillWorks: STALE_SOURCE_STILL_WORKS,
+      since: null,
+      action: null,
+      scope: { screen: "/week", date, sourceId },
+    },
+  };
+}
 
 /** A commitment landed on a planned block. Banner volume, oxide, until it is answered. */
 export function conflictNotice(conflictId: string, statement: string, blockId: string): Notice {

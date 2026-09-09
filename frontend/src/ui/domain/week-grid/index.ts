@@ -21,6 +21,7 @@
 export { BandLabel, type BandLabelProps } from "./BandLabel";
 export { Block, type BlockPlacement, type BlockProps, type BlockStates } from "./Block";
 export { DayColumn, type ColumnInteraction, type DayColumnProps } from "./DayColumn";
+export { DayMarkSlot, dayHeaderMarkOf, type DayMarkSlotProps } from "./DayMarkSlot";
 export { EmptyWeek, type EmptyWeekProps, type EmptyWeekReason } from "./EmptyWeek";
 export { ForbiddenBand, type ForbiddenBandProps } from "./ForbiddenBand";
 export { GridLines, type GridLinesProps } from "./GridLines";
@@ -79,6 +80,7 @@ export { tierDrawsTitle, tierFor, titleLineCount } from "./tiers";
 export type {
   BandReason,
   BlockTier,
+  DayMark,
   Extent,
   GridBand,
   GridBlock,

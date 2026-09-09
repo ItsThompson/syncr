@@ -29,6 +29,7 @@ import { extentOf, offsetSpanOf, totalMinutes } from "../../ui/domain";
 import type { Extent, GridBand, GridBlock, OffsetSpan, WeekDay } from "../../ui/domain";
 import type { WeekBand } from "./bands";
 import type { WeekBlock } from "./blocks";
+import { staleDayMark } from "./notices";
 
 const MILLISECONDS_IN_MINUTE = 60_000;
 
@@ -76,11 +77,14 @@ export function weekModel(input: WeekModelInput): WeekModel {
     const isLast = index === columns.length - 1;
     const blocks: GridBlock[] = [];
     const bands: GridBand[] = [];
+    const staleSourceIds = new Set<string>();
 
     for (const block of input.blocks) {
       const span = pieceIn(block, column, isLast);
       if (span === null) continue;
-      blocks.push({ ...block, span });
+      const { staleSourceId, ...gridBlock } = block;
+      blocks.push({ ...gridBlock, span });
+      if (staleSourceId !== null) staleSourceIds.add(staleSourceId);
       spans.push(span);
     }
     for (const band of input.bands) {
@@ -97,6 +101,7 @@ export function weekModel(input: WeekModelInput): WeekModel {
       minutes: totalMinutes(column),
       blocks,
       bands,
+      marks: [...staleSourceIds].map((sourceId) => staleDayMark(column.date, sourceId)),
     };
   });
 

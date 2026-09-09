@@ -18,7 +18,8 @@ import { domainDir, kitStylesheet } from "../../../../testing/kitStylesheets";
 import { offeredRect } from "../../../../testing/layoutStubs";
 import type { ReactElement } from "react";
 
-import type { Extent, GridBlock, StripReadings, WeekDay } from "..";
+import type { DayMark, Extent, GridBlock, StripReadings, WeekDay } from "..";
+import type { Notice } from "../../notices";
 
 const EXTENT: Extent = { startMin: 300, endMin: 1440 };
 const DATES = [
@@ -68,6 +69,22 @@ const READINGS: StripReadings = {
   unallocatedMinutes: 1104,
   blockCount: 91,
   planCurrency: "current",
+};
+
+const STALE_DAY_MARK: DayMark = {
+  pigment: "amber",
+  notice: {
+    id: "calendar-source-unreadable:source:2026-02-09",
+    volume: "inline",
+    pigment: "amber",
+    title: "A calendar source could not be read",
+    detail: "Imported commitments on this day may be out of date.",
+    unavailable: ["reading new commitments from this calendar source"],
+    stillWorks: ["the plan on the grid"],
+    since: null,
+    action: null,
+    scope: { screen: "/week", date: DATES[0] },
+  } satisfies Notice,
 };
 
 describe("the grid's composition", () => {
@@ -121,6 +138,30 @@ describe("the grid's composition", () => {
     );
 
     expect(counts).toEqual(["2", "0"]);
+  });
+
+  it("keeps a block's geometry identical when its header gains a mark", () => {
+    const draw = (marks: readonly DayMark[]) => {
+      const { container } = render(
+        <WeekGrid
+          days={[{ ...day(DATES[0], [block("a", 540, 600)]), marks }]}
+          extent={EXTENT}
+          labels={[DATES[0]]}
+          nowMs={null}
+          visibleHours={12}
+        />,
+      );
+      const rendered = container.querySelector(".week-block");
+
+      return {
+        canvasHeight: canvasHeightOf(container),
+        top: (rendered as HTMLElement).style.top,
+        height: (rendered as HTMLElement).style.height,
+        tier: rendered?.getAttribute("data-tier"),
+      };
+    };
+
+    expect(draw([])).toEqual(draw([STALE_DAY_MARK]));
   });
 
   it("draws the now rule in the ONE column holding the current instant, and in no other", () => {
