@@ -309,6 +309,15 @@ jobs:
       - name: The whole suite
         run: just e2e
 
+      - name: Run monitoring probes against the e2e stack
+        env:
+          COMPOSE_PROJECT_NAME: syncr-e2e
+          SYNCR_MONITORING_COMPOSE: -f docker-compose.yml -f e2e/docker-compose.e2e.yml -f docker-compose.monitoring.yml
+        run: |
+          just monitoring
+          just monitoring-alert-probe
+          just monitoring-probe
+
       - name: What the stack said, when the suite went red
         if: failure()
         run: docker compose -f docker-compose.yml -f e2e/docker-compose.e2e.yml logs --no-color --tail 400

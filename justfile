@@ -14,7 +14,10 @@ dev_compose := "-f docker-compose.yml -f docker-compose.dev.yml"
 # The monitoring stack is additive over the base file and never valid standalone: every service in
 # it joins `app-net`, which the base file declares. Composed with the dev overlay for a local look
 # and with the deploy overlay in production, which is one topology described two ways.
-monitoring_compose := "-f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.monitoring.yml"
+monitoring_compose := env_var_or_default(
+    "SYNCR_MONITORING_COMPOSE",
+    "-f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.monitoring.yml"
+)
 
 # The deployed stack: the base file, the monitoring stack, the digest pins, and the tunnel. Every
 # production recipe passes exactly this set, so "what is deployed" has one spelling.
@@ -252,7 +255,7 @@ dev-infra:
 # Nothing here publishes a host port, so reach a UI through the network rather than localhost:
 #   docker compose {{monitoring_compose}} exec prometheus wget -qO- localhost:9090/-/healthy
 monitoring:
-    docker compose {{monitoring_compose}} up -d --build
+    docker compose {{monitoring_compose}} up -d --build --wait
     @echo "prometheus, alertmanager, grafana and three exporters are up on app-net"
 
 # Tear the monitoring stack down, keeping its volumes
@@ -287,8 +290,8 @@ monitoring-check:
 # alert probe below came to be unrunnable.
 monitoring-probe:
     docker compose {{monitoring_compose}} run --rm --no-deps \
-      -v "$PWD/deployments/bin:/probe:ro" --entrypoint python api \
-      /probe/stack-probe.py http://prometheus:9090 http://grafana:3000 "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      -v "$PWD/deployments:/deployments:ro" --entrypoint python api \
+      /deployments/bin/stack-probe.py http://prometheus:9090 http://grafana:3000 "${GRAFANA_ADMIN_PASSWORD:-admin}"
 
 # Post EVERY alert this deployment declares to the running Alertmanager and check what it suppressed.
 #
