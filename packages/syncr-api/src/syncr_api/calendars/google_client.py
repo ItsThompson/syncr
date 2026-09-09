@@ -104,10 +104,10 @@ class SyncTokenExpired:
 class GoogleReadFailed:
     """The read could not be completed, and why, in words a panel can render.
 
-    ``bounded`` is set when the read was cut off by a page or deadline bound rather
-    than by a condition a retry could fix. A bounded failure during an incremental
-    read did not finish, so the cursor that produced it cannot claim the read
-    completed: the adapter drops it and names why the next read is full.
+    ``bounded`` is set when the read was cut off by the page bound rather than by a
+    condition a retry could fix. A bounded failure during an incremental read did not
+    finish, so the cursor that produced it cannot claim the read completed: the adapter
+    drops it and names why the next read is full.
     """
 
     reason: str
