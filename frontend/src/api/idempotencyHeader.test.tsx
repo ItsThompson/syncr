@@ -164,17 +164,34 @@ describe("every write whose route reads a key sends a freshly minted one", () =>
     expect(stated[0]?.value).toMatch(MINTED);
   });
 
-  it("mints again per attempt, so two attempts never share a key", async () => {
-    const { stated, submit } = keysSentTo("pin");
+  it("reuses one key through a transport retry and mints another for a new gesture", async () => {
+    const stated: Stated[] = [];
+    let attempts = 0;
+    apiServer.use(
+      http.post(`${window.location.origin}${WEEK}/pins`, ({ request }) => {
+        stated.push(statedIn(request));
+        attempts += 1;
+        if (attempts === 1) return HttpResponse.error();
+        return HttpResponse.json(buildPinned(), { status: 201 });
+      }),
+    );
 
     const { result } = renderHook(() => useScreenWrites(), { wrapper: FreshCache });
-    await submit(result.current);
-    await submit(result.current);
+    const submit = () =>
+      result.current.pinning.pin.submit({
+        blockId: BLOCK_LEETCODE,
+        startMs: Date.parse(monday("09:15")),
+      });
 
+    await expect(submit()).resolves.toBe(true);
     expect(stated).toHaveLength(2);
     expect(stated[0]?.value).toMatch(MINTED);
-    expect(stated[1]?.value).toMatch(MINTED);
-    expect(stated[0]?.value).not.toEqual(stated[1]?.value);
+    expect(stated[1]?.value).toEqual(stated[0]?.value);
+
+    await expect(submit()).resolves.toBe(true);
+    expect(stated).toHaveLength(3);
+    expect(stated[2]?.value).toMatch(MINTED);
+    expect(stated[2]?.value).not.toEqual(stated[0]?.value);
   });
 });
 
@@ -197,5 +214,23 @@ describe("the route that reads no key is sent none", () => {
       result.current.writes.requestTradeoff.submit({ kind: "drop_item", targetId: TASK_ID }),
     ).resolves.toBe(true);
     expect(stated).toEqual([ABSENT]);
+  });
+
+  it("does not retry a write the server does not guard", async () => {
+    let attempts = 0;
+    apiServer.use(
+      http.post(`${window.location.origin}${WEEK}/tradeoffs`, () => {
+        attempts += 1;
+        if (attempts === 1) return HttpResponse.error();
+        return HttpResponse.json(buildOperation(), { status: 202 });
+      }),
+    );
+
+    const { result } = renderHook(() => useScreenWrites(), { wrapper: FreshCache });
+
+    await expect(
+      result.current.writes.requestTradeoff.submit({ kind: "drop_item", targetId: TASK_ID }),
+    ).resolves.toBe(false);
+    expect(attempts).toBe(1);
   });
 });
