@@ -315,7 +315,7 @@ class TestMovedByRowOfTheResolutionTable:
     async def test_a_block_the_week_has_reached_is_refused_naming_when_it_began(
         self, sessions: async_sessionmaker[AsyncSession], owner: UserRecord, principal: Principal
     ) -> None:
-        held = a_block_holding(GYM, between(8, 10))
+        held = pinned(a_block_holding(GYM, between(8, 10)))
         await store_live_plan(sessions, owner.tenant_id, held)
         conflict = await raise_conflict(sessions, owner.tenant_id, binding=GYM)
         pins = ReleasedPins(held={GYM})
