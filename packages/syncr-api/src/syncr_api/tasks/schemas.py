@@ -44,6 +44,7 @@ from syncr_api.tasks.config import (
 from syncr_domain.snap import SNAP_MINUTES
 from syncr_domain.tasks import (
     DEFAULT_ESTIMATE_MINUTES,
+    DEFAULT_MIN_CHUNK_MINUTES,
     DEFAULT_PRIORITY,
     DEFAULT_SPLITTABLE,
     Priority,
@@ -78,7 +79,8 @@ _PRIORITY_DESCRIPTION = (
 _MIN_CHUNK_DESCRIPTION = (
     f"The smallest placement a splittable task may be divided into, {MIN_CHUNK_MINUTES_MIN} to "
     f"{MIN_CHUNK_MINUTES_MAX} minutes. A multiple of {SNAP_MINUTES}, so every placement lands "
-    "on the quarter hour. Defaults to one grid step, clamped down to the estimate when the "
+    f"on the quarter hour. Defaults to {DEFAULT_MIN_CHUNK_MINUTES}, one grid step, clamped down "
+    "to the estimate when the "
     "estimate is smaller. A value above the estimate is refused with a stated reason, because "
     "no placement could satisfy both. Stored but unread on an atomic task, whose only placement "
     "is the whole estimate: it is kept rather than forced to the estimate so that making the task "
