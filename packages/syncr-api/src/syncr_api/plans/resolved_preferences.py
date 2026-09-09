@@ -9,10 +9,8 @@ restated. A habit or task that declares nothing carries its Area's preference un
 owner, so the solver walks no chain and performs no lookup: what it holds per content is already
 the answer.
 
-An Area's preference applies to its own habits and tasks. It does NOT resolve up the Area
-ancestry, so a preference on ``Fitness`` is not seen by ``Fitness / Running`` or by anything
-inside it. That is what the domain rule states, and whether it should walk is an open question
-rather than a settled one.
+An Area's preference resolves up the Area ancestry through the same walk the preference route
+uses, so a preference on ``Fitness`` reaches ``Fitness / Running`` and everything inside it.
 
 **The windows.** A declared window is wall time, so ``05:30-07:00`` becomes one interval per date
 of the week, each resolved against the zone active on that date.
@@ -85,6 +83,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
+from syncr_api.preferences.owners import area_ancestry
 from syncr_common.logging import get_logger
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.preferences import (
@@ -140,26 +139,35 @@ def resolved_preferences(
     how one habit opts out of a preference the rest of its Area keeps.
     """
     by_owner = {record.owner: record.as_preference() for record in stored}
+    areas_by_id = {area.id: area for area in areas}
     windows = _WeekWindows(zone_by_date)
     resolved: list[ResolvedPreference] = []
     for area in areas:
         owner = PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area.id)
-        resolved.extend(_of(owner, by_owner.get(owner), windows))
+        resolved.extend(_of(owner, _in_effect(by_owner, owner, area.id, areas_by_id), windows))
     for habit in habits:
         owner = PreferenceOwner(kind=PreferenceOwnerKind.HABIT, id=habit.id)
-        resolved.extend(_of(owner, _in_effect(by_owner, owner, habit.area_id), windows))
+        resolved.extend(
+            _of(owner, _in_effect(by_owner, owner, habit.area_id, areas_by_id), windows)
+        )
     for task in tasks:
         owner = PreferenceOwner(kind=PreferenceOwnerKind.TASK, id=task.binding.entity_id)
-        resolved.extend(_of(owner, _in_effect(by_owner, owner, task.area_id), windows))
+        resolved.extend(_of(owner, _in_effect(by_owner, owner, task.area_id, areas_by_id), windows))
     return tuple(resolved)
 
 
 def _in_effect(
-    by_owner: Mapping[PreferenceOwner, Preference], owner: PreferenceOwner, area_id: AreaId
+    by_owner: Mapping[PreferenceOwner, Preference],
+    owner: PreferenceOwner,
+    area_id: AreaId,
+    areas_by_id: Mapping[AreaId, AreaRecord],
 ) -> Preference | None:
-    """The override's own preference, or its Area's, or none. Never the two merged."""
-    area_owner = PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area_id)
-    return preference_in_effect(by_owner.get(owner), by_owner.get(area_owner))
+    """The owner's preference, or its nearest Area ancestor's, or none. Never merged."""
+    area_links = (
+        by_owner.get(PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area.id))
+        for area in area_ancestry(areas_by_id, area_id)
+    )
+    return preference_in_effect(by_owner.get(owner), *area_links)
 
 
 def _of(

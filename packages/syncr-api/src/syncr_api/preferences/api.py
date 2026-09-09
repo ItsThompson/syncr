@@ -89,7 +89,9 @@ def _as_response(read: ReadPreference) -> PreferenceResponse:
         effective=(
             None
             if read.in_effect is None
-            else EffectivePreferenceResponse.of(read.in_effect, owner=read.owner)
+            else EffectivePreferenceResponse.of(
+                read.in_effect, owner=read.owner, source_name=read.in_effect_source_name
+            )
         ),
     )
 

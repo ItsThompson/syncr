@@ -27,7 +27,7 @@ from syncr_domain.errors import DomainError
 from syncr_domain.preferences import PreferenceOwner, PreferenceOwnerKind
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
     from uuid import UUID
 
     from syncr_api.areas.records import AreaRecord
@@ -103,29 +103,7 @@ class PreferenceOwners:
         given an identifier it did not confirm.
         """
         areas = await self._areas.list_all()
-        by_id = {area.id: area for area in areas}
-        walked: list[AreaRecord] = []
-        visited: set[AreaId] = set()
-        current = by_id.get(area_id)
-        while current is not None:
-            if current.id in visited:
-                raise UnreadableAreaAncestry(
-                    f"the Areas' parent links form a cycle through "
-                    f"{' -> '.join(area.name for area in walked)} -> {current.name}. No request "
-                    "wrote this: an Area's place in the hierarchy is declared once against a "
-                    "parent that exists and never moves, so this is stored data to repair"
-                )
-            if len(walked) >= MAX_AREA_DEPTH:
-                raise UnreadableAreaAncestry(
-                    f"the ancestry of {walked[0].name} runs past {MAX_AREA_DEPTH} Areas without "
-                    "reaching a root. No request wrote this: an Area's place in the hierarchy is "
-                    "declared once against a parent that exists and never moves, so this is "
-                    "stored data to repair"
-                )
-            visited.add(current.id)
-            walked.append(current)
-            current = by_id.get(current.parent_id) if current.parent_id is not None else None
-        return tuple(walked)
+        return area_ancestry({area.id: area for area in areas}, area_id)
 
     async def _an_area(self, owner_id: UUID) -> ResolvedOwner | None:
         found = await self._areas.find(owner_id)
@@ -157,3 +135,31 @@ class PreferenceOwners:
             tenant_id=found.tenant_id,
             area_id=found.area_id,
         )
+
+
+def area_ancestry(
+    areas_by_id: Mapping[AreaId, AreaRecord], area_id: AreaId
+) -> tuple[AreaRecord, ...]:
+    """The Area and its ancestors out to the root, nearest first."""
+    walked: list[AreaRecord] = []
+    visited: set[AreaId] = set()
+    current = areas_by_id.get(area_id)
+    while current is not None:
+        if current.id in visited:
+            raise UnreadableAreaAncestry(
+                f"the Areas' parent links form a cycle through "
+                f"{' -> '.join(area.name for area in walked)} -> {current.name}. No request "
+                "wrote this: an Area's place in the hierarchy is declared once against a "
+                "parent that exists and never moves, so this is stored data to repair"
+            )
+        if len(walked) >= MAX_AREA_DEPTH:
+            raise UnreadableAreaAncestry(
+                f"the ancestry of {walked[0].name} runs past {MAX_AREA_DEPTH} Areas without "
+                "reaching a root. No request wrote this: an Area's place in the hierarchy is "
+                "declared once against a parent that exists and never moves, so this is "
+                "stored data to repair"
+            )
+        visited.add(current.id)
+        walked.append(current)
+        current = areas_by_id.get(current.parent_id) if current.parent_id is not None else None
+    return tuple(walked)

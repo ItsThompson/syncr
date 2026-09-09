@@ -64,9 +64,11 @@ from syncr_domain.preferences import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
     from uuid import UUID
 
+    from syncr_api.areas.records import AreaRecord
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
     from syncr_api.preferences.declarations import PreferenceDeclaration
@@ -86,14 +88,14 @@ class ReadPreference:
     Both are read in the same call over the same rows, so a response cannot show a declaration
     from one read and an effective preference resolved against another.
 
-    ``in_effect`` is the owner's own when it declared one, its Area's when it did not, and ``None``
-    when neither did. Where it came from is ``in_effect.owner``, so there is no second field for a
-    source that could disagree with it.
+    ``in_effect`` is the owner's own when it declared one, or the nearest Area ancestor's when it
+    did not. ``in_effect_source_name`` names that ancestor for the response statement.
     """
 
     owner: PreferenceOwner
     declared: Preference | None
     in_effect: Preference | None
+    in_effect_source_name: str | None
 
 
 class PreferenceService:
@@ -208,14 +210,19 @@ class PreferenceService:
     async def _read(self, resolved: ResolvedOwner) -> ReadPreference:
         declared = await self._preferences.find(resolved.owner)
         with stated_rejection():
-            chain = await self._chain(resolved)
+            ancestors = await self._owners.ancestry(resolved.area_id)
+            chain = await self._chain(resolved, ancestors)
+            in_effect = preference_in_effect(*chain)
             return ReadPreference(
                 owner=resolved.owner,
                 declared=_as_entity(declared),
-                in_effect=preference_in_effect(*chain),
+                in_effect=in_effect,
+                in_effect_source_name=_source_name(in_effect, resolved.owner, ancestors),
             )
 
-    async def _chain(self, resolved: ResolvedOwner) -> tuple[Preference | None, ...]:
+    async def _chain(
+        self, resolved: ResolvedOwner, ancestors: Sequence[AreaRecord]
+    ) -> tuple[Preference | None, ...]:
         """The preferences that could apply, most specific first.
 
         An override's own link first when there is one; then every Area of the ancestry nearest
@@ -231,7 +238,6 @@ class PreferenceService:
         the tenant has stored rather than with this owner's depth, which is the price of the one
         statement; revisit only if stored volume grows past what a read can scan.
         """
-        ancestors = await self._owners.ancestry(resolved.area_id)
         wanted = {resolved.owner} | {
             PreferenceOwner(kind=PreferenceOwnerKind.AREA, id=area.id) for area in ancestors
         }
@@ -258,6 +264,15 @@ class PreferenceService:
         if was == now_is:
             return
         await self._bump.from_the_week_holding(at)
+
+
+def _source_name(
+    preference: Preference | None, owner: PreferenceOwner, ancestors: Sequence[AreaRecord]
+) -> str | None:
+    """The Area name for an inherited preference, which the response renders verbatim."""
+    if preference is None or preference.owner == owner:
+        return None
+    return next(area.name for area in ancestors if area.id == preference.owner.id)
 
 
 def _as_entity(record: PreferenceRecord | None) -> Preference | None:

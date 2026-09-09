@@ -112,9 +112,10 @@ class Owned:
     """One Area with a habit and a task inside it, declared through the product's own routes."""
 
     def __init__(self, http: TestClient, headers: dict[str, str]) -> None:
+        self.area_name = f"Fitness {uuid4().hex[:8]}"
         area = http.post(
             AREAS_PREFIX,
-            json={"name": f"Fitness {uuid4().hex[:8]}"},
+            json={"name": self.area_name},
             headers=headers,
         )
         assert area.status_code == HTTPStatus.CREATED, area.text
@@ -303,7 +304,45 @@ def test_an_owner_with_no_override_inherits_its_areas_preference(
     body = read.json()
     assert body["declared"] is None
     assert body["effective"]["source"] == {"kind": "area", "id": owned.area_id}
-    assert body["effective"]["statement"].startswith("Inherited from its Area:")
+    assert body["effective"]["statement"] == (
+        f"Inherited from `{owned.area_name}`: 05:30-07:00 or 13:15-14:15, strong."
+    )
+
+
+def test_an_inherited_statement_names_the_ancestor_that_declared_it(
+    http: TestClient, signed_in: dict[str, str], owned: Owned
+) -> None:
+    running = http.post(
+        AREAS_PREFIX,
+        json={"name": "Running", "parentId": owned.area_id},
+        headers=signed_in,
+    )
+    assert running.status_code == HTTPStatus.CREATED, running.text
+    trail = http.post(
+        AREAS_PREFIX,
+        json={"name": "Trail", "parentId": running.json()["area"]["id"]},
+        headers=signed_in,
+    )
+    assert trail.status_code == HTTPStatus.CREATED, trail.text
+    habit = http.post(
+        HABITS_PREFIX,
+        json={
+            "areaId": trail.json()["area"]["id"],
+            "title": "Trail run",
+            "cadence": {"kind": "daily"},
+            "minDurationMinutes": 15,
+        },
+        headers=signed_in,
+    )
+    assert habit.status_code == HTTPStatus.CREATED, habit.text
+    put(http, signed_in, owned.area, **GYM_WINDOWS)
+
+    read = http.get(f"{HABITS_PREFIX}/{habit.json()['id']}/preference", headers=signed_in)
+
+    assert read.status_code == HTTPStatus.OK, read.text
+    assert read.json()["effective"]["statement"] == (
+        f"Inherited from `{owned.area_name}`: 05:30-07:00 or 13:15-14:15, strong."
+    )
 
 
 @pytest.mark.parametrize("kind", ["habit", "task"], ids=["habit", "task"])

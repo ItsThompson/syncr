@@ -104,7 +104,7 @@ _MAX_PER_DAY_DESCRIPTION = (
 )
 _SOURCE_DESCRIPTION = (
     "Which Area, Habit, or Task declared the preference that is in effect. Equal to the owner in "
-    "the path when this owner declared its own, and its Area otherwise."
+    "the path when this owner declared its own, and an Area ancestor otherwise."
 )
 
 
@@ -255,13 +255,15 @@ class EffectivePreferenceResponse(WireModel):
     )
 
     @classmethod
-    def of(cls, preference: Preference, *, owner: PreferenceOwner) -> EffectivePreferenceResponse:
+    def of(
+        cls, preference: Preference, *, owner: PreferenceOwner, source_name: str | None
+    ) -> EffectivePreferenceResponse:
         return cls(
             source=PreferenceOwnerResponse.of(preference.owner),
             windows=[TimeWindowResponse.of(window) for window in preference.windows],
             strength=preference.strength,
             preferred_duration_minutes=preference.preferred_duration_minutes,
-            statement=_statement(preference, owner=owner),
+            statement=_statement(preference, owner=owner, source_name=source_name),
         )
 
 
@@ -272,7 +274,7 @@ class PreferenceResponse(WireModel):
     a removal, and the answer to "what changed" is the whole state rather than a diff.
 
     ``declared`` is null when this owner declares none of its own; ``effective`` is null only when
-    neither it nor its Area declares one.
+    neither it nor an Area ancestor declares one.
     """
 
     owner: PreferenceOwnerResponse = Field(
@@ -283,18 +285,19 @@ class PreferenceResponse(WireModel):
         description="The preference set on this owner, or null when it declares none of its own."
     )
     effective: EffectivePreferenceResponse | None = Field(
-        description="The preference in effect: this owner's own, or its Area's, or null when "
-        "neither declares one. Never a merge of the two."
+        description="The preference in effect: this owner's own, or one from its Area ancestry, "
+        "or null when neither declares one. Never a merge of the two."
     )
 
 
-def _statement(preference: Preference, *, owner: PreferenceOwner) -> str:
+def _statement(preference: Preference, *, owner: PreferenceOwner, source_name: str | None) -> str:
     """One sentence naming what is in effect and whether this owner declared it."""
-    source = (
-        f"Set on this {owner.kind.value}"
-        if preference.owner == owner
-        else "Inherited from its Area"
-    )
+    if preference.owner == owner:
+        source = f"Set on this {owner.kind.value}"
+    elif source_name is not None:
+        source = f"Inherited from `{source_name}`"
+    else:
+        raise ValueError("an inherited preference needs its source Area's name")
     windows = " or ".join(str(window) for window in preference.windows)
     times = f"{windows}, {preference.strength.value}" if windows else "no preferred time"
     ideal = (

@@ -637,6 +637,34 @@ async def test_an_areas_preference_is_carried_by_its_habits_and_its_tasks() -> N
     assert {len(resolved.windows) for resolved in inputs.preferences} == {7}
 
 
+async def test_an_ancestors_preference_reaches_every_owner_in_a_three_level_hierarchy() -> None:
+    fitness = an_area(name="Fitness")
+    running = an_area(name="Fitness / Running", parent_id=fitness.id)
+    trail = an_area(name="Fitness / Running / Trail", parent_id=running.id)
+    habits = [a_habit(area_id=area.id) for area in (fitness, running, trail)]
+    tasks = [a_task(area_id=area.id) for area in (fitness, running, trail)]
+
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness, running, trail]),
+        habits=FakeHabits(habits),
+        tasks=FakeTasks(tasks),
+        preferences=FakePreferences(
+            [
+                a_preference(
+                    owner=an_area_owner(fitness.id),
+                    windows=[a_window(time(5, 30), time(7, 0))],
+                )
+            ]
+        ),
+    ).assemble(WEEK, NOW)
+
+    assert {resolved.owner.id for resolved in inputs.preferences} == {
+        *(area.id for area in (fitness, running, trail)),
+        *(habit.id for habit in habits),
+        *(task.id for task in tasks),
+    }
+
+
 async def test_an_override_replaces_its_areas_declaration_wholly() -> None:
     # A habit that declares windows and no ideal duration has none, whatever its Area declares,
     # which is what makes an override a replacement rather than a merge.
