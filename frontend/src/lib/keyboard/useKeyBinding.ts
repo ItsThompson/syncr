@@ -48,6 +48,10 @@ export function hasPlatformModifier(event: KeyboardEvent): boolean {
   return isApplePlatform() ? event.metaKey : event.ctrlKey;
 }
 
+function hasNativeEnterActivation(key: string, target: EventTarget | null): boolean {
+  return key === "Enter" && target instanceof HTMLAnchorElement;
+}
+
 function matches(
   key: string,
   withPlatformModifier: boolean,
@@ -59,6 +63,7 @@ function matches(
   if (withShift && !event.shiftKey) return false;
   if (withPlatformModifier) return hasPlatformModifier(event);
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  if (hasNativeEnterActivation(key, event.target)) return false;
   return !isTyping(event.target);
 }
 
