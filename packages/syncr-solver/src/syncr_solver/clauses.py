@@ -12,12 +12,9 @@ source and then this text, so the text is what the reader learns beyond the bloc
 ## What the text can say, and what it cannot
 
 Every label here is derived from the resolved inputs and from nothing else, which bounds what a
-clause can name. Three pieces of the upstream examples are absent from those inputs and are
+clause can name. Two pieces of the upstream examples are absent from those inputs and are
 therefore absent here: a routine's day-type association, which does not exist at all because a
-routine materializes on every date, the calendar and access role an anchor was read from, and
-the name of the anchor type that cast a buffer along with the title of the commitment it was
-cast by, which is reachable INSIDE THIS STRUCT only through a join that is not total: an evening
-buffer for a Monday-morning commitment is cast by an anchor that this week's span does not hold.
+routine materializes on every date, and the calendar and access role an anchor was read from.
 
 So each label states the determinant's own name plus the geometry the block was derived at, and
 a clause never renders a value that depends on whether an unrelated collection happens to carry
@@ -26,25 +23,19 @@ a row.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from syncr_domain.budgets import MINUTES_PER_HOUR
-from syncr_domain.identity import BindingKind, TransitLeg
 from syncr_domain.reasons import Bound, DerivationSource
 from syncr_domain.zones import resolve_zone
 
 if TYPE_CHECKING:
-    from syncr_domain.identity import BindingRef
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.zones import ZoneId
     from syncr_solver.inputs import Anchor, FrameEntry, MaterializedEntry, ShadowBlock
 
 # The separator the panel's rows already use between a determinant and its geometry.
 _PART = " · "
-
-# How a buffer says which journey it is. A prep buffer needs no discriminator, and the two
-# transit legs need one, which is the key their binding carries.
-_LEG_LABEL: Final = {TransitLeg.OUT: "transit out", TransitLeg.BACK: "transit back"}
 
 
 def bound_to_routine(entry: FrameEntry, *, zone: ZoneId) -> Bound:
@@ -81,13 +72,15 @@ def bound_to_anchor(anchor: Anchor) -> Bound:
 
 
 def bound_to_anchor_type(shadow: ShadowBlock) -> Bound:
-    """What a prep or transit block says: which buffer it is, and how long the type reserves.
+    """What a prep or transit block says: the type and commitment that determined it.
 
-    The geometry is read from the block rather than from the type's declaration, so a buffer
-    truncated by a collision with an earlier one reports the time it actually holds.
+    Both values are resolved before the buffer is clipped to a week, so a boundary-crossing
+    buffer has the same clause in either week that holds part of it.
     """
-    geometry = f"{_buffer_label(shadow.binding)}, {duration_label(shadow.interval)}"
-    return Bound(DerivationSource.ANCHOR_TYPE, _PART.join((shadow.title, geometry)))
+    return Bound(
+        DerivationSource.ANCHOR_TYPE,
+        _PART.join((shadow.anchor_type_name, shadow.anchor_title)),
+    )
 
 
 def duration_label(interval: Interval) -> str:
@@ -105,14 +98,3 @@ def _wall_time(instant: Instant, zone: ZoneId) -> str:
     boundary reports each occurrence at the time its own day was declared for.
     """
     return instant.astimezone(resolve_zone(zone)).strftime("%H:%M")
-
-
-def _buffer_label(binding: BindingRef) -> str:
-    """Which of the three buffers an anchor's type casts this block is.
-
-    The leg is read back from the key its own constructor spelled, through the closed vocabulary
-    that defines it, so there is one definition of what the two legs are called.
-    """
-    if binding.kind is BindingKind.ANCHOR_PREP:
-        return "prep"
-    return _LEG_LABEL[TransitLeg(binding.occurrence_key)]

@@ -500,6 +500,8 @@ def test_a_shadow_block_refuses_an_origin_an_anchor_cannot_cast(origin: Origin) 
             occurrence_key=NO_OCCURRENCE,
             area_id=CAREER,
             title="Prep",
+            anchor_type_name="Interview",
+            anchor_title=COMMITMENT,
             anchor_id=uuid4(),
         )
 
@@ -523,6 +525,8 @@ def test_a_shadow_block_refuses_a_key_its_own_binding_would_refuse(
             occurrence_key=occurrence_key,
             area_id=CAREER,
             title="Prep",
+            anchor_type_name="Interview",
+            anchor_title=COMMITMENT,
             anchor_id=uuid4(),
         )
 

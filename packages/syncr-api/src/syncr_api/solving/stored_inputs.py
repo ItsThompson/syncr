@@ -247,6 +247,8 @@ def _read_shadow_block(value: object, *, field: str) -> ShadowBlock:
         interval=held("interval", read_interval),
         area_id=held("area_id", read_id),
         title=held("title", read_text),
+        anchor_type_name=held("anchor_type_name", read_text),
+        anchor_title=held("anchor_title", read_text),
     )
 
 

@@ -196,5 +196,10 @@ def _as_solve_input(block: CastBlock, interval: Interval) -> ShadowBlock:
     that let an outcome name one of them even when a week holds part of one.
     """
     return ShadowBlock(
-        binding=block.binding, interval=interval, area_id=block.area_id, title=block.title
+        binding=block.binding,
+        interval=interval,
+        area_id=block.area_id,
+        title=block.title,
+        anchor_type_name=block.anchor_type_name,
+        anchor_title=block.anchor_title,
     )

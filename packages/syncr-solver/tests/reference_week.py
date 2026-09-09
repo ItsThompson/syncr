@@ -182,18 +182,24 @@ SHADOWS: Final = (
         interval=between(8.25, 9.0, day=2),
         area_id=CAREER,
         title="Interview prep",
+        anchor_type_name="Interview",
+        anchor_title="Kontron Interview",
     ),
     ShadowBlock(
         binding=BindingRef.for_anchor_transit(INTERVIEW, leg=TransitLeg.OUT),
         interval=between(9.0, 9.25, day=2),
         area_id=CAREER,
         title="Leave for Kontron",
+        anchor_type_name="Interview",
+        anchor_title="Kontron Interview",
     ),
     ShadowBlock(
         binding=BindingRef.for_anchor_transit(INTERVIEW, leg=TransitLeg.BACK),
         interval=between(10.5, 10.75, day=2),
         area_id=CAREER,
         title="Go Home",
+        anchor_type_name="Interview",
+        anchor_title="Kontron Interview",
     ),
 )
 

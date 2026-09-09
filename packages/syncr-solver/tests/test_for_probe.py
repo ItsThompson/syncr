@@ -383,6 +383,8 @@ def test_a_shadow_block_is_not_subtracted_from_the_week_it_is_allocated_in() -> 
                 interval=spanning(15, 16, day=2),
                 area_id=FITNESS,
                 title="Leave for Uni",
+                anchor_type_name="Lecture",
+                anchor_title="Compilers Lecture",
             ),
         )
     )
@@ -810,6 +812,8 @@ def weeks_holding_unpinned_placements(draw: st.DrawFn) -> GeneratedWeek:
                     interval=interval,
                     area_id=pool[0][0],
                     title="Leave for Uni",
+                    anchor_type_name="Lecture",
+                    anchor_title="Compilers Lecture",
                 )
                 for interval in shadowed
             ),

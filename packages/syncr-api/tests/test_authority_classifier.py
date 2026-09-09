@@ -577,7 +577,12 @@ class TestWhatCollides:
             anchors=(Anchor(anchor_id=INTERVIEW, interval=between(11, 12), title="Standup"),),
             derived=(
                 ShadowBlock(
-                    binding=TRANSIT, interval=between(9.5, 10), area_id=FITNESS, title="Leave"
+                    binding=TRANSIT,
+                    interval=between(9.5, 10),
+                    area_id=FITNESS,
+                    title="Leave",
+                    anchor_type_name="Lecture",
+                    anchor_title="Compilers Lecture",
                 ),
             ),
             now=BEFORE_THE_WEEK,
@@ -597,7 +602,12 @@ class TestWhatCollides:
             live,
             derived=(
                 ShadowBlock(
-                    binding=TRANSIT, interval=between(15.5, 16), area_id=CAREER, title="Leave"
+                    binding=TRANSIT,
+                    interval=between(15.5, 16),
+                    area_id=CAREER,
+                    title="Leave",
+                    anchor_type_name="Lecture",
+                    anchor_title="Compilers Lecture",
                 ),
             ),
             now=BEFORE_THE_WEEK,

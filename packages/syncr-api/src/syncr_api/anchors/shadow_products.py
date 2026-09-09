@@ -64,6 +64,8 @@ class ShadowBlock:
     occurrence_key: str
     area_id: AreaId
     title: str
+    anchor_type_name: str
+    anchor_title: str
     anchor_id: AnchorId
 
     def __post_init__(self) -> None:

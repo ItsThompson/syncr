@@ -29,10 +29,10 @@ BLOCKS
   Wed 06:30-06:45   template_entry  Fitness  Wake Up                            bound template_entry · Uni day · Wake Up · 06:30
   Wed 06:45-07:00   template_entry  Fitness  Shower                             bound template_entry · Uni day · Shower · 06:45
   Wed 07:00-07:30   habit           Fitness  Walk                               bound fixed · Walk
-  Wed 08:15-09:00   prep            Career   Interview prep                     bound anchor_type · Interview prep · prep, 45m
-  Wed 09:00-09:15   transit         Career   Leave for Kontron                  bound anchor_type · Leave for Kontron · transit out, 15m
+  Wed 08:15-09:00   prep            Career   Interview prep                     bound anchor_type · Interview · Kontron Interview
+  Wed 09:00-09:15   transit         Career   Leave for Kontron                  bound anchor_type · Interview · Kontron Interview
   Wed 09:15-10:30   anchor          -        Kontron Interview                  bound anchor · Kontron Interview
-  Wed 10:30-10:45   transit         Career   Go Home                            bound anchor_type · Go Home · transit back, 15m
+  Wed 10:30-10:45   transit         Career   Go Home                            bound anchor_type · Interview · Kontron Interview
   Wed 14:00-16:00   anchor          -        Databases                          bound anchor · Databases
   Wed 16:30-18:00   anchor          -        Networks                           bound anchor · Networks
   Wed 18:00-20:15   task            Study    F&F Past Papers                    bound solver · F&F Past Papers

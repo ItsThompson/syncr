@@ -69,7 +69,7 @@ from syncr_api.plans.settled import require_an_unchanged_past
 from syncr_domain.identity import Origin
 from syncr_domain.intervals import IntervalSet, has_started
 from syncr_domain.proposals import BlockChange, ProposalDiff
-from syncr_solver.inputs import Anchor, ShadowBlock
+from syncr_solver.inputs import Anchor
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -218,21 +218,14 @@ def _commitments(blocks: Sequence[Block]) -> tuple[Anchor, ...]:
     )
 
 
-def _buffers(blocks: Sequence[Block]) -> tuple[ShadowBlock, ...]:
+def _buffers(blocks: Sequence[Block]) -> tuple[Block, ...]:
     """The candidate's prep and transit blocks, as the shape the detector reads.
 
     Each carries an Area by construction, which is what makes it a block rather than a window, so
     the projection loses nothing the detector needs to attribute one to its commitment.
     """
     return tuple(
-        ShadowBlock(
-            binding=block.binding,
-            interval=block.interval,
-            area_id=area_id,
-            title=block.title,
-        )
-        for block in blocks
-        if block.origin in DERIVED_ORIGINS and (area_id := block.area_id) is not None
+        block for block in blocks if block.origin in DERIVED_ORIGINS and block.area_id is not None
     )
 
 

@@ -182,6 +182,8 @@ class IngestConflicts:
                     interval=block.interval,
                     area_id=block.area_id,
                     title=block.title,
+                    anchor_type_name=block.anchor_type_name,
+                    anchor_title=block.anchor_title,
                 )
                 for block in cast.blocks
                 if block.interval.overlaps(span)

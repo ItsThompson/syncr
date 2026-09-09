@@ -143,6 +143,8 @@ def generate(anchor: AnchorRecord, anchor_type: AnchorTypeRecord | None) -> Shad
                     occurrence_key=buffer.occurrence_key,
                     area_id=buffer.area_id,
                     title=buffer.title,
+                    anchor_type_name=anchor_type.name,
+                    anchor_title=anchor.title,
                     anchor_id=anchor.id,
                 )
             )

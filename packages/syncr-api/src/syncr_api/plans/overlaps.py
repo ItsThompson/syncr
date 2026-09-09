@@ -49,7 +49,7 @@ is still a commitment: off-plan suspends syncr's scheduling, not the world's.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from syncr_domain.identity import Origin, block_id
 from syncr_domain.intervals import has_ended
@@ -62,7 +62,17 @@ if TYPE_CHECKING:
     from syncr_domain.intervals import Instant, Interval
     from syncr_domain.plan import Block, PlanDocument
     from syncr_domain.weeks import IsoWeek
-    from syncr_solver.inputs import Anchor, ShadowBlock
+    from syncr_solver.inputs import Anchor
+
+
+class DerivedBlock(Protocol):
+    """The part of a derived block overlap detection needs."""
+
+    @property
+    def binding(self) -> BindingRef: ...
+
+    @property
+    def interval(self) -> Interval: ...
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -94,7 +104,7 @@ def detected_conflicts(
     live: PlanDocument | None,
     *,
     anchors: Sequence[Anchor] = (),
-    derived: Sequence[ShadowBlock] = (),
+    derived: Sequence[DerivedBlock] = (),
     now: Instant,
 ) -> tuple[DetectedConflict, ...]:
     """Every overlap between ``live`` and what these commitments put in the week.
@@ -125,7 +135,7 @@ def _overlaps(
     live: PlanDocument,
     *,
     anchors: Sequence[Anchor],
-    derived: Sequence[ShadowBlock],
+    derived: Sequence[DerivedBlock],
     now: Instant,
 ) -> Iterator[DetectedConflict]:
     """Both classes of overlap, over the blocks a resolution could still act on."""

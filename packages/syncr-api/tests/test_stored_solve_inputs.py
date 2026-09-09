@@ -157,6 +157,8 @@ def a_week_holding_one_of_everything(**overrides: Any) -> SolveInputs:
                 interval=between(13.5, 14, day=2),
                 area_id=CAREER,
                 title="prep · Kontron Interview",
+                anchor_type_name="Interview",
+                anchor_title="Kontron Interview",
             ),
         ),
         "forbidden_windows": (a_window(),),

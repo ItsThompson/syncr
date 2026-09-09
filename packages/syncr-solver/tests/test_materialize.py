@@ -375,14 +375,10 @@ def test_each_kind_of_derived_block_names_the_kind_of_determinant_that_fixed_it(
     }
 
 
-def test_each_bound_clause_renders_the_determinant_and_the_geometry_it_was_derived_at() -> None:
-    # Four fragments of the upstream examples are absent from these rows, and each is absent
-    # because no resolved input carries it: the day type a shape belongs to, a routine's day-type
-    # association, which cannot exist because a routine materializes on every date, the calendar
-    # and access role a commitment was read from, and the anchor type's own name together with the
-    # title of the commitment that cast a buffer, which is reachable only through a join that is
-    # not total. Each row therefore names its determinant and the geometry, and never a value that
-    # depends on whether an unrelated collection happens to carry a row.
+def test_each_bound_clause_renders_its_resolved_determinant() -> None:
+    # The calendar and access role stay absent because a clause explains the determinant, not the
+    # operator facts that supplied it. The anchor type and commitment title travel on the shadow,
+    # resolved before a week clips it, so they do not need a non-total snapshot join.
     anchor = an_anchor(interval=between(10, 11), title="Kontron Placement Interview")
     week = a_week(
         anchors=(anchor,),
@@ -400,14 +396,14 @@ def test_each_bound_clause_renders_the_determinant_and_the_geometry_it_was_deriv
     assert {rendered(bound_clause(block)) for block in document.blocks} == {
         "routine · Sleep · 23:00 + 8h",
         "template_entry · Weekday · Shower · 06:45",
-        "anchor_type · Leave for Uni · transit out, 30m",
+        "anchor_type · Interview · Kontron Placement Interview",
         "anchor · Kontron Placement Interview",
     }
 
 
-def test_a_prep_buffer_and_the_two_transit_legs_each_say_which_buffer_they_are() -> None:
-    # The one discriminator between `Leave for Uni` and `Go Home`, read back through the closed
-    # vocabulary that defines it rather than described a second time.
+def test_a_prep_buffer_and_the_two_transit_legs_name_the_same_determinant() -> None:
+    # The type and commitment determine every buffer, so clipping a specific buffer cannot change
+    # the clause that explains it.
     anchor = an_anchor(interval=between(10, 11))
     week = a_week(
         shadow_blocks=(
@@ -434,9 +430,7 @@ def test_a_prep_buffer_and_the_two_transit_legs_each_say_which_buffer_they_are()
     document = materialize(week, cause=MaterializeCause.PHASE1)
 
     assert {rendered(bound_clause(block)) for block in document.blocks if block.area_id} == {
-        "anchor_type · Interview prep · prep, 1h",
-        "anchor_type · Leave for Uni · transit out, 30m",
-        "anchor_type · Go Home · transit back, 15m",
+        "anchor_type · Interview · Kontron Placement Interview",
         "template_entry · Weekday · Shower · 06:45",
     }
 

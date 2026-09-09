@@ -372,13 +372,17 @@ class ShadowBlock:
 
     A block rather than a window, because it carries an Area: it is discretionary time
     ALLOCATED to that Area in the same way a task is. A buffer whose type named no Area is
-    a forbidden window instead and travels in ``forbidden_windows``.
+    a forbidden window instead and travels in ``forbidden_windows``. The type and commitment
+    names are resolved before clipping, so a clause remains complete when its commitment falls
+    outside this week's span.
     """
 
     binding: BindingRef
     interval: Interval
     area_id: AreaId
     title: str
+    anchor_type_name: str
+    anchor_title: str
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

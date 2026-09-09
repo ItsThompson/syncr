@@ -119,12 +119,16 @@ def a_transit_block(
     interval: Interval | None = None,
     area_id: AreaId = CAREER,
     title: str = "Leave for Uni",
+    anchor_type_name: str = "Interview",
+    anchor_title: str = "Kontron Placement Interview",
 ) -> ShadowBlock:
     return ShadowBlock(
         binding=BindingRef.for_anchor_transit(anchor_id or uuid4(), leg=leg),
         interval=interval or between(9.5, 10),
         area_id=area_id,
         title=title,
+        anchor_type_name=anchor_type_name,
+        anchor_title=anchor_title,
     )
 
 
@@ -134,12 +138,16 @@ def a_prep_block(
     interval: Interval | None = None,
     area_id: AreaId = CAREER,
     title: str = "Interview prep",
+    anchor_type_name: str = "Interview",
+    anchor_title: str = "Kontron Placement Interview",
 ) -> ShadowBlock:
     return ShadowBlock(
         binding=BindingRef.for_anchor_prep(anchor_id or uuid4()),
         interval=interval or between(8, 9),
         area_id=area_id,
         title=title,
+        anchor_type_name=anchor_type_name,
+        anchor_title=anchor_title,
     )
 
 
