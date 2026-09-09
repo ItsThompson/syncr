@@ -876,7 +876,10 @@ def carried_forward(week: GeneratedWeek) -> dict[str, object]:
         "computed_at": assembled.now,
         "input_version": assembled.input_version,
         "frame": IntervalSet(
-            [*(entry.interval for entry in assembled.frame), *assembled.frame_overhang]
+            [
+                *(entry.interval for entry in assembled.frame),
+                *(entry.interval for entry in assembled.frame_overhang),
+            ]
         ),
         "anchors": IntervalSet(anchor.interval for anchor in assembled.anchors),
         "absolute_forbidden": IntervalSet(week.absolute_windows),
@@ -920,7 +923,7 @@ def test_the_projection_agrees_field_by_field_on_a_week_holding_unpinned_placeme
         [
             *(placement.interval for placement in placements),
             *(entry.interval for entry in week.inputs.frame),
-            *week.inputs.frame_overhang,
+            *(entry.interval for entry in week.inputs.frame_overhang),
             *(anchor.interval for anchor in week.inputs.anchors),
             *(shadow.interval for shadow in week.inputs.shadow_blocks),
             *(window.interval for window in week.inputs.forbidden_windows),

@@ -33,6 +33,7 @@ from syncr_solver.inputs import (
     EligibleTask,
     EntryBinding,
     FrameEntry,
+    FrameOverhang,
     HabitOccurrence,
     MaterializedEntry,
     ResolvedPreference,
@@ -235,7 +236,7 @@ def test_the_struct_and_the_producer_read_one_statement_of_that_occupancy() -> N
     frame = (a_frame_entry(monday_night),)
 
     assert inputs(frame=frame, frame_overhang=(inherited,)).frame_occupancy() == frame_occupancy(
-        frame, (inherited,)
+        frame, (FrameOverhang(interval=inherited),)
     )
 
 
@@ -246,7 +247,7 @@ def test_an_inherited_span_reaching_outside_the_week_it_describes_is_refused() -
     unclipped = Interval(MONDAY_MIDNIGHT - timedelta(hours=1), MONDAY_MIDNIGHT + timedelta(hours=7))
 
     with pytest.raises(PlanError):
-        inputs(frame_overhang=(unclipped,))
+        inputs(frame_overhang=(FrameOverhang(interval=unclipped),))
 
 
 def test_an_inherited_span_reaching_past_the_end_of_the_week_is_refused_too() -> None:
@@ -255,7 +256,7 @@ def test_an_inherited_span_reaching_past_the_end_of_the_week_is_refused_too() ->
     beyond = Interval(MONDAY_MIDNIGHT + timedelta(days=6), MONDAY_MIDNIGHT + timedelta(days=8))
 
     with pytest.raises(PlanError):
-        inputs(frame_overhang=(beyond,))
+        inputs(frame_overhang=(FrameOverhang(interval=beyond),))
 
 
 def test_an_inherited_span_that_fills_the_whole_week_is_accepted() -> None:
@@ -263,7 +264,9 @@ def test_an_inherited_span_that_fills_the_whole_week_is_accepted() -> None:
     # duration, so an occurrence covering every minute of this week is inside it.
     whole = Interval(MONDAY_MIDNIGHT, MONDAY_MIDNIGHT + timedelta(days=7))
 
-    assert inputs(frame_overhang=(whole,)).frame_overhang == (whole,)
+    assert inputs(frame_overhang=(FrameOverhang(interval=whole),)).frame_overhang == (
+        FrameOverhang(interval=whole),
+    )
 
 
 # --------------------------------------------------------------------------------

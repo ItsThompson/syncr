@@ -57,8 +57,11 @@ from syncr_domain.identity import NO_OCCURRENCE, BindingKind, TransitLeg, date_o
 from syncr_domain.intervals import Interval
 from syncr_domain.plan import AdjustmentKind
 from syncr_domain.routines import MAX_DURATION_MINUTES
+from syncr_domain.templates import BindingTarget
 from syncr_solver.clauses import bound_to_anchor_type
-from syncr_solver.inputs import WeekAdjustment
+from syncr_solver.inputs import FrameOverhang, WeekAdjustment
+from syncr_solver.materialize import materialize
+from syncr_solver.metrics import MaterializeCause
 from tests.anchor_specifications import (
     ATTRIBUTED_EXAM,
     ATTRIBUTED_INTERVIEW,
@@ -79,16 +82,25 @@ from tests.assembly_fakes import (
     FakeAnchors,
     FakeAnchorTypes,
     FakeAreas,
+    FakeDayTypes,
+    FakeHabits,
     FakeOffPlan,
     FakeRoutines,
     FakeSettings,
+    FakeTemplates,
+    FakeWeekPattern,
+    a_concrete_entry,
+    a_day_type,
+    a_habit,
     a_routine,
+    a_template,
     an_adjustment,
     an_anchor,
     an_anchor_type,
     an_area,
     an_assembler,
     an_off_plan_period,
+    every_day,
 )
 
 if TYPE_CHECKING:
@@ -685,8 +697,10 @@ async def test_the_overhang_of_the_preceding_weeks_last_night_is_this_weeks_occu
         settings=FakeSettings(week.zone), routines=FakeRoutines([sleep])
     ).assemble(following, NOW)
 
-    assert inputs.frame_overhang == (Interval(inputs.span.start, week.sunday_night_frame.end),)
-    assert inputs.frame_overhang[0].total_minutes() == 7 * MINUTES_PER_HOUR
+    assert inputs.frame_overhang == (
+        FrameOverhang(interval=Interval(inputs.span.start, week.sunday_night_frame.end)),
+    )
+    assert inputs.frame_overhang[0].interval.total_minutes() == 7 * MINUTES_PER_HOUR
 
 
 @pytest.mark.parametrize("week", DST_WEEKS, ids=lambda week: week.label)
@@ -721,13 +735,57 @@ async def test_the_inherited_spans_are_what_the_week_before_resolved_clipped_to_
     before = await assembler.assemble(BEFORE, NOW)
     inputs = await assembler.assemble(WEEK, NOW)
 
-    crossing = [
-        entry.interval.clipped_to(inputs.span)
+    crossing = tuple(
+        interval
         for entry in before.frame
-        if entry.interval.overlaps(inputs.span)
-    ]
-    assert inputs.frame_overhang == tuple(crossing)
+        if (interval := entry.interval.clipped_to(inputs.span)) is not None
+    )
+    assert inputs.frame_overhang == tuple(FrameOverhang(interval=interval) for interval in crossing)
     assert len(crossing) == 1
+
+
+async def test_a_concrete_entry_crossing_midnight_carries_a_labelled_overhang() -> None:
+    area = an_area(name="Hygiene", budget_percent=Decimal(100))
+    habit = a_habit(area_id=area.id, title="Shower")
+    day_type = uuid4()
+    entry = a_concrete_entry(
+        template_id=uuid4(),
+        target=BindingTarget.HABIT,
+        entity_id=habit.id,
+        target_time=time(23, 0),
+        duration_minutes=120,
+    )
+    assembler = an_assembler(
+        settings=FakeSettings(LONDON),
+        areas=FakeAreas([area]),
+        habits=FakeHabits([habit]),
+        week_pattern=FakeWeekPattern(every_day(day_type)),
+        day_types=FakeDayTypes(a_day_type(day_type_id=day_type)),
+        templates=FakeTemplates([a_template(day_type_id=day_type, entries=[entry])]),
+    )
+
+    owning = await assembler.assemble(BEFORE, NOW)
+    following = await assembler.assemble(WEEK, NOW)
+    sunday = date_occurrence_key(SUNDAY)
+
+    assert following.frame_overhang == (
+        FrameOverhang(interval=Interval(following.span.start, on_monday(1, 0)), label="Shower"),
+    )
+    assert [
+        block.binding
+        for block in materialize(owning, cause=MaterializeCause.PHASE1).blocks
+        if block.binding.occurrence_key == sunday
+    ] == [
+        next(
+            entry.block_binding
+            for entry in owning.template_entries
+            if entry.occurrence_key == sunday
+        )
+    ]
+    assert not any(
+        block.binding.occurrence_key == sunday
+        for block in materialize(following, cause=MaterializeCause.PHASE1).blocks
+    )
 
 
 async def test_a_reduction_approved_for_the_week_before_shortens_the_night_this_week_inherits() -> (
@@ -752,7 +810,7 @@ async def test_a_reduction_approved_for_the_week_before_shortens_the_night_this_
         adjustments=FakeAdjustments([stored]),
     ).assemble(WEEK, NOW)
 
-    assert inputs.frame_overhang[0].total_minutes() == 6 * MINUTES_PER_HOUR
+    assert inputs.frame_overhang[0].interval.total_minutes() == 6 * MINUTES_PER_HOUR
 
 
 async def test_a_candidate_concession_cannot_shorten_the_night_this_week_inherits() -> None:
@@ -776,7 +834,7 @@ async def test_a_candidate_concession_cannot_shorten_the_night_this_week_inherit
         settings=FakeSettings(LONDON), routines=FakeRoutines([sleep])
     ).assemble(WEEK, NOW, candidate)
 
-    assert inputs.frame_overhang[0].total_minutes() == 7 * MINUTES_PER_HOUR
+    assert inputs.frame_overhang[0].interval.total_minutes() == 7 * MINUTES_PER_HOUR
     # The candidate still reaches the week it IS about, so this is not a test about a concession
     # being dropped: it is folded here and nowhere else.
     assert [entry.adjustment_id for entry in inputs.adjustments] == [candidate.adjustment_id]
@@ -823,7 +881,9 @@ async def test_the_longest_routine_a_tenant_can_declare_is_carried_whole() -> No
         settings=FakeSettings(LONDON), routines=FakeRoutines([all_day])
     ).assemble(WEEK, NOW)
 
-    assert inputs.frame_overhang[0] == Interval(inputs.span.start, on_monday(23, 0))
+    assert inputs.frame_overhang[0] == FrameOverhang(
+        interval=Interval(inputs.span.start, on_monday(23, 0))
+    )
 
 
 async def test_the_inherited_night_and_this_weeks_own_are_read_as_one_occupancy() -> None:

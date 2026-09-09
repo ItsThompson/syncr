@@ -644,7 +644,7 @@ def _a_span_that_covers_no_time(stored: JsonObject) -> None:
 
 
 def _an_overhang_outside_the_span(stored: JsonObject) -> None:
-    stored["frame_overhang"][0]["start"] = "2026-02-08T22:00:00+00:00"
+    stored["frame_overhang"][0]["interval"]["start"] = "2026-02-08T22:00:00+00:00"
 
 
 def _an_overhang_that_is_not_a_span(stored: JsonObject) -> None:

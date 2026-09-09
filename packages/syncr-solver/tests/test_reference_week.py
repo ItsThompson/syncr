@@ -335,7 +335,7 @@ def test_the_frame_span_the_preceding_week_owns_holds_time_this_week_cannot_plac
     document = solved_reference().document
     overhang = week.frame_overhang[0]
 
-    assert not any(block.interval.overlaps(overhang) for block in document.blocks)
+    assert not any(block.interval.overlaps(overhang.interval) for block in document.blocks)
 
 
 def test_the_rotation_bound_habit_names_the_variant_its_cursor_resolved() -> None:

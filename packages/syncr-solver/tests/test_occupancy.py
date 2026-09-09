@@ -17,6 +17,7 @@ from syncr_domain.fixtures import recovery_scopes as scopes
 from syncr_domain.gaps import ForbiddenKind, ForbiddenScope, ForbiddenWindow
 from syncr_domain.identity import BindingRef, TransitLeg
 from syncr_solver.constraints import ConstraintCheck, ConstraintRule
+from syncr_solver.inputs import FrameOverhang
 from syncr_solver.occupancy import (
     INHERITED_FRAME,
     OCCUPANCY_RULES,
@@ -348,7 +349,7 @@ def test_a_candidate_over_an_inherited_frame_span_is_rejected_without_naming_a_r
     # The week that owns a boundary-crossing occurrence holds the whole interval and materializes
     # the one block, so this week carries the span and not the name. The rejection says so rather
     # than borrowing a title from a different occurrence.
-    overhang = between(0, 7)
+    overhang = FrameOverhang(interval=between(0, 7))
 
     rejection = a_check().check(
         a_candidate(between(6, 8)), PartialPlan.of(inputs(frame_overhang=(overhang,)))
@@ -358,12 +359,8 @@ def test_a_candidate_over_an_inherited_frame_span_is_rejected_without_naming_a_r
     assert (rejection.rule, rejection.detail) == (ConstraintRule.FRAME_OVERLAP, INHERITED_FRAME)
 
 
-def test_the_inherited_channel_names_a_routine_whatever_shape_the_span_came_from() -> None:
-    # The channel H3 reads carries spans and no titles, so any OTHER boundary-crossing shape routed
-    # through it would be reported as a routine. A late template entry running into the following
-    # week is the shape that reaches this: it is occupancy nobody hands over today, and whichever
-    # field carries it decides whether this clause tells the truth.
-    entry_running_past_midnight = between(0, 0.5)
+def test_a_concrete_entry_overhang_names_the_entry_that_occupies_the_span() -> None:
+    entry_running_past_midnight = FrameOverhang(interval=between(0, 0.5), label="Shower")
 
     rejection = a_check().check(
         a_candidate(between(0, 1)),
@@ -371,7 +368,7 @@ def test_the_inherited_channel_names_a_routine_whatever_shape_the_span_came_from
     )
 
     assert rejection is not None
-    assert rejection.detail == INHERITED_FRAME
+    assert rejection.detail == "Shower"
 
 
 # --------------------------------------------------------------------------------

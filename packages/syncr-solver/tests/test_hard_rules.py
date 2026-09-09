@@ -130,7 +130,9 @@ def broke_h2(state: PartialPlan) -> bool:
 
 
 def broke_h3(state: PartialPlan) -> bool:
-    occupied = IntervalSet([*(entry.interval for entry in state.frame), *state.inherited])
+    occupied = IntervalSet(
+        [*(entry.interval for entry in state.frame), *(entry.interval for entry in state.inherited)]
+    )
     return any(occupied.overlaps(placement.interval) for placement in state.placed)
 
 

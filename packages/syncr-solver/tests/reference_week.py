@@ -63,6 +63,7 @@ from syncr_solver.inputs import (
     EligibleTask,
     EntryBinding,
     FrameEntry,
+    FrameOverhang,
     HabitOccurrence,
     MaterializedEntry,
     Pin,
@@ -146,7 +147,7 @@ FRAME: Final = tuple(
     for day in range(7)
 )
 
-OVERHANG: Final = (between(0, 6.5, day=0),)
+OVERHANG: Final = (FrameOverhang(interval=between(0, 6.5, day=0)),)
 
 # Two lectures a day from Monday to Friday, and the Friday pair OVERLAP each other: inside the
 # Friday night frame that is three things covering one instant, which is the depth-3 overlap.

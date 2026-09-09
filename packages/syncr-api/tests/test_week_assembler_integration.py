@@ -83,6 +83,7 @@ from syncr_domain.preferences import (
 from syncr_domain.tasks import Priority
 from syncr_domain.templates import BindingTarget, EntrySpan, WeekPattern
 from syncr_domain.weeks import IsoWeek, Weekday
+from syncr_solver.inputs import FrameOverhang
 from tests.anchor_specifications import EXAM, with_areas
 from tests.live_tenants import delete_tenant, seed_owner
 
@@ -658,13 +659,13 @@ async def test_the_night_this_week_inherits_is_what_the_week_before_resolved(
     before = await assemble(sessions, owner.tenant_id, week=WEEK.preceding())
     inputs = await assemble(sessions, owner.tenant_id)
 
-    crossing = [
-        entry.interval.clipped_to(inputs.span)
+    crossing = tuple(
+        interval
         for entry in before.frame
-        if entry.interval.overlaps(inputs.span)
-    ]
-    assert inputs.frame_overhang == tuple(crossing)
-    assert inputs.frame_overhang[0] == Interval(
+        if (interval := entry.interval.clipped_to(inputs.span)) is not None
+    )
+    assert inputs.frame_overhang == tuple(FrameOverhang(interval=interval) for interval in crossing)
+    assert inputs.frame_overhang[0].interval == Interval(
         inputs.span.start, datetime(2026, 2, 9, 7, 0, tzinfo=UTC)
     )
     # The occurrence itself belongs to the week its start falls in, at the routine's own duration,
