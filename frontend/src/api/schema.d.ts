@@ -2417,7 +2417,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -5312,7 +5312,7 @@ export interface components {
             estimateMinutes: number;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /**
@@ -5356,7 +5356,7 @@ export interface components {
             estimateMinutes?: number | null;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -5406,7 +5406,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
