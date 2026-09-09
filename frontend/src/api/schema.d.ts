@@ -2417,7 +2417,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -4907,7 +4907,7 @@ export interface components {
         RoutineCreateRequest: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
+             * @description How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
              */
             durationMinutes: number;
             /**
@@ -4918,10 +4918,10 @@ export interface components {
             flexBandMinutes: number;
             /**
              * Mindurationminutes
-             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.
              */
             minDurationMinutes?: number | null;
-            /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
+            /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused. */
             targetTime: components["schemas"]["WallTime"];
             /** @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real. */
             title: components["schemas"]["WireText"];
@@ -4940,7 +4940,7 @@ export interface components {
         RoutinePatchRequest: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.
+             * @description How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.
              */
             durationMinutes?: number | null;
             /**
@@ -4950,10 +4950,10 @@ export interface components {
             flexBandMinutes?: number | null;
             /**
              * Mindurationminutes
-             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.
              */
             minDurationMinutes?: number | null;
-            /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused. */
+            /** @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused. */
             targetTime?: components["schemas"]["WallTime"] | null;
             /** @description What the routine is called, as it reads in a block label on the Week grid. Two routines may share a title: a morning and an evening 'Shower' are both real. */
             title?: components["schemas"]["WireText"] | null;
@@ -4967,7 +4967,7 @@ export interface components {
         RoutineResponse: {
             /**
              * Durationminutes
-             * @description How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
+             * @description How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.
              */
             durationMinutes: number;
             /**
@@ -4982,13 +4982,13 @@ export interface components {
             id: string;
             /**
              * Mindurationminutes
-             * @description The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.
+             * @description The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.
              */
             minDurationMinutes: number;
             /**
              * Targettime
              * Format: time
-             * @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused.
+             * @description Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused.
              */
             targetTime: string;
             /**
@@ -5312,7 +5312,7 @@ export interface components {
             estimateMinutes: number;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /**
@@ -5356,7 +5356,7 @@ export interface components {
             estimateMinutes?: number | null;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes?: number | null;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */
@@ -5406,7 +5406,7 @@ export interface components {
             id: string;
             /**
              * Minchunkminutes
-             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
+             * @description The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.
              */
             minChunkMinutes: number;
             /** @description How much the objective prefers this task over another in the same Area. Defaults to 'normal'. */

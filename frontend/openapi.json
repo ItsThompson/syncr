@@ -1178,7 +1178,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
@@ -5870,9 +5870,10 @@
         "description": "A routine to declare.\n\n``minDurationMinutes`` may be left out, in which case it equals the target duration and the\nroutine is inelastic. ``flexBandMinutes`` may be left out, in which case the routine is\npinned to its target time.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "maximum": 1440.0,
             "minimum": 15.0,
+            "multipleOf": 15.0,
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -5895,12 +5896,13 @@
                 "type": "null"
               }
             ],
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, it equals the target duration, which makes the routine inelastic.",
+            "multipleOf": 15.0,
             "title": "Mindurationminutes"
           },
           "targetTime": {
             "$ref": "#/components/schemas/WallTime",
-            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused."
+            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused."
           },
           "title": {
             "$ref": "#/components/schemas/WireText",
@@ -5932,7 +5934,8 @@
                 "type": "null"
               }
             ],
-            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names. Left out, the stored duration is unchanged.",
+            "multipleOf": 15.0,
             "title": "Durationminutes"
           },
           "flexBandMinutes": {
@@ -5960,7 +5963,8 @@
                 "type": "null"
               }
             ],
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction. Left out, the stored floor is unchanged. Lowering the target below the stored floor is refused, so send both fields when both have to move.",
+            "multipleOf": 15.0,
             "title": "Mindurationminutes"
           },
           "targetTime": {
@@ -5972,7 +5976,7 @@
                 "type": "null"
               }
             ],
-            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused."
+            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused."
           },
           "title": {
             "anyOf": [
@@ -5995,7 +5999,7 @@
         "description": "One routine: where it targets, how long it runs, and how far it may give.\n\nNo Area and no pigment, and the absence is the contract rather than an omission.",
         "properties": {
           "durationMinutes": {
-            "description": "How long the routine runs, 15 to 1440 minutes. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
+            "description": "How long the routine runs, 15 to 1440 minutes. A multiple of 15, so a start and end land on the quarter hour. A routine is a span rather than a marker, so a creation without one is refused rather than defaulted: with no duration there is nothing to subtract from the day and discretionary time cannot be computed. The upper bound is the day the routine names.",
             "title": "Durationminutes",
             "type": "integer"
           },
@@ -6010,12 +6014,12 @@
             "type": "string"
           },
           "minDurationMinutes": {
-            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.",
+            "description": "The elastic floor: how far the routine may be compressed, at most its target duration. A multiple of 15, so a start and end land on the quarter hour. On the sleep routine this is THE SLEEP FLOOR, the negotiable resource a solver may propose spending and may never spend silently, and it lives nowhere else: there is no settings field for it. A routine whose floor equals its target is never offered as a reduction.",
             "title": "Mindurationminutes",
             "type": "integer"
           },
           "targetTime": {
-            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, and an offset is refused.",
+            "description": "Wall time, no date and no zone: 'Wake 05:00' means 05:00 wherever the user is, resolved against the zone active on each day. Minute resolution, on the quarter hour, and an offset is refused.",
             "format": "time",
             "title": "Targettime",
             "type": "string"
@@ -6574,7 +6578,8 @@
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "multipleOf": 15.0,
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -6655,7 +6660,8 @@
                 "type": "null"
               }
             ],
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "multipleOf": 15.0,
             "title": "Minchunkminutes"
           },
           "priority": {
@@ -6758,7 +6764,7 @@
             "type": "string"
           },
           "minChunkMinutes": {
-            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. Defaults to 15, one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
+            "description": "The smallest placement a splittable task may be divided into, 15 to 10080 minutes. A multiple of 15, so every placement lands on the quarter hour. Defaults to one grid step, clamped down to the estimate when the estimate is smaller. A value above the estimate is refused with a stated reason, because no placement could satisfy both. Stored but unread on an atomic task, whose only placement is the whole estimate: it is kept rather than forced to the estimate so that making the task splittable again restores the minimum the user chose.",
             "title": "Minchunkminutes",
             "type": "integer"
           },
