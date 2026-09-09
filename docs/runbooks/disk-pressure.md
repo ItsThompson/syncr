@@ -57,6 +57,16 @@ du -sh /var/lib/docker/containers/*    # a container log with no rotation
 | The WAL staging volume not being drained | `syncr_wal_archive` holds a segment for at most one shipper interval. A shipper that has stopped leaves them: `systemctl status syncr-walship.timer`, and `BackupStale` fires at fifteen minutes |
 | The backup staging volume | `syncr_backup_staging` holds a dump for as long as it takes to encrypt and upload it, and the dump step deletes both copies whatever happens. A file older than one run means a backup was killed mid-flight; it is safe to delete |
 
+## What rotation costs
+
+Every long-running service and the three one-shots now declare `max-size: 10m` and `max-file: 3`:
+14 services, 420 MB worst case, about 0.5% of the 80 GB disk. That bound is the deployment default,
+not a runbook step.
+
+Rotation discards the log history `du -sh /var/lib/docker/containers/*` reads. Once a container
+rotates, that command shows only the current files, not how much the container has logged in total,
+so a rotated container can look small while it has been writing.
+
 ## What is safe to prune, and what is not
 
 The short version: **plan data is not prunable, and nothing in this deployment prunes it.**
@@ -95,9 +105,6 @@ The alert clears within one scrape interval plus the 30-minute `for` window.
 
 ## Still to be written
 
-- **Log rotation as a deployment default.** This deployment does not set `max-size` on any container's
-  log driver, and unbounded container logs are the most likely cause of this alert. That is a
-  Compose-level fix rather than a runbook step, and it is ticket **1580**.
 - Recovery from a volume that is already at 0%, where Postgres will not start. The steps differ from
   the ones above and none of them is verified here.
 - Whether `mountpoint="/"` is the right filesystem on the Linux host. It is what the deployment watches,

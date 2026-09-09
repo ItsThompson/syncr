@@ -491,6 +491,28 @@ class TestTheDiskRunbook:
     def test_it_states_that_unshipped_wal_is_the_recovery_point(self) -> None:
         assert "They are the recovery point" in read(DISK_PRESSURE)
 
+    def test_it_states_the_log_bound_now_in_force(self) -> None:
+        runbook = read(DISK_PRESSURE)
+
+        assert "max-size: 10m" in runbook
+        assert "max-file: 3" in runbook
+        assert "14 services" in runbook
+        assert "420 MB" in runbook
+        assert "0.5%" in runbook
+
+    def test_it_states_that_rotation_discards_the_history_the_diagnosis_step_reads(
+        self,
+    ) -> None:
+        runbook = read(DISK_PRESSURE)
+
+        assert "discards the log history `du -sh /var/lib/docker/containers/*` reads" in runbook
+
+    def test_the_still_to_be_written_bullet_naming_this_work_is_gone(self) -> None:
+        runbook = read(DISK_PRESSURE)
+
+        assert "Log rotation as a deployment default" not in runbook
+        assert "ticket **1580**" not in runbook
+
 
 class TestTheGoogleOAuthRunbooksStateJudgment:
     """The connect flow's no-PKCE judgment, stated where an operator reconnects a credential.
