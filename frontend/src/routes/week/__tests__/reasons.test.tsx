@@ -140,7 +140,10 @@ const EVERY_CLAUSE_KIND: Readonly<Record<ClauseKind, ClauseCase>> = {
       placed: 3,
       of: 4,
     },
-    row: { label: "floor", value: "Career 5.0h \u00b7 3 of 4 occurrences placed" },
+    row: {
+      label: "floor",
+      value: "Career declared floor 5.0h \u00b7 rule floor 5.0h \u00b7 3 of 4 occurrences placed",
+    },
   },
   pinned: {
     clause: { kind: "pinned", at: span(monday("13:00"), monday("14:30")), pinnedOn: "2026-02-08" },
@@ -203,6 +206,44 @@ describe("the clause vocabulary the contract declares", () => {
 describe("the row a clause renders as", () => {
   it.each(CLAUSE_KINDS)("is one labelled row for the %s clause, and never nothing", (kind) => {
     expect(rowRenderedFor(kind)).toEqual(caseFor(kind).row);
+  });
+
+  it("states the declared floor separately from the netted rule floor", () => {
+    const [row] = rowsOf([
+      {
+        kind: "floor",
+        areaId: AREA_CAREER,
+        declaredFloorMinutes: 180,
+        floorMinutes: 90,
+        placed: 90,
+        of: 180,
+      },
+    ]);
+
+    expect(row).toEqual({
+      label: "floor",
+      value:
+        "Career declared floor 3.0h \u00b7 rule floor 1.5h \u00b7 90 of 180 occurrences placed",
+    });
+  });
+
+  it("states when a historical floor declaration is unavailable", () => {
+    const [row] = rowsOf([
+      {
+        kind: "floor",
+        areaId: AREA_CAREER,
+        declaredFloorMinutes: null,
+        floorMinutes: 90,
+        placed: 90,
+        of: 180,
+      },
+    ]);
+
+    expect(row).toEqual({
+      label: "floor",
+      value:
+        "Career declared floor unavailable for this historical plan \u00b7 rule floor 1.5h \u00b7 90 of 180 occurrences placed",
+    });
   });
 
   it("draws its label from a set that is exactly these six words", () => {

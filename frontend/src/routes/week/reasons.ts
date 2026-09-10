@@ -81,8 +81,12 @@ function floorValue(
   context: WeekReadingsContext,
 ): string {
   const name = context.areaName(clause.areaId) ?? "an Area no longer declared";
-  const hours = (clause.floorMinutes / 60).toFixed(1);
-  return `${name} ${hours}h · ${String(clause.placed)} of ${String(clause.of)} occurrences placed`;
+  const declaration =
+    clause.declaredFloorMinutes === null
+      ? "declared floor unavailable for this historical plan"
+      : `declared floor ${(clause.declaredFloorMinutes / 60).toFixed(1)}h`;
+  const rule = `rule floor ${(clause.floorMinutes / 60).toFixed(1)}h`;
+  return `${name} ${declaration} · ${rule} · ${String(clause.placed)} of ${String(clause.of)} occurrences placed`;
 }
 
 function detail(text: string | null | undefined): string {
