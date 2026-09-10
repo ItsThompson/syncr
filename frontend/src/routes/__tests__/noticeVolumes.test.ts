@@ -197,7 +197,7 @@ describe("every notice the application declares, found by parsing for the shape"
      * suffix case records why that matters -- ">= 2 passed with three suffixes, and would keep passing if the walk
      * narrowed to two, which is how the systemd units came to be invisible". A notice added or removed is a
      * deliberate change and reddens here with the figure. */
-    expect(declared).toHaveLength(18);
+    expect(declared).toHaveLength(20);
     expect(unreadable(declared, (one) => one.volume)).toEqual([]);
     for (const one of declared) expect(VOLUMES).toContain(one.volume);
   });

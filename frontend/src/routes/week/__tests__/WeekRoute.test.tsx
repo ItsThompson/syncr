@@ -98,6 +98,58 @@ describe("the week the reader asked for", () => {
     );
   });
 
+  it("marks an ended unconfirmed day informationally, but not a later day", async () => {
+    installWeekReads(
+      buildWeekView({
+        live: buildPlan({
+          blocks: [
+            buildBlock(),
+            buildBlock({
+              id: BLOCK_APPLICATION,
+              interval: { start: monday("11:00"), end: monday("12:00") },
+            }),
+          ],
+        }),
+        readings: buildReadings({ unconfirmedDates: [DATES[0]] }),
+      }),
+    );
+    renderAt(WEEK_PATH);
+
+    const mondayHeader = (await screen.findByText("MON 09")).closest(".week-day__head");
+    const tuesdayHeader = screen.getByText("TUE 10").closest(".week-day__head");
+
+    expect(mondayHeader?.querySelector(".week-day__mark")).toHaveClass("week-day__mark--info");
+    expect(mondayHeader?.querySelector(".week-day__mark")).toHaveAttribute("data-unconfirmed", "");
+    expect(tuesdayHeader?.querySelector(".week-day__mark")).toBeNull();
+  });
+
+  it("keeps the amber stale-source mark when the day is also unconfirmed", async () => {
+    installWeekReads(
+      buildWeekView({
+        live: buildPlan({
+          blocks: [
+            buildBlock({
+              areaId: null,
+              anchorOrigin: {
+                sourceId: "8c2e0d4f-6a12-4f3a-8b21-7d2b1a904c70",
+                possiblyStale: true,
+              },
+              origin: "anchor",
+            }),
+          ],
+        }),
+        readings: buildReadings({ unconfirmedDates: [DATES[0]] }),
+      }),
+    );
+    renderAt(WEEK_PATH);
+
+    const mondayHeader = (await screen.findByText("MON 09")).closest(".week-day__head");
+    const mark = mondayHeader?.querySelector(".week-day__mark");
+
+    expect(mark).toHaveClass("week-day__mark--amber");
+    expect(mark).not.toHaveAttribute("data-unconfirmed");
+  });
+
   it("leaves headers unmarked for healthy imported and solver-placed blocks", async () => {
     installWeekReads(
       buildWeekView({

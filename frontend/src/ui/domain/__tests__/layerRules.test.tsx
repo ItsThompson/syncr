@@ -128,6 +128,7 @@ const MOUNTED: Readonly<Record<string, () => ReactElement>> = {
     />
   ),
   DataBar: () => <domain.DataBar value={3.5} max={6} label="3.5h, 58% of the leader" />,
+  DayMarkSlot: () => <domain.DayMarkSlot marks={[]} />,
   DayColumn: () => (
     <domain.DayColumn
       canvasHeightPx={626}

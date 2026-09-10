@@ -29,7 +29,7 @@ import { extentOf, offsetSpanOf, totalMinutes } from "../../ui/domain";
 import type { Extent, GridBand, GridBlock, OffsetSpan, WeekDay } from "../../ui/domain";
 import type { WeekBand } from "./bands";
 import type { WeekBlock } from "./blocks";
-import { staleDayMark } from "./notices";
+import { staleDayMark, unconfirmedDayMark } from "./notices";
 
 const MILLISECONDS_IN_MINUTE = 60_000;
 
@@ -66,12 +66,15 @@ export interface WeekModelInput {
   readonly bounds: DayBounds;
   readonly blocks: readonly WeekBlock[];
   readonly bands: readonly WeekBand[];
+  /** The server-derived days that have ended, hold a block, and remain unconfirmed. */
+  readonly unconfirmedDates: readonly string[];
 }
 
 /** The columns, what each holds, and the axis window all seven share. */
 export function weekModel(input: WeekModelInput): WeekModel {
   const columns = columnsOf(input.zoneByDate, input.spanEnd);
   const spans: OffsetSpan[] = [];
+  const unconfirmedDates = new Set(input.unconfirmedDates);
 
   const days: WeekDay[] = columns.map((column, index) => {
     const isLast = index === columns.length - 1;
@@ -101,7 +104,12 @@ export function weekModel(input: WeekModelInput): WeekModel {
       minutes: totalMinutes(column),
       blocks,
       bands,
-      marks: [...staleSourceIds].map((sourceId) => staleDayMark(column.date, sourceId)),
+      marks: [
+        ...[...staleSourceIds].map((sourceId) => staleDayMark(column.date, sourceId)),
+        ...(unconfirmedDates.has(column.date) && blocks.length > 0
+          ? [unconfirmedDayMark(column.date)]
+          : []),
+      ],
     };
   });
 

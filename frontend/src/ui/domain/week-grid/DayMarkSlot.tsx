@@ -26,5 +26,11 @@ export function DayMarkSlot({ marks }: DayMarkSlotProps) {
   const mark = dayHeaderMarkOf(marks);
   if (mark === null) return null;
 
-  return <span aria-hidden="true" className={slot({ pigment: mark.pigment })} />;
+  return (
+    <span
+      aria-hidden="true"
+      className={slot({ pigment: mark.pigment })}
+      data-unconfirmed={mark.pigment === "info" ? "" : undefined}
+    />
+  );
 }

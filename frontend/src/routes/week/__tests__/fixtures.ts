@@ -274,6 +274,7 @@ export function buildReadings(overrides: Partial<WeekReadings> = {}): WeekReadin
     unallocatedMinutes: 1104,
     oversubscriptionMinutes: 0,
     unconfirmedDays: 0,
+    unconfirmedDates: [],
     offPlanMinutes: 0,
     blockCount: 91,
     droppedLegs: 0,

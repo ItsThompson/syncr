@@ -79,6 +79,7 @@ export function useWeekScreen(isoWeek: string): WeekScreenState {
       bounds: boundsOf(settings.data.dayStart, settings.data.dayEnd),
       blocks: view.live.blocks.map((block) => weekBlockOf(block, areaIndexOf(areas.data.areas))),
       bands: bandsOf(view),
+      unconfirmedDates: view.readings.unconfirmedDates,
     }),
     /* The setting travels as the reader stored it. `WeekGrid` brings it inside the range its OWN measured height
      * offers, because this hook has no measurement: clamping here would cap every display at the reference

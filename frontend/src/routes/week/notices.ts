@@ -25,6 +25,25 @@ const STALE_SOURCE_STILL_WORKS: readonly [string, ...string[]] = [
   "solving the week around the commitments already read",
 ];
 
+export function unconfirmedDayMark(date: string): DayMark {
+  return {
+    pigment: "info",
+    notice: {
+      id: `day-unconfirmed:${date}`,
+      volume: "inline",
+      pigment: "info",
+      title: "This day is not confirmed",
+      detail:
+        "Nothing has been answered for yet, so this day is excluded from reviews and learning.",
+      unavailable: [],
+      stillWorks: ["confirming this day", "the plan on the grid"],
+      since: null,
+      action: null,
+      scope: { screen: "/week", date },
+    },
+  };
+}
+
 /** An imported commitment is retained when its source stops answering, so the day remains usable but uncertain. */
 export function staleDayMark(date: string, sourceId: string): DayMark {
   return {

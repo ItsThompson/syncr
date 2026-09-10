@@ -66,6 +66,7 @@ function modelOf(
   week: DstWeek,
   blocks: readonly WeekBlock[] = [],
   bands: readonly WeekBand[] = [],
+  unconfirmedDates: readonly string[] = [],
 ) {
   return weekModel({
     zoneByDate: zoneByDateOf(week),
@@ -73,6 +74,7 @@ function modelOf(
     bounds: BOUNDS,
     blocks,
     bands,
+    unconfirmedDates,
   });
 }
 
@@ -135,6 +137,7 @@ describe("the bounds read across a transition", () => {
         bounds: BOUNDS,
         blocks: [],
         bands: [],
+        unconfirmedDates: [],
       }).extent,
     ).toEqual({ startMin: 300, endMin: 1320 });
   });
@@ -147,6 +150,7 @@ describe("the bounds read across a transition", () => {
         bounds: BOUNDS,
         blocks: [],
         bands: [],
+        unconfirmedDates: [],
       }).extent,
     ).toEqual({ startMin: 360, endMin: 1380 });
   });
@@ -383,5 +387,17 @@ describe("a band", () => {
     const { days } = modelOf(week, [imported]);
 
     expect(days.map((day) => day.marks?.length ?? 0)).toEqual([0, 1, 0, 0, 0, 0, 0]);
+  });
+
+  it("marks an unconfirmed date only when the day holds a block", () => {
+    const scheduled = block(
+      "scheduled",
+      wall(week, week.dates[1], "09:00"),
+      wall(week, week.dates[1], "10:00"),
+    );
+    const { days } = modelOf(week, [scheduled], [], [week.dates[1], week.dates[2]]);
+
+    expect(days[1].marks?.map((mark) => mark.pigment)).toEqual(["info"]);
+    expect(days[2].marks).toEqual([]);
   });
 });
