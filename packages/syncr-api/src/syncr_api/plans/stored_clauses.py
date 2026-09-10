@@ -71,8 +71,14 @@ SELECTED = "selected"
 CURSOR = "cursor"
 
 AREA_ID = "area_id"
+DECLARED_FLOOR_VERSION = "declared_floor_version"
 DECLARED_FLOOR_MINUTES = "declared_floor_minutes"
 FLOOR_MINUTES = "floor_minutes"
+
+# A legacy clause cannot recover the user's declared floor, so version 1 records it as unavailable.
+# Version 2 requires the recorded value rather than substituting the rule's netted floor.
+DECLARED_FLOOR_UNAVAILABLE = 1
+DECLARED_FLOOR_RECORDED = 2
 PLACED = "placed"
 OF = "of"
 
@@ -164,26 +170,58 @@ def _read_bound_source(value: object, *, field: str) -> BoundSource:
 
 def stored_floor(clause: Floor) -> JsonObject:
     """An Area floor that forced or forbade this placement."""
-    return {
+    stored = {
         AREA_ID: stored_id(clause.area_id),
-        DECLARED_FLOOR_MINUTES: clause.declared_floor_minutes,
         FLOOR_MINUTES: clause.floor_minutes,
         PLACED: clause.placed,
         OF: clause.of,
+    }
+    if clause.declared_floor_minutes is None:
+        return {DECLARED_FLOOR_VERSION: DECLARED_FLOOR_UNAVAILABLE, **stored}
+    return {
+        DECLARED_FLOOR_VERSION: DECLARED_FLOOR_RECORDED,
+        DECLARED_FLOOR_MINUTES: clause.declared_floor_minutes,
+        **stored,
     }
 
 
 def read_floor(stored: JsonDocument, field: str) -> Floor:
     return Floor(
         area_id=read_id(stored.get(AREA_ID), field=f"{field}.{AREA_ID}"),
-        declared_floor_minutes=read_whole_number(
-            stored.get(DECLARED_FLOOR_MINUTES), field=f"{field}.{DECLARED_FLOOR_MINUTES}"
-        ),
+        declared_floor_minutes=_read_declared_floor_minutes(stored, field=field),
         floor_minutes=read_whole_number(
             stored.get(FLOOR_MINUTES), field=f"{field}.{FLOOR_MINUTES}"
         ),
         placed=read_whole_number(stored.get(PLACED), field=f"{field}.{PLACED}"),
         of=read_whole_number(stored.get(OF), field=f"{field}.{OF}"),
+    )
+
+
+def _read_declared_floor_minutes(stored: JsonDocument, *, field: str) -> int | None:
+    if DECLARED_FLOOR_VERSION not in stored:
+        if DECLARED_FLOOR_MINUTES not in stored:
+            return None
+        return read_whole_number(
+            stored[DECLARED_FLOOR_MINUTES], field=f"{field}.{DECLARED_FLOOR_MINUTES}"
+        )
+
+    version = read_whole_number(
+        stored[DECLARED_FLOOR_VERSION], field=f"{field}.{DECLARED_FLOOR_VERSION}"
+    )
+    if version == DECLARED_FLOOR_UNAVAILABLE:
+        if DECLARED_FLOOR_MINUTES not in stored:
+            return None
+        raise StoredDocumentCorrupt(
+            f"{field} has an unavailable declared floor and minutes for one at the same time"
+        )
+    if version == DECLARED_FLOOR_RECORDED:
+        return read_whole_number(
+            stored.get(DECLARED_FLOOR_MINUTES), field=f"{field}.{DECLARED_FLOOR_MINUTES}"
+        )
+    raise StoredDocumentCorrupt(
+        f"{field}.{DECLARED_FLOOR_VERSION} is {version}, but declared floors use "
+        f"{DECLARED_FLOOR_UNAVAILABLE} for unavailable history or {DECLARED_FLOOR_RECORDED} "
+        "for recorded minutes"
     )
 
 

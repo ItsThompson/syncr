@@ -3497,7 +3497,7 @@ export interface components {
              */
             areaId: string;
             /** Declaredfloorminutes */
-            declaredFloorMinutes: number;
+            declaredFloorMinutes: number | null;
             /** Floorminutes */
             floorMinutes: number;
             /**

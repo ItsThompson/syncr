@@ -112,7 +112,7 @@ class FloorClause(WireModel):
 
     kind: Literal["floor"] = "floor"
     area_id: UUID
-    declared_floor_minutes: int
+    declared_floor_minutes: int | None
     floor_minutes: int
     placed: int
     of: int

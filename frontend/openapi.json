@@ -3169,8 +3169,15 @@
             "type": "string"
           },
           "declaredFloorMinutes": {
-            "title": "Declaredfloorminutes",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredfloorminutes"
           },
           "floorMinutes": {
             "title": "Floorminutes",

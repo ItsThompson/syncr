@@ -602,6 +602,20 @@ def test_a_clause_reaches_the_wire_with_its_own_values() -> None:
     assert by_kind["instead_of"]["objectiveDelta"] == pytest.approx(1.25)
 
 
+def test_a_historical_floor_reaches_the_wire_with_its_declaration_unavailable() -> None:
+    rendered = as_clause(
+        Floor(
+            area_id=CAREER,
+            declared_floor_minutes=None,
+            floor_minutes=90,
+            placed=90,
+            of=180,
+        )
+    ).model_dump(by_alias=True)
+
+    assert rendered["declaredFloorMinutes"] is None
+
+
 # --------------------------------------------------------------------------------
 # The document on the wire
 # --------------------------------------------------------------------------------

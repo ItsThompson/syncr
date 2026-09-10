@@ -196,10 +196,14 @@ class Bound:
 
 @dataclass(frozen=True, slots=True)
 class Floor:
-    """An Area's declared floor, the rule's remaining floor, and its reservation."""
+    """An Area's declared floor, the rule's remaining floor, and its reservation.
+
+    A legacy stored clause can lack its declared figure. ``None`` preserves that unavailable
+    history instead of presenting the rule's netted figure as the user's declaration.
+    """
 
     area_id: AreaId
-    declared_floor_minutes: int
+    declared_floor_minutes: int | None
     floor_minutes: int
     placed: int
     of: int
@@ -213,7 +217,7 @@ class Floor:
                 ("placed", self.placed),
                 ("of", self.of),
             )
-            if value < 0
+            if value is not None and value < 0
         }
         if negative:
             stated = ", ".join(f"{name}={value}" for name, value in sorted(negative.items()))

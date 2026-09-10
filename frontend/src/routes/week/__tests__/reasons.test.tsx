@@ -132,7 +132,14 @@ const EVERY_CLAUSE_KIND: Readonly<Record<ClauseKind, ClauseCase>> = {
     row: { label: "bound", value: "Sleep \u00b7 23:00 + 8h" },
   },
   floor: {
-    clause: { kind: "floor", areaId: AREA_CAREER, floorMinutes: 300, placed: 3, of: 4 },
+    clause: {
+      kind: "floor",
+      areaId: AREA_CAREER,
+      declaredFloorMinutes: 300,
+      floorMinutes: 300,
+      placed: 3,
+      of: 4,
+    },
     row: { label: "floor", value: "Career 5.0h \u00b7 3 of 4 occurrences placed" },
   },
   pinned: {

@@ -265,6 +265,35 @@ def test_a_block_carrying_the_whole_clause_budget_round_trips() -> None:
     assert plan_document(stored_document(document)) == document
 
 
+def test_a_predeclared_floor_clause_migrates_to_an_explicit_unavailable_declaration() -> None:
+    stored = stored_document(a_week_of_every_clause())
+    floor = _clause(stored, "floor")
+    del floor["declared_floor_version"]
+    del floor["declared_floor_minutes"]
+    floor["floor_minutes"] = 90
+
+    legacy = plan_document(stored)
+    migrated = stored_document(legacy)
+
+    assert plan_document(migrated) == legacy
+    assert _clause(migrated, "floor") == {
+        "kind": "floor",
+        "area_id": str(FITNESS),
+        "declared_floor_version": 1,
+        "floor_minutes": 90,
+        "placed": 90,
+        "of": 180,
+    }
+
+
+def test_a_recorded_floor_clause_requires_its_declared_minutes() -> None:
+    stored = stored_document(a_week_of_every_clause())
+    del _clause(stored, "floor")["declared_floor_minutes"]
+
+    with pytest.raises(StoredDocumentCorrupt, match="declared_floor_minutes"):
+        plan_document(stored)
+
+
 def test_every_clause_kind_is_covered_by_that_block() -> None:
     # The control on the assertion above, bounded by the domain's own table rather than by a list
     # here: a seventh clause kind is uncovered until this week holds one.
