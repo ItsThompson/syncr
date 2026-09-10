@@ -70,6 +70,7 @@ from syncr_domain.weeks import IsoWeek, active_zone_by_date
 from syncr_domain.zones import ZoneProfile
 from syncr_solver.inputs import EligibleTask
 from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from syncr_domain.identifiers import AreaId, HabitId, TaskId, TenantId
@@ -326,6 +327,7 @@ class World:
             self.tenant_id, [record(self.tenant_id, one) for one in (stored or [])]
         )
         self.versions = RecordingVersions()
+        self.solve_requests = RecordingSolveRequests()
         self.service = PreferenceService(
             preferences=self.preferences,
             owners=PreferenceOwners(
@@ -336,6 +338,8 @@ class World:
             bump=BacklogWideBump(
                 versions=self.versions, settings=FakeSettingsRepository(self.tenant_id)
             ),
+            solve_requests=self.solve_requests,
+            horizon=FixedProjectionHorizon((WEEK_31,)),
             clock=lambda: NOW,
         )
 
@@ -519,6 +523,8 @@ class TestTheChainClimbsTheAncestry:
                 versions=world.versions,
                 settings=FakeSettingsRepository(world.tenant_id),
             ),
+            solve_requests=world.solve_requests,
+            horizon=FixedProjectionHorizon((WEEK_31,)),
             clock=lambda: NOW,
         )
         await world.service.replace(
@@ -788,6 +794,8 @@ class TestTheAncestryWalk:
             bump=BacklogWideBump(
                 versions=RecordingVersions(), settings=FakeSettingsRepository(world.tenant_id)
             ),
+            solve_requests=RecordingSolveRequests(),
+            horizon=FixedProjectionHorizon((WEEK_31,)),
             clock=lambda: NOW,
         )
 

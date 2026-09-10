@@ -45,6 +45,7 @@ from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.weeks import IsoWeek
 from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -244,6 +245,7 @@ class Fixture:
         self.habits = FakeHabitRepository(self.tenant_id)
         self.areas = FakeAreaRepository(self.tenant_id, [self.area])
         self.versions = RecordingVersions()
+        self.solve_requests = RecordingSolveRequests()
         self.outcomes = RecordedOutcomes(log)
         self.service = HabitService(
             habits=self.habits,
@@ -253,6 +255,8 @@ class Fixture:
                 versions=self.versions,
                 settings=FakeSettingsRepository(self.tenant_id, home_zone=home_zone),
             ),
+            solve_requests=self.solve_requests,
+            horizon=FixedProjectionHorizon((WEEK_31,)),
             clock=lambda: at,
         )
 

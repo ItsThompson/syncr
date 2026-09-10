@@ -63,6 +63,8 @@ from syncr_common.metrics import measured
 from syncr_domain.pigments import next_unheld_step
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from syncr_api.areas.declarations import (
         AreaChange,
         AreaDeclaration,
@@ -74,7 +76,8 @@ if TYPE_CHECKING:
     from syncr_api.areas.repository import AreaRepository, ProjectRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.horizon.projection import ProjectionHorizon
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.identifiers import AreaId, ProjectId
 
 _log = get_logger("syncr.areas")
@@ -103,10 +106,14 @@ class AreaService:
         self,
         areas: AreaRepository,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._areas = areas
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("areas")
@@ -163,7 +170,7 @@ class AreaService:
             area_id=str(created.id),
             pigment_index=created.pigment_index,
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return DealtArea(area=created, ramp=ramp_reading((*existing, created)))
 
     @measured("areas")
@@ -201,11 +208,15 @@ class AreaService:
             budget_changed=change.changes_a_solve_input(),
         )
         if change.changes_a_solve_input():
-            await self._bump.from_the_week_holding(now)
+            await self._request_solves_after(now)
         return DealtArea(
             area=merged,
             ramp=ramp_reading(tuple(merged if row.id == area_id else row for row in existing)),
         )
+
+    async def _request_solves_after(self, now: datetime) -> None:
+        await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
 
 class ProjectService:

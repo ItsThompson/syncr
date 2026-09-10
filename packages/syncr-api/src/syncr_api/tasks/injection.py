@@ -22,7 +22,7 @@ commitments.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from fastapi import Depends
 from starlette.requests import Request  # noqa: TC002
@@ -32,10 +32,9 @@ from starlette.requests import Request  # noqa: TC002
 # NameError while the app is being constructed.
 from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository, ProjectRepository
-from syncr_api.calendars.horizons import read_horizon_days
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
-from syncr_api.horizon.weeks import horizon_weeks
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.plans.injection import build_current_week_verdict
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.injection import build_solve_requests, configured_debounce
@@ -43,27 +42,6 @@ from syncr_api.tasks.repository import TaskRepository
 from syncr_api.tasks.service import TaskService
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
-from syncr_api.user_settings.zone_reading import local_date
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from syncr_domain.weeks import IsoWeek
-
-
-class CurrentProjectionHorizon:
-    """Read the weeks this tenant's current projection horizon covers."""
-
-    def __init__(self, sources: CalendarSourceRepository, settings: SettingsRepository) -> None:
-        self._sources = sources
-        self._settings = settings
-
-    async def weeks_at(self, now: datetime) -> tuple[IsoWeek, ...]:
-        settings = await self._settings.read()
-        return horizon_weeks(
-            today=local_date(now, settings.home_zone),
-            horizon_days=await read_horizon_days(self._sources),
-        )
 
 
 def get_task_service(

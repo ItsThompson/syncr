@@ -36,6 +36,7 @@ from syncr_api.user_settings.service import SettingsChange
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.weeks import IsoWeek
 from tests.service_fakes import FakeSettingsRepository
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from syncr_api.routines.records import RoutineId
@@ -147,6 +148,8 @@ def build(
         bump=BacklogWideBump(
             versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
         ),
+        solve_requests=RecordingSolveRequests(),
+        horizon=FixedProjectionHorizon((WEEK_31,)),
         clock=lambda: NOW,
     )
     return service, routines

@@ -42,6 +42,7 @@ from tests.service_fakes import (
     FakeProjectRepository,
     FakeSettingsRepository,
 )
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 LONDON = "Europe/London"
 
@@ -83,6 +84,8 @@ def build_areas(
         bump=BacklogWideBump(
             versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
         ),
+        solve_requests=RecordingSolveRequests(),
+        horizon=FixedProjectionHorizon((WEEK_31,)),
         clock=lambda: NOW,
     )
     return service, areas

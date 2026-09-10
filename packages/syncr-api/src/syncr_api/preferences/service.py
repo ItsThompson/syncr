@@ -71,11 +71,12 @@ if TYPE_CHECKING:
     from syncr_api.areas.records import AreaRecord
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
+    from syncr_api.horizon.projection import ProjectionHorizon
     from syncr_api.preferences.declarations import PreferenceDeclaration
     from syncr_api.preferences.owners import PreferenceOwners, ResolvedOwner
     from syncr_api.preferences.records import PreferenceRecord
     from syncr_api.preferences.repository import PreferenceRepository
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.preferences import Preference
 
 _log = get_logger("syncr.preferences")
@@ -106,11 +107,15 @@ class PreferenceService:
         preferences: PreferenceRepository,
         owners: PreferenceOwners,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._preferences = preferences
         self._owners = owners
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("preferences")
@@ -195,7 +200,7 @@ class PreferenceService:
             rows_removed=removed,
         )
         if removed:
-            await self._bump.from_the_week_holding(now)
+            await self._request_solves_after(now)
         return await self._read(resolved)
 
     async def _require_owner(
@@ -263,7 +268,11 @@ class PreferenceService:
         """
         if was == now_is:
             return
-        await self._bump.from_the_week_holding(at)
+        await self._request_solves_after(at)
+
+    async def _request_solves_after(self, now: datetime) -> None:
+        await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
 
 def _source_name(

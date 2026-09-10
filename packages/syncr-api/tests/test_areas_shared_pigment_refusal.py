@@ -31,6 +31,7 @@ from syncr_api.core.scopes import ALL_SCOPES
 from syncr_api.user_settings.solve_inputs import BacklogWideBump
 from syncr_domain.pigments import PIGMENT_COUNT
 from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from syncr_api.areas.records import AreaRecord
@@ -69,6 +70,8 @@ def build_areas(
             versions=versions,
             settings=FakeSettingsRepository(principal.tenant_id),
         ),
+        solve_requests=RecordingSolveRequests(),
+        horizon=FixedProjectionHorizon(()),
         clock=lambda: NOW,
     )
     return service, areas

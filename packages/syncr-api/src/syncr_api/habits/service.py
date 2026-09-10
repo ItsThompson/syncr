@@ -58,6 +58,7 @@ from syncr_domain.debt import DebtReading, stored_reading
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import datetime
 
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
@@ -66,7 +67,8 @@ if TYPE_CHECKING:
     from syncr_api.habits.outcome_log import HabitOutcomeReader
     from syncr_api.habits.records import HabitRecord
     from syncr_api.habits.repository import HabitRepository
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.horizon.projection import ProjectionHorizon
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.identifiers import AreaId, HabitId
     from syncr_domain.outcomes import HabitOutcome
 
@@ -97,12 +99,16 @@ class HabitService:
         areas: AreaRepository,
         outcomes: HabitOutcomeReader,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._habits = habits
         self._areas = areas
         self._outcomes = outcomes
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("habits")
@@ -154,7 +160,7 @@ class HabitService:
             miss_policy=created.miss_policy.value,
             variant_count=len(created.variants),
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return (await self._read_all((created,)))[0]
 
     @measured("habits")
@@ -184,7 +190,7 @@ class HabitService:
             miss_policy=merged.miss_policy.value,
             variant_count=len(merged.variants),
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return (await self._read_all((merged,)))[0]
 
     @measured("habits")
@@ -200,7 +206,11 @@ class HabitService:
             habit_id=str(habit_id),
             area_id=str(found.area_id),
         )
+        await self._request_solves_after(now)
+
+    async def _request_solves_after(self, now: datetime) -> None:
         await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
     async def _read_all(self, habits: Sequence[HabitRecord]) -> tuple[ReadHabit, ...]:
         """Each habit with its cursor and its debt.

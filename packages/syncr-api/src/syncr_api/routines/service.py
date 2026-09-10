@@ -50,12 +50,15 @@ from syncr_common.logging import get_logger
 from syncr_common.metrics import measured
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
+    from syncr_api.horizon.projection import ProjectionHorizon
     from syncr_api.routines.declarations import RoutineChange, RoutineDeclaration
     from syncr_api.routines.records import RoutineId, RoutineRecord
     from syncr_api.routines.repository import RoutineRepository
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
 
 _log = get_logger("syncr.routines")
 
@@ -67,10 +70,14 @@ class RoutineService:
         self,
         routines: RoutineRepository,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._routines = routines
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("routines")
@@ -113,7 +120,7 @@ class RoutineService:
             routine_id=str(created.id),
             elastic=span.is_elastic,
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return created
 
     @measured("routines")
@@ -147,7 +154,7 @@ class RoutineService:
             routine_id=str(routine_id),
             elastic=span.is_elastic,
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return merged
 
     @measured("routines")
@@ -163,7 +170,11 @@ class RoutineService:
             tenant_id=str(principal.tenant_id),
             routine_id=str(routine_id),
         )
+        await self._request_solves_after(now)
+
+    async def _request_solves_after(self, now: datetime) -> None:
         await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
     async def _require_routine(self, principal: Principal, routine_id: RoutineId) -> RoutineRecord:
         found = await self._routines.find(routine_id)

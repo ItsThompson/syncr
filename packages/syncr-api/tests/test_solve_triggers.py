@@ -105,21 +105,21 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="habits/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "routine added or edited",
         bumps=True,
         solves=True,
         module="routines/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "preference added, edited, removed",
         bumps=True,
         solves=True,
         module="preferences/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "template or template entry edited",
@@ -140,7 +140,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="areas/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "off-plan period declared, edited, removed",
@@ -299,6 +299,10 @@ ANCHOR_DELTA_ROW: Final = "anchor delta from a calendar sync"
 SOLVES_ELSEWHERE: Final = {
     ANCHOR_DELTA_ROW: "calendars/solve_requests.py",
     "task added, edited, completed, dropped": "solving/injection.py",
+    "habit added or edited": "solving/injection.py",
+    "routine added or edited": "solving/injection.py",
+    "preference added, edited, removed": "solving/injection.py",
+    "area budget, floor, or percentage edited": "solving/injection.py",
 }
 
 
@@ -531,7 +535,7 @@ class TestTheTriggerTable:
 
 
 class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
-    """Twelve rows ask for a solve and reach none. Named here so the gap is countable.
+    """Eight rows ask for a solve and reach none. Named here so the gap is countable.
 
     Building this enumeration is what made them visible, and BOTH directions are guarded, which is
     what makes the table's own claim true: a row that loses its bump fails the walk above, and a row
@@ -542,12 +546,12 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
-        """Eleven rows ask for a solve and reach none, all eleven a person's own mutation."""
+        """Seven rows ask for a solve and reach none, all seven a person's own mutation."""
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 11
-        assert len(by_a_person) == 11
+        assert len(unwired) == 7
+        assert len(by_a_person) == 7
 
     @pytest.mark.parametrize(
         "trigger",
@@ -577,11 +581,11 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
                 continue
             assert one.owner == "1403", one.row
 
-    def test_only_nine_rows_reach_the_coordinator_today(self) -> None:
-        # The nine live triggers, one of which bypasses the debounce by design. The calendar sync
-        # and the week entering the horizon are the two triggers here that no person performs: a
-        # poll asks for the weeks its own read moved, and time passing asks for the weeks it brought
-        # in.
+    def test_only_thirteen_rows_reach_the_coordinator_today(self) -> None:
+        # The thirteen live triggers, one of which bypasses the debounce by design. The calendar
+        # sync and the week entering the horizon are the two triggers here that no person performs:
+        # a poll asks for the weeks its own read moved, and time passing asks for the weeks it
+        # brought in.
         wired = [one.row for one in TRIGGER_TABLE if one.solves and one.owner is None]
 
         assert sorted(wired) == [
@@ -593,9 +597,13 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
             "task added, edited, completed, dropped",
             "tradeoff requested",
             "week adjustment revoked",
+            "area budget, floor, or percentage edited",
             "weight set activated or reverted",
+            "habit added or edited",
         ]
+            "preference added, edited, removed",
 
+            "routine added or edited",
     def test_the_only_rows_whose_solves_live_outside_their_own_modules_are_declared(
         self,
     ) -> None:
@@ -626,8 +634,18 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         assert "self._solves.request(delta.occupied_weeks)" in module_source("calendars/sync.py")
         assert REQUESTS_A_SOLVE in module_source(row.solves_in)
 
-    def test_the_task_row_asks_the_composed_solve_request_adapter(self) -> None:
-        row = next(one for one in TRIGGER_TABLE if one.row.startswith("task added"))
+    @pytest.mark.parametrize(
+        "row_name",
+        [
+            "task added, edited, completed, dropped",
+            "habit added or edited",
+            "routine added or edited",
+            "preference added, edited, removed",
+            "area budget, floor, or percentage edited",
+        ],
+    )
+    def test_a_content_row_asks_the_composed_solve_request_adapter(self, row_name: str) -> None:
+        row = next(one for one in TRIGGER_TABLE if one.row == row_name)
 
         assert row.solves_in == SOLVES_ELSEWHERE[row.row]
         assert "self._solve_requests.request(" in module_source(row.module)
