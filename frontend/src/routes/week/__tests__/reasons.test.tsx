@@ -284,7 +284,7 @@ describe("the cost of a pin", () => {
    * two refusable kinds are absent because nothing refused a window and the Area declares no floor. */
   const THE_THREE_CLAUSES = [clauseOf("pinned"), clauseOf("instead_of"), clauseOf("dominant")];
 
-  function blockPinnedAtACostOf(objectiveDelta: number | null): Block {
+  function blockPinnedAtACostOf(objectiveDelta: number): Block {
     return buildBlock({
       pinned: true,
       interval: span(monday("13:00"), monday("14:30")),
@@ -294,10 +294,10 @@ describe("the cost of a pin", () => {
     });
   }
 
-  function renderPanel(block: Block): HTMLElement {
+  function renderPanel(block: Block, cost: string | null): HTMLElement {
     render(
       <DetailPanel
-        cost={objectiveDeltaOf(block)}
+        cost={cost}
         definitionRows={definitionRowsOf(block, CONTEXT)}
         onClose={() => undefined}
         reasonRows={reasonRowsOf(block.reason, CONTEXT)}
@@ -313,11 +313,15 @@ describe("the cost of a pin", () => {
     expect(rows.map((row) => row?.label)).toEqual(["pinned", "instead of", "dominant"]);
   });
 
-  it("reaches the panel as one composed row beside the three clause rows", () => {
-    const reason = renderPanel(blockPinnedAtACostOf(0.18));
+  it.each([
+    [0, "0.00 against the proposal"],
+    [-0.42, "-0.42 against the proposal"],
+  ])("renders %s as %s beside the pin's clause rows", (objectiveDelta, expected) => {
+    const block = blockPinnedAtACostOf(objectiveDelta);
+    const reason = renderPanel(block, objectiveDeltaOf(objectiveDelta));
 
     expect(labelsIn(reason)).toEqual(["pinned", "instead of", "dominant", "cost"]);
-    expect(within(reason).getByText("+0.18 against the proposal")).toBeInTheDocument();
+    expect(within(reason).getByText(expected)).toBeInTheDocument();
     /* The composed row lands among the clauses rather than among the block's own facts, which are their own list. */
     expect(labelsIn(screen.getByLabelText("Definition"))).toEqual([
       "when",
@@ -327,19 +331,18 @@ describe("the cost of a pin", () => {
     ]);
   });
 
-  it("is absent rather than composed where the block carries no delta", () => {
-    const reason = renderPanel(blockPinnedAtACostOf(null));
-
-    expect(labelsIn(reason)).toEqual(["pinned", "instead of", "dominant"]);
-  });
-
   it("is read from the block rather than from the clause that records it", () => {
     /* The two figures agree in production, because both are written from the same pin. They disagree here only to
      * show which of them the composed row reads. */
-    const block = blockPinnedAtACostOf(-0.42);
+    const objectiveDelta = -0.42;
+    const block = blockPinnedAtACostOf(objectiveDelta);
 
-    expect(objectiveDeltaOf(block)).toBe("-0.42 against the proposal");
-    expect(within(renderPanel(block)).getByText("-0.42 against the proposal")).toBeInTheDocument();
+    expect(objectiveDeltaOf(objectiveDelta)).toBe("-0.42 against the proposal");
+    expect(
+      within(renderPanel(block, objectiveDeltaOf(objectiveDelta))).getByText(
+        "-0.42 against the proposal",
+      ),
+    ).toBeInTheDocument();
     /* No clause row states a delta at all, so the composed row is the only place one can come from. */
     const clauseValues = rowsOf(THE_THREE_CLAUSES).map((row) => row?.value);
 
