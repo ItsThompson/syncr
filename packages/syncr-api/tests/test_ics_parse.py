@@ -1234,22 +1234,19 @@ def test_an_occurrence_ending_exactly_at_the_horizon_places_nothing() -> None:
     assert outcome.unplaced == 1
 
 
-def test_syncr_s_own_refusal_is_not_re_explained_as_a_library_fault() -> None:
-    # IcsRejection is a ValueError by inheritance, so the catch written for a foreign expander's
-    # lazily raised faults also catches this package's own refusals and re-wrapped them. The panel
-    # then read "the recurrence rule cannot be expanded: the recurrence rule states an INTERVAL of
-    # 0", which explains syncr's own decision as something dateutil could not do, and buries the
-    # property the publisher has to fix.
+def test_a_lazy_grammar_rejection_is_not_re_explained_as_a_library_fault() -> None:
+    # `_parse_rule` executes only when `_candidates` is first advanced. Its IcsRejection inherits
+    # ValueError, so the catch written for dateutil's lazy faults must let it pass unchanged.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:own@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
-        "RRULE:FREQ=DAILY;INTERVAL=0\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        "RRULE:FREQ=DAILY;COUNT\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
     )
 
     outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
 
     detail = outcome.rejected[0].detail
-    assert detail.startswith("the recurrence rule states an INTERVAL")
+    assert detail.startswith("the recurrence rule states 'COUNT' with no value")
     assert "cannot be expanded" not in detail
 
 
