@@ -28,15 +28,17 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from syncr_api.core.clock import utc_now
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.offplan.declarations import OffPlanChange, OffPlanDeclaration
 from syncr_api.offplan.models import OffPlanPeriodRow
 from syncr_api.offplan.repository import OffPlanPeriodRepository
 from syncr_api.offplan.service import OffPlanService
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.injection import build_solve_requests, debounce_window
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
@@ -135,13 +137,21 @@ async def read_for_span(
 
 def build_service(session: AsyncSession, tenant_id: TenantId) -> OffPlanService:
     """The service wired as the request path wires it, against a real session."""
+    settings = SettingsRepository(session, tenant_id)
     return OffPlanService(
         periods=OffPlanPeriodRepository(session, tenant_id),
-        settings=SettingsRepository(session, tenant_id),
+        settings=settings,
         overrides=TravelOverrideRepository(session, tenant_id),
         versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(session, tenant_id), clock=utc_now
+            WeekInputVersionRepository(session, tenant_id), clock=lambda: NOW
         ),
+        solve_requests=build_solve_requests(
+            session,
+            tenant_id,
+            clock=lambda: NOW,
+            debounce=debounce_window(1),
+        ),
+        horizon=CurrentProjectionHorizon(CalendarSourceRepository(session, tenant_id), settings),
         clock=lambda: NOW,
     )
 

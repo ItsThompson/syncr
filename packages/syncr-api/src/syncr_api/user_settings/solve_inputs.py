@@ -75,6 +75,15 @@ class WeekRange:
         """Whether ``week`` is inside this range."""
         return self.first <= week and (self.last is None or week <= self.last)
 
+    def closed_weeks(self) -> tuple[IsoWeek, ...]:
+        """Every week in this finite range, earliest first."""
+        if self.last is None:
+            raise ValueError("an open-ended week range has no finite week set")
+        weeks = [self.first]
+        while weeks[-1] < self.last:
+            weeks.append(weeks[-1].following())
+        return tuple(weeks)
+
 
 class WeekInputVersions(Protocol):
     """The week input version counter, as this module needs it.

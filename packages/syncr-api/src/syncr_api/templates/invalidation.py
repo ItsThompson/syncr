@@ -1,4 +1,4 @@
-"""Which weeks a day-shape mutation invalidates, and the one rule that decides it.
+"""Which weeks a day-shape mutation invalidates and requests a solve for.
 
 A week materializes its shapes through the week pattern: a date resolves to a weekday, the
 weekday to a day type, and the day type to the shape whose entries are placed. So a mutation
@@ -11,6 +11,9 @@ every mutation this package makes:
   reaches every future week when the pattern maps that shape's day type.
 * Replacing the pattern reaches every future week, always. It maps all seven weekdays, so there
   is no week it does not describe.
+
+After an invalidation, the same rule requests the affected projection weeks. The request adapter
+keeps only tracked weeks, because no untracked week has a plan to re-solve.
 
 **Past weeks are never bumped.** An approved revision is immutable and keeps the inputs it was
 computed with, so re-deriving a past week would rewrite history rather than the plan. Which weeks
@@ -25,8 +28,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from syncr_api.core.clock import Clock
+    from syncr_api.horizon.projection import ProjectionHorizon
     from syncr_api.templates.repository import WeekPatternRepository
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.identifiers import DayTypeId
 
 
@@ -34,15 +38,24 @@ class FutureWeeks:
     """The weeks a day-shape mutation invalidates: this one onwards, or none at all."""
 
     def __init__(
-        self, patterns: WeekPatternRepository, bump: BacklogWideBump, clock: Clock
+        self,
+        patterns: WeekPatternRepository,
+        bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
+        clock: Clock,
     ) -> None:
         self._patterns = patterns
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     async def invalidate(self) -> None:
-        """Bump the input version of the current week and every week after it."""
-        await self._bump.from_the_week_holding(self._clock())
+        """Bump the input versions, then request each affected horizon week."""
+        now = self._clock()
+        await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
     async def invalidate_if_mapped(self, day_type_id: DayTypeId) -> bool:
         """:meth:`invalidate`, but only when some weekday uses this day type.

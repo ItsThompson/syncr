@@ -18,7 +18,7 @@ this package appeared.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from syncr_api.calendars.config import HORIZON_DAYS_DEFAULT
 from syncr_domain.intervals import Interval
@@ -26,16 +26,27 @@ from syncr_domain.intervals import Interval
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from syncr_api.calendars.repository import CalendarSourceRepository
+
+class HorizonTarget(Protocol):
+    """The horizon length the designated write target exposes."""
+
+    @property
+    def horizon_days(self) -> int | None: ...
 
 
-async def read_horizon_days(sources: CalendarSourceRepository) -> int:
+class HorizonSourceReader(Protocol):
+    """The write-target reading needed to resolve a projection horizon."""
+
+    async def write_target(self) -> HorizonTarget | None: ...
+
+
+async def read_horizon_days(sources: HorizonSourceReader) -> int:
     """How many days ahead the projection reaches: the write target's horizon, else the default."""
     target = await sources.write_target()
     return HORIZON_DAYS_DEFAULT if target is None else target.horizon_days or HORIZON_DAYS_DEFAULT
 
 
-async def read_ingest_horizon(sources: CalendarSourceRepository, *, now: datetime) -> Interval:
+async def read_ingest_horizon(sources: HorizonSourceReader, *, now: datetime) -> Interval:
     """How far ahead recurrence is expanded, as the span the adapters clip to.
 
     From ``now`` rather than from the start of the week, because an occurrence that began before

@@ -23,16 +23,20 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends
+from starlette.requests import Request  # noqa: TC002
 
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and
 # these two names are only reachable from an annotation, so under TYPE_CHECKING they would
 # resolve to a NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.habits.repository import HabitRepository
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.routines.repository import RoutineRepository
+from syncr_api.solving.injection import build_solve_requests, configured_debounce
 from syncr_api.templates.bindings import TemplateBindings
 from syncr_api.templates.invalidation import FutureWeeks
 from syncr_api.templates.repository import (
@@ -45,15 +49,27 @@ from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
-def _future_weeks(principal: PrincipalDep, transaction: TransactionDep) -> FutureWeeks:
+def _future_weeks(
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
+) -> FutureWeeks:
     """The invalidation rule, wired for this request and scoped to this tenant."""
+    settings = SettingsRepository(transaction, principal.tenant_id)
     return FutureWeeks(
         patterns=WeekPatternRepository(transaction, principal.tenant_id),
         bump=BacklogWideBump(
             versions=TrackedWeekInputVersions(
                 WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
             ),
-            settings=SettingsRepository(transaction, principal.tenant_id),
+            settings=settings,
+        ),
+        solve_requests=build_solve_requests(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
+        ),
+        horizon=CurrentProjectionHorizon(
+            CalendarSourceRepository(transaction, principal.tenant_id), settings
         ),
         clock=utc_now,
     )
@@ -68,7 +84,9 @@ def get_day_type_service(principal: PrincipalDep, transaction: TransactionDep) -
     )
 
 
-def get_template_service(principal: PrincipalDep, transaction: TransactionDep) -> TemplateService:
+def get_template_service(
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
+) -> TemplateService:
     """The day-shape service, wired for this request and scoped to this tenant."""
     return TemplateService(
         templates=TemplateRepository(transaction, principal.tenant_id),
@@ -78,20 +96,20 @@ def get_template_service(principal: PrincipalDep, transaction: TransactionDep) -
             routines=RoutineRepository(transaction, principal.tenant_id),
             habits=HabitRepository(transaction, principal.tenant_id),
         ),
-        weeks=_future_weeks(principal, transaction),
+        weeks=_future_weeks(request, principal, transaction),
         clock=utc_now,
         savepoint=transaction.begin_nested,
     )
 
 
 def get_week_pattern_service(
-    principal: PrincipalDep, transaction: TransactionDep
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> WeekPatternService:
     """The week-pattern service. Replacing the mapping invalidates every future week."""
     return WeekPatternService(
         patterns=WeekPatternRepository(transaction, principal.tenant_id),
         day_types=DayTypeRepository(transaction, principal.tenant_id),
-        weeks=_future_weeks(principal, transaction),
+        weeks=_future_weeks(request, principal, transaction),
     )
 
 

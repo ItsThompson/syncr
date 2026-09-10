@@ -34,6 +34,7 @@ from syncr_domain.fixtures.off_plan_week import OFF_PLAN_WEEK
 from syncr_domain.intervals import Interval
 from syncr_domain.weeks import IsoWeek, week_span
 from tests.service_fakes import FakeSettingsRepository
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from syncr_domain.identifiers import OffPlanPeriodId, TenantId
@@ -171,6 +172,8 @@ def build(
     stored: list[OffPlanPeriodRecord] | None = None,
     home_zone: str = LONDON,
     travel: TravelOverrideRepository | None = None,
+    solve_requests: RecordingSolveRequests | None = None,
+    horizon: FixedProjectionHorizon | None = None,
 ) -> tuple[OffPlanService, FakeOffPlanRepository, FakeSettingsRepository]:
     periods = FakeOffPlanRepository(principal.tenant_id, stored)
     settings = FakeSettingsRepository(principal.tenant_id, home_zone=home_zone)
@@ -179,6 +182,8 @@ def build(
         settings=settings,
         overrides=travel if travel is not None else StoredTravel(principal.tenant_id),
         versions=versions,
+        solve_requests=solve_requests or RecordingSolveRequests(),
+        horizon=horizon or FixedProjectionHorizon(()),
         clock=lambda: NOW,
     )
     return service, periods, settings
@@ -345,6 +350,22 @@ async def test_declaring_bumps_every_week_the_span_touches(
     await service.declare(principal, declaring(FRIDAY))
 
     assert versions.bumped == [WeekRange(first=WEEK_10, last=WEEK_11)]
+
+
+async def test_declaring_requests_only_the_touched_weeks_still_inside_the_horizon(
+    principal: Principal, versions: RecordingWeekInputVersions
+) -> None:
+    requests = RecordingSolveRequests()
+    service, _, _ = build(
+        principal,
+        versions,
+        solve_requests=requests,
+        horizon=FixedProjectionHorizon((WEEK_11,)),
+    )
+
+    await service.declare(principal, declaring(FRIDAY))
+
+    assert requests.requested == [frozenset({WEEK_11})]
 
 
 async def test_declaring_inside_a_travel_override_bumps_the_active_zone_week(

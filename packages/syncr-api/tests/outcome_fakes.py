@@ -42,6 +42,7 @@ from tests.assembly_fakes import (
     FakeOverrides,
     FakeSettings,
 )
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -188,6 +189,7 @@ class Wired:
     plans: FakePlans
     log: FakeOutcomeLog
     versions: FakeVersions
+    solve_requests: RecordingSolveRequests
 
 
 def a_service(
@@ -198,6 +200,8 @@ def a_service(
     areas: AreaRepository | None = None,
     settings: SettingsRepository | None = None,
     overrides: TravelOverrideRepository | None = None,
+    solve_requests: RecordingSolveRequests | None = None,
+    horizon: FixedProjectionHorizon | None = None,
     now: datetime,
 ) -> Wired:
     """The outcome service over fakes, with the real bump and the real read model.
@@ -209,6 +213,7 @@ def a_service(
     kept = log if log is not None else FakeOutcomeLog(outcomes)
     versions = FakeVersions(bumped=[])
     settings_repository = settings or FakeSettings()
+    requests = solve_requests or RecordingSolveRequests()
     return Wired(
         service=OutcomeService(
             plans=stored_plans,
@@ -219,11 +224,14 @@ def a_service(
             settings=settings_repository,
             overrides=overrides or FakeOverrides(),
             bump=BacklogWideBump(versions, settings_repository),
+            solve_requests=requests,
+            horizon=horizon or FixedProjectionHorizon(()),
             clock=lambda: now,
         ),
         plans=stored_plans,
         log=kept,
         versions=versions,
+        solve_requests=requests,
     )
 
 
@@ -241,4 +249,3 @@ class NoCharges:
 
     async def refresh(self, habit_ids: Sequence[HabitId]) -> None:
         return None
-

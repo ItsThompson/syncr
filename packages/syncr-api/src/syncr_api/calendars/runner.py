@@ -196,6 +196,8 @@ class CalendarSyncRunner:
                 home_zone=settings.home_zone,
             ),
             collisions=IngestConflicts(session, tenant_id),
+            # A worker poll has no request dependency graph to resolve from, so it composes its
+            # coordinator here. The request path resolves its adapter through FastAPI instead.
             solves=TrackedWeekSolves(
                 version_rows,
                 build_solve_coordinator(

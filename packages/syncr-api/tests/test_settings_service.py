@@ -86,13 +86,26 @@ class FakeTravelOverrideRepository(TravelOverrideRepository):
 
 
 class RecordingWeekInputVersions:
-    """Every range the service asked to have bumped, in order."""
+    """Every range and solve set the service asked for, in order."""
 
     def __init__(self) -> None:
         self.bumped: list[WeekRange] = []
+        self.requested: list[frozenset[IsoWeek]] = []
 
     async def bump(self, weeks: WeekRange) -> None:
         self.bumped.append(weeks)
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        self.requested.append(weeks)
+        return tuple(sorted(weeks))
+
+
+class StaticProjectionHorizon:
+    """The fixed horizon the service's request set is asserted against."""
+
+    async def weeks_at(self, now: datetime) -> tuple[IsoWeek, ...]:
+        assert now == NOW
+        return (WEEK_31, WEEK_32)
 
 
 @pytest.fixture
@@ -120,7 +133,12 @@ def build_service(
     settings = FakeSettingsRepository(principal.tenant_id, stored, home_zone=HOME_ZONE_DEFAULT)
     travel = FakeTravelOverrideRepository(principal.tenant_id, overrides or [])
     service = SettingsService(
-        settings=settings, overrides=travel, versions=versions, clock=lambda: NOW
+        settings=settings,
+        overrides=travel,
+        versions=versions,
+        solve_requests=versions,
+        horizon=StaticProjectionHorizon(),
+        clock=lambda: NOW,
     )
     return service, settings, travel
 
@@ -242,6 +260,8 @@ async def test_the_active_date_is_the_local_date_in_the_home_zone(
         settings=settings,
         overrides=FakeTravelOverrideRepository(principal.tenant_id, []),
         versions=versions,
+        solve_requests=versions,
+        horizon=StaticProjectionHorizon(),
         clock=lambda: late,
     )
 
@@ -294,6 +314,7 @@ async def test_changing_the_home_zone_bumps_the_current_week_and_every_week_afte
     assert settings.stored is not None
     assert settings.stored.home_zone == TOKYO
     assert versions.bumped == [WeekRange(first=WEEK_31, last=None)]
+    assert versions.requested == [frozenset({WEEK_31, WEEK_32})]
 
 
 async def test_rewriting_the_home_zone_with_the_same_value_bumps_nothing(
@@ -306,6 +327,7 @@ async def test_rewriting_the_home_zone_with_the_same_value_bumps_nothing(
     await service.update(principal, SettingsChange(home_zone=LONDON))
 
     assert versions.bumped == []
+    assert versions.requested == []
 
 
 @pytest.mark.parametrize(
@@ -403,6 +425,7 @@ async def test_declaring_an_override_stores_it_and_bumps_the_weeks_it_covers(
     assert created.zone == TOKYO
     assert [row.id for row in travel.rows] == [created.id]
     assert versions.bumped == [WeekRange(first=WEEK_32, last=WEEK_32)]
+    assert versions.requested == [frozenset({WEEK_32})]
 
 
 async def test_an_overlapping_declaration_is_refused_with_both_ranges_named(

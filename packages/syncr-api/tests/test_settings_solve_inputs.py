@@ -139,6 +139,17 @@ def test_an_unbounded_range_covers_a_week_a_bounded_one_does_not() -> None:
     assert WeekRange(first=WEEK_31, last=None).covers(WEEK_33)
 
 
+def test_a_closed_range_lists_only_its_weeks() -> None:
+    assert WeekRange(first=WEEK_31, last=WEEK_33).closed_weeks() == (
+        WEEK_31,
+        WEEK_32,
+        WEEK_33,
+    )
+
+    with pytest.raises(ValueError, match="no finite week set"):
+        WeekRange(first=WEEK_31, last=None).closed_weeks()
+
+
 # --------------------------------------------------------------------------------
 # The weeks a bounded span occupies. Every case is an instant at or beside a local
 # midnight, because the half-open bound is what this can get wrong.

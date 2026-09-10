@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.anchors.config import (
@@ -52,6 +53,8 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
 from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.config import PENDING, SOLVE
+from syncr_api.solving.models import Operation
 from syncr_api.user_settings.config import HOME_ZONE_DEFAULT
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.intervals import Interval
@@ -245,6 +248,27 @@ def week_version(database_url: str, tenant_id: TenantId) -> int | None:
             async with database.sessionmaker() as session:
                 versions = WeekInputVersionRepository(session, tenant_id)
                 return await versions.current(IsoWeek.containing(datetime.now(UTC).date()))
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
+def pending_solve_weeks(database_url: str, tenant_id: TenantId) -> list[str | None]:
+    async def read() -> list[str | None]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                operations = await session.scalars(
+                    select(Operation.iso_week)
+                    .where(
+                        Operation.tenant_id == tenant_id,
+                        Operation.kind == SOLVE,
+                        Operation.status == PENDING,
+                    )
+                    .order_by(Operation.iso_week)
+                )
+                return list(operations)
         finally:
             await database.engine.dispose()
 
@@ -895,6 +919,9 @@ def test_every_anchor_type_mutation_bumps_the_week_input_version(
         http.put(f"{ANCHORS}/{anchor['id']}/type", json={"anchorTypeId": None}, headers=signed_in)
 
     assert week_version(live_database_url, owner.tenant_id) == before + 1
+    assert pending_solve_weeks(live_database_url, owner.tenant_id) == [
+        str(IsoWeek.containing(datetime.now(UTC).date()))
+    ]
 
 
 def test_reading_commitments_and_types_bumps_nothing(

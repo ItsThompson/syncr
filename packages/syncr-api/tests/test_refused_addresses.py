@@ -204,6 +204,7 @@ def service_over(sources: RecordingSources) -> CalendarSourceService:
         sources=sources,  # type: ignore[arg-type]  # a double over the repository's surface
         syncer=None,  # type: ignore[arg-type]
         versions=None,  # type: ignore[arg-type]
+        solve_requests=None,  # type: ignore[arg-type]
         clock=lambda: NOW,
         remote_calendars=None,  # type: ignore[arg-type]
         feeds=None,  # type: ignore[arg-type]

@@ -49,6 +49,7 @@ from tests.assembly_fakes import (
     between,
 )
 from tests.outcome_fakes import OWNER, Wired, a_revision, a_service
+from tests.solve_request_fakes import FixedProjectionHorizon, RecordingSolveRequests
 
 if TYPE_CHECKING:
     from syncr_domain.plan import PlanDocument
@@ -165,6 +166,24 @@ async def test_correcting_a_recording_after_a_confirmation_keeps_when_the_day_wa
     assert confirmed.confirmed_at == NOW
     assert corrected.state is MISS_STATE
     assert corrected.confirmed_at == NOW
+
+
+async def test_past_confirmation_correction_requests_only_horizon_weeks() -> None:
+    block = a_gym_block(day=1)
+    requests = RecordingSolveRequests()
+    scene = a_service(
+        plans=[a_revision(a_week(block))],
+        areas=FakeAreas([AREA]),
+        solve_requests=requests,
+        horizon=FixedProjectionHorizon((WEEK.following(),)),
+        now=NOW,
+    )
+    await scene.service.confirm_day(OWNER, TUESDAY)
+    requests.requested.clear()
+
+    await scene.service.record(OWNER, block.id, a_recording(MISS_STATE))
+
+    assert requests.requested == [frozenset({WEEK.following()})]
 
 
 async def test_a_partial_without_its_minutes_is_refused_and_writes_nothing() -> None:

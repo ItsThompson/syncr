@@ -71,7 +71,8 @@ if TYPE_CHECKING:
     from syncr_api.calendars.repository import CalendarSourceRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.horizon.projection import ProjectionHorizon
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.identifiers import AnchorId
     from syncr_domain.intervals import Interval
 
@@ -87,12 +88,16 @@ class AnchorService:
         types: AnchorTypeRepository,
         sources: CalendarSourceRepository,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._anchors = anchors
         self._types = types
         self._sources = sources
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("anchors")
@@ -155,6 +160,7 @@ class AnchorService:
             occurrences_retyped=moved,
         )
         await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
         return Retyped(
             view=await self._viewed(await self._found(principal, anchor_id)),
             occurrences_retyped=moved,
@@ -216,6 +222,8 @@ class AnchorTypeService:
         sources: CalendarSourceRepository,
         evaluator: RuleEvaluator,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._types = types
@@ -224,6 +232,8 @@ class AnchorTypeService:
         self._sources = sources
         self._evaluator = evaluator
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("anchors")
@@ -383,3 +393,4 @@ class AnchorTypeService:
         """
         await self._evaluator.re_evaluate()
         await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))

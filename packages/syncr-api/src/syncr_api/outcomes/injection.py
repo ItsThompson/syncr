@@ -26,27 +26,31 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends
+from starlette.requests import Request  # noqa: TC002
 
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
 # NameError while the app is being constructed.
 from syncr_api.accounts.injection import ClientPrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.habits.charged import StoredChargedMisses
 from syncr_api.habits.repository import HabitRepository
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.outcomes.planned_days import PlannedDayReader
 from syncr_api.outcomes.service import OutcomeService
 from syncr_api.plans.habit_log import HabitOutcomeLog
 from syncr_api.plans.reality import BlockOutcomeRepository
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.injection import build_solve_requests, configured_debounce
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
 def get_outcome_service(
-    principal: ClientPrincipalDep, transaction: TransactionDep
+    request: Request, principal: ClientPrincipalDep, transaction: TransactionDep
 ) -> OutcomeService:
     """The outcome service, wired for this request and scoped to this tenant."""
     plans = PlanRepository(transaction, principal.tenant_id)
@@ -68,6 +72,15 @@ def get_outcome_service(
                 WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
             ),
             settings,
+        ),
+        solve_requests=build_solve_requests(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
+        ),
+        horizon=CurrentProjectionHorizon(
+            CalendarSourceRepository(transaction, principal.tenant_id), settings
         ),
         clock=utc_now,
     )

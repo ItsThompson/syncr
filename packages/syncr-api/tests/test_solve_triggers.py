@@ -126,14 +126,14 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="templates/invalidation.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "week pattern edited",
         bumps=True,
         solves=True,
         module="templates/invalidation.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "area budget, floor, or percentage edited",
@@ -147,21 +147,21 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="offplan/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "home zone or travel override changed",
         bumps=True,
         solves=True,
         module="user_settings/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "day confirmed or a past confirmation corrected",
         bumps=True,
         solves=True,
         module="outcomes/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "anchor delta from a calendar sync",
@@ -175,7 +175,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="anchors/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger(
         "conflict resolved as moved or retyped",
@@ -231,7 +231,7 @@ TRIGGER_TABLE: Final[tuple[Trigger, ...]] = (
         bumps=True,
         solves=True,
         module="calendars/service.py",
-        owner="1403",
+        solves_in="solving/injection.py",
     ),
     Trigger("zoom, selection, scroll, panel open", bumps=False, solves=False, module=None),
     Trigger("reading any screen", bumps=False, solves=False, module=None),
@@ -303,6 +303,13 @@ SOLVES_ELSEWHERE: Final = {
     "routine added or edited": "solving/injection.py",
     "preference added, edited, removed": "solving/injection.py",
     "area budget, floor, or percentage edited": "solving/injection.py",
+    "template or template entry edited": "solving/injection.py",
+    "week pattern edited": "solving/injection.py",
+    "home zone or travel override changed": "solving/injection.py",
+    "anchor type added, edited, reordered": "solving/injection.py",
+    "projection horizon length changed": "solving/injection.py",
+    "off-plan period declared, edited, removed": "solving/injection.py",
+    "day confirmed or a past confirmation corrected": "solving/injection.py",
 }
 
 
@@ -535,7 +542,7 @@ class TestTheTriggerTable:
 
 
 class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
-    """Eight rows ask for a solve and reach none. Named here so the gap is countable.
+    """No rows ask for a solve and reach none. Named here so the gap is countable.
 
     Building this enumeration is what made them visible, and BOTH directions are guarded, which is
     what makes the table's own claim true: a row that loses its bump fails the walk above, and a row
@@ -546,12 +553,12 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
     """
 
     def test_the_unwired_count_is_what_the_walk_found(self) -> None:
-        """Seven rows ask for a solve and reach none, all seven a person's own mutation."""
+        """Every solve trigger reaches the coordinator."""
         unwired = [one for one in TRIGGER_TABLE if one.solves and one.owner is not None]
         by_a_person = [one for one in unwired if one.owner != "1400"]
 
-        assert len(unwired) == 7
-        assert len(by_a_person) == 7
+        assert len(unwired) == 0
+        assert len(by_a_person) == 0
 
     @pytest.mark.parametrize(
         "trigger",
@@ -581,8 +588,8 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
                 continue
             assert one.owner == "1403", one.row
 
-    def test_only_thirteen_rows_reach_the_coordinator_today(self) -> None:
-        # The thirteen live triggers, one of which bypasses the debounce by design. The calendar
+    def test_only_twenty_rows_reach_the_coordinator_today(self) -> None:
+        # The twenty live triggers, one of which bypasses the debounce by design. The calendar
         # sync and the week entering the horizon are the two triggers here that no person performs:
         # a poll asks for the weeks its own read moved, and time passing asks for the weeks it
         # brought in.
@@ -591,19 +598,26 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
         assert sorted(wired) == [
             "a week enters the projection horizon",
             "anchor delta from a calendar sync",
+            "anchor type added, edited, reordered",
+            "area budget, floor, or percentage edited",
             "conflict resolved as moved or retyped",
+            "day confirmed or a past confirmation corrected",
+            "habit added or edited",
+            "home zone or travel override changed",
+            "off-plan period declared, edited, removed",
             "pin, unpin, drag, keyboard move",
+            "preference added, edited, removed",
+            "projection horizon length changed",
             "re-solve control",
+            "routine added or edited",
             "task added, edited, completed, dropped",
+            "template or template entry edited",
             "tradeoff requested",
             "week adjustment revoked",
-            "area budget, floor, or percentage edited",
+            "week pattern edited",
             "weight set activated or reverted",
-            "habit added or edited",
         ]
-            "preference added, edited, removed",
 
-            "routine added or edited",
     def test_the_only_rows_whose_solves_live_outside_their_own_modules_are_declared(
         self,
     ) -> None:
@@ -642,9 +656,13 @@ class TestTheUnwiredRowsAreEnumeratedRatherThanAbsent:
             "routine added or edited",
             "preference added, edited, removed",
             "area budget, floor, or percentage edited",
+            "template or template entry edited",
+            "week pattern edited",
+            "off-plan period declared, edited, removed",
+            "day confirmed or a past confirmation corrected",
         ],
     )
-    def test_a_content_row_asks_the_composed_solve_request_adapter(self, row_name: str) -> None:
+    def test_a_row_asks_the_composed_solve_request_adapter(self, row_name: str) -> None:
         row = next(one for one in TRIGGER_TABLE if one.row == row_name)
 
         assert row.solves_in == SOLVES_ELSEWHERE[row.row]

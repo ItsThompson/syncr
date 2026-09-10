@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     from syncr_api.calendars.config import CalendarProvider, CalendarRole
     from syncr_api.calendars.records import CalendarSourceId
     from syncr_api.user_settings.solve_inputs import WeekRange
+    from syncr_domain.weeks import IsoWeek
 
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
@@ -267,6 +268,17 @@ class RecordingVersions:
 
 
 @dataclass
+class RecordingSolveRequests:
+    """Records the explicit week sets a mutation asks to solve."""
+
+    requested: list[frozenset[IsoWeek]] = field(default_factory=list)
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        self.requested.append(weeks)
+        return tuple(sorted(weeks))
+
+
+@dataclass
 class FakeRemoteCalendars:
     """The calendars an account holds, or the failure a read answers with.
 
@@ -289,6 +301,7 @@ class Wiring:
     sources: FakeSources
     syncer: FakeSyncer
     versions: RecordingVersions
+    solve_requests: RecordingSolveRequests
     remote_calendars: FakeRemoteCalendars
     anchors: FakeAnchorStarts
     service: CalendarSourceService
@@ -299,18 +312,21 @@ def wiring() -> Wiring:
     sources = FakeSources()
     syncer = FakeSyncer()
     versions = RecordingVersions()
+    solve_requests = RecordingSolveRequests()
     remote_calendars = FakeRemoteCalendars()
     anchors = FakeAnchorStarts()
     return Wiring(
         sources=sources,
         syncer=syncer,
         versions=versions,
+        solve_requests=solve_requests,
         remote_calendars=remote_calendars,
         anchors=anchors,
         service=CalendarSourceService(
             sources=sources,  # type: ignore[arg-type]  # a fake over the repository's surface
             syncer=syncer,  # type: ignore[arg-type]
             versions=versions,
+            solve_requests=solve_requests,
             clock=lambda: NOW,
             remote_calendars=remote_calendars,
             # The real composer over a fake anchor read, so the listing this service answers with
@@ -668,6 +684,7 @@ async def test_setting_the_horizon_bumps_the_weeks_the_new_range_covers(
     covered = wiring.versions.bumped[0]
     assert covered.last is not None
     assert covered.first <= covered.last
+    assert wiring.solve_requests.requested == [frozenset(covered.closed_weeks())]
 
 
 async def test_shortening_the_horizon_bumps_too(wiring: Wiring) -> None:

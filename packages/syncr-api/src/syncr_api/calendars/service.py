@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from syncr_api.core.notices import Notice
     from syncr_api.core.principal import Principal
     from syncr_api.solving.records import OperationRecord
-    from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_api.user_settings.solve_inputs import RequestsASolve, WeekInputVersions
 
 _log = get_logger("syncr.calendars")
 
@@ -111,6 +111,7 @@ class CalendarSourceService:
         sources: CalendarSourceRepository,
         syncer: SourceSyncer,
         versions: WeekInputVersions,
+        solve_requests: RequestsASolve,
         clock: Clock,
         remote_calendars: RemoteCalendarReader,
         feeds: StaleFeedReading,
@@ -118,6 +119,7 @@ class CalendarSourceService:
         self._sources = sources
         self._syncer = syncer
         self._versions = versions
+        self._solve_requests = solve_requests
         self._clock = clock
         self._remote_calendars = remote_calendars
         self._feeds = feeds
@@ -315,8 +317,10 @@ class CalendarSourceService:
         """
         today = self._clock().date()
         affected = weeks_covering(today, today + timedelta(days=horizon_days), today=today)
-        if affected is not None:
-            await self._versions.bump(affected)
+        if affected is None:
+            return
+        await self._versions.bump(affected)
+        await self._solve_requests.request(frozenset(affected.closed_weeks()))
 
 
 def _renamed(display_name: str | None) -> str | None:

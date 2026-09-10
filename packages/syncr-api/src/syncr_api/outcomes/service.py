@@ -75,13 +75,14 @@ if TYPE_CHECKING:
     from syncr_api.areas.repository import AreaRepository
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
+    from syncr_api.horizon.projection import ProjectionHorizon
     from syncr_api.outcomes.declarations import Recording
     from syncr_api.outcomes.planned_days import PlannedDay, PlannedDayReader
     from syncr_api.plans.reality import BlockOutcomeRepository
     from syncr_api.plans.records import BlockOutcomeRecord, PlanRevisionRecord
     from syncr_api.plans.repository import PlanRepository
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
-    from syncr_api.user_settings.solve_inputs import BacklogWideBump
+    from syncr_api.user_settings.solve_inputs import BacklogWideBump, RequestsASolve
     from syncr_domain.identifiers import AreaId
     from syncr_domain.identity import BlockId
     from syncr_domain.plan import Block
@@ -105,6 +106,8 @@ class OutcomeService:
         settings: SettingsRepository,
         overrides: TravelOverrideRepository,
         bump: BacklogWideBump,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._plans = plans
@@ -115,6 +118,8 @@ class OutcomeService:
         self._settings = settings
         self._overrides = overrides
         self._bump = bump
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("outcomes")
@@ -159,7 +164,7 @@ class OutcomeService:
             moved=recorded.actual_interval is not None,
             confirmed=recorded.is_confirmed,
         )
-        await self._bump.from_the_week_holding(self._clock())
+        await self._request_solves_after(self._clock())
         return recorded
 
     @measured("outcomes")
@@ -184,7 +189,7 @@ class OutcomeService:
             date=on.isoformat(),
             blocks_recorded=recorded,
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return await self._ledger(on, profile=profile, planned=planned)
 
     @measured("outcomes")
@@ -211,12 +216,17 @@ class OutcomeService:
             days_confirmed=len(outstanding),
             blocks_recorded=recorded,
         )
-        await self._bump.from_the_week_holding(now)
+        await self._request_solves_after(now)
         return Backfill(
             days=len(outstanding),
             blocks=recorded,
             unconfirmed_days=await self._unconfirmed_days(profile, now),
         )
+
+    async def _request_solves_after(self, now: datetime) -> None:
+        """Bump future inputs, then request the projection horizon that reads them."""
+        await self._bump.from_the_week_holding(now)
+        await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
 
     async def _profile(self) -> ZoneProfile:
         """The tenant's zones, which is what decides how long each of their days is."""

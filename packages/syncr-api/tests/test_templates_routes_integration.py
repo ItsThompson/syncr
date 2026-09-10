@@ -32,11 +32,13 @@ from sqlalchemy.exc import IntegrityError
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
 from syncr_api.areas.config import AREAS_PREFIX
+from syncr_api.calendars.config import HORIZON_DAYS_DEFAULT
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
-from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS, DEV_ALLOWED_ORIGINS
 from syncr_api.habits.config import HABITS_PREFIX
+from syncr_api.horizon.weeks import horizon_weeks
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.plans.config import APPROVED
 from syncr_api.plans.facts import Pin
@@ -44,6 +46,9 @@ from syncr_api.plans.models import PlanRevision, WeekInputVersion
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.routines.config import ROUTINES_PREFIX
+from syncr_api.solving.config import PENDING, SOLVE
+from syncr_api.solving.injection import debounce_window
+from syncr_api.solving.models import Operation
 from syncr_api.templates.config import (
     DAY_TYPES_PREFIX,
     TEMPLATES_PREFIX,
@@ -201,6 +206,39 @@ def week_versions(database_url: str, tenant_id: TenantId) -> dict[str, int]:
             await database.engine.dispose()
 
     return run(read())
+
+
+def pending_solves(database_url: str, tenant_id: TenantId) -> list[tuple[str | None, datetime]]:
+    async def read() -> list[tuple[str | None, datetime]]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                found = await session.scalars(
+                    select(Operation)
+                    .where(
+                        Operation.tenant_id == tenant_id,
+                        Operation.kind == SOLVE,
+                        Operation.status == PENDING,
+                    )
+                    .order_by(Operation.iso_week)
+                )
+                return [(row.iso_week, row.scheduled_for) for row in found]
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
+def projection_horizon() -> tuple[IsoWeek, ...]:
+    return horizon_weeks(today=datetime.now(UTC).date(), horizon_days=HORIZON_DAYS_DEFAULT)
+
+
+def assert_solves_are_due_after_the_debounce_window(
+    solves: list[tuple[str | None, datetime]], before: datetime, after: datetime
+) -> None:
+    debounce = debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    for _week, due_at in solves:
+        assert before + debounce <= due_at <= after + debounce
 
 
 def approve_a_revision(database_url: str, tenant_id: TenantId, week: IsoWeek) -> dict[str, Any]:
@@ -1105,6 +1143,51 @@ def test_a_pattern_edit_bumps_every_future_week_and_no_past_one(
     # A past week's approved revision keeps the inputs it was computed with, so re-deriving it
     # would rewrite history rather than the plan.
     assert after[str(PAST_WEEK)] == before[str(PAST_WEEK)]
+
+
+def test_a_pattern_edit_requests_every_tracked_projection_week(
+    http: TestClient, signed_in: dict[str, str], owner: UserRecord, live_database_url: str
+) -> None:
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    declare_pattern(http, signed_in, a_mapping(day_type))
+    horizon = projection_horizon()
+    outside_horizon = horizon[-1].following()
+    track_weeks(live_database_url, owner.tenant_id, *horizon, outside_horizon)
+
+    before = datetime.now(UTC)
+    response = http.put(WEEK_PATTERN, json=a_mapping(day_type), headers=signed_in)
+    after = datetime.now(UTC)
+
+    assert response.status_code == HTTPStatus.OK, response.text
+    solves = pending_solves(live_database_url, owner.tenant_id)
+    assert [week for week, _due_at in solves] == [str(week) for week in horizon]
+    assert_solves_are_due_after_the_debounce_window(solves, before, after)
+
+
+def test_an_entry_edit_requests_the_projection_weeks_its_day_type_holds(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
+    routine: str,
+) -> None:
+    day_type = declare_day_type(http, signed_in, "Weekday")
+    shape = declare_shape(http, signed_in, day_type, "Weekday shape")
+    declare_pattern(http, signed_in, a_mapping(day_type))
+    horizon = projection_horizon()
+    outside_horizon = horizon[-1].following()
+    track_weeks(live_database_url, owner.tenant_id, *horizon, outside_horizon)
+
+    before = datetime.now(UTC)
+    response = http.post(
+        f"{TEMPLATES}/{shape}/entries", json=concrete_entry(routine), headers=signed_in
+    )
+    after = datetime.now(UTC)
+
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    solves = pending_solves(live_database_url, owner.tenant_id)
+    assert [week for week, _due_at in solves] == [str(week) for week in horizon]
+    assert_solves_are_due_after_the_debounce_window(solves, before, after)
 
 
 def test_a_pattern_edit_leaves_an_approved_past_week_untouched(

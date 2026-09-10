@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends
+from starlette.requests import Request  # noqa: TC002
 
 # FastAPI resolves these functions' annotations at RUNTIME to build the dependency graph, and
 # these two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve
@@ -33,12 +34,16 @@ from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.areas.repository import AreaRepository
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.injection import build_solve_requests, configured_debounce
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
 
-def _backlog_wide_bump(transaction: TransactionDep, principal: PrincipalDep) -> BacklogWideBump:
+def _backlog_wide_bump(
+    transaction: TransactionDep, principal: PrincipalDep, settings: SettingsRepository
+) -> BacklogWideBump:
     """The open-ended bump both services perform, built once for this request.
 
     Both of them invalidate the same range for the same reason: a rule-set edit and a retype each
@@ -48,34 +53,56 @@ def _backlog_wide_bump(transaction: TransactionDep, principal: PrincipalDep) -> 
         versions=TrackedWeekInputVersions(
             WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
         ),
-        settings=SettingsRepository(transaction, principal.tenant_id),
+        settings=settings,
     )
 
 
-def get_anchor_service(principal: PrincipalDep, transaction: TransactionDep) -> AnchorService:
+def get_anchor_service(
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
+) -> AnchorService:
     """The anchor service, wired for this request and scoped to this tenant."""
+    settings = SettingsRepository(transaction, principal.tenant_id)
     return AnchorService(
         anchors=AnchorRepository(transaction, principal.tenant_id),
         types=AnchorTypeRepository(transaction, principal.tenant_id),
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
-        bump=_backlog_wide_bump(transaction, principal),
+        bump=_backlog_wide_bump(transaction, principal, settings),
+        solve_requests=build_solve_requests(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
+        ),
+        horizon=CurrentProjectionHorizon(
+            CalendarSourceRepository(transaction, principal.tenant_id), settings
+        ),
         clock=utc_now,
     )
 
 
 def get_anchor_type_service(
-    principal: PrincipalDep, transaction: TransactionDep
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> AnchorTypeService:
     """The anchor-type service, wired for this request and scoped to this tenant."""
     anchors = AnchorRepository(transaction, principal.tenant_id)
     types = AnchorTypeRepository(transaction, principal.tenant_id)
+    settings = SettingsRepository(transaction, principal.tenant_id)
     return AnchorTypeService(
         types=types,
         anchors=anchors,
         areas=AreaRepository(transaction, principal.tenant_id),
         sources=CalendarSourceRepository(transaction, principal.tenant_id),
         evaluator=RuleEvaluator(anchors, types),
-        bump=_backlog_wide_bump(transaction, principal),
+        bump=_backlog_wide_bump(transaction, principal, settings),
+        solve_requests=build_solve_requests(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
+        ),
+        horizon=CurrentProjectionHorizon(
+            CalendarSourceRepository(transaction, principal.tenant_id), settings
+        ),
         clock=utc_now,
     )
 

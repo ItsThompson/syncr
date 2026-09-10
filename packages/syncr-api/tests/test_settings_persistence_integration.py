@@ -38,14 +38,20 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.clock import utc_now
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.errors import Conflict
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.plans.config import APPROVED
 from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.versions import WeekInputVersionRepository
+from syncr_api.solving.config import PENDING, SOLVE
+from syncr_api.solving.injection import build_solve_requests, debounce_window
+from syncr_api.solving.models import Operation
 from syncr_api.user_settings.config import (
     DAY_END_DEFAULT,
     DAY_START_DEFAULT,
@@ -136,6 +142,16 @@ def build_service(session: AsyncSession, principal: Principal) -> SettingsServic
         overrides=TravelOverrideRepository(session, principal.tenant_id),
         versions=TrackedWeekInputVersions(
             WeekInputVersionRepository(session, principal.tenant_id), clock=utc_now
+        ),
+        solve_requests=build_solve_requests(
+            session,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+        ),
+        horizon=CurrentProjectionHorizon(
+            CalendarSourceRepository(session, principal.tenant_id),
+            SettingsRepository(session, principal.tenant_id),
         ),
         clock=utc_now,
     )
@@ -308,6 +324,32 @@ async def test_a_home_zone_change_bumps_a_tracked_future_week_and_not_a_past_one
         assert await versions.current(_PAST_WEEK) == 1
         # A week nothing has planned gets no row: it has no solve to invalidate.
         assert await versions.current(_UNTRACKED_WEEK) is None
+
+
+async def test_a_home_zone_change_requests_a_debounced_solve_for_a_tracked_horizon_week(
+    sessions: async_sessionmaker[AsyncSession], principal: Principal
+) -> None:
+    current_week = IsoWeek.containing(utc_now().date())
+    async with sessions() as session, session.begin():
+        await WeekInputVersionRepository(session, principal.tenant_id).bump(
+            current_week, at=utc_now()
+        )
+        await build_service(session, principal).update(principal, SettingsChange(home_zone=TOKYO))
+
+    async with sessions() as session:
+        requested = list(
+            await session.scalars(
+                select(Operation.iso_week)
+                .where(
+                    Operation.tenant_id == principal.tenant_id,
+                    Operation.kind == SOLVE,
+                    Operation.status == PENDING,
+                )
+                .order_by(Operation.iso_week)
+            )
+        )
+
+    assert requested == [str(current_week)]
 
 
 async def test_a_visible_hours_change_bumps_nothing_in_the_database(
@@ -591,6 +633,16 @@ async def _declare_concurrently(
                 overrides=TravelOverrideRepository(session, principal.tenant_id),
                 versions=TrackedWeekInputVersions(
                     WeekInputVersionRepository(session, principal.tenant_id), clock=utc_now
+                ),
+                solve_requests=build_solve_requests(
+                    session,
+                    principal.tenant_id,
+                    clock=utc_now,
+                    debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+                ),
+                horizon=CurrentProjectionHorizon(
+                    CalendarSourceRepository(session, principal.tenant_id),
+                    settings_repository(session, principal.tenant_id),
                 ),
                 clock=utc_now,
             )

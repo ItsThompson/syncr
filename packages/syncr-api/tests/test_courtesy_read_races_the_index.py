@@ -22,7 +22,7 @@ nothing else.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
@@ -32,6 +32,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.core.db import create_db_engine, create_sessionmaker
 from syncr_api.core.errors import PROBLEM_JSON_MEDIA_TYPE, Conflict
 from syncr_api.core.principal import Principal
@@ -39,8 +40,10 @@ from syncr_api.core.races import answered_once, refused_index
 from syncr_api.core.scopes import Scope
 from syncr_api.core.tenancy import TENANT_ID_COLUMN
 from syncr_api.habits.repository import HabitRepository
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.routines.repository import RoutineRepository
+from syncr_api.solving.injection import build_solve_requests
 from syncr_api.templates.bindings import TemplateBindings
 from syncr_api.templates.config import (
     DAY_TYPES_PREFIX,
@@ -179,6 +182,16 @@ def a_template_service(
                     WeekInputVersionRepository(session, owner.tenant_id), clock=lambda: NOW
                 ),
                 settings=SettingsRepository(session, owner.tenant_id),
+            ),
+            solve_requests=build_solve_requests(
+                session,
+                owner.tenant_id,
+                clock=lambda: NOW,
+                debounce=timedelta(),
+            ),
+            horizon=CurrentProjectionHorizon(
+                CalendarSourceRepository(session, owner.tenant_id),
+                SettingsRepository(session, owner.tenant_id),
             ),
             clock=lambda: NOW,
         ),

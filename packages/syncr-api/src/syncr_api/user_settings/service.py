@@ -56,6 +56,7 @@ if TYPE_CHECKING:
 
     from syncr_api.core.clock import Clock
     from syncr_api.core.principal import Principal
+    from syncr_api.horizon.projection import ProjectionHorizon
     from syncr_api.user_settings.config import ReviewCadence
     from syncr_api.user_settings.records import (
         SettingsRecord,
@@ -63,7 +64,7 @@ if TYPE_CHECKING:
         TravelOverrideRecord,
     )
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
-    from syncr_api.user_settings.solve_inputs import WeekInputVersions
+    from syncr_api.user_settings.solve_inputs import RequestsASolve, WeekInputVersions
     from syncr_domain.zones import ZoneId
 
 TRAVEL_OVERRIDE_RESOURCE = "travel override"
@@ -122,11 +123,15 @@ class SettingsService:
         settings: SettingsRepository,
         overrides: TravelOverrideRepository,
         versions: WeekInputVersions,
+        solve_requests: RequestsASolve,
+        horizon: ProjectionHorizon,
         clock: Clock,
     ) -> None:
         self._settings = settings
         self._overrides = overrides
         self._versions = versions
+        self._solve_requests = solve_requests
+        self._horizon = horizon
         self._clock = clock
 
     @measured("user_settings")
@@ -169,6 +174,7 @@ class SettingsService:
                 first_week=str(affected.first),
             )
             await self._versions.bump(affected)
+            await self._solve_requests.request(frozenset(await self._horizon.weeks_at(now)))
         return view
 
     @measured("user_settings")
@@ -229,8 +235,10 @@ class SettingsService:
     async def _bump_for(self, override: TravelOverrideRecord, *, today: date) -> None:
         """Bump the future weeks this override's range covers, if it covers any."""
         affected = weeks_covering(override.start_date, override.end_date, today=today)
-        if affected is not None:
-            await self._versions.bump(affected)
+        if affected is None:
+            return
+        await self._versions.bump(affected)
+        await self._solve_requests.request(frozenset(affected.closed_weeks()))
 
     def _view(
         self,

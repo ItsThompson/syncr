@@ -73,7 +73,11 @@ from syncr_api.core.clock import utc_now
 from syncr_api.core.session_mode import SessionModeDep  # noqa: TC001
 from syncr_api.google_account.injection import build_access_tokens
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.injection import build_solve_coordinator, configured_debounce
+from syncr_api.solving.injection import (
+    build_solve_coordinator,
+    build_solve_requests,
+    configured_debounce,
+)
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -228,11 +232,10 @@ def build_write_target_adapter(
     two, and a second request to the token endpoint per pass buys nothing.
     """
     tokens = build_access_tokens(settings, session, tenant_id, reads)
-    return GoogleAdapter(
+    return GoogleWriteTargetAdapter(
         client=GoogleCalendarClient(transport=HttpxGoogleTransport(reads), tokens=tokens),
         profile=profile,
         horizon=horizon,
-        clock=utc_now,
         writes=build_event_writing(settings, writes=writes, tokens=tokens),
     )
 
@@ -311,6 +314,12 @@ async def get_calendar_source_service(
             clock=utc_now,
         ),
         versions=versions,
+        solve_requests=build_solve_requests(
+            transaction,
+            principal.tenant_id,
+            clock=utc_now,
+            debounce=configured_debounce(request),
+        ),
         clock=utc_now,
         remote_calendars=remote_calendars,
         feeds=StaleFeedReading(

@@ -233,6 +233,28 @@ class RecordingWeekInputVersions:
         self.bumped.append(weeks)
 
 
+class RecordingSolveRequests:
+    """Every set of weeks a day-shape mutation asked to solve."""
+
+    def __init__(self) -> None:
+        self.requested: list[frozenset[IsoWeek]] = []
+
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[IsoWeek, ...]:
+        self.requested.append(weeks)
+        return tuple(sorted(weeks))
+
+
+class StatedProjectionHorizon:
+    """The projection horizon the test states."""
+
+    def __init__(self) -> None:
+        self.weeks = (WEEK_31, WEEK_31.following())
+
+    async def weeks_at(self, now: datetime) -> tuple[IsoWeek, ...]:
+        del now
+        return self.weeks
+
+
 def _renamed(row: TemplateRecord, name: str) -> TemplateRecord:
     return TemplateRecord(
         id=row.id,
@@ -298,11 +320,15 @@ class Wiring:
         self.habits.rows.append(_a_habit_record(principal.tenant_id, self.habit_id))
         self.bindings = TemplateBindings(routines=self.routines, habits=self.habits)
         self.versions = versions
+        self.solve_requests = RecordingSolveRequests()
+        self.horizon = StatedProjectionHorizon()
         weeks = FutureWeeks(
             patterns=self.patterns,
             bump=BacklogWideBump(
                 versions=versions, settings=FakeSettingsRepository(principal.tenant_id)
             ),
+            solve_requests=self.solve_requests,
+            horizon=self.horizon,
             clock=lambda: NOW,
         )
         # The real refusal wrapper over an inert savepoint: these fakes never reach a database,
@@ -491,6 +517,7 @@ async def test_a_shape_whose_day_type_no_weekday_uses_invalidates_nothing(
     await wiring.a_shape(principal, unmapped, "Holiday shape")
 
     assert wiring.versions.bumped == []
+    assert wiring.solve_requests.requested == []
 
 
 async def test_a_tenant_with_no_pattern_yet_invalidates_nothing(
@@ -848,6 +875,36 @@ async def test_replacing_the_pattern_stores_all_seven_and_invalidates_every_futu
     assert replaced.day_type(Weekday.SATURDAY) == weekend.id
     assert wiring.patterns.writes == 1
     assert wiring.versions.bumped == [WeekRange(first=WEEK_31, last=None)]
+
+
+async def test_an_entry_edit_requests_the_horizon_weeks_its_day_type_holds(
+    principal: Principal, wiring: Wiring
+) -> None:
+    day_type = await wiring.a_day_type(principal)
+    shape = await wiring.a_shape(principal, day_type)
+    entry = await wiring.template_service.add_entry(principal, shape.id, a_concrete_entry(wiring))
+    wiring.map_every_weekday_to(day_type)
+    wiring.solve_requests.requested.clear()
+
+    await wiring.template_service.change_entry(
+        principal,
+        shape.id,
+        entry.id,
+        EntryChange(target_time=time(8, 0), duration_minutes=ABSENT, flex_band_minutes=ABSENT),
+    )
+
+    assert wiring.solve_requests.requested == [frozenset(wiring.horizon.weeks)]
+
+
+async def test_replacing_a_pattern_requests_every_projection_week(
+    principal: Principal, wiring: Wiring
+) -> None:
+    day_type = await wiring.a_day_type(principal)
+    pattern = WeekPattern(dict.fromkeys(Weekday, day_type.id))
+
+    await wiring.pattern_service.replace(principal, pattern)
+
+    assert wiring.solve_requests.requested == [frozenset(wiring.horizon.weeks)]
 
 
 async def test_a_pattern_naming_a_day_type_this_tenant_does_not_have_is_refused(
