@@ -16,9 +16,9 @@ changes the shares the solver's capacity check and the feasibility probe both re
 the week holding today's local date onward, and a past week's approved revision keeps the inputs it
 was computed with.
 
-**No occupancy reader appears here, and the absence is the design.** The budget report acquires one
-to recompute a denominator; a review reads the plan of record's own stored figure instead, so it has
-no denominator to compose. ``reviews.history`` states why.
+**No ``WeekOccupancyReader`` appears here.** A review reports the plan of record's stored scalar
+rather than acquiring a second plan read. ``reviews.history`` composes the corresponding set from
+that document to measure coverage and vacancy.
 
 **The weekly session's own composition is the week service plus six readers.** The week service is
 acquired through plan storage's own builder rather than restated, which is what makes the verdict on

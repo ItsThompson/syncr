@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -30,7 +31,7 @@ from syncr_api.reviews.figures import (
     vacancy_share,
     vacancy_target,
 )
-from syncr_api.reviews.history import ReviewedWeek
+from syncr_api.reviews.history import ReviewedWeek, ReviewHistoryReader
 from syncr_api.reviews.proposals import proposal_over
 from syncr_api.reviews.readings import budget_review_reading, categories_of
 from syncr_api.reviews.statements import (
@@ -51,6 +52,7 @@ from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.outcomes import OutcomeState
 from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.weeks import IsoWeek
+from syncr_domain.zones import ZoneProfile
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -143,16 +145,37 @@ def a_week(
     discretionary_minutes: int | None = 10080,
     off_plan: IntervalSet | None = None,
     outcomes: Mapping[str, BlockOutcomeRecord] | None = None,
+    discretionary: IntervalSet | None = None,
 ) -> ReviewedWeek:
     span = Interval(an_instant(iso_week.monday(), 0), an_instant(iso_week.following().monday(), 0))
     inside = IntervalSet() if off_plan is None else off_plan.clip(span)
+    review_discretionary = discretionary
+    if review_discretionary is None:
+        review_discretionary = (
+            IntervalSet()
+            if discretionary_minutes is None
+            else (
+                IntervalSet()
+                if discretionary_minutes == 0
+                else IntervalSet(
+                    [Interval(span.start, span.start + timedelta(minutes=discretionary_minutes))]
+                )
+            )
+        )
     return ReviewedWeek(
         iso_week=iso_week,
         span=span,
         discretionary_minutes=discretionary_minutes,
+        discretionary=review_discretionary,
         days=tuple(days),
         off_plan=inside,
-        covered=confirmed_coverage(days, outcomes=outcomes or {}, within=span, off_plan=inside),
+        covered=confirmed_coverage(
+            days,
+            outcomes=outcomes or {},
+            within=span,
+            off_plan=inside,
+            discretionary=review_discretionary,
+        ),
         outcomes=outcomes or {},
     )
 
@@ -332,6 +355,20 @@ class TestHowADayIsClassified:
 class TestTheDenominatorAndTheTargets:
     """The plan of record's own figure, and what a week with no plan reports instead."""
 
+    async def test_a_week_with_no_plan_keeps_an_empty_discretionary_set(self) -> None:
+        plans = MagicMock()
+        plans.latest = AsyncMock(return_value=None)
+        outcomes = MagicMock()
+        outcomes.for_span = AsyncMock(return_value=[])
+        periods = MagicMock()
+        periods.for_span = AsyncMock(return_value=[])
+        history = ReviewHistoryReader(plans, outcomes, periods)
+
+        (week,) = await history.read([WEEK], ZoneProfile("UTC"))
+
+        assert week.discretionary == IntervalSet()
+        plans.latest.assert_awaited_once_with(WEEK)
+
     def test_the_denominator_is_the_documents_own_stored_figure(self) -> None:
         """A week that sleeps for 56 hours has 112 discretionary, not its whole 168-hour span."""
         week = a_week(discretionary_minutes=6720)
@@ -418,6 +455,25 @@ class TestTheVacancyAndOversubscription:
         week = a_week(discretionary_minutes=6720, days=[a_day(on=MONDAY, confirmed=False)])
 
         assert vacancy_minutes(week) == 6720
+
+    def test_a_moved_outcome_inside_the_frame_leaves_the_pie_tiling_the_denominator(self) -> None:
+        frame = Interval(an_instant(MONDAY, 0), an_instant(MONDAY, 7))
+        discretionary = IntervalSet(
+            [Interval(an_instant(MONDAY, 0), an_instant(WEEK.following().monday(), 0))]
+        ).subtract(IntervalSet([frame]))
+        share = a_share(percent="100")
+        block = a_block(on=MONDAY, hour=9, area_id=share.area_id)
+        moved = Interval(an_instant(MONDAY, 0), an_instant(MONDAY, 0) + timedelta(minutes=7000))
+        week = a_week(
+            discretionary_minutes=discretionary.total_minutes(),
+            discretionary=discretionary,
+            days=[a_day(on=MONDAY, blocks=[block])],
+            outcomes={str(block.id): an_outcome(block, OutcomeState.MOVED, actual_interval=moved)},
+        )
+
+        rows = categories_of(week, shares=[share])
+
+        assert sum(row.actual_minutes for row in rows) == week.discretionary_minutes
 
 
 class TestTheCategories:

@@ -16,8 +16,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from syncr_api.reviews.coverage import claimed
-from syncr_domain.budget_review import WHOLE_SHARE, uncovered_minutes
-from syncr_domain.budgets import minutes_after_floors, oversubscription_minutes, target_minutes
+from syncr_domain.budget_review import WHOLE_SHARE
+from syncr_domain.budgets import (
+    minutes_after_floors,
+    oversubscription_minutes,
+    target_minutes,
+    unallocated_minutes,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -37,7 +42,7 @@ def vacancy_minutes(week: ReviewedWeek) -> int | None:
     """Discretionary minutes no confirmed block covered, or ``None`` with no plan of record."""
     if week.discretionary_minutes is None:
         return None
-    return uncovered_minutes(week.discretionary_minutes, claimed(week.covered).total_minutes())
+    return unallocated_minutes(week.discretionary, claimed(week.covered))
 
 
 def targets(week: ReviewedWeek, shares: Sequence[AreaShare]) -> dict[AreaId, int]:

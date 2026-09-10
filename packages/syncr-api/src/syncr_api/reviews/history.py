@@ -2,15 +2,12 @@
 
 **The denominator is the plan of record's own stored figure.** ``PlanDocument`` carries
 ``discretionary_minutes`` as the assembler computed it, over all four subtrahends and including
-the preceding week's boundary-crossing frame overhang, and that figure is authoritative: the
-document's docstring says so and every scalar column beside it is derived from it.
+the preceding week's boundary-crossing frame overhang. The review reports that scalar because it
+is the figure the week was solved against.
 
-That choice is the reason this module reads a document rather than recomputing a denominator, and
-it is deliberate rather than incidental. Recomputing one needs the frame, the anchors, the
-absolutely forbidden windows and the overhang assembled again on a read path; the
-reader which would do it understates by the whole circadian frame today and a
-document-only recomputation overstates by the overhang. Reading the stored figure has neither
-error, because it is the figure the week was solved against.
+The review also composes the corresponding interval set through the shared stored-plan occupancy
+reader. It uses that set only to measure confirmed coverage and vacancy. This keeps a moved outcome
+inside the frame out of both pie wedges while preserving the plan's stored denominator.
 
 **A week with no plan of record has no denominator, and says so.** ``discretionary_minutes`` is
 ``None`` there rather than the week's whole span. A week nobody planned holds no confirmed day
@@ -27,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_api.budgets.occupancy import occupancy_of
 from syncr_api.outcomes.days import blocks_of_the_day, day_span
 from syncr_api.outcomes.ledger import settled_at
 from syncr_api.plans.stored_documents import plan_document
@@ -36,6 +34,7 @@ from syncr_api.reviews.coverage import (
     day_counts,
     is_covered_by,
 )
+from syncr_domain.discretionary import discretionary_intervals
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.weeks import week_span
 
@@ -71,6 +70,7 @@ class ReviewedWeek:
     iso_week: IsoWeek
     span: Interval
     discretionary_minutes: int | None
+    discretionary: IntervalSet
     days: tuple[ReviewedDay, ...]
     off_plan: IntervalSet
     covered: Mapping[AreaId, IntervalSet]
@@ -146,14 +146,29 @@ class ReviewHistoryReader:
         revision = await self._plans.latest(iso_week)
         document = None if revision is None else plan_document(revision.document)
         inside = off_plan.clip(span)
+        held = None if document is None else occupancy_of(document, off_plan=inside)
+        discretionary = (
+            IntervalSet()
+            if held is None
+            else discretionary_intervals(
+                span, held.frame, held.anchors, held.absolute_forbidden, held.off_plan
+            )
+        )
         days = _days_of(iso_week, document, off_plan=inside, recorded=recorded, profile=profile)
         return ReviewedWeek(
             iso_week=iso_week,
             span=span,
             discretionary_minutes=None if document is None else document.discretionary_minutes,
+            discretionary=discretionary,
             days=days,
             off_plan=inside,
-            covered=confirmed_coverage(days, outcomes=recorded, within=span, off_plan=inside),
+            covered=confirmed_coverage(
+                days,
+                outcomes=recorded,
+                within=span,
+                off_plan=inside,
+                discretionary=discretionary,
+            ),
             outcomes=_outcomes_of(days, recorded=recorded),
         )
 

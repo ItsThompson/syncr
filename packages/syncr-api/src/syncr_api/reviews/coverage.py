@@ -137,6 +137,7 @@ def confirmed_coverage(
     outcomes: Mapping[str, BlockOutcomeRecord],
     within: Interval,
     off_plan: IntervalSet,
+    discretionary: IntervalSet,
 ) -> Mapping[AreaId, IntervalSet]:
     """The intervals each Area's blocks really occupied, over the confirmed days only.
 
@@ -144,10 +145,9 @@ def confirmed_coverage(
     the derived identity rather than on position is what lets one read of the log answer for every
     day of the period.
 
-    Clipped to ``within`` and with ``off_plan`` removed. Both are needed and neither is redundant:
-    a ``moved`` outcome carries a user-supplied interval that may reach outside the period
-    altogether, and an off-plan span is out of the denominator, so a minute inside one is a minute
-    no Area may be charged.
+    Clipped to ``within`` and to ``discretionary``, with ``off_plan`` removed. Each is needed:
+    a ``moved`` outcome may reach outside the period or inside the frame, and off-plan time is out
+    of the denominator. None of those minutes may be charged to an Area.
     """
     collected: dict[AreaId, list[Interval]] = {}
     for day in days:
@@ -160,7 +160,7 @@ def confirmed_coverage(
             if attributed is not None:
                 collected.setdefault(block.area_id, []).append(attributed)
     return {
-        area_id: IntervalSet(spans).clip(within).subtract(off_plan)
+        area_id: IntervalSet(spans).clip(within).subtract(off_plan).intersect(discretionary)
         for area_id, spans in collected.items()
     }
 

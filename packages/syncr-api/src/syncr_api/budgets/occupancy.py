@@ -95,7 +95,7 @@ class WeekOccupancyReader:
         if current is None:
             return off_plan
 
-        return _occupancy_of(plan_document(current.document), off_plan=off_plan.off_plan)
+        return occupancy_of(plan_document(current.document), off_plan=off_plan.off_plan)
 
 
 class UnplannedWeek:
@@ -110,7 +110,8 @@ class UnplannedWeek:
         return WeekOccupancy()
 
 
-def _occupancy_of(document: PlanDocument, *, off_plan: IntervalSet) -> WeekOccupancy:
+def occupancy_of(document: PlanDocument, *, off_plan: IntervalSet) -> WeekOccupancy:
+    """The stored plan document's occupancy, composed with its separately stored time off."""
     subtrahends: dict[Subtrahend, list[Interval]] = {subtrahend: [] for subtrahend in Subtrahend}
     by_area: dict[AreaId, list[Interval]] = {}
     for block in document.blocks:

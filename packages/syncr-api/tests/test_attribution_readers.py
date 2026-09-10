@@ -265,7 +265,13 @@ def _given_to_the_area(*, skipped: bool) -> int:
         is_off_plan=False,
     )
     recorded = {str(block.id): _a_recorded_skip(block)} if skipped else {}
-    covered = confirmed_coverage([day], outcomes=recorded, within=THE_WEEK, off_plan=IntervalSet())
+    covered = confirmed_coverage(
+        [day],
+        outcomes=recorded,
+        within=THE_WEEK,
+        off_plan=IntervalSet(),
+        discretionary=IntervalSet([THE_WEEK]),
+    )
     found = covered.get(CAREER)
     return 0 if found is None else found.total_minutes()
 

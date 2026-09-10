@@ -114,6 +114,7 @@ def a_week(
         iso_week=iso_week,
         span=span,
         discretionary_minutes=10080,
+        discretionary=IntervalSet([span]),
         days=(day,),
         off_plan=IntervalSet(),
         covered={},
