@@ -328,15 +328,16 @@ class AreaBudget:
     # than either reservation above, both of which read it today as their subtrahend. Gross,
     # and so in need of no clamp: nothing is subtracted from it.
     declared_floor_minutes: int
-    # The declared floor plus this Area's share of the remainder. GROSS, net of nothing,
-    # because it is a reporting figure rather than a reservation.
+    # The declared floor plus this Area's share of the folded frame's remaining discretionary
+    # minutes. GROSS, net of nothing, because it is a reporting figure rather than a reservation.
     target_minutes: int
     # EVERY placement in this Area, pinned or not, past or future, read exactly the way the
     # reservation above reads them: what an outcome said happened before `now`, and what each
     # placement occupies from `now` on. Named here so the `floor` reason clause cannot disagree
     # with whichever reservation a reader compares it against.
     placed_minutes: int
-    # Read by H8. From an AREA preference only, so no override can relax a hard cap.
+    # The solver never lets one Area's placed minutes on one local date exceed the daily cap that
+    # Area declares. From an AREA preference only, so no override can relax a hard cap.
     max_per_day_minutes: int | None = None
 
 
