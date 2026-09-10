@@ -19,9 +19,11 @@ from syncr_domain.budget_review import (
     observed_percent,
     proposed_share,
     proposed_shares,
-    uncovered_minutes,
 )
+from syncr_domain.budgets import unallocated_minutes
 from syncr_domain.identifiers import AreaId  # noqa: TC001 - used in a runtime default
+from syncr_domain.intervals import Interval, IntervalSet
+from tests.instants import at
 
 
 def an_area() -> AreaId:
@@ -81,22 +83,32 @@ class TestTheObservedShare:
 
 
 class TestTheVacancysMinutes:
-    """Discretionary minutes no confirmed block covered, over two counts rather than two sets."""
+    """Discretionary minutes no confirmed block covered, as a subtraction of interval sets."""
 
     def test_it_is_the_denominator_less_what_was_covered(self) -> None:
-        assert uncovered_minutes(10080, 2520) == 7560
+        discretionary = IntervalSet([Interval(at(0), at(0, day=7))])
+        claimed = IntervalSet([Interval(at(0), at(18, day=1))])
+
+        assert unallocated_minutes(discretionary, claimed) == 7560
 
     def test_nothing_covered_leaves_the_whole_denominator(self) -> None:
-        assert uncovered_minutes(10080, 0) == 10080
+        discretionary = IntervalSet([Interval(at(0), at(0, day=7))])
 
-    def test_it_is_not_zero_merely_because_the_shares_sum_to_a_hundred(self) -> None:
-        """The figure is coverage, never a residual against the targets. A budget summing to 100 has
-        no bearing on it: what decides it is how many minutes sat in a block."""
-        assert uncovered_minutes(10080, 6000) == 4080
+        assert unallocated_minutes(discretionary, IntervalSet()) == 10080
 
-    def test_coverage_past_the_denominator_is_not_a_negative_vacancy(self) -> None:
-        """A `moved` outcome reporting time inside the frame. The clamp's one reachable case."""
-        assert uncovered_minutes(6720, 7000) == 0
+    def test_coverage_is_not_a_residual_against_the_targets(self) -> None:
+        discretionary = IntervalSet([Interval(at(0), at(0, day=7))])
+        claimed = IntervalSet([Interval(at(0), at(4, day=4))])
+
+        assert unallocated_minutes(discretionary, claimed) == 4080
+
+    def test_a_moved_span_inside_the_frame_claims_none_of_the_denominator(self) -> None:
+        span = Interval(at(0), at(0, day=7))
+        frame = IntervalSet([Interval(at(0), at(8))])
+        discretionary = IntervalSet([span]).subtract(frame)
+        moved = IntervalSet([Interval(at(0), at(8))])
+
+        assert unallocated_minutes(discretionary, moved) == discretionary.total_minutes()
 
 
 class TestTheQuartersGate:

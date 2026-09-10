@@ -54,12 +54,11 @@ gap the review exists to surface, and the same rule applies to it. Its `area_id`
 there is nothing to write a share to, so applying a revision changes Areas and the vacancy's
 share follows from theirs.
 
-## The vacancy's own figure is counts, not sets
+## The vacancy's own figure is a subtraction of sets
 
-`budgets.unallocated_minutes` subtracts one interval set from another, which is what makes it
-non-negative by construction. :func:`uncovered_minutes` here does the same subtraction over two
-counts, because a review's denominator is the plan of record's stored scalar and the set behind it
-is not stored. The difference is stated at that function, with the one case its clamp exists for.
+`budgets.unallocated_minutes` subtracts the covered interval set from the discretionary interval
+set. A review keeps the plan of record's scalar denominator for display and uses its corresponding
+set to measure the vacancy.
 """
 
 from __future__ import annotations
@@ -143,24 +142,6 @@ class ProposedShare:
     observed_percent: Decimal
     proposed_percent: Decimal
     basis: ProposalBasis
-
-
-def uncovered_minutes(discretionary_minutes: int, claimed_minutes: int) -> int:
-    """Discretionary minutes no confirmed block covered, from two counts rather than two sets.
-
-    `budgets.unallocated_minutes` is the canonical form and takes the two interval SETS, which is
-    what makes it non-negative by construction. A review cannot: its denominator is the plan of
-    record's own stored figure, a scalar, and the set that figure was taken over is not stored
-    beside it. Rebuilding the set from the document alone overstates it by the preceding week's
-    frame overhang.
-
-    So the figure is a subtraction of counts, and the clamp is load-bearing rather than defensive.
-    It is reachable: a ``moved`` outcome carries a user-supplied interval, and one reported inside
-    the circadian frame is time that was never in the denominator. Without the clamp such a week
-    reports a negative vacancy, which is not a wedge, and which is the defect an earlier draft's
-    ``discretionary - sum(target)`` formula had for a different reason.
-    """
-    return max(0, discretionary_minutes - claimed_minutes)
 
 
 def observed_percent(actual_minutes: int, discretionary_minutes: int) -> Decimal:
