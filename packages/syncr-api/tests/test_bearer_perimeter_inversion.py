@@ -7,7 +7,7 @@ The resolution now travels as the state object the entrypoint attaches: ``accoun
 ``app.state.oauth`` behind the protocol in ``core.credentials``, names no ``oauth`` type, and
 reaches for the state only when a request presents a token, so an application built with no
 OAuth state still serves a browser. The refusal and its log line stay in the one place that
-mints them, and rule R2 below is what keeps the removed edge removed.
+mints them, and the source check below keeps the removed edge removed.
 
 The static rules read the tree as text, so they run in every environment. The two HTTP
 assertions drive real routes over a live Postgres, because "exactly once" and "still serves"
@@ -55,7 +55,7 @@ REFUSAL_DETAIL = "That access token is not valid for this API"
 
 
 # ---------------------------------------------------------------------------
-# Rule R2: accounts imports nothing from syncr_api.oauth.
+# Accounts imports nothing from syncr_api.oauth.
 # ---------------------------------------------------------------------------
 
 

@@ -100,9 +100,6 @@ from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.weeks import IsoWeek, Weekday
 from tests.live_tenants import PASSWORD, delete_tenant, seed_owner
 from tests.plan_documents import (
-    WEEK as CONFLICTED_WEEK,
-)
-from tests.plan_documents import (
     a_block,
     a_block_holding,
     a_document,
@@ -151,6 +148,7 @@ PIN_TASK_ID = uuid4()
 PIN_AREA_ID = uuid4()
 PIN_BINDING = BindingRef(kind=BindingKind.TASK, entity_id=PIN_TASK_ID, occurrence_key="00")
 PIN_BLOCK_ID = block_id(PINNED_WEEK, PIN_BINDING)
+CONFLICTED_WEEK = IsoWeek.containing((datetime.now(UTC) + timedelta(days=7)).date())
 
 
 def solve_route(iso_week: IsoWeek, *, immediate: bool) -> str:
@@ -827,7 +825,11 @@ async def seed_an_answerable_conflict(
     really have produced. ``moved`` is the answer the case gives, because it is the one that
     answers with a solve; ``kept-both`` asks for none and names no operation.
     """
-    held = a_block_holding(BindingRef.for_habit(uuid4(), index=0), between(9, 10))
+    held = a_block_holding(
+        BindingRef.for_habit(uuid4(), index=0),
+        between(9, 10, week=CONFLICTED_WEEK),
+        week=CONFLICTED_WEEK,
+    )
     detected = DetectedConflict(
         anchor_id=uuid4(),
         iso_week=CONFLICTED_WEEK,
@@ -836,7 +838,7 @@ async def seed_an_answerable_conflict(
     )
     async with sessions() as session, session.begin():
         await PlanRepository(session, tenant_id).append(
-            document=stored_document(a_document(blocks=(held,))),
+            document=stored_document(a_document(week=CONFLICTED_WEEK, blocks=(held,))),
             objective_breakdown={"budget_deviation": 1.0},
             status="applied",
             reason="auto_applied_fill",

@@ -69,13 +69,14 @@ ORIGINS_WITHOUT_AN_AREA: Final = frozenset({Origin.FRAME, Origin.ANCHOR})
 # carrying no chunk number at all.
 MIN_SPLIT_COUNT: Final = 2
 
-# The owning week has the occurrence but the following week still needs a truthful H3 clause.
+# The owning week has the occurrence but the following week still needs a truthful statement that
+# the solver never places a block over a routine at the duration the week assembler clamped it to.
 INHERITED_FRAME: Final = "a routine the preceding week owns"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class FrameOverhang:
-    """A preceding week's occupied span, with the H3 label and optional Area it carries."""
+    """A preceding week's occupied span, with its clamped duration and optional Area."""
 
     interval: Interval
     label: str = INHERITED_FRAME

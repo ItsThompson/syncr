@@ -4,10 +4,10 @@ Two layering intentions here have no type check and no runtime guard, so what en
 a reading of the source that examines whatever modules exist whenever it runs. The composition
 root in :mod:`syncr_api.core.app_factory` may import feature packages, because assembling their
 routers is its one job; no other file under ``core`` may, or ``core`` stops being the layer
-everything else stands on (R1). And ``accounts`` reaches into exactly one feature module besides
+everything else stands on. And ``accounts`` reaches into exactly one feature module besides
 ``oauth``: ``learned.repository``, because provisioning seeds weight-set version 1 in the same
 transaction that creates the tenant, so the weight sets exist before the first request can ask
-for them (R3).
+for them.
 
 The walk reads imports through ``ast`` rather than by importing, so a function-local import (the
 kind provisioning makes) counts exactly like a module-top one: these rules are about which way
@@ -42,7 +42,7 @@ CORE_PACKAGE = "core"
 
 # The tuple in core/app_factory.py that names one router factory per feature module. Read by
 # name from the parsed source, so renaming the registry fails loudly instead of quietly
-# detaching R1's justification from what app_factory actually imports.
+# detaching this check's justification from what app_factory actually imports.
 ROUTER_REGISTRY_NAME = "FEATURE_ROUTERS"
 
 
@@ -136,7 +136,7 @@ def mutual_import_pairs(edges: frozenset[tuple[str, str]]) -> frozenset[tuple[st
     Each unordered pair is returned once, so a pair importing in both directions counts as the
     single cycle it is, whatever the two directions cost. Edges touching ``core`` are outside
     this reading: core is meant to sit beneath every feature, so a pair carrying core is either
-    the composition root reaching up (allowed to exactly one file, per R1) or a violation that
+    the composition root reaching up (allowed to exactly one file) or a violation that
     rule already names.
     """
     return frozenset(

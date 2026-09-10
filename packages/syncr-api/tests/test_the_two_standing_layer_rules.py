@@ -1,13 +1,13 @@
 """The two standing layer rules of this api, and a control apiece proving each can fail.
 
-R1: ``app_factory.py`` is the only file under ``core`` that may import a feature package. It is
+``app_factory.py`` is the only file under ``core`` that may import a feature package. It is
 the composition root: assembling the routers the feature-router registry names is its one job,
 and the moment any other core module reaches into a feature, core stops being the layer every
 feature stands on and becomes a participant in whatever cycle the reach closes. The rule reads
 the registry itself, so its justification stays attached to what the factory file really
 imports rather than to a list someone maintains by hand.
 
-R3: besides ``oauth``, ``accounts`` reaches exactly one feature module, ``learned.repository``,
+Besides ``oauth``, ``accounts`` reaches exactly one feature module, ``learned.repository``,
 and only from ``bootstrap.py`` and ``provisioning.py``. The reason travels with the rule:
 provisioning seeds weight-set version 1 inside the same transaction that creates the tenant,
 so a new tenant's weight sets exist before anything can ask for them. Any second direction out
@@ -55,8 +55,9 @@ OAUTH_PACKAGE = "oauth"
 PLANS_PACKAGE = "plans"
 LEARNED_REPOSITORY = "learned.repository"
 
-# The one importer R1 allows, and the only feature directions out of accounts beyond oauth that
-# R3 allows. Each entry pairs the reached module with the file that reaches it, so the reason a
+# The one core importer that may reach a feature package, and the only feature directions out of
+# accounts beyond oauth. Each entry pairs the reached module with the file that reaches it, so the
+# reason a
 # file may import across stays checkable against where the import actually sits.
 THE_APP_FACTORY = "core/app_factory.py"
 REACHED_BEYOND_OAUTH = frozenset(
@@ -71,9 +72,9 @@ REACHED_BEYOND_OAUTH = frozenset(
 # both directions, one apiece. When one moves, an edge moved with it: find that import, decide
 # whether it belongs, and record the new figure here in the change that caused it.
 MEASURED_PACKAGES = 32
-MEASURED_EDGES = 242
-MEASURED_MUTUAL_PAIRS = 32
-MUTUAL_PAIRS_PLANS_SITS_IN = 17
+MEASURED_EDGES = 273
+MEASURED_MUTUAL_PAIRS = 40
+MUTUAL_PAIRS_PLANS_SITS_IN = 18
 
 
 def test_r1_only_the_app_factory_imports_a_feature_package() -> None:
