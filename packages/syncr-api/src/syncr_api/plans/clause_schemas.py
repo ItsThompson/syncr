@@ -112,6 +112,7 @@ class FloorClause(WireModel):
 
     kind: Literal["floor"] = "floor"
     area_id: UUID
+    declared_floor_minutes: int
     floor_minutes: int
     placed: int
     of: int
@@ -175,6 +176,7 @@ def as_clause(clause: Clause) -> ClauseResponse:
         case Floor():
             return FloorClause(
                 area_id=clause.area_id,
+                declared_floor_minutes=clause.declared_floor_minutes,
                 floor_minutes=clause.floor_minutes,
                 placed=clause.placed,
                 of=clause.of,

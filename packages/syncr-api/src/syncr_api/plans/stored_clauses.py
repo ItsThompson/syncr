@@ -71,6 +71,7 @@ SELECTED = "selected"
 CURSOR = "cursor"
 
 AREA_ID = "area_id"
+DECLARED_FLOOR_MINUTES = "declared_floor_minutes"
 FLOOR_MINUTES = "floor_minutes"
 PLACED = "placed"
 OF = "of"
@@ -165,6 +166,7 @@ def stored_floor(clause: Floor) -> JsonObject:
     """An Area floor that forced or forbade this placement."""
     return {
         AREA_ID: stored_id(clause.area_id),
+        DECLARED_FLOOR_MINUTES: clause.declared_floor_minutes,
         FLOOR_MINUTES: clause.floor_minutes,
         PLACED: clause.placed,
         OF: clause.of,
@@ -174,6 +176,9 @@ def stored_floor(clause: Floor) -> JsonObject:
 def read_floor(stored: JsonDocument, field: str) -> Floor:
     return Floor(
         area_id=read_id(stored.get(AREA_ID), field=f"{field}.{AREA_ID}"),
+        declared_floor_minutes=read_whole_number(
+            stored.get(DECLARED_FLOOR_MINUTES), field=f"{field}.{DECLARED_FLOOR_MINUTES}"
+        ),
         floor_minutes=read_whole_number(
             stored.get(FLOOR_MINUTES), field=f"{field}.{FLOOR_MINUTES}"
         ),

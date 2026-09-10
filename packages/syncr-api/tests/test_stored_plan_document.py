@@ -212,7 +212,13 @@ def a_week_of_every_clause() -> PlanDocument:
                 ),
             ),
             Bound(source=BindingSource.ROTATION, selected="Gym · Legs", cursor="03"),
-            Floor(area_id=FITNESS, floor_minutes=180, placed=90, of=180),
+            Floor(
+                area_id=FITNESS,
+                declared_floor_minutes=180,
+                floor_minutes=180,
+                placed=90,
+                of=180,
+            ),
             Pinned(at=between(13, 14.5), pinned_on=date(2026, 2, 8)),
             InsteadOf(placement=between(6, 7.5), objective_delta=-4.25),
         )

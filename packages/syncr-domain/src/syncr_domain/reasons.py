@@ -196,9 +196,10 @@ class Bound:
 
 @dataclass(frozen=True, slots=True)
 class Floor:
-    """An Area floor that forced or forbade this placement."""
+    """An Area's declared floor, the rule's remaining floor, and its reservation."""
 
     area_id: AreaId
+    declared_floor_minutes: int
     floor_minutes: int
     placed: int
     of: int
@@ -207,6 +208,7 @@ class Floor:
         negative = {
             name: value
             for name, value in (
+                ("declared_floor_minutes", self.declared_floor_minutes),
                 ("floor_minutes", self.floor_minutes),
                 ("placed", self.placed),
                 ("of", self.of),

@@ -545,7 +545,13 @@ EVERY_CLAUSE = (
     Blocked(window=A_WINDOW, rule="anchor_overlap", detail="Kontron Interview"),
     Dominant(term="churn", share=0.4, baseline=A_BASELINE),
     Bound(source=DerivationSource.ROUTINE, selected="Sleep · 23:00 + 8h", cursor=None),
-    Floor(area_id=CAREER, floor_minutes=300, placed=3, of=4),
+    Floor(
+        area_id=CAREER,
+        declared_floor_minutes=300,
+        floor_minutes=300,
+        placed=3,
+        of=4,
+    ),
     Pinned(at=A_WINDOW, pinned_on=MONDAY.date()),
     InsteadOf(placement=A_WINDOW, objective_delta=1.25),
 )
@@ -587,6 +593,7 @@ def test_a_clause_reaches_the_wire_with_its_own_values() -> None:
     assert by_kind["floor"] == {
         "kind": "floor",
         "areaId": CAREER,
+        "declaredFloorMinutes": 300,
         "floorMinutes": 300,
         "placed": 3,
         "of": 4,

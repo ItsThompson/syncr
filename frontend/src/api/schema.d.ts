@@ -3496,6 +3496,8 @@ export interface components {
              * Format: uuid
              */
             areaId: string;
+            /** Declaredfloorminutes */
+            declaredFloorMinutes: number;
             /** Floorminutes */
             floorMinutes: number;
             /**

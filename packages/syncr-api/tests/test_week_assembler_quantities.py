@@ -496,10 +496,44 @@ async def test_the_floor_clause_a_reader_sees_states_the_figure_the_skip_moved()
     ).assemble(WEEK, NOW)
 
     assert _floor_clauses(plan, presumed.areas) == [
-        Floor(area_id=fitness.id, floor_minutes=4 * MINUTES_PER_HOUR, placed=60, of=300)
+        Floor(
+            area_id=fitness.id,
+            declared_floor_minutes=5 * MINUTES_PER_HOUR,
+            floor_minutes=4 * MINUTES_PER_HOUR,
+            placed=60,
+            of=300,
+        )
     ]
     assert _floor_clauses(plan, confirmed.areas) == [
-        Floor(area_id=fitness.id, floor_minutes=5 * MINUTES_PER_HOUR, placed=0, of=300)
+        Floor(
+            area_id=fitness.id,
+            declared_floor_minutes=5 * MINUTES_PER_HOUR,
+            floor_minutes=5 * MINUTES_PER_HOUR,
+            placed=0,
+            of=300,
+        )
+    ]
+
+
+async def test_a_floor_clause_names_a_declared_floor_before_its_rule() -> None:
+    fitness = an_area(name="Fitness", floor_hours=Decimal(3))
+    started = replace(
+        a_habit_block(habit_id=uuid4(), area_id=fitness.id, interval=between(9, 10.5, day=1)),
+        reason=ReasonRecord((Bound(BindingSource.FIXED, "Gym · 4 / wk"),)),
+    )
+    plan = a_plan(blocks=[started])
+    inputs = await an_assembler(
+        areas=FakeAreas([fitness]), placements=FakePlacements(live_plan=plan)
+    ).assemble(WEEK, NOW)
+
+    assert _floor_clauses(plan, inputs.areas) == [
+        Floor(
+            area_id=fitness.id,
+            declared_floor_minutes=3 * MINUTES_PER_HOUR,
+            floor_minutes=90,
+            placed=90,
+            of=3 * MINUTES_PER_HOUR,
+        )
     ]
 
 

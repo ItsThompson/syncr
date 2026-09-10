@@ -78,7 +78,13 @@ A_CLAUSE_OF_EACH_KIND: tuple[Clause, ...] = (
     InsteadOf(ELSEWHERE, 3.0),
     Blocked(WINDOW, "H2"),
     Dominant("churn", 0.4),
-    Floor(CAREER, 240, 120, 240),
+    Floor(
+        area_id=CAREER,
+        declared_floor_minutes=240,
+        floor_minutes=240,
+        placed=120,
+        of=240,
+    ),
 )
 
 
@@ -277,7 +283,13 @@ class TestTheRecordIsNeverEmptyAndNeverUnbounded:
         [
             Dominant("churn", 0.4),
             Bound(BindingSource.FIXED, "Anki - F&F"),
-            Floor(CAREER, 240, 120, 240),
+            Floor(
+                area_id=CAREER,
+                declared_floor_minutes=240,
+                floor_minutes=240,
+                placed=120,
+                of=240,
+            ),
             Pinned(WINDOW, PINNED_ON),
             InsteadOf(ELSEWHERE, 3.0),
         ],
@@ -295,7 +307,13 @@ class TestTheRecordIsNeverEmptyAndNeverUnbounded:
                 Blocked(ELSEWHERE, "H8"),
                 Dominant("churn", 0.4),
                 Bound(BindingSource.QUEUE, "Tries"),
-                Floor(CAREER, 240, 120, 240),
+                Floor(
+                    area_id=CAREER,
+                    declared_floor_minutes=240,
+                    floor_minutes=240,
+                    placed=120,
+                    of=240,
+                ),
                 Pinned(WINDOW, PINNED_ON),
                 InsteadOf(ELSEWHERE, 3.0),
             )
@@ -330,17 +348,39 @@ class TestWhatAClauseRefuses:
         assert Dominant("churn", share).share == share
 
     @pytest.mark.parametrize(
-        ("floor_minutes", "placed", "of"),
-        [(-1, 0, 0), (0, -1, 0), (0, 0, -1)],
-        ids=["a negative floor", "negative minutes placed", "a negative requirement"],
+        ("declared_floor_minutes", "floor_minutes", "placed", "of"),
+        [(-1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, -1)],
+        ids=[
+            "a negative declared floor",
+            "a negative rule floor",
+            "negative minutes placed",
+            "a negative requirement",
+        ],
     )
-    def test_a_floor_clause_counts_minutes(self, floor_minutes: int, placed: int, of: int) -> None:
+    def test_a_floor_clause_counts_minutes(
+        self, declared_floor_minutes: int, floor_minutes: int, placed: int, of: int
+    ) -> None:
         with pytest.raises(ReasonError, match="none of these is negative"):
-            Floor(CAREER, floor_minutes, placed, of)
+            Floor(
+                area_id=CAREER,
+                declared_floor_minutes=declared_floor_minutes,
+                floor_minutes=floor_minutes,
+                placed=placed,
+                of=of,
+            )
 
     def test_a_floor_may_be_over_placed(self) -> None:
         """A week that beats a floor is ordinary, so `placed` above `of` is not an error."""
-        assert Floor(CAREER, 240, 300, 240).placed == 300
+        assert (
+            Floor(
+                area_id=CAREER,
+                declared_floor_minutes=240,
+                floor_minutes=240,
+                placed=300,
+                of=240,
+            ).placed
+            == 300
+        )
 
     @pytest.mark.parametrize("delta", [float("nan"), float("inf"), float("-inf")])
     def test_a_pin_cost_a_finite_number_of_objective_units(self, delta: float) -> None:

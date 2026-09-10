@@ -121,6 +121,7 @@ def a_floored_area(
         name=name,
         floor_minutes=floor_minutes,
         floor_reservation_minutes=DECLARED_FLOOR - PLACED_MINUTES,
+        declared_floor_minutes=DECLARED_FLOOR,
         placed_minutes=PLACED_MINUTES,
         target_minutes=target_minutes,
         max_per_day_minutes=max_per_day_minutes,
@@ -223,7 +224,13 @@ def untraceable(
     pinned = [(pin.interval, pin.pinned_on) for pin in pins]
     replaced = [(pin.superseded_placement, pin.objective_delta) for pin in pins]
     floors = [
-        (area.area_id, area.floor_minutes, area.placed_minutes, area.floor_reservation_minutes)
+        (
+            area.area_id,
+            area.declared_floor_minutes,
+            area.floor_minutes,
+            area.placed_minutes,
+            area.floor_reservation_minutes,
+        )
         for area in areas
     ]
     unheld: list[str] = []
@@ -242,12 +249,16 @@ def untraceable(
         elif isinstance(clause, Floor):
             stated = (
                 clause.area_id,
+                clause.declared_floor_minutes,
                 clause.floor_minutes,
                 clause.placed,
                 clause.of - clause.placed,
             )
             if stated not in floors:
-                unheld.append(f"floor {clause.floor_minutes} {clause.placed} {clause.of}")
+                unheld.append(
+                    f"floor {clause.declared_floor_minutes} {clause.floor_minutes} "
+                    f"{clause.placed} {clause.of}"
+                )
         elif isinstance(clause, Pinned):
             if (clause.at, clause.pinned_on) not in pinned:
                 unheld.append(f"pinned {clause.at}")
@@ -281,9 +292,20 @@ class TestTheInstrumentFailsOnAFabricatedClause:
 
     def test_a_floor_figure_no_area_holds_is_not_traceable(self) -> None:
         area = a_floored_area()
-        block = _with_clauses(_a_placed_block(), (Floor(FITNESS, 240, 120, 999),))
+        block = _with_clauses(
+            _a_placed_block(),
+            (
+                Floor(
+                    area_id=FITNESS,
+                    declared_floor_minutes=DECLARED_FLOOR,
+                    floor_minutes=240,
+                    placed=120,
+                    of=999,
+                ),
+            ),
+        )
 
-        assert untraceable(block, areas=(area,)) == ["floor 240 120 999"]
+        assert untraceable(block, areas=(area,)) == ["floor 300 240 120 999"]
 
     def test_a_real_record_is_traceable(self) -> None:
         """The other half of the control: the reading accepts what the solve did compute."""
@@ -584,8 +606,14 @@ class TestTheFloorClause:
         floor = only(Floor, clauses_of(result, "Walk"))
 
         assert isinstance(floor, Floor)
-        assert (floor.area_id, floor.floor_minutes, floor.placed) == (
+        assert (
+            floor.area_id,
+            floor.declared_floor_minutes,
+            floor.floor_minutes,
+            floor.placed,
+        ) == (
             FITNESS,
+            DECLARED_FLOOR,
             DECLARED_FLOOR - IMMOVABLE_MINUTES,
             PLACED_MINUTES,
         )

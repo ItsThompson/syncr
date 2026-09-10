@@ -37,27 +37,24 @@ Three of the seven objective terms have no per-block reading at all, so the shar
 fraction of what the whole plan costs and every block of one plan carries the same one. The
 argument for that lives on :class:`syncr_domain.reasons.Dominant`, which owns the field.
 
-## The two floor figures a clause renders are over two different sets, deliberately
+## The clause names the declared floor and keeps the reservation's identity
 
-``AreaBudget`` holds the floor twice, and the pair is not redundant. ``floor_minutes`` nets the
-immovable placements only, which is the number H9 read when it forced or forbade a placement.
-``floor_reservation_minutes`` nets EVERY placement, which is the number the probe compares
-against free capacity. A clause rendering one figure from each set would let a reader compute a
-third quantity that is neither.
+``AreaBudget`` holds three distinct figures. ``declared_floor_minutes`` is the floor the user set,
+net of no placement set. ``floor_minutes`` nets immovable placements only, which is the number H9
+reads when it forces or forbids a placement. ``floor_reservation_minutes`` nets EVERY placement,
+which is the number the probe compares against free capacity.
 
-So the clause states the rule's own figure as ``floor_minutes``, and states ``placed`` and ``of``
-over one set, the reservation's:
+The clause states the declared and rule figures separately. Its ``placed`` and ``of`` values stay
+over the reservation's one set:
 
 ```
 placed = AreaBudget.placed_minutes                 every placement, pinned or not
 of     = placed_minutes + floor_reservation_minutes the floor that reservation is against
 ```
 
-``of - placed`` is then the probe's reservation exactly, for every Area and every week, so the
-clause cannot disagree with the figure a reader compares it against. The Area's DECLARED floor is
-not on ``AreaBudget`` at all, and an Area with more placed than its floor asks therefore reads
-``of == placed`` with a reservation of zero, which is what the probe reports for it. Naming the
-declared figure too would need a producer field that does not exist.
+``of - placed`` is then the probe's reservation exactly, for every Area and every week. An Area
+with more placed than its floor asks reads ``of == placed`` with a reservation of zero, while its
+declared figure stays visible.
 """
 
 from __future__ import annotations
@@ -277,10 +274,11 @@ def _floor_clause(block: Block, floors: Mapping[AreaId, AreaBudget]) -> tuple[Cl
         return ()
     return (
         Floor(
-            area.area_id,
-            area.floor_minutes,
-            area.placed_minutes,
-            area.placed_minutes + area.floor_reservation_minutes,
+            area_id=area.area_id,
+            declared_floor_minutes=area.declared_floor_minutes,
+            floor_minutes=area.floor_minutes,
+            placed=area.placed_minutes,
+            of=area.placed_minutes + area.floor_reservation_minutes,
         ),
     )
 
