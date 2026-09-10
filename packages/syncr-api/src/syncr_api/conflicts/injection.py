@@ -57,7 +57,7 @@ def get_conflict_service(
             clock=utc_now,
             debounce=configured_debounce(request),
         ),
-        anchors=get_anchor_service(principal, transaction),
+        anchors=get_anchor_service(request, principal, transaction),
         pins=StoredPinRelease(PinRepository(transaction, principal.tenant_id)),
         clock=utc_now,
         session_mode_active=session_mode,

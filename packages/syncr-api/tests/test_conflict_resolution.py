@@ -39,8 +39,8 @@ from uuid import uuid4
 
 import pytest
 
-from syncr_api.anchors.injection import get_anchor_service
 from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.service import AnchorService
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
 from syncr_api.calendars.repository import CalendarSourceRepository
@@ -53,6 +53,7 @@ from syncr_api.core.errors import Conflict, Forbidden, NotFound, ValidationFaile
 from syncr_api.core.patches import ABSENT
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
+from syncr_api.horizon.projection import CurrentProjectionHorizon
 from syncr_api.plans.config import (
     FIRST_INPUT_VERSION,
     KEPT_BOTH_RESOLUTION,
@@ -66,8 +67,10 @@ from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_api.plans.versions import WeekInputVersionRepository
 from syncr_api.solving.config import SOLVE
-from syncr_api.solving.injection import build_solve_coordinator
+from syncr_api.solving.injection import build_solve_coordinator, build_solve_requests
 from syncr_api.solving.repository import OperationRepository
+from syncr_api.user_settings.repository import SettingsRepository
+from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 from syncr_domain.identity import BindingRef, Origin, TransitLeg, is_placed_by_the_solver
 from syncr_domain.intervals import Interval
 from tests.anchor_specifications import INTERVIEW as INTERVIEW_TYPE
@@ -254,7 +257,25 @@ def a_service(
         coordinator=build_solve_coordinator(
             session, principal.tenant_id, clock=lambda: NOW, debounce=DEFAULT_DEBOUNCE
         ),
-        anchors=get_anchor_service(principal, session),
+        anchors=AnchorService(
+            anchors=AnchorRepository(session, principal.tenant_id),
+            types=AnchorTypeRepository(session, principal.tenant_id),
+            sources=CalendarSourceRepository(session, principal.tenant_id),
+            bump=BacklogWideBump(
+                versions=TrackedWeekInputVersions(
+                    WeekInputVersionRepository(session, principal.tenant_id), clock=lambda: NOW
+                ),
+                settings=SettingsRepository(session, principal.tenant_id),
+            ),
+            solve_requests=build_solve_requests(
+                session, principal.tenant_id, clock=lambda: NOW, debounce=DEFAULT_DEBOUNCE
+            ),
+            horizon=CurrentProjectionHorizon(
+                CalendarSourceRepository(session, principal.tenant_id),
+                SettingsRepository(session, principal.tenant_id),
+            ),
+            clock=lambda: NOW,
+        ),
         pins=pins or ReleasedPins(),
         clock=lambda: NOW,
     )

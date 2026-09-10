@@ -12,7 +12,7 @@ The cookie is replayed by setting the header rather than through a cookie jar: t
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -21,6 +21,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from syncr_api.accounts.config import AUTH_PREFIX, SESSION_COOKIE_NAME
+from syncr_api.anchors.repository import AnchorRepository
+from syncr_api.anchors.type_repository import AnchorTypeRepository
+from syncr_api.calendars.config import ANCHOR_SOURCE, ICS
+from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.conflicts.config import CONFLICTS_PREFIX, RESOLVED_PARAMETER
 from syncr_api.conflicts.errors import BlockAlreadyStarted
 from syncr_api.core.app_factory import create_app
@@ -35,6 +39,7 @@ from syncr_api.plans.repository import PlanRepository
 from syncr_api.plans.stored_documents import stored_document
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import Interval
+from tests.anchor_specifications import INTERVIEW as INTERVIEW_TYPE
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant, run
 from tests.plan_documents import WEEK, a_block_holding, a_document, between
 
@@ -100,7 +105,12 @@ def _sign_in(http: TestClient, email: str) -> dict[str, str]:
 
 
 def seed_conflict(
-    database_url: str, tenant_id: TenantId, *, binding: BindingRef = GYM, block: Block | None = None
+    database_url: str,
+    tenant_id: TenantId,
+    *,
+    binding: BindingRef = GYM,
+    block: Block | None = None,
+    anchor_id: Any | None = None,
 ) -> str:
     """A live plan holding ``block`` and one open conflict against ``binding``, on its own loop.
 
@@ -126,7 +136,7 @@ def seed_conflict(
                     created_at=NOW,
                 )
                 detected = DetectedConflict(
-                    anchor_id=uuid4(),
+                    anchor_id=uuid4() if anchor_id is None else anchor_id,
                     iso_week=WEEK,
                     binding=binding,
                     overlap=overlap,
@@ -137,6 +147,40 @@ def seed_conflict(
                     commitments={detected.anchor_id: Commitment(series_uid=None, title="Standup")},
                 )
             return str(raised.id)
+        finally:
+            await database.engine.dispose()
+
+    return run(seed())
+
+
+def seed_retypable_anchor(database_url: str, tenant_id: TenantId) -> tuple[str, str]:
+    async def seed() -> tuple[str, str]:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session, session.begin():
+                source = await CalendarSourceRepository(session, tenant_id).create(
+                    provider=ICS,
+                    role=ANCHOR_SOURCE,
+                    display_name="Calendar",
+                    external_id="https://example.com/calendar.ics",
+                    included=True,
+                    horizon_days=None,
+                    created_at=NOW,
+                )
+                anchor_type = await AnchorTypeRepository(session, tenant_id).create(
+                    rule_order=0, specification=INTERVIEW_TYPE, created_at=NOW
+                )
+                anchor = await AnchorRepository(session, tenant_id).create(
+                    source_id=source.id,
+                    external_uid=uuid4().hex,
+                    series_uid=None,
+                    title="Interview",
+                    interval=Interval(NOW, NOW + timedelta(hours=1)),
+                    location=None,
+                    anchor_type_id=None,
+                    type_overridden=False,
+                )
+                return str(anchor.id), str(anchor_type.id)
         finally:
             await database.engine.dispose()
 
@@ -281,6 +325,26 @@ def test_moving_a_reached_block_is_refused_naming_when_it_began(
     assert f"began at {block.interval.start.isoformat()}" in body["detail"]
     (held,) = stored_conflicts(live_database_url, owner.tenant_id)
     assert held.resolution is None
+
+
+def test_a_conflict_retype_requests_solve_work_through_the_anchor_service(
+    http: TestClient, owner: UserRecord, signed_in: dict[str, str], live_database_url: str
+) -> None:
+    anchor_id, anchor_type_id = seed_retypable_anchor(live_database_url, owner.tenant_id)
+    conflict_id = seed_conflict(live_database_url, owner.tenant_id, anchor_id=anchor_id)
+
+    status, body = resolve(
+        http,
+        signed_in,
+        conflict_id,
+        resolution=RETYPED_RESOLUTION,
+        anchorTypeId=anchor_type_id,
+    )
+
+    assert status == HTTPStatus.OK, body
+    assert body["conflict"]["resolution"] == RETYPED_RESOLUTION
+    assert body["operation"]["kind"] == "solve"
+    assert body["operation"]["target"]["isoWeek"] == str(WEEK)
 
 
 def test_a_retype_that_states_no_type_is_a_422_naming_the_field(
