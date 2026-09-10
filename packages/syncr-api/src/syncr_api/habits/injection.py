@@ -19,7 +19,7 @@ with no further call.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
 from starlette.requests import Request  # noqa: TC002
@@ -40,30 +40,43 @@ from syncr_api.solving.injection import build_solve_requests, configured_debounc
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
+if TYPE_CHECKING:
+    from datetime import timedelta
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_domain.identifiers import TenantId
+
 
 def get_habit_service(
     request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> HabitService:
     """The habit service, wired for this request and scoped to this tenant."""
+    return build_habit_service(
+        transaction, principal.tenant_id, debounce=configured_debounce(request)
+    )
+
+
+def build_habit_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
+) -> HabitService:
+    """The habit service, wired for one tenant."""
     return HabitService(
-        habits=HabitRepository(transaction, principal.tenant_id),
-        areas=AreaRepository(transaction, principal.tenant_id),
-        outcomes=HabitOutcomeLog(transaction, principal.tenant_id),
+        habits=HabitRepository(transaction, tenant_id),
+        areas=AreaRepository(transaction, tenant_id),
+        outcomes=HabitOutcomeLog(transaction, tenant_id),
         bump=BacklogWideBump(
             versions=TrackedWeekInputVersions(
-                WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+                WeekInputVersionRepository(transaction, tenant_id), clock=utc_now
             ),
-            settings=SettingsRepository(transaction, principal.tenant_id),
+            settings=SettingsRepository(transaction, tenant_id),
         ),
         solve_requests=build_solve_requests(
-            transaction,
-            principal.tenant_id,
-            clock=utc_now,
-            debounce=configured_debounce(request),
+            transaction, tenant_id, clock=utc_now, debounce=debounce
         ),
         horizon=CurrentProjectionHorizon(
-            CalendarSourceRepository(transaction, principal.tenant_id),
-            SettingsRepository(transaction, principal.tenant_id),
+            CalendarSourceRepository(transaction, tenant_id),
+            SettingsRepository(transaction, tenant_id),
         ),
         clock=utc_now,
     )

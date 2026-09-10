@@ -222,7 +222,8 @@ def the_operation_identifier(payload: dict[str, Any]) -> str | None:
     """
     names_an_operation = {"id", "kind", "status", "attempt"} <= payload.keys()
     if names_an_operation:
-        return payload["id"]
+        identifier = payload["id"]
+        return identifier if isinstance(identifier, str) else None
     carried = payload.get("operation")
     return the_operation_identifier(carried) if isinstance(carried, dict) else None
 

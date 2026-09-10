@@ -38,7 +38,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from syncr_solver.candidates import candidates_for
-from syncr_solver.offering import Scored, offers_in, refusal_of, scored, windows_for
+from syncr_solver.offering import Scored, offers_in, refusal_of, windows_for
+from syncr_solver.offering import scored as scored
 from syncr_solver.preferred import ResolvedPreferences
 
 if TYPE_CHECKING:

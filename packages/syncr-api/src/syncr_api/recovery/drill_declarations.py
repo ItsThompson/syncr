@@ -25,16 +25,18 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Final
 
 from syncr_api.areas.declarations import AreaDeclaration
-from syncr_api.areas.injection import get_area_service
+from syncr_api.areas.injection import build_area_service
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.habits.declarations import DeclaredCadence, HabitDeclaration
-from syncr_api.habits.injection import get_habit_service
+from syncr_api.habits.injection import build_habit_service
 from syncr_api.habits.repository import HabitRepository
+from syncr_api.solving.injection import debounce_window
 from syncr_api.templates.declarations import DayTypeDeclaration, SlotEntry, TemplateDeclaration
 from syncr_api.templates.injection import (
+    build_template_service,
+    build_week_pattern_service,
     get_day_type_service,
-    get_template_service,
-    get_week_pattern_service,
 )
 from syncr_api.templates.repository import (
     DayTypeRepository,
@@ -110,7 +112,9 @@ async def _an_area(session: AsyncSession, principal: Principal) -> AreaId:
     for area in await AreaRepository(session, principal.tenant_id).list_all():
         if area.name == AREA_NAME:
             return area.id
-    dealt = await get_area_service(principal, session).create(
+    dealt = await build_area_service(
+        session, principal.tenant_id, debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    ).create(
         principal,
         AreaDeclaration(
             name=AREA_NAME,
@@ -138,9 +142,9 @@ async def _a_shape(
     held = await TemplateRepository(session, principal.tenant_id).find_by_day_type(day_type_id)
     if held is not None:
         return held.id
-    created = await get_template_service(principal, session).create(
-        principal, TemplateDeclaration(day_type_id=day_type_id, name=TEMPLATE_NAME)
-    )
+    created = await build_template_service(
+        session, principal.tenant_id, debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    ).create(principal, TemplateDeclaration(day_type_id=day_type_id, name=TEMPLATE_NAME))
     return created.id
 
 
@@ -152,7 +156,9 @@ async def _a_slot(
     entries = shape.entries if shape is not None else ()
     if any(entry.kind is TemplateEntryKind.SLOT and entry.area_id == area_id for entry in entries):
         return
-    await get_template_service(principal, session).add_entry(
+    await build_template_service(
+        session, principal.tenant_id, debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    ).add_entry(
         principal,
         template_id,
         SlotEntry(
@@ -171,9 +177,9 @@ async def _every_weekday(
     held = await WeekPatternRepository(session, principal.tenant_id).read()
     if held is not None:
         return
-    await get_week_pattern_service(principal, session).replace(
-        principal, WeekPattern(mapping=dict.fromkeys(Weekday, day_type_id))
-    )
+    await build_week_pattern_service(
+        session, principal.tenant_id, debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    ).replace(principal, WeekPattern(mapping=dict.fromkeys(Weekday, day_type_id)))
 
 
 async def _a_rotation_habit(
@@ -183,7 +189,9 @@ async def _a_rotation_habit(
     for habit in await HabitRepository(session, principal.tenant_id).list_all():
         if habit.title == HABIT_TITLE:
             return habit.id
-    read = await get_habit_service(principal, session).create(
+    read = await build_habit_service(
+        session, principal.tenant_id, debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS)
+    ).create(
         principal,
         HabitDeclaration(
             area_id=area_id,

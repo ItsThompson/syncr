@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
     from syncr_api.anchors.records import AnchorTypeRecord
     from syncr_domain.gaps import EmptySlot
+    from syncr_solver.resolved_content import ShadowBlock
 
 MONDAY = INTERVIEW_DAY - timedelta(days=INTERVIEW_DAY.weekday())
 NEXT_MONDAY = MONDAY + timedelta(days=7)
@@ -62,7 +63,7 @@ def occupancy_of(
     *,
     span: Interval,
     off_plan: OffPlanSuppression,
-) -> tuple[tuple[EmptySlot, ...], tuple]:
+) -> tuple[tuple[EmptySlot, ...], tuple[ShadowBlock, ...]]:
     """The calendar half of one assembly, reduced to the two members this file asserts on."""
     occupancy = calendar_occupancy(tuple(loaded), span=span, off_plan=off_plan)
     return occupancy.dropped_legs, occupancy.shadow_blocks

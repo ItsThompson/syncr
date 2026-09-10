@@ -41,7 +41,7 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Forbidden
 from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
-from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS, DEV_ALLOWED_ORIGINS
 from syncr_api.habits.config import HABITS_PREFIX
 from syncr_api.plans.declarations import PinToHold
 from syncr_api.plans.pins import PinRepository
@@ -52,10 +52,11 @@ from syncr_api.promotions.config import (
     PROMOTION_ID_MAX_LENGTH,
     PROMOTIONS_PREFIX,
 )
-from syncr_api.promotions.injection import get_promotion_service
+from syncr_api.promotions.injection import build_promotion_service
 from syncr_api.promotions.models import PromotionDecline
 from syncr_api.promotions.repository import PromotionDeclineRepository
 from syncr_api.reviews.config import REVIEWS_PREFIX
+from syncr_api.solving.injection import debounce_window
 from syncr_api.templates.config import DAY_TYPES_PREFIX, TEMPLATES_PREFIX, WEEK_PATTERN_PREFIX
 from syncr_api.templates.models import TemplateEntryRow
 from syncr_domain.identity import BindingKind, BindingRef, block_id
@@ -408,7 +409,11 @@ def answer(database_url: str, principal: Principal, ref: PromotionRef, *, accept
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session, session.begin():
-                service = get_promotion_service(principal, session)
+                service = build_promotion_service(
+                    session,
+                    principal.tenant_id,
+                    debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+                )
                 if accepting:
                     await service.accept(principal, ref)
                 else:

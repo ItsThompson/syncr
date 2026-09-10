@@ -11,9 +11,9 @@ time a template edit gained a step.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 # FastAPI resolves this function's annotations at RUNTIME to build the dependency graph, and these
 # two names are only reachable from an annotation, so under TYPE_CHECKING they would resolve to a
@@ -22,16 +22,37 @@ from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: T
 from syncr_api.core.clock import utc_now
 from syncr_api.promotions.repository import PromotionDeclineRepository
 from syncr_api.promotions.service import PromotionService
-from syncr_api.templates.injection import get_template_service
+from syncr_api.solving.injection import configured_debounce
+from syncr_api.templates.injection import build_template_service
 from syncr_api.templates.repository import TemplateRepository
 
+if TYPE_CHECKING:
+    from datetime import timedelta
 
-def get_promotion_service(principal: PrincipalDep, transaction: TransactionDep) -> PromotionService:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_domain.identifiers import TenantId
+
+
+def get_promotion_service(
+    request: Request, principal: PrincipalDep, transaction: TransactionDep
+) -> PromotionService:
     """The promotion service, wired for this request and scoped to this tenant."""
+    return build_promotion_service(
+        transaction,
+        principal.tenant_id,
+        debounce=configured_debounce(request),
+    )
+
+
+def build_promotion_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
+) -> PromotionService:
+    """The promotion service, wired for one tenant."""
     return PromotionService(
-        shapes=TemplateRepository(transaction, principal.tenant_id),
-        templates=get_template_service(principal, transaction),
-        declines=PromotionDeclineRepository(transaction, principal.tenant_id),
+        shapes=TemplateRepository(transaction, tenant_id),
+        templates=build_template_service(transaction, tenant_id, debounce=debounce),
+        declines=PromotionDeclineRepository(transaction, tenant_id),
         clock=utc_now,
     )
 

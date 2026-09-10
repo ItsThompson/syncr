@@ -23,7 +23,7 @@ with never falls behind the rows it came from.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
 from starlette.requests import Request  # noqa: TC002
@@ -48,39 +48,52 @@ from syncr_api.solving.injection import build_solve_requests, configured_debounc
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
+if TYPE_CHECKING:
+    from datetime import timedelta
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_domain.identifiers import TenantId
+
 
 def get_outcome_service(
     request: Request, principal: ClientPrincipalDep, transaction: TransactionDep
 ) -> OutcomeService:
     """The outcome service, wired for this request and scoped to this tenant."""
-    plans = PlanRepository(transaction, principal.tenant_id)
-    settings = SettingsRepository(transaction, principal.tenant_id)
+    return build_outcome_service(
+        transaction, principal.tenant_id, debounce=configured_debounce(request)
+    )
+
+
+def build_outcome_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
+) -> OutcomeService:
+    """The outcome service, wired for one tenant."""
+    plans = PlanRepository(transaction, tenant_id)
+    settings = SettingsRepository(transaction, tenant_id)
     return OutcomeService(
         plans=plans,
         days=PlannedDayReader(plans),
-        outcomes=BlockOutcomeRepository(transaction, principal.tenant_id),
+        outcomes=BlockOutcomeRepository(transaction, tenant_id),
         charged=StoredChargedMisses(
-            habits=HabitRepository(transaction, principal.tenant_id),
-            outcomes=HabitOutcomeLog(transaction, principal.tenant_id),
+            habits=HabitRepository(transaction, tenant_id),
+            outcomes=HabitOutcomeLog(transaction, tenant_id),
             clock=utc_now,
         ),
-        areas=AreaRepository(transaction, principal.tenant_id),
+        areas=AreaRepository(transaction, tenant_id),
         settings=settings,
-        overrides=TravelOverrideRepository(transaction, principal.tenant_id),
+        overrides=TravelOverrideRepository(transaction, tenant_id),
         bump=BacklogWideBump(
             TrackedWeekInputVersions(
-                WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+                WeekInputVersionRepository(transaction, tenant_id), clock=utc_now
             ),
             settings,
         ),
         solve_requests=build_solve_requests(
-            transaction,
-            principal.tenant_id,
-            clock=utc_now,
-            debounce=configured_debounce(request),
+            transaction, tenant_id, clock=utc_now, debounce=debounce
         ),
         horizon=CurrentProjectionHorizon(
-            CalendarSourceRepository(transaction, principal.tenant_id), settings
+            CalendarSourceRepository(transaction, tenant_id), settings
         ),
         clock=utc_now,
     )

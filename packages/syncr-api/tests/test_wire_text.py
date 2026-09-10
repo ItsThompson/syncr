@@ -272,7 +272,15 @@ def _bounded_string_paths(document: Any, path: tuple[str, ...] = ()) -> set[tupl
 
 def _references_shared_text(document: Any, path: tuple[str, ...]) -> bool:
     """Whether the schema node at ``path`` names the shared component beside its bound."""
-    node: Any = document
+    if not isinstance(document, dict):
+        return False
+    node: dict[str, Any] | list[Any] = document
     for part in path:
-        node = node[int(part)] if isinstance(node, list) else node[part]
-    return node.get("$ref") == "#/components/schemas/WireText"
+        if isinstance(node, list):
+            node = node[int(part)]
+        else:
+            child = node.get(part)
+            if not isinstance(child, (dict, list)):
+                return False
+            node = child
+    return isinstance(node, dict) and node.get("$ref") == "#/components/schemas/WireText"

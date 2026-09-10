@@ -20,7 +20,7 @@ rather than abandoning the transaction.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
 from starlette.requests import Request  # noqa: TC002
@@ -48,28 +48,35 @@ from syncr_api.templates.service import DayTypeService, TemplateService, WeekPat
 from syncr_api.user_settings.repository import SettingsRepository
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, TrackedWeekInputVersions
 
+if TYPE_CHECKING:
+    from datetime import timedelta
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_domain.identifiers import TenantId
+
 
 def _future_weeks(
-    request: Request, principal: PrincipalDep, transaction: TransactionDep
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
 ) -> FutureWeeks:
-    """The invalidation rule, wired for this request and scoped to this tenant."""
-    settings = SettingsRepository(transaction, principal.tenant_id)
+    """The invalidation rule, wired for one tenant."""
+    settings = SettingsRepository(transaction, tenant_id)
     return FutureWeeks(
-        patterns=WeekPatternRepository(transaction, principal.tenant_id),
+        patterns=WeekPatternRepository(transaction, tenant_id),
         bump=BacklogWideBump(
             versions=TrackedWeekInputVersions(
-                WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+                WeekInputVersionRepository(transaction, tenant_id), clock=utc_now
             ),
             settings=settings,
         ),
         solve_requests=build_solve_requests(
             transaction,
-            principal.tenant_id,
+            tenant_id,
             clock=utc_now,
-            debounce=configured_debounce(request),
+            debounce=debounce,
         ),
         horizon=CurrentProjectionHorizon(
-            CalendarSourceRepository(transaction, principal.tenant_id), settings
+            CalendarSourceRepository(transaction, tenant_id), settings
         ),
         clock=utc_now,
     )
@@ -88,15 +95,24 @@ def get_template_service(
     request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> TemplateService:
     """The day-shape service, wired for this request and scoped to this tenant."""
+    return build_template_service(
+        transaction, principal.tenant_id, debounce=configured_debounce(request)
+    )
+
+
+def build_template_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
+) -> TemplateService:
+    """The day-shape service, wired for one tenant."""
     return TemplateService(
-        templates=TemplateRepository(transaction, principal.tenant_id),
-        day_types=DayTypeRepository(transaction, principal.tenant_id),
-        areas=AreaRepository(transaction, principal.tenant_id),
+        templates=TemplateRepository(transaction, tenant_id),
+        day_types=DayTypeRepository(transaction, tenant_id),
+        areas=AreaRepository(transaction, tenant_id),
         bindings=TemplateBindings(
-            routines=RoutineRepository(transaction, principal.tenant_id),
-            habits=HabitRepository(transaction, principal.tenant_id),
+            routines=RoutineRepository(transaction, tenant_id),
+            habits=HabitRepository(transaction, tenant_id),
         ),
-        weeks=_future_weeks(request, principal, transaction),
+        weeks=_future_weeks(transaction, tenant_id, debounce=debounce),
         clock=utc_now,
         savepoint=transaction.begin_nested,
     )
@@ -106,10 +122,19 @@ def get_week_pattern_service(
     request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> WeekPatternService:
     """The week-pattern service. Replacing the mapping invalidates every future week."""
+    return build_week_pattern_service(
+        transaction, principal.tenant_id, debounce=configured_debounce(request)
+    )
+
+
+def build_week_pattern_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
+) -> WeekPatternService:
+    """The week-pattern service, wired for one tenant."""
     return WeekPatternService(
-        patterns=WeekPatternRepository(transaction, principal.tenant_id),
-        day_types=DayTypeRepository(transaction, principal.tenant_id),
-        weeks=_future_weeks(request, principal, transaction),
+        patterns=WeekPatternRepository(transaction, tenant_id),
+        day_types=DayTypeRepository(transaction, tenant_id),
+        weeks=_future_weeks(transaction, tenant_id, debounce=debounce),
     )
 
 

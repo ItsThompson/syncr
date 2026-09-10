@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -156,7 +157,7 @@ def seed_anchors(database_url: str, tenant_id: TenantId, source_id: str) -> None
                     all_day=False,
                 )
                 await reconciler.reconcile(
-                    _a_source(source_id, tenant_id),
+                    _a_source(UUID(source_id), tenant_id),
                     FetchOutcome(events=(event,), events_read=1, reparsed=True),
                 )
         finally:
@@ -165,7 +166,7 @@ def seed_anchors(database_url: str, tenant_id: TenantId, source_id: str) -> None
     run(seed())
 
 
-def _a_source(source_id: str, tenant_id: TenantId) -> CalendarSourceRecord:
+def _a_source(source_id: UUID, tenant_id: TenantId) -> CalendarSourceRecord:
     return CalendarSourceRecord(
         id=source_id,
         tenant_id=tenant_id,
@@ -281,7 +282,9 @@ def test_the_day_read_answers_the_blocks_the_plan_holds(
     assert answered.status_code == HTTPStatus.OK, answered.text
     body: dict[str, object] = answered.json()
     assert body["date"] == identifiers["date"]
-    assert body["blockCount"] >= 1
+    block_count = body["blockCount"]
+    assert isinstance(block_count, int)
+    assert block_count >= 1
 
 
 def test_no_record_read_brings_a_row_into_existence(

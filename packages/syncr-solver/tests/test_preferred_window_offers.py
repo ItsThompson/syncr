@@ -274,10 +274,10 @@ def test_one_legal_offer_is_scored_per_start() -> None:
     scored_calls: int = 0
     original_scored = filling_module.scored
 
-    def counting_scored(offer: Offer, attempt: Attempt, weight_set: WeightSet) -> Scored:
+    def counting_scored(offer: Offer, attempt: Attempt, weights: WeightSet) -> Scored:
         nonlocal scored_calls
         scored_calls += 1
-        return original_scored(offer, attempt, weight_set)
+        return original_scored(offer, attempt, weights)
 
     filling_module.scored = counting_scored
     try:

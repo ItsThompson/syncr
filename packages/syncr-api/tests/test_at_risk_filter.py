@@ -37,14 +37,13 @@ from syncr_api.core.scopes import ALL_SCOPES
 from syncr_api.tasks.config import TASKS_PREFIX
 from syncr_api.tasks.injection import get_task_service
 from syncr_api.tasks.wiring import build_tasks_router
+from tests.service_builders import a_task, an_area
 from tests.test_tasks_service import (
     A_DEADLINE,
     LATER,
     RecordingWeekInputVersions,
     a_deadline_gap,
-    a_task,
     a_verdict,
-    an_area,
     build,
 )
 
@@ -83,7 +82,11 @@ def scene(
     area = an_area(principal.tenant_id)
     named = a_task(principal.tenant_id, area.id, title=MARKED_TITLE, deadline=A_DEADLINE)
     other = a_task(
-        principal.tenant_id, area.id, title=UNMARKED_TITLE, deadline=A_DEADLINE, clock=LATER
+        principal.tenant_id,
+        area.id,
+        title=UNMARKED_TITLE,
+        deadline=A_DEADLINE,
+        created_at=LATER,
     )
     service, _ = build(
         principal,

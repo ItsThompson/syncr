@@ -335,6 +335,7 @@ def _module_functions() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     """Function defs from both the partition and the placement modules."""
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     for module in (ics_partition_module, ics_placement_module):
+        assert module.__file__ is not None
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
         functions.update(
             {

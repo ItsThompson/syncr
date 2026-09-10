@@ -59,8 +59,9 @@ if TYPE_CHECKING:
 
     from syncr_api.accounts.records import UserRecord
     from syncr_api.anchors.records import AnchorRecord
+    from syncr_api.calendars.config import CalendarProvider
     from syncr_api.calendars.google_transport import GoogleResponse
-    from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
+    from syncr_api.calendars.records import CalendarSourceId, CalendarSourceRecord, SyncStateRecord
 
 pytestmark = pytest.mark.integration
 
@@ -75,7 +76,7 @@ MOVED_UID = "evt-07@provider.test"
 CANCELLED_UID = "evt-11@provider.test"
 
 
-def sixty_commitments() -> tuple[dict[str], ...]:
+def sixty_commitments() -> tuple[dict[str, object], ...]:
     """Sixty single-instance events spread across the horizon, one per identifier."""
     return tuple(
         {
@@ -118,9 +119,13 @@ class RecordingSources:
 
     saved: list[SyncStateRecord] = field(default_factory=list)
 
-    async def save_sync_state(self, source_id: object, state: SyncStateRecord) -> None:
+    async def save_sync_state(self, source_id: CalendarSourceId, state: SyncStateRecord) -> None:
         del source_id
         self.saved.append(state)
+
+    async def included_for(self, provider: CalendarProvider) -> tuple[CalendarSourceRecord, ...]:
+        del provider
+        return ()
 
 
 @dataclass
@@ -134,9 +139,9 @@ class SilentCollisions:
 
 @dataclass
 class SilentSolves:
-    asked: list[frozenset] = field(default_factory=list)
+    asked: list[frozenset[IsoWeek]] = field(default_factory=list)
 
-    async def request(self, weeks: frozenset) -> tuple[()]:
+    async def request(self, weeks: frozenset[IsoWeek]) -> tuple[()]:
         self.asked.append(weeks)
         return ()
 

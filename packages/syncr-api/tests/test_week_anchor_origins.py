@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from syncr_api.accounts.records import UserRecord
+    from syncr_api.anchors.records import AnchorRecord
     from syncr_api.calendars.records import CalendarSourceId
     from syncr_api.core.settings import ServiceSettings
     from syncr_domain.identifiers import TenantId
@@ -335,7 +336,7 @@ def stop_answering(database_url: str, tenant_id: TenantId, source_id: CalendarSo
 def append_a_week_binding(
     database_url: str,
     tenant_id: TenantId,
-    bindings: tuple[tuple[BindingRef, float, float], ...],
+    bindings: tuple[tuple[BindingRef, tuple[int, float, float]], ...],
 ) -> None:
     """A revision holding one block per binding, each at the hours of the week it names."""
 
@@ -365,10 +366,12 @@ def append_a_week_binding(
     run(append())
 
 
-def anchors_of(database_url: str, tenant_id: TenantId, source_id: CalendarSourceId) -> tuple:
+def anchors_of(
+    database_url: str, tenant_id: TenantId, source_id: CalendarSourceId
+) -> tuple[AnchorRecord, ...]:
     """The commitments a seeded feed contributed, so a block can bind to one by identity."""
 
-    async def read() -> tuple:
+    async def read() -> tuple[AnchorRecord, ...]:
         database = create_database(database_url)
         try:
             async with database.sessionmaker() as session:

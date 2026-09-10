@@ -51,7 +51,7 @@ from syncr_api.core.settings import (
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.learned.repository import WeightSetRepository
 from syncr_api.offplan.declarations import OffPlanDeclaration
-from syncr_api.offplan.injection import get_off_plan_service
+from syncr_api.offplan.injection import build_off_plan_service
 from syncr_api.recovery.drill_declarations import VARIANTS, declare
 from syncr_api.recovery.drill_evidence import write_the_evidence
 from syncr_api.recovery.drill_history import NothingWasPlaced, record_what_happened
@@ -169,7 +169,11 @@ async def _declare_the_week_off_plan(
     which accepts a past span because a period is a fact about time rather than a plan.
     """
     async with sessions() as session, session.begin():
-        await get_off_plan_service(principal, session).declare(
+        await build_off_plan_service(
+            session,
+            principal.tenant_id,
+            debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+        ).declare(
             principal,
             OffPlanDeclaration(
                 start=week.planned_at,

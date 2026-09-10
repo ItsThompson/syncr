@@ -17,7 +17,7 @@ for anything that invalidates a running solve.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
 from starlette.requests import Request  # noqa: TC002
@@ -36,27 +36,40 @@ from syncr_api.solving.injection import build_solve_requests, configured_debounc
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 
+if TYPE_CHECKING:
+    from datetime import timedelta
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from syncr_domain.identifiers import TenantId
+
 
 def get_off_plan_service(
     request: Request, principal: PrincipalDep, transaction: TransactionDep
 ) -> OffPlanService:
     """The off-plan service, wired for this request and scoped to this tenant."""
-    settings = SettingsRepository(transaction, principal.tenant_id)
+    return build_off_plan_service(
+        transaction, principal.tenant_id, debounce=configured_debounce(request)
+    )
+
+
+def build_off_plan_service(
+    transaction: AsyncSession, tenant_id: TenantId, *, debounce: timedelta
+) -> OffPlanService:
+    """The off-plan service, wired for one tenant."""
+    settings = SettingsRepository(transaction, tenant_id)
     return OffPlanService(
-        periods=OffPlanPeriodRepository(transaction, principal.tenant_id),
+        periods=OffPlanPeriodRepository(transaction, tenant_id),
         settings=settings,
-        overrides=TravelOverrideRepository(transaction, principal.tenant_id),
+        overrides=TravelOverrideRepository(transaction, tenant_id),
         versions=TrackedWeekInputVersions(
-            WeekInputVersionRepository(transaction, principal.tenant_id), clock=utc_now
+            WeekInputVersionRepository(transaction, tenant_id), clock=utc_now
         ),
         solve_requests=build_solve_requests(
-            transaction,
-            principal.tenant_id,
-            clock=utc_now,
-            debounce=configured_debounce(request),
+            transaction, tenant_id, clock=utc_now, debounce=debounce
         ),
         horizon=CurrentProjectionHorizon(
-            CalendarSourceRepository(transaction, principal.tenant_id), settings
+            CalendarSourceRepository(transaction, tenant_id), settings
         ),
         clock=utc_now,
     )

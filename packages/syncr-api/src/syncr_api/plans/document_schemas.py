@@ -307,7 +307,10 @@ def _chunk_pairs(blocks: tuple[Block, ...]) -> Mapping[BlockId, str]:
 
     pairs: dict[BlockId, str] = {}
     for pieces in by_task.values():
-        ordered = sorted(pieces, key=lambda block: block.split_index)
+        ordered = sorted(
+            pieces,
+            key=lambda block: block.split_index if block.split_index is not None else 0,
+        )
         count = len(ordered)
         for position, block in enumerate(ordered, start=1):
             pairs[block.id] = f"{position} of {count}"

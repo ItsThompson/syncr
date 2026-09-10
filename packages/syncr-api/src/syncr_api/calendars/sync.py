@@ -51,7 +51,7 @@ from dataclasses import dataclass
 # times, `time.perf_counter()` reads as a datetime construction, and the construction-site sweep
 # over this package reads it that way too.
 from time import perf_counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from syncr_api.calendars.config import SYNC_INTERVAL
 from syncr_api.calendars.events import FetchOutcome
@@ -69,8 +69,11 @@ if TYPE_CHECKING:
     from syncr_api.calendars.anchor_writing import AnchorDelta, AnchorWriter
     from syncr_api.calendars.collisions import CollisionDetection
     from syncr_api.calendars.config import CalendarProvider
-    from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
-    from syncr_api.calendars.repository import CalendarSourceRepository
+    from syncr_api.calendars.records import (
+        CalendarSourceId,
+        CalendarSourceRecord,
+        SyncStateRecord,
+    )
     from syncr_api.calendars.solve_requests import TrackedWeekSolves
     from syncr_api.core.clock import Clock
     from syncr_api.solving.lifecycle import OperationLifecycle
@@ -82,6 +85,18 @@ _log = get_logger("syncr.calendars")
 # attempt without reading the row back, which is also what lets a failed forced sync log the truth
 # rather than a tally of zeroes.
 type SyncResult = tuple[FetchOutcome, SyncStateRecord]
+
+
+class CalendarSourceStore(Protocol):
+    """The source rows a sync pass reads and updates."""
+
+    async def save_sync_state(
+        self, source_id: CalendarSourceId, state: SyncStateRecord
+    ) -> None: ...
+
+    async def included_for(
+        self, provider: CalendarProvider
+    ) -> tuple[CalendarSourceRecord, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +142,7 @@ class SourceSyncer:
 
     def __init__(
         self,
-        sources: CalendarSourceRepository,
+        sources: CalendarSourceStore,
         operations: OperationLifecycle,
         adapters: Mapping[CalendarProvider, CalendarAdapter],
         anchors: AnchorWriter,

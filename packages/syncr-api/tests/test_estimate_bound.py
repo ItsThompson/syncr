@@ -48,7 +48,8 @@ from syncr_domain.feasibility import ProbeInputs, ShortfallKind, probe
 from syncr_domain.fixtures.dst_weeks import FALL_BACK
 from syncr_domain.intervals import Interval, IntervalSet
 from syncr_domain.tasks import TaskStatus
-from tests.test_at_risk_tasks import CAREER, FITNESS, a_task
+from tests.service_builders import a_task
+from tests.test_at_risk_tasks import CAREER, FITNESS
 
 if TYPE_CHECKING:
     from syncr_api.tasks.records import TaskRecord
@@ -73,7 +74,7 @@ def a_task_owing(
     due: datetime | None,
     title: str = A_TITLE,
     area_id: AreaId = CAREER,
-    **changes: object,
+    splittable: bool = True,
 ) -> TaskRecord:
     """One open task owing ``minutes`` by ``due``, or by nothing at all.
 
@@ -87,7 +88,7 @@ def a_task_owing(
         estimate_minutes=minutes,
         deadline=due,
         status=TaskStatus.OPEN,
-        **changes,
+        splittable=splittable,
     )
 
 

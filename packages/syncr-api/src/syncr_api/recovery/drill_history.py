@@ -19,7 +19,7 @@ from syncr_api.approvals.injection import build_approval_service
 from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS
 from syncr_api.horizon.maintainer import PlanHorizonMaintainer
 from syncr_api.outcomes.declarations import Recording
-from syncr_api.outcomes.injection import get_outcome_service
+from syncr_api.outcomes.injection import build_outcome_service
 from syncr_api.pins.declarations import PinRequested
 from syncr_api.pins.injection import build_pin_service
 from syncr_api.plans.injection import build_week_service
@@ -192,7 +192,11 @@ async def record_what_happened(
     with the same row count and a different variant.
     """
     require_occurrences(occurrences, week)
-    service = get_outcome_service(principal, session)
+    service = build_outcome_service(
+        session,
+        principal.tenant_id,
+        debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+    )
     states = (OutcomeState.COMPLETED, OutcomeState.SKIPPED)
     return tuple(
         [
@@ -220,7 +224,11 @@ async def confirm_the_days(
     and only a confirmed completion counts. Every day named here is behind the real clock, because
     the week is.
     """
-    service = get_outcome_service(principal, session)
+    service = build_outcome_service(
+        session,
+        principal.tenant_id,
+        debounce=debounce_window(DEFAULT_SOLVE_DEBOUNCE_MS),
+    )
     days = dict.fromkeys(block.interval.start.date() for block in occurrences)
     for day in days:
         await service.confirm_day(principal, day)
