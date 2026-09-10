@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from syncr_api.calendars.events import RawEvent
 from syncr_api.calendars.ics_partition import OccurrenceKey, Series, _compete
-from syncr_api.calendars.ics_recurrence import occurrences
+from syncr_api.calendars.ics_recurrence_expansion import occurrences
 from syncr_api.calendars.ics_times import ONE_DAY, resolve, resolve_day_span, resolve_span
 from syncr_domain.intervals import Interval
 

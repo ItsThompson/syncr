@@ -46,8 +46,8 @@ if TYPE_CHECKING:
 ONE_DAY = timedelta(days=1)
 
 # The zone identifier a value with a ``Z`` suffix resolves against. Public because a second reader
-# of the same mapping lives in this package: ``ics_recurrence`` rewrites a UTC ``UNTIL`` into the
-# series' clock and needs the same spelling.
+# of the same mapping lives in this package: ``ics_recurrence_grammar`` rewrites a UTC ``UNTIL``
+# into the series' clock and needs the same spelling.
 UTC_ZONE: Final[ZoneId] = "UTC"
 
 

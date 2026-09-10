@@ -3,9 +3,9 @@
 dateutil's ``next()`` cannot be interrupted from inside the call. A rule whose parts are each
 inside the range RFC 5545 gives them but that can never be satisfied at once
 (``FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30;BYHOUR=2``) yields nothing while the expander walks
-toward dateutil's maximum year, measured at 1,290 seconds in one call. The guards in
-:mod:`syncr_api.calendars.ics_recurrence` pre-empt specific shapes of that failure and stay
-standing; the class is not closed, and this module is what answers the rest of it.
+toward dateutil's maximum year, measured at 1,290 seconds in one call. The grammar guards in
+:mod:`syncr_api.calendars.ics_recurrence_grammar` pre-empt specific shapes of that failure and
+stay standing; the class is not closed, and this module is what answers the rest of it.
 
 **The boundary is a separate process.** Not a thread: a thread shares the interpreter's GIL,
 so a CPU-bound expansion on one starves the api's event loop exactly as an inline call does.

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 from syncr_api.calendars.config import MAX_EVENT_DAYS
 from syncr_api.calendars.ics_errors import MalformedValue, MissingDuration
 from syncr_api.calendars.ics_lines import unescape
-from syncr_api.calendars.ics_recurrence import Recurrence
+from syncr_api.calendars.ics_recurrence_expansion import Recurrence
 from syncr_api.calendars.ics_times import ONE_DAY, resolve
 from syncr_api.calendars.ics_values import parse_duration, parse_sequence, parse_time
 

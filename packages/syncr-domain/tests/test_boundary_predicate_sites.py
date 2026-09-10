@@ -82,7 +82,7 @@ COVERED_TREES: Final = (
 
 ALGEBRA: Final = "packages/syncr-domain/src/syncr_domain/intervals.py"
 NETTING: Final = "packages/syncr-api/src/syncr_api/plans/netting.py"
-ICS: Final = "packages/syncr-api/src/syncr_api/calendars/ics_recurrence.py"
+ICS: Final = "packages/syncr-api/src/syncr_api/calendars/ics_recurrence_expansion.py"
 
 # The predicates by name, and the one module a reader may take them from.
 PREDICATES: Final = frozenset({"has_started", "has_elapsed", "has_ended"})
