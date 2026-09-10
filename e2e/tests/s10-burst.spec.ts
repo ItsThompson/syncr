@@ -40,16 +40,20 @@ test("S10 twelve pins cost one solve, zero live revisions and zero calendar writ
   // The burst. Debounced, not immediate: this is the shape a weekly session produces, and the debounce
   // is the mechanism under test.
   let mostSolvesInFlight = 0;
+  let successfulPins = 0;
+  const burstOperationIds = new Set<string>();
   for (let pin = 0; pin < BURST; pin += 1) {
     const block = movable[pin % movable.length]!;
     const shifted = new Date(Date.parse(block.interval.start) + (pin + 1) * 15 * 60_000);
-    const reply = await api.attempt("POST", `/api/v1/weeks/${week}/pins`, {
-      blockId: block.id,
-      start: shifted.toISOString(),
-    });
-    // A pin the week cannot hold is refused, and a refusal is not a burst member: what matters is that
-    // every ACCEPTED pin coalesced.
-    if (reply.status >= 400) continue;
+    const reply = await api.attempt<{ operation: { id: string } }>(
+      "POST",
+      `/api/v1/weeks/${week}/pins`,
+      { blockId: block.id, start: shifted.toISOString() },
+    );
+    expect(reply.status, `pin ${pin + 1} was refused: ${JSON.stringify(reply.body)}`).toBe(201);
+    successfulPins += 1;
+    burstOperationIds.add(reply.body.operation.id);
+
     const inFlight = (await operationsFor(api, week)).filter(
       (each) => each.kind === "solve" && nonTerminal(each.status),
     ).length;
@@ -59,6 +63,8 @@ test("S10 twelve pins cost one solve, zero live revisions and zero calendar writ
       `after ${pin + 1} pins the week held ${inFlight} solves at once`,
     ).toBeLessThanOrEqual(1);
   }
+  expect(successfulPins, "the burst did not accept every pin").toBe(BURST);
+  expect(burstOperationIds.size, "the burst created more than one solve").toBe(1);
   expect(mostSolvesInFlight, "no solve was ever scheduled by the burst").toBe(1);
 
   await until(
@@ -68,11 +74,14 @@ test("S10 twelve pins cost one solve, zero live revisions and zero calendar writ
   );
 
   const settled = await operationsFor(api, week);
-  const superseded = settled.filter((each) => each.status === "superseded");
-  expect(
-    superseded.length,
-    "a coalesced burst supersedes at most one operation",
-  ).toBeLessThanOrEqual(1);
+  const burstOperationId = [...burstOperationIds][0]!;
+  const burstSolve = settled.find((each) => each.id === burstOperationId);
+  expect(burstSolve?.status, "the burst solve did not succeed").toBe("succeeded");
+
+  const superseded = settled.filter(
+    (each) => each.kind === "solve" && each.status === "superseded",
+  );
+  expect(superseded, "the measured burst superseded a solve").toHaveLength(0);
 
   // Zero live revisions, and zero calendar writes. A diff holding a move is held whole, so nothing
   // auto-applies and nothing is enqueued to project.
