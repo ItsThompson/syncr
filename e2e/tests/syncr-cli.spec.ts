@@ -28,23 +28,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { test, expect } from "./harness.ts";
-import { BASE_URL, E2E_EMAIL, E2E_PASSWORD } from "../src/config.ts";
-import { SESSION_COOKIE } from "../src/api/headers.ts";
-import { signIn } from "../src/api/client.ts";
-import { bootstrapAccount, repoRoot, resetDatabase, tickHorizon } from "../src/harness/compose.ts";
+import { test, expect, usingFixture } from "./harness.ts";
+import { BASE_URL } from "../src/config.ts";
+import { repoRoot } from "../src/harness/compose.ts";
+import { planWeek } from "../src/harness/subject-weeks.ts";
 import { resolveSyncrSource, runSyncr, spawnSyncr } from "../src/harness/syncr-cli.ts";
+import { awaitLivePlan } from "../src/harness/week.ts";
 
 const run = promisify(execFile);
 
 test.describe.configure({ mode: "serial" });
+usingFixture("reference_week");
 
 /* Where this file's invocations keep their credential: one scratch store per run, thrown away at
  * the end, so neither the developer's nor the runner's own config is ever touched. */
 let storeHome: string | null = null;
-
-/* The session cookie of the account the consent screen expects to be signed in as. */
-let sessionCookieValue: string | null = null;
 
 const cliEnvironment = (): Record<string, string> => {
   if (!storeHome) throw new Error("the scratch store was not created");
@@ -60,21 +58,15 @@ const cliEnvironment = (): Record<string, string> => {
   };
 };
 
-/** Empty the database, provision the tenant, sign the browser in, and materialize the horizon. */
+/** Create the scratch credential store after the shared fixture seeds the browser session. */
 test.beforeAll(async () => {
   test.setTimeout(180_000);
-  await resetDatabase();
-  await bootstrapAccount();
-  const client = await signIn(BASE_URL, E2E_EMAIL, E2E_PASSWORD);
-  sessionCookieValue = client.sessionCookie;
-  await tickHorizon();
   storeHome = await mkdtemp(path.join(tmpdir(), "syncr-cli-e2e-"));
 });
 
 test.afterAll(async () => {
   if (storeHome) await rm(storeHome, { recursive: true, force: true });
   storeHome = null;
-  sessionCookieValue = null;
 });
 
 /** The authorize URL the flow printed, or a failure naming everything stderr said instead. */
@@ -92,25 +84,14 @@ const waitForAuthorizeUrl = async (stderr: () => string, timeoutMs = 30_000): Pr
 
 test("auth login obtains a credential through the real authorization-code flow, consent given here", async ({
   context,
+  api,
 }) => {
-  if (!sessionCookieValue) throw new Error("the seeded session was not created");
+  expect(api.baseUrl).toBe(BASE_URL);
 
   const login = spawnSyncr({ args: ["auth", "login", "--json"], env: cliEnvironment() });
   const authorizeUrl = await waitForAuthorizeUrl(login.stderr);
 
   const page = await context.newPage();
-  // The same credential in the browser as harness.ts seeds, for the same reason: the api serves
-  // the consent screen to a signed-in session only.
-  await context.addCookies([
-    {
-      name: SESSION_COOKIE,
-      value: sessionCookieValue,
-      url: BASE_URL,
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: true,
-    },
-  ]);
   await page.goto(authorizeUrl);
   await expect(page.getByRole("button", { name: "Allow" })).toBeVisible();
   await page.getByRole("button", { name: "Allow" }).click();
@@ -135,16 +116,62 @@ test("auth login obtains a credential through the real authorization-code flow, 
   expect(notices).toContain("the refresh token is kept in");
 });
 
-test("a catalog command reads through the stored credential", async () => {
-  const read = await runSyncr(["week", "show", "--json"], { env: cliEnvironment() });
+test("the four block commands consume an id printed by a materialized week", async ({ api }) => {
+  const isoWeek = planWeek();
+  await awaitLivePlan(api, isoWeek);
+  const read = await runSyncr(["week", "show", "--week", isoWeek, "--json"], {
+    env: cliEnvironment(),
+  });
 
   expect(read.code).toBe(0);
   const document = JSON.parse(read.stdout) as {
     ok: boolean;
-    data: { isoWeek: string } | null;
+    data: {
+      isoWeek: string;
+      live: {
+        blocks: readonly {
+          id: string;
+          interval: { start: string };
+        }[];
+      } | null;
+    } | null;
   };
   expect(document.ok).toBe(true);
-  expect(document.data?.isoWeek).toMatch(/^\d{4}-W\d{2}$/);
+  expect(document.data?.isoWeek).toBe(isoWeek);
+  const block = document.data?.live?.blocks[0];
+  expect(block, `week show printed no materialized block: ${read.stdout}`).toBeDefined();
+  if (!block) throw new Error(`week show printed no materialized block: ${read.stdout}`);
+
+  const outcomes = [
+    { command: "done", expectedState: "completed", args: [] },
+    { command: "skip", expectedState: "skipped", args: [] },
+    { command: "partial", expectedState: "partial", args: ["--minutes", "1"] },
+  ] as const;
+  for (const outcome of outcomes) {
+    const recorded = await runSyncr(
+      ["block", outcome.command, block.id, "--week", isoWeek, ...outcome.args, "--json"],
+      { env: cliEnvironment() },
+    );
+    expect(recorded.code, `${outcome.command} failed: ${recorded.stderr}`).toBe(0);
+    const response = JSON.parse(recorded.stdout) as {
+      ok: boolean;
+      data: { blockId: string; state: string } | null;
+    };
+    expect(response.ok).toBe(true);
+    expect(response.data).toMatchObject({ blockId: block.id, state: outcome.expectedState });
+  }
+
+  const moved = await runSyncr(
+    ["block", "move", block.id, "--week", isoWeek, "--to", block.interval.start, "--json"],
+    { env: cliEnvironment() },
+  );
+  expect(moved.code, `move failed: ${moved.stderr}`).toBe(0);
+  const response = JSON.parse(moved.stdout) as {
+    ok: boolean;
+    data: { pin: { blockId: string; isoWeek: string } } | null;
+  };
+  expect(response.ok).toBe(true);
+  expect(response.data?.pin).toMatchObject({ blockId: block.id, isoWeek });
 });
 
 test("the child resolves this checkout's sources", async () => {
