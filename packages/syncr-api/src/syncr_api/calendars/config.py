@@ -163,11 +163,11 @@ MAX_EVENTS_PER_FEED: Final = 10_000
 # How long one feed's whole parse may take. FETCH_TIMEOUT_SECONDS bounds the network half of a read
 # for exactly this reason; this is the other half, and it was missing.
 #
-# Nothing bounds a feed's COMPONENT COUNT, so the per-series step bound multiplies by however many
-# components 8 MiB holds. Measured: a rule that yields nothing but forces dateutil to scan to its
-# maximum year costs 2.5 seconds and one step, and 8 MiB of that shape is upwards of 36 hours of one
-# worker tick with its transaction open, reporting no events and no rejections. A feed of legitimate
-# shape can reach tens of minutes the same way.
+# Nothing bounds a feed's COMPONENT COUNT. The per-expansion deadline bounds one pathological
+# component, while this feed-wide budget limits their total cost. Measured: a rule that yields
+# nothing but forces dateutil to scan to its maximum year costs 2.5 seconds in one call, and 8 MiB
+# of that shape is upwards of 36 hours of one worker tick with its transaction open, reporting no
+# events and no rejections. A feed of legitimate shape can reach tens of minutes the same way.
 #
 # A bound syncr owns cannot interrupt a call it is inside, so this is checked BETWEEN components:
 # one pathological component is tolerated, a feed made of them is not.
