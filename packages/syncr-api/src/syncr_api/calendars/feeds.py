@@ -138,7 +138,7 @@ class HttpFeedFetcher:
         return FeedBody(body=body, cursor=cursor_from(response.headers))
 
 
-def create_feed_client() -> httpx.AsyncClient:
+def create_feed_client(*, trusted_hosts: frozenset[str] = frozenset()) -> httpx.AsyncClient:
     """The client the worker and the request path share.
 
     Redirects are followed because a university portal answers a feed URL with one, and a
@@ -155,7 +155,7 @@ def create_feed_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=FETCH_TIMEOUT_SECONDS,
         follow_redirects=True,
-        transport=RefusingTransport(httpx.AsyncHTTPTransport()),
+        transport=RefusingTransport(httpx.AsyncHTTPTransport(), trusted_hosts=trusted_hosts),
     )
 
 

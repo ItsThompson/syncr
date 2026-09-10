@@ -111,13 +111,21 @@ class RefusingTransport(httpx.AsyncBaseTransport):
     """
 
     def __init__(
-        self, inner: httpx.AsyncBaseTransport, *, resolve: AddressResolution = resolved_addresses
+        self,
+        inner: httpx.AsyncBaseTransport,
+        *,
+        resolve: AddressResolution = resolved_addresses,
+        trusted_hosts: frozenset[str] = frozenset(),
     ) -> None:
         self._inner = inner
         self._resolve = resolve
+        self._trusted_hosts = trusted_hosts
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        refusal = await refusal_for_host(_connects_to(request), resolve=self._resolve)
+        host = _connects_to(request)
+        if host in self._trusted_hosts:
+            return await self._inner.handle_async_request(request)
+        refusal = await refusal_for_host(host, resolve=self._resolve)
         if refusal is not None:
             raise RefusedAddress(refusal)
         return await self._inner.handle_async_request(request)

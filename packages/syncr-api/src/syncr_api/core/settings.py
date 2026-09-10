@@ -176,6 +176,9 @@ class EnvSettings(SyncrSettings):
     # and then refused before any request is sent, and the refusal is stated in the same banner a
     # failure raises rather than being silent.
     google_projection_writes: bool = False
+    # Exact Docker-only calendar publishers the E2E stack may reach. This setting is rejected
+    # outside development, so production keeps the address refusal intact.
+    e2e_calendar_trusted_hosts: Annotated[tuple[str, ...], NoDecode] = ()
 
     # How long the solve coordinator waits before a debounced solve becomes due, in
     # milliseconds. A drag takes roughly a second, so the window outlasts one edit and a burst
@@ -186,7 +189,7 @@ class EnvSettings(SyncrSettings):
     # costs.
     solve_debounce_ms: int = DEFAULT_SOLVE_DEBOUNCE_MS
 
-    @field_validator("allowed_origins", mode="before")
+    @field_validator("allowed_origins", "e2e_calendar_trusted_hosts", mode="before")
     @classmethod
     def _split_comma_separated(cls, value: object) -> object:
         """Accept a comma-separated environment value as the list it reads as."""
@@ -260,6 +263,16 @@ class EnvSettings(SyncrSettings):
                 "seam. Unset it, or set ENVIRONMENT=development."
             )
             raise ValueError(message)
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_e2e_calendar_trust_outside_development(self) -> EnvSettings:
+        """Keep the E2E publisher exception out of deployments."""
+        if self.e2e_calendar_trusted_hosts and not self.is_dev:
+            raise ValueError(
+                "E2E_CALENDAR_TRUSTED_HOSTS is an E2E-only Docker publisher exception and must "
+                "be empty outside ENVIRONMENT=development."
+            )
         return self
 
     @model_validator(mode="after")
@@ -373,6 +386,7 @@ class ServiceSettings(BaseModel):
     google_oauth_redirect_uri: str
     google_token_encryption_key: SecretStr
     google_projection_writes: bool
+    e2e_calendar_trusted_hosts: tuple[str, ...] = ()
     solve_debounce_ms: int
 
 
@@ -399,5 +413,6 @@ def build_service_settings(
         google_oauth_redirect_uri=env.google_oauth_redirect_uri,
         google_token_encryption_key=env.google_token_encryption_key,
         google_projection_writes=env.google_projection_writes,
+        e2e_calendar_trusted_hosts=env.e2e_calendar_trusted_hosts,
         solve_debounce_ms=env.solve_debounce_ms,
     )

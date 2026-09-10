@@ -42,7 +42,7 @@ import {
   EACH_MINUTES,
 } from "../src/seed/fixtures/owes-more-than-a-week.ts";
 
-usingFixture("owes_more_than_a_week");
+usingFixture("owes_more_than_a_week", "materialized");
 
 /* SERIAL, because these two cases are not independent and the dependence is one direction only: the
  * skip case solves the plan week, and the clock case asserts that neither week holds a placement. Run

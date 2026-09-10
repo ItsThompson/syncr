@@ -8,7 +8,9 @@
 
 import { signIn, type ApiClient } from "../api/client.ts";
 import { BASE_URL, E2E_EMAIL, E2E_PASSWORD } from "../config.ts";
-import { bootstrapAccount, resetDatabase, tickHorizon } from "../harness/compose.ts";
+import { bootstrapAccount, materializeWeeks, resetDatabase, tickHorizon } from "../harness/compose.ts";
+import { currentWeek, planWeek } from "../harness/subject-weeks.ts";
+import { awaitLivePlan } from "../harness/week.ts";
 import { FIXTURES, fixtureNames } from "./fixtures.ts";
 
 export type Loaded = {
@@ -16,8 +18,13 @@ export type Loaded = {
   readonly log: readonly string[];
 };
 
-/** Empty the database, provision the tenant, declare `name`, and materialize the horizon. */
-export const loadFixture = async (name: string): Promise<Loaded> => {
+export type FixturePlanState = "materialized" | "solved";
+
+/** Empty the database, provision the tenant, declare `name`, and establish the requested plan state. */
+export const loadFixture = async (
+  name: string,
+  planState: FixturePlanState = "solved",
+): Promise<Loaded> => {
   const seed = FIXTURES[name];
   if (!seed)
     throw new Error(`${name} is not a fixture. The fixtures are: ${fixtureNames().join(", ")}`);
@@ -30,7 +37,14 @@ export const loadFixture = async (name: string): Promise<Loaded> => {
   await seed(client);
   log.push(`declared ${name} over ${BASE_URL}`);
 
-  await tickHorizon();
-  log.push("materialized every week inside the horizon");
+  const horizonWeeks = [currentWeek(), planWeek()];
+  if (planState === "materialized") {
+    await materializeWeeks(horizonWeeks);
+    log.push("materialized the horizon plans without solving");
+  } else {
+    await tickHorizon();
+    await Promise.all(horizonWeeks.map((isoWeek) => awaitLivePlan(client, isoWeek)));
+    log.push("settled the horizon plans");
+  }
   return { client, log };
 };

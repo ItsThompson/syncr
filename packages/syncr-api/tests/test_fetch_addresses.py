@@ -167,11 +167,14 @@ def answering_by_name(names: dict[str, tuple[str, ...]]) -> AddressResolution:
 
 
 def fetcher_over(
-    publisher: httpx.MockTransport, *, resolve: AddressResolution
+    publisher: httpx.MockTransport,
+    *,
+    resolve: AddressResolution,
+    trusted_hosts: frozenset[str] = frozenset(),
 ) -> tuple[HttpFeedFetcher, httpx.AsyncClient]:
     """The real fetcher over the real client, with the guard in front of a recorded publisher."""
     client = httpx.AsyncClient(
-        transport=RefusingTransport(publisher, resolve=resolve),
+        transport=RefusingTransport(publisher, resolve=resolve, trusted_hosts=trusted_hosts),
         timeout=FETCH_TIMEOUT_SECONDS,
         follow_redirects=True,
     )
@@ -188,6 +191,26 @@ def door_refusal(spelling: str) -> str:
 
 def urls_of(requests: list[httpx.Request]) -> list[str]:
     return [str(request.url) for request in requests]
+
+
+# --------------------------------------------------------------------------------
+# A name that resolves into a refused range is not fetched
+# --------------------------------------------------------------------------------
+
+
+async def test_an_explicit_e2e_publisher_exception_bypasses_only_its_exact_host() -> None:
+    publisher, seen = recorded(httpx.Response(200, content=FEED_BODY))
+    reader, client = fetcher_over(
+        publisher,
+        resolve=answering("192.168.80.2"),
+        trusted_hosts=frozenset({"ics-provider"}),
+    )
+
+    async with client:
+        answer = await reader.get("http://ics-provider/reference.ics", cursor=None)
+
+    assert isinstance(answer, FeedBody)
+    assert urls_of(seen) == ["http://ics-provider/reference.ics"]
 
 
 # --------------------------------------------------------------------------------

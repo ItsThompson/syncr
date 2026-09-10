@@ -73,6 +73,10 @@ export const bootstrapAccount = async (): Promise<string> =>
 export const tickHorizon = async (): Promise<string> =>
   compose([...ONE_SHOT, "worker", "python", "/harness/tick.py"]);
 
+/** Produce the supplied weeks through the maintainer's plan producer, without a solve. */
+export const materializeWeeks = async (weeks: readonly string[]): Promise<string> =>
+  compose([...ONE_SHOT, "worker", "python", "/harness/materialize.py", ...weeks]);
+
 export type DomainConstants = {
   readonly elastic_sleep: {
     readonly title: string;

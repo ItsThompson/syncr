@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from syncr_domain.feasibility import DeadlineDemand, Provenance, ShortfallKind, probe
 from syncr_solver.constraints import ConstraintRule
+from syncr_solver.inputs import FrameOverhang
 from tests.materialized_weeks import CAREER, a_frame_entry, an_area_budget, between
 from tests.objective_weeks import ANOTHER_TASK, an_eligible_task, an_occurrence
 from tests.solve_weeks import a_week, blocks_titled, solved
@@ -62,6 +63,16 @@ def a_week_that_packs_only_in_half_hour_pieces(**kwargs: object) -> SolveInputs:
 # --------------------------------------------------------------------------------------
 # What a solver verdict may claim, and where its two halves come from
 # --------------------------------------------------------------------------------------
+
+
+def test_a_solve_carries_inherited_frame_occupancy_into_its_document() -> None:
+    """A following week's budget must retain the preceding night's occupied minutes."""
+    inherited = between(0, 1)
+    week = a_week(frame_overhang=(FrameOverhang(interval=inherited),))
+
+    result = solved(week)
+
+    assert [entry.interval for entry in result.document.frame_overhang] == [inherited]
 
 
 def test_a_solver_verdict_is_authoritative_where_a_probe_verdict_may_not_be() -> None:
@@ -134,6 +145,26 @@ def test_a_week_that_passes_the_probe_and_fails_to_pack_reports_the_packing_fail
     ]
     assert result.verdict.provenance is Provenance.SOLVER
     assert result.verdict.feasible is False
+
+
+def test_a_capacity_shortfall_is_not_duplicated_as_a_packing_failure() -> None:
+    """One deadline cannot need two tradeoffs for the same unavailable capacity."""
+    week = a_week_that_packs_only_in_half_hour_pieces(
+        deadline_demands=(
+            DeadlineDemand(
+                deadline=DEADLINE,
+                remaining_minutes=180,
+                area_id=CAREER,
+                labels=("F&F Past Papers",),
+            ),
+        )
+    )
+
+    result = solved(week)
+
+    assert [shortfall.kind for shortfall in result.verdict.shortfalls] == [
+        ShortfallKind.DEADLINE_CAPACITY
+    ]
 
 
 def test_the_packing_failure_names_the_minutes_unplaced_rather_than_the_whole_demand() -> None:

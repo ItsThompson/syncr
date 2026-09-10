@@ -34,7 +34,7 @@ import {
   SLOT_MINUTES_A_WEEK,
 } from "../src/seed/fixtures/tight-capacity.ts";
 
-usingFixture("tight_capacity");
+usingFixture("tight_capacity", "materialized");
 
 /* NOT serial, deliberately, even though the cases share a week. Serial mode would stop after the first
  * failure, and for a file whose whole purpose is to be shown to fail, one bite has to be able to report on
@@ -311,17 +311,10 @@ test("B1 pinning an already-placed block leaves the verdict unchanged", async ({
   expect(withOffers(after.verdict)).toBe(offered);
 });
 
-/* S34 IS EXPECTED TO FAIL, and it is written as an assertion rather than as a skip so that the day the
- * figure is fixed this case goes red for passing unexpectedly and the marker has to be removed.
- *
- * The strip's `unallocatedMinutes` and `discretionaryMinutes` are both the whole week's span: the
- * denominator is missing the frame, the anchors and the absolutely forbidden windows, so a week that
- * sleeps for 56 hours reports 168 discretionary hours and every one of them unallocated. Tracking
- * ticket: 1310. */
+/* S34 reads the strip's unallocated figure against the same discretionary denominator as the verdict. */
 test("S34 Unallocated is honest: it equals the discretionary time no block covers", async ({
   api,
 }) => {
-  test.fail(true, "the strip's discretionary denominator is not yet supplied: ticket 1310");
   const week = planWeek();
   const view = await weekView(api, week);
   const readings = view.readings!;

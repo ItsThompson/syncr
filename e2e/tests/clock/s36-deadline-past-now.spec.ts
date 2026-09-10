@@ -50,6 +50,11 @@ import { planWeek } from "../../src/harness/subject-weeks.ts";
 import { awaitLivePlan, weekView } from "../../src/harness/week.ts";
 import { DEADLINE_TASKS, DEMAND_MINUTES } from "../../src/seed/fixtures/owes-more-than-a-week.ts";
 
+// Each clock scenario leaves the shared stack at its own instant. Reset before fixture loading so
+// the fixture's real-clock horizon and its deadline are the state this transition observes.
+test.beforeAll(async () => {
+  await setStackClock("PT0S");
+});
 usingFixture("owes_more_than_a_week");
 
 const MINUTE_MS = 60_000;

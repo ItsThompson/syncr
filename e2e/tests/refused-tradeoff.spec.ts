@@ -26,7 +26,7 @@ import type { Tradeoff, Verdict, WeekRevisions } from "../src/api/schemas.ts";
 import { planWeek } from "../src/harness/subject-weeks.ts";
 import { awaitLivePlan, awaitProposal, solveAndSettle, weekView } from "../src/harness/week.ts";
 
-usingFixture("elastic_sleep");
+usingFixture("elastic_sleep", "materialized");
 
 const KIND = "drop_item";
 

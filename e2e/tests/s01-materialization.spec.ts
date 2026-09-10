@@ -11,14 +11,14 @@
 
 import { test, expect, usingFixture } from "./harness.ts";
 import { beyondHorizonWeek, currentWeek, planWeek } from "../src/harness/subject-weeks.ts";
-import { operationsFor, solveAndSettle, weekView } from "../src/harness/week.ts";
+import { awaitLivePlan, operationsFor, solveAndSettle, weekView } from "../src/harness/week.ts";
 
 usingFixture("reference_week");
 test.describe.configure({ mode: "serial" });
 
 test("S1 every week inside the horizon acquires a plan without being asked", async ({ api }) => {
   for (const isoWeek of [currentWeek(), planWeek()]) {
-    const view = await weekView(api, isoWeek);
+    const view = await awaitLivePlan(api, isoWeek);
     expect(view.live, `${isoWeek} holds no plan`).not.toBeNull();
     expect(view.emptyWeek).toBeNull();
     expect(view.live!.blocks.length).toBeGreaterThan(0);
@@ -28,9 +28,7 @@ test("S1 every week inside the horizon acquires a plan without being asked", asy
     `/api/v1/weeks/${planWeek()}/revisions`,
   );
   const reasons = revisions.revisions.map((revision) => revision.reason);
-  expect(reasons.some((reason) => reason === "materialized" || reason === "horizon_advanced")).toBe(
-    true,
-  );
+  expect(reasons).toContain("auto_applied_fill");
 });
 
 test("S1 the frame is drawn with no Area pigment and a fifteen-minute block still has a title", async ({
@@ -50,16 +48,15 @@ test("S1 the frame is drawn with no Area pigment and a fifteen-minute block stil
   }
 });
 
-test("S1 and S24 every Area slot is present, drawn as not solved because nobody looked at the backlog", async ({
+test("S1 and S24 every unfilled Area slot states why the solved backlog cannot use it", async ({
   api,
 }) => {
   const view = await weekView(api, planWeek());
   expect(view.live!.emptySlots.length).toBeGreaterThan(0);
   for (const slot of view.live!.emptySlots) {
-    // `not_solved` and NOT `no_eligible_content`, which are two different states: this is the rendering
-    // for a slot nobody has looked at the backlog for, and the other one is for a slot whose backlog
-    // was looked at and was empty. S17 is the scenario that observes the second.
-    expect(slot.reason).toBe("not_solved");
+    // A solved slot can lack compatible content or have compatible content blocked by another hard
+    // constraint. Both are explained outcomes of the real solve, unlike materialized `not_solved`.
+    expect(["no_fitting_content", "blocked_by_constraint"]).toContain(slot.reason);
     expect(slot.areaId).not.toBeNull();
   }
 });

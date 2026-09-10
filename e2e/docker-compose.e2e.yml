@@ -49,6 +49,9 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ""
       GOOGLE_OAUTH_REDIRECT_URI: ""
       GOOGLE_TOKEN_ENCRYPTION_KEY: ZGV2LW9ubHktZ29vZ2xlLXRva2VuLWVuY3J5cHQta2U=
+      # The E2E-only HTTP fixture uses Docker's private app network. This exact host bypasses
+      # the SSRF refusal only in development; every user-provided host remains checked.
+      E2E_CALENDAR_TRUSTED_HOSTS: ics-provider
     env_file:
       # The clock shift `just e2e-clock` records. Optional, so a stack that was never shifted
       # boots exactly as one whose shift was restored: no file means no variable, which the
@@ -69,6 +72,7 @@ services:
       # is exercised and no write from an armed deployment reaches a real calendar. S3 is
       # the manual scenario that observes a real write.
       GOOGLE_PROJECTION_WRITES: "false"
+      E2E_CALENDAR_TRUSTED_HOSTS: ics-provider
     env_file:
       # The same shift the api is given, so the two processes move together or not at all.
       - path: e2e/clock-offset.env

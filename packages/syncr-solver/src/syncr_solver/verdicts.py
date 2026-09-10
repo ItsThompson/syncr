@@ -29,7 +29,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from syncr_domain.feasibility import Provenance, Verdict, minimum_chunk_shortfall, probe
+from syncr_domain.feasibility import (
+    Provenance,
+    ShortfallKind,
+    Verdict,
+    minimum_chunk_shortfall,
+    probe,
+)
 from syncr_solver.reading import demand_key
 
 if TYPE_CHECKING:
@@ -48,7 +54,7 @@ def verdict_of(attempt: Attempt) -> Verdict:
     denominator, which is carried forward rather than re-derived from a second subtraction.
     """
     capacity = probe(attempt.inputs.for_probe())
-    packing = _packing_failures(attempt)
+    packing = _packing_failures(attempt, capacity.shortfalls)
     shortfalls = (*capacity.shortfalls, *packing)
     return Verdict(
         feasible=not shortfalls,
@@ -60,7 +66,9 @@ def verdict_of(attempt: Attempt) -> Verdict:
     )
 
 
-def _packing_failures(attempt: Attempt) -> tuple[Shortfall, ...]:
+def _packing_failures(
+    attempt: Attempt, capacity_shortfalls: Sequence[Shortfall]
+) -> tuple[Shortfall, ...]:
     """One shortfall per deadline-bearing task the attempt left short, in the log's own order.
 
     The minutes are what is still unplaced rather than the whole demand, because a shortfall is the
@@ -71,9 +79,15 @@ def _packing_failures(attempt: Attempt) -> tuple[Shortfall, ...]:
     """
     placed = attempt.placed_minutes()
     refused = attempt.log.refused()
+    capacity_constrained = {
+        title
+        for shortfall in capacity_shortfalls
+        if shortfall.kind is ShortfallKind.DEADLINE_CAPACITY
+        for title in shortfall.against
+    }
     found = []
     for task in _deadline_bearing(attempt.inputs.eligible_tasks):
-        if task.binding not in refused:
+        if task.binding not in refused or task.title in capacity_constrained:
             continue
         unplaced = task.remaining_minutes - placed.get(demand_key(task.binding), 0)
         if unplaced <= 0:

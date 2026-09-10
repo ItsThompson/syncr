@@ -150,14 +150,6 @@ test("S17 an unfillable slot's label opens capture prefilled, and one confirm pr
   api,
   page,
 }) => {
-  test.fail(
-    true,
-    "one defect stands in the way of this flow, and it is not in the flow: the grid's canvas is sized from the " +
-      "height of the element that contains it, so it grows until layout stops and refuses a press on anything it " +
-      "has pushed out of a pointer's reach, which was measured on a supplied slot label and does not affect the " +
-      "window label the case above presses",
-  );
-
   const week = planWeek();
   await solveAndSettle(api, week);
   const view = await weekView(api, week);

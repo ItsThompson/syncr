@@ -37,7 +37,7 @@ import type { Page } from "@playwright/test";
 import type { ApiClient } from "../src/api/client.ts";
 import { SESSION_COOKIE } from "../src/api/headers.ts";
 import { BASE_URL } from "../src/config.ts";
-import { loadFixture } from "../src/seed/load.ts";
+import { loadFixture, type FixturePlanState } from "../src/seed/load.ts";
 
 export type TestFixtures = {
   /** The seeded client, with the browser context carrying the same session. */
@@ -70,10 +70,10 @@ export const test = base.extend<TestFixtures>({
 });
 
 /** Load `name` into a freshly emptied database, once, before this file's scenarios run. */
-export const usingFixture = (name: string): void => {
+export const usingFixture = (name: string, planState: FixturePlanState = "solved"): void => {
   test.beforeAll(async () => {
     test.setTimeout(180_000);
-    seeded = (await loadFixture(name)).client;
+    seeded = (await loadFixture(name, planState)).client;
   });
   test.afterAll(() => {
     seeded = null;

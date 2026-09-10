@@ -34,6 +34,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
 from syncr_domain.intervals import IntervalSet
+from syncr_domain.plan import FrameOverhang as DocumentFrameOverhang
 from syncr_domain.plan import PlanDocument
 from syncr_domain.reasons import CLAUSE_BUDGET, Blocked
 from syncr_solver.chunking import numbered
@@ -196,6 +197,14 @@ class Attempt:
             unallocated_minutes=figures.unallocated_minutes,
             oversubscription_minutes=figures.oversubscription_minutes,
             blocks=blocks,
+            frame_overhang=tuple(
+                DocumentFrameOverhang(
+                    interval=overhang.interval,
+                    label=overhang.label,
+                    area_id=overhang.area_id,
+                )
+                for overhang in self.inputs.frame_overhang
+            ),
             forbidden_windows=self.state.forbidden_windows,
             empty_slots=tuple(sorted(self.slots, key=slot_key)),
             adjustments=tuple(adjustment.adjustment_id for adjustment in self.inputs.adjustments),

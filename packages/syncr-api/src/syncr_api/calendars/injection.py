@@ -134,9 +134,12 @@ UNARMED = WritesUnavailable(
 )
 
 
-async def get_feed_client() -> AsyncIterator[httpx.AsyncClient]:
+async def get_feed_client(request: Request) -> AsyncIterator[httpx.AsyncClient]:
     """One HTTP client for the life of one request, closed when it ends."""
-    async with create_feed_client() as client:
+    settings: ServiceSettings = request.app.state.settings
+    async with create_feed_client(
+        trusted_hosts=frozenset(settings.e2e_calendar_trusted_hosts)
+    ) as client:
         yield client
 
 

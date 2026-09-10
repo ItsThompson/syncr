@@ -39,7 +39,7 @@ interface PanelReading {
   /** `boundingBox().height` of the whole panel, head and rows together. */
   readonly height: number;
   /** Every row the panel drew: concessions, shortfalls, offers and statements alike. */
-  readonly rowCount: number;
+  readonly rows: readonly string[];
 }
 
 /** Load the week screen fresh and read the panel off it.
@@ -54,7 +54,7 @@ const readPanel = async (page: Page): Promise<PanelReading> => {
   await expect(panel, "the week screen drew no verdict panel").toBeVisible();
   const box = await panel.boundingBox();
   expect(box, "the verdict panel rendered with no box to measure").not.toBeNull();
-  return { height: box!.height, rowCount: await page.locator(ROW).count() };
+  return { height: box!.height, rows: await page.locator(ROW).allTextContents() };
 };
 
 /** One accepted pin of an unpinned solver-placed block, shifted a quarter hour inside its slot. */
@@ -144,13 +144,14 @@ test("S7 the verdict panel keeps its height across a sequence of pins while its 
     ).toBe(first!.height);
   }
 
-  // THE OBSERVATION, SECOND HALF, AND WHY THE FIRST CANNOT PASS ON NOTHING: the row count DID change
-  // across the same sequence, and stayed changed at every reading after a pin. A fixed height held
-  // over four readings of an untouched panel satisfies the loop above; it cannot satisfy this.
+  // THE OBSERVATION, SECOND HALF, AND WHY THE FIRST CANNOT PASS ON NOTHING: the rendered rows DID
+  // change across the same sequence, and stayed changed at every reading after a pin. Count is not
+  // the contract: one offer can be replaced by one statement. A fixed height held over four readings
+  // of an untouched panel satisfies the loop above; it cannot satisfy this content comparison.
   for (let index = 1; index < readings.length; index += 1) {
     expect(
-      readings[index]!.rowCount,
+      readings[index]!.rows,
       `reading ${index} (after ${index} pins) still drew the pre-pin rows`,
-    ).not.toBe(first!.rowCount);
+    ).not.toEqual(first!.rows);
   }
 });
