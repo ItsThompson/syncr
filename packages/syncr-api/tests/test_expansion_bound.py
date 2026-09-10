@@ -4,7 +4,7 @@ Every test here hands ``parse_feed`` a bound of its own with a short deadline, s
 would genuinely walk for minutes is cut off in half a second. The production deadline lives in
 ``EXPANSION_DEADLINE_SECONDS``; nothing here waits on it.
 
-The rules exercised are legal by every guard ``ics_recurrence`` states: each value sits inside
+The rules exercised are legal by every guard in ``ics_recurrence_grammar``: each value sits inside
 the range RFC 5545 gives its property, so no existing refusal fires, and the only answer left
 is the deadline.
 """
