@@ -87,6 +87,12 @@ const STALE_DAY_MARK: DayMark = {
   } satisfies Notice,
 };
 
+const UNCONFIRMED_DAY_MARK: DayMark = {
+  ...STALE_DAY_MARK,
+  pigment: "info",
+  notice: { ...STALE_DAY_MARK.notice, id: "day-unconfirmed:2026-02-09", pigment: "info" },
+};
+
 describe("the grid's composition", () => {
   it("draws one column per day and one axis for all of them", () => {
     const { container } = render(
@@ -162,6 +168,7 @@ describe("the grid's composition", () => {
     };
 
     expect(draw([])).toEqual(draw([STALE_DAY_MARK]));
+    expect(draw([])).toEqual(draw([UNCONFIRMED_DAY_MARK]));
   });
 
   it("draws the now rule in the ONE column holding the current instant, and in no other", () => {
