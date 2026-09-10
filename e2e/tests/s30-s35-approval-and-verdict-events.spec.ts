@@ -13,11 +13,29 @@
  */
 
 import { test, expect, usingFixture } from "./harness.ts";
-import { verdictEvents, tickHorizon, type VerdictEventRow } from "../src/harness/compose.ts";
-import { planWeek } from "../src/harness/subject-weeks.ts";
 import {
+  verdictEvents,
+  tickHorizon,
+  resetDatabase,
+  bootstrapAccount,
+  type VerdictEventRow,
+} from "../src/harness/compose.ts";
+import { currentWeek, planWeek } from "../src/harness/subject-weeks.ts";
+import { signIn } from "../src/api/client.ts";
+import { BASE_URL, E2E_EMAIL, E2E_PASSWORD } from "../src/config.ts";
+import { WEDNESDAY, dateIn, utcMidnightOn } from "../src/api/weeks.ts";
+import {
+  declareAreas,
+  declareOneDayShape,
+  declareRoutine,
+  declareSettings,
+  declareTask,
+} from "../src/seed/declarations.ts";
+import {
+  awaitLivePlan,
   awaitProposal,
   awaitTerminal,
+  operationsFor,
   solveAndSettle,
   solveNow,
   until,
@@ -29,6 +47,30 @@ test.describe.configure({ mode: "serial" });
 
 const rowsFor = async (isoWeek: string): Promise<readonly VerdictEventRow[]> =>
   (await verdictEvents()).rows.filter((row) => row.isoWeek === isoWeek);
+
+type EpisodeSpan = {
+  readonly opening: VerdictEventRow;
+  readonly closing: VerdictEventRow | null;
+};
+
+const episodeSpans = (rows: readonly VerdictEventRow[]): readonly EpisodeSpan[] => {
+  const spans: EpisodeSpan[] = [];
+  let opening: VerdictEventRow | null = null;
+
+  for (const row of rows) {
+    if (!row.feasible && opening === null) {
+      opening = row;
+      continue;
+    }
+    if (row.feasible && opening !== null) {
+      spans.push({ opening, closing: row });
+      opening = null;
+    }
+  }
+
+  if (opening !== null) spans.push({ opening, closing: null });
+  return spans;
+};
 
 test("S30 an approval is the plan of record, and no solve stamped before it is allowed to succeed", async ({
   api,
@@ -108,13 +150,13 @@ test("S35 every row is a transition, and the ratio the product reads is the epis
 }) => {
   const week = planWeek();
 
-  // The week is infeasible and has been since the maintainer first probed it, so an episode is already
-  // open and it was NOT discovered during a weekly session.
+  // The week is infeasible and has been since the materialization solve first recorded it, so an
+  // episode is already open and it was NOT discovered during a weekly session.
   const opened = await rowsFor(week);
   expect(opened.length, "no verdict transition has been recorded for this week").toBeGreaterThan(0);
   expect(opened[0]!.feasible).toBe(false);
   expect(opened[0]!.sessionModeActive).toBe(false);
-  expect(opened[0]!.surface).toBe("maintainer");
+  expect(opened[0]!.surface).toBe("solve");
 
   // Close it: the week holds an approved concession from the previous case, and the approval that
   // persisted it is the act that recorded the feasible transition.
@@ -156,38 +198,133 @@ test("S35 every row is a transition, and the ratio the product reads is the epis
   expect(reopened.at(-1)!.feasible, "the second episode is not open").toBe(false);
   expect(reopened.filter((row) => !row.feasible).length).toBeGreaterThan(2);
 
-  // What is invariant TODAY, and what a fix must not break: the ratio is a number in [0, 1], and no
-  // episode this suite can open carries a session flag. The second clause is the defect, so it is stated
-  // as the defect rather than as the correct answer.
+  // The ratio is a number in [0, 1]. The second episode was opened by a withdrawal carrying the
+  // session header, so its opening row is flagged: the route resolves the header and the solve's
+  // recorder reads the operation's statement.
   const measured = await verdictEvents();
   const ratios = Object.values(measured.caughtEarlyByTenant);
   expect(ratios.length).toBe(1);
   expect(ratios[0]).not.toBeNull();
   expect(ratios[0]!).toBeGreaterThanOrEqual(0);
   expect(ratios[0]!).toBeLessThanOrEqual(1);
-  expect(reopened.some((row) => row.sessionModeActive)).toBe(false);
+  expect(reopened.some((row) => row.sessionModeActive)).toBe(true);
 });
 
-/* S35's stated figure, AS A TRIPWIRE, so its polarity matches S34's rather than opposing it.
+/* S35's exactly-0.5 ratio, arranged on a world this case owns rather than inherited. The cases above
+ * leave episodes behind whose COUNT depends on which weeks the horizon reached this morning (a week
+ * two ahead is materialized on six days of seven and holds an overdue-task episode on each of them),
+ * so reading the ratio off their state would assert a figure that moves with the calendar. Instead
+ * this case empties the database, provisions its own tenant, and arranges exactly two episodes on
+ * one week: harmless routine-backed plans are materialized BEFORE the oversized task is declared,
+ * so only the plan-week solve sees the shortfall; then a solve carrying no session header opens an
+ * unflagged episode, approving the drop-item tradeoff closes it, and withdrawing that concession
+ * with the header opens a flagged one. Two episodes, one flagged and one not, is exactly 0.5 through the
+ * product's own `caught_early_over`, and nothing else exists to dilute it.
  *
- * S35 requires a ratio of exactly 0.5 over one session-caught episode and one that was not. This
- * suite cannot construct the session-caught one: two routes read `X-Syncr-Session-Mode`, the pin and the
- * tradeoff request, and neither is a mutation that flips a roomy week's reading. So the figure is asserted
- * and the case is marked as expected to fail.
- *
- * Written this way deliberately. Asserting the 0 the defect produces would lock the defect in with the
- * opposite polarity from S34, in the same suite, for the same kind of fact: one instrument would celebrate
- * what the other condemns.
- *
- * WHAT WILL AND WILL NOT TURN IT GREEN, stated because a tripwire whose trigger nobody knows is a tripwire
- * nobody removes. It reads whatever episodes the cases above happened to leave, and nothing here arranges
- * them to be exactly two with exactly one flagged. So carrying the session header to more routes will not
- * make this pass on its own: it needs a week tight enough that one pin flips its verdict, and the two
- * episodes driven explicitly. Unlike S34's tripwire, whose four assertions all become true the moment the
- * strip's discretionary denominator is supplied, this one has to be rewritten as well as unmarked. */
+ * The case reddens if either episode's flag moves: each episode's opening row is asserted on its
+ * own, and the global ratio is asserted at exactly 0.5. */
 test("S35 the early-catch ratio over one session-caught episode and one that was not is exactly 0.5", async () => {
-  test.fail(true, "no route that flips a verdict carries the session header: ticket 1571");
+  await resetDatabase();
+  await bootstrapAccount();
+  const client = await signIn(BASE_URL, E2E_EMAIL, E2E_PASSWORD);
+
+  // A world with one Area and a harmless routine: every materialized week is feasible, so no
+  // episode exists anywhere yet.
+  await declareSettings(client);
+  const areas = await declareAreas(client, [{ name: "Career", budgetPercent: 100, floorHours: 0 }]);
+  const dayShape = await declareOneDayShape(client, "Everyday");
+  await declareRoutine(client, dayShape.templateId, {
+    title: "Materialization anchor",
+    targetTime: "12:00:00",
+    durationMinutes: 30,
+  });
+  const week = planWeek();
+  const horizonWeeks = [currentWeek(), week];
+  await tickHorizon();
+  for (const horizonWeek of horizonWeeks) {
+    const scheduled = await until(
+      `${horizonWeek}'s materialization operation to be scheduled`,
+      () => operationsFor(client, horizonWeek),
+      (operations) => operations.length > 0,
+      60_000,
+    );
+    const materialization = await awaitTerminal(client, scheduled[0]!.id, 60_000);
+    expect(materialization.status, `${horizonWeek}'s materialization did not succeed`).toBe(
+      "succeeded",
+    );
+    await awaitLivePlan(client, horizonWeek);
+  }
+
+  // Now the oversized task: only this case's own plan-week solve ever reads it, so no other week's
+  // recorded verdict ever sees the shortfall it creates.
+  await declareTask(client, {
+    title: "Ratio driver",
+    areaId: areas.Career!,
+    estimateMinutes: 5000,
+    deadline: utcMidnightOn(dateIn(week, WEDNESDAY)),
+    minChunkMinutes: 60,
+    priority: "urgent",
+  });
+
+  // Episode one: a solve carrying no session header records the first infeasible reading.
+  await solveAndSettle(client, week);
+  const opened = await until(
+    `${week} to record the first infeasible transition`,
+    () => rowsFor(week),
+    (rows) => rows.length > 0 && !rows.at(-1)!.feasible,
+  );
+  const firstEpisode = episodeSpans(opened);
+  expect(firstEpisode, "the solve did not open exactly one episode").toHaveLength(1);
+  expect(
+    firstEpisode[0]!.opening.sessionModeActive,
+    "episode one was opened without the session header",
+  ).toBe(false);
+
+  // Close it: approve the drop-item tradeoff the verdict offers.
+  const solved = await weekView(client, week);
+  const offered = solved.verdict!.tradeoffs.find((each) => each.kind === "drop_item");
+  expect(offered, "the week offers no tradeoff to propose").toBeDefined();
+  await client.post(`/api/v1/weeks/${week}/tradeoffs`, {
+    kind: offered!.kind,
+    targetId: offered!.targetId,
+  });
+  await awaitProposal(client, week);
+  await client.post(`/api/v1/weeks/${week}/approve`, undefined, {
+    idempotencyKey: `s35-ratio-approve-${week}`,
+  });
+  await until(
+    `${week} to record a feasible transition`,
+    () => rowsFor(week),
+    (rows) => rows.some((row) => row.feasible),
+  );
+
+  // Episode two: withdraw the concession carrying the session header. The route resolves the
+  // header, the operation carries the statement, and the solve's recorder reads it.
+  const held = await weekView(client, week);
+  expect(held.adjustments.length, "no adjustment to withdraw").toBeGreaterThan(0);
+  const beforeWithdrawal = await rowsFor(week);
+  await client.del(`/api/v1/weeks/${week}/adjustments/${held.adjustments[0]!.id}`, {
+    sessionMode: true,
+  });
+  const reopened = await until(
+    `${week} to record a second infeasible transition`,
+    () => rowsFor(week),
+    (rows) => rows.length > beforeWithdrawal.length && !rows.at(-1)!.feasible,
+  );
+
+  // An episode starts at the first infeasible row and ends at the next feasible row. This mirrors
+  // the product's false-to-next-true grouping, so a feasible row before episode one cannot mask an
+  // opening-row regression.
+  const episodes = episodeSpans(reopened);
+  expect(episodes, "the plan week must contain exactly two infeasibility episodes").toHaveLength(2);
+  expect(
+    episodes.map((episode) => episode.opening.sessionModeActive),
+    "the two episode openings must remain unflagged then session-flagged",
+  ).toEqual([false, true]);
+
+  // The ratio the product's own `caught_early_over` computes is exactly 0.5.
   const measured = await verdictEvents();
   const ratios = Object.values(measured.caughtEarlyByTenant);
+  expect(ratios).toHaveLength(1);
   expect(ratios[0]).toBe(0.5);
 });
