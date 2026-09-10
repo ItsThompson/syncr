@@ -20,7 +20,7 @@ import {
   bootstrapAccount,
   type VerdictEventRow,
 } from "../src/harness/compose.ts";
-import { currentWeek, planWeek } from "../src/harness/subject-weeks.ts";
+import { planWeek } from "../src/harness/subject-weeks.ts";
 import { signIn } from "../src/api/client.ts";
 import { BASE_URL, E2E_EMAIL, E2E_PASSWORD } from "../src/config.ts";
 import { WEDNESDAY, dateIn, utcMidnightOn } from "../src/api/weeks.ts";
@@ -215,8 +215,8 @@ test("S35 every row is a transition, and the ratio the product reads is the epis
  * two ahead is materialized on six days of seven and holds an overdue-task episode on each of them),
  * so reading the ratio off their state would assert a figure that moves with the calendar. Instead
  * this case empties the database, provisions its own tenant, and arranges exactly two episodes on
- * one week: harmless routine-backed plans are materialized BEFORE the oversized task is declared,
- * so only the plan-week solve sees the shortfall; then a solve carrying no session header opens an
+ * one week: a harmless routine-backed plan is materialized BEFORE the oversized task is declared,
+ * so the task can only re-solve this tracked week; then a solve carrying no session header opens an
  * unflagged episode, approving the drop-item tradeoff closes it, and withdrawing that concession
  * with the header opens a flagged one. Two episodes, one flagged and one not, is exactly 0.5 through the
  * product's own `caught_early_over`, and nothing else exists to dilute it.
@@ -239,24 +239,18 @@ test("S35 the early-catch ratio over one session-caught episode and one that was
     durationMinutes: 30,
   });
   const week = planWeek();
-  const horizonWeeks = [currentWeek(), week];
-  await tickHorizon();
-  for (const horizonWeek of horizonWeeks) {
-    const scheduled = await until(
-      `${horizonWeek}'s materialization operation to be scheduled`,
-      () => operationsFor(client, horizonWeek),
-      (operations) => operations.length > 0,
-      60_000,
-    );
-    const materialization = await awaitTerminal(client, scheduled[0]!.id, 60_000);
-    expect(materialization.status, `${horizonWeek}'s materialization did not succeed`).toBe(
-      "succeeded",
-    );
-    await awaitLivePlan(client, horizonWeek);
-  }
+  await solveNow(client, week);
+  await until(
+    `${week}'s materialization operations to settle`,
+    () => operationsFor(client, week),
+    (operations) =>
+      operations.some((operation) => operation.status === "succeeded") &&
+      operations.every((operation) => !["pending", "running"].includes(operation.status)),
+  );
+  await awaitLivePlan(client, week);
 
-  // Now the oversized task: only this case's own plan-week solve ever reads it, so no other week's
-  // recorded verdict ever sees the shortfall it creates.
+  // The task re-solves tracked weeks only. Materializing this one plan week before declaring demand
+  // keeps every other week out of the tenant-wide early-catch denominator.
   await declareTask(client, {
     title: "Ratio driver",
     areaId: areas.Career!,
