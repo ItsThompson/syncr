@@ -143,7 +143,7 @@
 .week-block__hatch {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: var(--z-underlay);
   color: var(--rule);
   background-image: var(--hatch-back);
   pointer-events: none;
@@ -159,7 +159,7 @@
    only text in the system that wraps to a computed line count and a gutter would cost it a column of width. */
 .week-block__glyph {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-content);
   float: right;
   margin-left: 5px;
 }
@@ -179,7 +179,7 @@
    `text-overflow` is what let an end-ellipsis ship. */
 .week-block__title {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-content);
   display: block;
   overflow: hidden;
   max-height: calc(var(--lines) * 1lh);
@@ -243,5 +243,5 @@
 /* Lifted so the ring, drawn at a 2px OUTSET offset by base.css, is not clipped by the block below it. The ring
    itself is the surface's decision and no component in this layer declares one. */
 .week-block:focus-visible {
-  z-index: 4;
+  z-index: var(--z-focus);
 }

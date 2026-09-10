@@ -3,9 +3,8 @@
  * A stacking order spread across seven component sheets is an order nobody can read: each sheet
  * states one number, and the ordering lives nowhere until a reader reconstructs it. So the ladder
  * is declared once in `src/tokens/layout.css`, and this file holds it to two claims: the rungs
- * ascend, and together they cover every height any kit sheet spends. A rung renamed without its
- * sheet, or a sheet regaining a raw number the ladder no longer names, breaks the crossing in
- * one direction or the other.
+ * ascend, and every stacking sheet reads one. A rung renamed without its sheet, or a sheet
+ * regaining a raw number, breaks the crossing in one direction or the other.
  *
  * The heights are read from the stylesheets rather than restated here, for the same reason
  * `src/ui/primitives/__tests__/overlayLayers.test.ts` reads them: a copy of the numbers in the
@@ -15,10 +14,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { scanCss } from "../../scripts/lib/css-scan.ts";
-import { filesUnder } from "../../scripts/lib/files.ts";
+import { codeWithoutComments, scanCss } from "../../scripts/lib/css-scan.ts";
 import { srcDir } from "../testing/compileTheme";
-import { domainDir, layoutDir, primitivesDir } from "../testing/kitStylesheets";
+import { domainDir, primitivesDir } from "../testing/kitStylesheets";
 
 /** Every `--z-*` rung the token layer declares, in file order. */
 async function ladder(): Promise<{ name: string; value: number }[]> {
@@ -28,29 +26,39 @@ async function ladder(): Promise<{ name: string; value: number }[]> {
     .map((declaration) => ({ name: declaration.name, value: Number(declaration.value) }));
 }
 
-/** Every `z-index` height the kit's component sheets state, with the sheets that state it.
- *
- *  The literal-only pattern below cannot see a negative or computed height; none exists today,
- *  and one would silently escape this crossing if it did. */
-async function sheetHeights(): Promise<Map<number, string[]>> {
-  const heights = new Map<number, string[]>();
-  const directories = [primitivesDir, layoutDir, domainDir];
-  const fileLists = await Promise.all(
-    directories.map((directory) => filesUnder(directory, [".css"])),
-  );
+const STACKING_SHEETS = [
+  path.join(primitivesDir, "overlay.css"),
+  path.join(primitivesDir, "Select.css"),
+  path.join(primitivesDir, "DatePicker.css"),
+  path.join(primitivesDir, "states.css"),
+  path.join(domainDir, "week-grid", "grid.css"),
+  path.join(domainDir, "week-grid", "band.css"),
+  path.join(domainDir, "week-grid", "block.css"),
+];
+
+interface ZIndexDeclaration {
+  readonly sheet: string;
+  readonly value: string;
+}
+
+const zIndexToken = (value: string): string | null =>
+  /^var\((--z-[\w-]+)\)$/.exec(value)?.[1] ?? null;
+
+/** Every `z-index` declaration the stacking sheets make, with prose excluded. */
+async function zIndexDeclarations(): Promise<ZIndexDeclaration[]> {
   const sources = await Promise.all(
-    fileLists.flat().map(async (file) => ({
+    STACKING_SHEETS.map(async (file) => ({
       sheet: path.basename(file),
-      source: await readFile(file, "utf8"),
+      source: codeWithoutComments(await readFile(file, "utf8")),
     })),
   );
+  const declarations: ZIndexDeclaration[] = [];
   for (const { sheet, source } of sources) {
-    for (const match of source.matchAll(/z-index:\s*(\d+)/g)) {
-      const value = Number(match[1]);
-      heights.set(value, [...(heights.get(value) ?? []), sheet]);
+    for (const match of source.matchAll(/z-index\s*:\s*([^;}]+)/g)) {
+      declarations.push({ sheet, value: match[1].trim() });
     }
   }
-  return heights;
+  return declarations;
 }
 
 describe("the stacking ladder", () => {
@@ -65,16 +73,17 @@ describe("the stacking ladder", () => {
     expect(values).toStrictEqual(values.toSorted((left, right) => left - right));
   });
 
-  it("names every height any kit sheet spends, and no height none does", async () => {
-    const rungs = await ladder();
-    const heights = await sheetHeights();
+  it("declares no literal z-index and consumes every rung", async () => {
+    const [rungs, declarations] = await Promise.all([ladder(), zIndexDeclarations()]);
+    const invalid = declarations.filter(({ value }) => zIndexToken(value) === null);
+    const referenced = declarations.flatMap(({ value }) => {
+      const token = zIndexToken(value);
+      return token === null ? [] : [token];
+    });
 
-    const unlabelled = [...heights.keys()].filter(
-      (height) => !rungs.some((rung) => rung.value === height),
-    );
-    expect(unlabelled).toEqual([]);
-
-    const unspent = rungs.filter((rung) => !heights.has(rung.value));
-    expect(unspent).toEqual([]);
+    expect(declarations).toHaveLength(12);
+    expect(invalid).toEqual([]);
+    expect(referenced.filter((token) => !rungs.some((rung) => rung.name === token))).toEqual([]);
+    expect([...new Set(referenced)].toSorted()).toEqual(rungs.map((rung) => rung.name).toSorted());
   });
 });

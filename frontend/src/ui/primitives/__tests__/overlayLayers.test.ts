@@ -13,13 +13,14 @@
  * portalling components are read from the kit's own source, their surface classes are resolved against the kit's
  * own sheets, and a portal that lands on no layer at all is the finding.
  *
- * The numbers still live in four sheets rather than in the token layer as one ladder, which is ticket 1461. Until
- * that lands, this is what keeps the ordering honest. */
+ * The stacking ladder declares the order once. This test keeps portal discovery and ordering honest. */
 
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { scanCss } from "../../../../scripts/lib/css-scan.ts";
+import { srcDir } from "../../../testing/compileTheme";
 import { classListsIn } from "../../../testing/kitSources";
 import { domainDir, layoutDir, primitivesDir } from "../../../testing/kitStylesheets";
 
@@ -44,15 +45,27 @@ async function sourcesOf(extension: string): Promise<{ file: string; source: str
   return Promise.all(files.map(async (file) => ({ file, source: await readFile(file, "utf8") })));
 }
 
-/** Every `z-index` the kit declares, by the class the rule selects on. */
+async function stackingTokens(): Promise<Map<string, number>> {
+  const source = await readFile(path.join(srcDir, "tokens", "layout.css"), "utf8");
+  return new Map(
+    scanCss(source)
+      .declarations.filter((declaration) => declaration.name.startsWith("--z-"))
+      .map((declaration) => [declaration.name, Number(declaration.value)]),
+  );
+}
+
+/** Every `z-index` the kit declares, resolved from the stacking tokens by the class it selects on. */
 async function layersByClass(): Promise<Map<string, number>> {
   const layers = new Map<string, number>();
+  const tokens = await stackingTokens();
   for (const { source } of await sourcesOf(".css")) {
     for (const rule of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      const declared = /z-index:\s*(\d+)/.exec(rule[2]);
+      const declared = /z-index:\s*var\((--z-[\w-]+)\)/.exec(rule[2]);
       if (declared === null) continue;
+      const layer = tokens.get(declared[1]);
+      if (layer === undefined) throw new Error(`unknown stacking token: ${declared[1]}`);
       for (const named of rule[1].matchAll(/\.([a-z][a-z0-9_-]*)/g)) {
-        layers.set(named[1], Math.max(layers.get(named[1]) ?? 0, Number(declared[1])));
+        layers.set(named[1], Math.max(layers.get(named[1]) ?? 0, layer));
       }
     }
   }
@@ -107,21 +120,32 @@ describe("the kit's portalled surfaces", () => {
      scrim itself has to clear it, because a reader can open a select inside a dialog and cannot open a dialog
      inside a select. */
   it("float above a dialog's scrim, because a list under it can be seen and not clicked", async () => {
-    const scrim = (await layersByClass()).get("overlay__scrim");
-    const popovers = (await portalled()).filter((surface) => surface.layer !== scrim);
+    const [layers, surfaces, tokens] = await Promise.all([
+      layersByClass(),
+      portalled(),
+      stackingTokens(),
+    ]);
+    const scrim = tokens.get("--z-scrim");
+    const popover = tokens.get("--z-popover");
+    const popovers = surfaces.filter((surface) => surface.layer !== scrim);
 
-    expect(scrim).toBe(50);
+    expect(layers.get("overlay__scrim")).toBe(scrim);
     expect(popovers.map((surface) => surface.name)).toEqual(["DatePicker.tsx", "Select.tsx"]);
     for (const surface of popovers) {
-      expect(surface.layer ?? 0).toBeGreaterThan(scrim ?? 0);
+      expect(surface.layer).toBe(popover);
     }
+    expect(popover ?? 0).toBeGreaterThan(scrim ?? 0);
   });
 
   /* The scrim still covers the page it dims. A ladder that lifted every popover above everything would put a
      select's list over a dialog it does not belong to, so the ordering is asserted from both ends. */
   it("leave the scrim above the surfaces the page itself stacks", async () => {
-    const layers = await layersByClass();
+    const [layers, tokens] = await Promise.all([layersByClass(), stackingTokens()]);
+    const scrim = tokens.get("--z-scrim");
+    const page = tokens.get("--z-insertion");
 
-    expect(layers.get("overlay__scrim") ?? 0).toBeGreaterThan(layers.get("week-insertion") ?? 0);
+    expect(layers.get("overlay__scrim")).toBe(scrim);
+    expect(layers.get("week-insertion")).toBe(page);
+    expect(scrim ?? 0).toBeGreaterThan(page ?? 0);
   });
 });

@@ -31,9 +31,8 @@
   /* ABOVE A DIALOG'S SCRIM, which is at 50 in `overlay.css`. A select is a control a dialog can contain, and
      Radix portals its list to the document root, so a list below the scrim is a list the reader can see and
      cannot click: the scrim covers the viewport and swallows the pointer. Found by opening the capture form's
-     Area select in a browser. The three numbers this kit spends are scattered across three sheets and belong
-     in the token layer as one ladder, which is ticket 1461. */
-  z-index: 60;
+     Area select in a browser. The stacking ladder declares the order shared with the dialog's scrim. */
+  z-index: var(--z-popover);
 }
 
 .select__item {

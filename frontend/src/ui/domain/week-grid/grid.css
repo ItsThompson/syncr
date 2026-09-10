@@ -31,7 +31,7 @@
 .week-grid__axis {
   position: sticky;
   left: 0;
-  z-index: 2;
+  z-index: var(--z-axis);
   flex: 0 0 auto;
   width: var(--axis-w);
   border-right: var(--hairline) solid var(--rule);
@@ -162,7 +162,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  z-index: 3;
+  z-index: var(--z-now);
   height: 0;
   border-top: var(--now-rule) solid var(--ink-bright);
 }
@@ -174,7 +174,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  z-index: 7;
+  z-index: var(--z-insertion);
   height: 0;
   border-top: var(--rule-emphasis) dashed var(--ink-deep);
 }

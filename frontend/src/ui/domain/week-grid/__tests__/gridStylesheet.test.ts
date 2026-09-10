@@ -53,12 +53,10 @@ describe("the band that explains a gap", () => {
     const band = await rule("band.css", ".week-band");
     const block = await rule("block.css", ".week-block__hatch");
 
-    expect(band).toContainEqual(["z-index", "0"]);
+    expect(band).toContainEqual(["z-index", "var(--z-underlay)"]);
     /* The block itself takes no z-index at rest, so document order puts it above a band at the same level; the
      * pieces of the block that DO take one are all at or above the band's. */
-    expect(Number(block.find(([property]) => property === "z-index")?.[1])).toBeGreaterThanOrEqual(
-      0,
-    );
+    expect(block).toContainEqual(["z-index", "var(--z-underlay)"]);
   });
 
   it("carries its own ink on the label, so the words are not drawn in the hatch's", async () => {
@@ -131,9 +129,8 @@ describe("the now rule", () => {
     const now = await rule("grid.css", ".week-now");
     const band = await rule("band.css", ".week-band");
 
-    expect(Number(now.find(([property]) => property === "z-index")?.[1])).toBeGreaterThan(
-      Number(band.find(([property]) => property === "z-index")?.[1]),
-    );
+    expect(now).toContainEqual(["z-index", "var(--z-now)"]);
+    expect(band).toContainEqual(["z-index", "var(--z-underlay)"]);
   });
 });
 

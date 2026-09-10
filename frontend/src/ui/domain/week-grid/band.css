@@ -19,7 +19,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  z-index: 0;
+  z-index: var(--z-underlay);
   color: var(--forbidden-hatch-ink);
   background-image: var(--hatch-back);
   border-top: var(--hairline) dotted var(--rule);

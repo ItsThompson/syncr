@@ -293,7 +293,13 @@ describe("the anchor's hatch", () => {
   });
 
   it("sits under the block's own content and over its fill", async () => {
-    expect(await rule("block.css", ".week-block__hatch")).toContainEqual(["z-index", "0"]);
-    expect(await rule("block.css", ".week-block__title")).toContainEqual(["z-index", "1"]);
+    expect(await rule("block.css", ".week-block__hatch")).toContainEqual([
+      "z-index",
+      "var(--z-underlay)",
+    ]);
+    expect(await rule("block.css", ".week-block__title")).toContainEqual([
+      "z-index",
+      "var(--z-content)",
+    ]);
   });
 });
