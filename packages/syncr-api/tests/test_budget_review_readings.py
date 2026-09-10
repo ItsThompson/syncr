@@ -463,7 +463,7 @@ class TestTheVacancyAndOversubscription:
         ).subtract(IntervalSet([frame]))
         share = a_share(percent="100")
         block = a_block(on=MONDAY, hour=9, area_id=share.area_id)
-        moved = Interval(an_instant(MONDAY, 0), an_instant(MONDAY, 0) + timedelta(minutes=7000))
+        moved = Interval(an_instant(MONDAY, 0), an_instant(MONDAY, 0) + timedelta(minutes=10000))
         week = a_week(
             discretionary_minutes=discretionary.total_minutes(),
             discretionary=discretionary,
@@ -471,9 +471,11 @@ class TestTheVacancyAndOversubscription:
             outcomes={str(block.id): an_outcome(block, OutcomeState.MOVED, actual_interval=moved)},
         )
 
-        rows = categories_of(week, shares=[share])
+        area, vacancy = categories_of(week, shares=[share])
 
-        assert sum(row.actual_minutes for row in rows) == week.discretionary_minutes
+        assert area.actual_minutes == 9580
+        assert vacancy.actual_minutes == 80
+        assert sum(row.actual_minutes for row in [area, vacancy]) == 9660
 
 
 class TestTheCategories:
