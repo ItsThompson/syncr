@@ -788,6 +788,21 @@ def test_the_two_denominators_on_one_payload_read_the_same_occupancy(
     assert strip == probed == 6720
 
 
+def test_the_week_readings_contract_names_every_discretionary_subtrahend(
+    settings: ServiceSettings,
+) -> None:
+    document = create_app(settings).openapi()
+    description = document["components"]["schemas"]["WeekReadingsResponse"]["properties"][
+        "discretionaryMinutes"
+    ]["description"]
+
+    assert (
+        "circadian frame, external anchors, absolutely forbidden windows, and off-plan periods"
+        in description
+    )
+    assert "equals verdict.discretionaryMinutes" in description
+
+
 # --------------------------------------------------------------------------------
 # The budget, measured
 # --------------------------------------------------------------------------------

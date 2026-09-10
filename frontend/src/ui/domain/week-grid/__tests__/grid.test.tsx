@@ -355,6 +355,14 @@ describe("the summary strip", () => {
     expect(screen.getByText("35.3% of discretionary")).toBeInTheDocument();
   });
 
+  it("names every subtrahend of the discretionary reading", () => {
+    render(<SummaryStrip readings={READINGS} verdict={null} />);
+
+    expect(
+      screen.getByText("after frame, anchors, forbidden windows, and off-plan periods"),
+    ).toBeInTheDocument();
+  });
+
   it("states the verdict in words when it has one", () => {
     render(
       <SummaryStrip

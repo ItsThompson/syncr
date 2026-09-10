@@ -61,12 +61,9 @@ class WeekReadingsResponse(WireModel):
         "routine running into Monday is not charged here twice."
     )
     discretionary_minutes: int = Field(
-        description="The denominator the STRIP renders. Today it is the week's span less the "
-        "interval union of off-plan periods alone: the occupancy reader behind it does not yet "
-        "subtract the circadian frame, external anchors or absolutely forbidden windows, so on a "
-        "week with a frame it reads high by the whole of it. verdict.discretionaryMinutes is the "
-        "same quantity with all four subtracted and is the authoritative one until this reader "
-        "catches up. Never scheduled time."
+        description="The strip's denominator: total time in the week minus the interval union of "
+        "the circadian frame, external anchors, absolutely forbidden windows, and off-plan "
+        "periods. It equals verdict.discretionaryMinutes. Never scheduled time."
     )
     unallocated_minutes: int = Field(
         description="Discretionary minutes covered by NO block carrying an Area. Never negative, "
@@ -152,10 +149,11 @@ class EmptyWeekResponse(WireModel):
 class WeekViewResponse(WireModel):
     """The Week screen's whole read, in one request.
 
-    **Every field is required and the nullable ones are nullable**, which is the wire shape's own rule
-    and the one thirty-six other response fields in this api already take. A field with a default is
-    OPTIONAL in the generated document, so a client would have to narrow ``undefined`` as well as
-    ``null`` and ``if (view.emptyReason === null)`` would not be sound against its own types. The
+    **Every field is required and the nullable ones are nullable**, which is the wire shape's own
+    rule and the one thirty-six other response fields in this api already take. A field with a
+    default is OPTIONAL in the generated document, so a client would have to narrow ``undefined``
+    as well as ``null`` and ``if (view.emptyReason === null)`` would not be sound against its own
+    types. The
     server populates all sixteen on every answer, so the contract says so.
     """
 

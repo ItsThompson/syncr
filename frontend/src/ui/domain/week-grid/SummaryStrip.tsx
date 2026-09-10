@@ -43,7 +43,7 @@ export function SummaryStrip({ readings, verdict }: SummaryStripProps) {
           <StatCell
             figure={formatHours(readings.discretionaryMinutes)}
             label="Discretionary"
-            sub="after frame and anchors"
+            sub="after frame, anchors, forbidden windows, and off-plan periods"
           />
         </div>
         <div className="week-strip__cell">
