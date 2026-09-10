@@ -70,8 +70,13 @@ def a_week_every_kind_can_be_offered_in(**overrides: Any) -> WeekAssembler:
     ``overrides`` reach the assembler, which is what lets a caller swap one seam -- the concession
     repository, say, for a real one -- while keeping the week the offers were computed in.
     """
-    career = an_area(area_id=CAREER_AREA, name="Career")
-    fitness = an_area(area_id=FITNESS_AREA, name="Fitness", floor_hours=Decimal(5))
+    career = an_area(area_id=CAREER_AREA, name="Career", budget_percent=Decimal(50))
+    fitness = an_area(
+        area_id=FITNESS_AREA,
+        name="Fitness",
+        floor_hours=Decimal(5),
+        budget_percent=Decimal(50),
+    )
     # Half a step past the forty hours is what makes the shortfall the fixture's own ninety
     # minutes: three reducible nights at the sleep routine's give, which is what the fixture's
     # REDUCTIONS and LABEL describe.
