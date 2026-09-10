@@ -19,6 +19,7 @@ from uuid import uuid4
 import pytest
 
 from syncr_api.calendars.config import ANCHOR_SOURCE, ICS, MISSING_DURATION
+from syncr_api.calendars.expansion_bound import ExpansionBound
 from syncr_api.calendars.feeds import FeedAnswer, FeedBody, FeedUnchanged, FeedUnreachable
 from syncr_api.calendars.ics_adapter import IcsAdapter
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
@@ -34,7 +35,7 @@ from tests.hostile_ics import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
 FEED_URL = "https://example.ac.uk/timetable.ics"
 HOME = ZoneProfile(home_zone="Europe/London")
@@ -43,6 +44,14 @@ EARLIER = NOW - timedelta(hours=6)
 HORIZON = Interval(datetime(2026, 2, 9, 0, 0, tzinfo=UTC), datetime(2026, 2, 23, 0, 0, tzinfo=UTC))
 
 ETAG = 'etag:"w/12345"'
+
+
+@pytest.fixture(scope="module")
+def bounded() -> Iterator[ExpansionBound]:
+    """A short deadline for the corpus's non-terminating recurrence."""
+    bound = ExpansionBound(deadline_seconds=0.5, size=1)
+    yield bound
+    bound.shutdown()
 
 
 @dataclass
@@ -77,10 +86,12 @@ def source(**overrides: object) -> CalendarSourceRecord:
     return CalendarSourceRecord(**{**defaults, **overrides})  # type: ignore[arg-type]
 
 
-def adapter(answer: FeedAnswer) -> tuple[IcsAdapter, RecordedFetcher]:
+def adapter(
+    answer: FeedAnswer, *, bound: ExpansionBound | None = None
+) -> tuple[IcsAdapter, RecordedFetcher]:
     fetcher = RecordedFetcher(answers={FEED_URL: answer})
     return (
-        IcsAdapter(fetcher=fetcher, profile=HOME, horizon=HORIZON, clock=lambda: NOW),
+        IcsAdapter(fetcher=fetcher, profile=HOME, horizon=HORIZON, clock=lambda: NOW, bound=bound),
         fetcher,
     )
 
@@ -217,7 +228,9 @@ async def test_a_first_attempt_sends_no_conditional_validator() -> None:
 
 
 @pytest.mark.parametrize("label", sorted(ALL_FEEDS))
-async def test_no_body_in_the_corpus_raises_at_the_adapter(label: str) -> None:
+async def test_no_body_in_the_corpus_raises_at_the_adapter(
+    label: str, bounded: ExpansionBound
+) -> None:
     """The contract, asserted where it is stated rather than one layer below it.
 
     ``test_no_feed_in_the_corpus_raises`` asserts this of the parser. This asserts it of
@@ -229,7 +242,7 @@ async def test_no_body_in_the_corpus_raises_at_the_adapter(label: str) -> None:
     Both halves matter. Not raising is not enough: a caller cannot record an attempt it was not
     handed a state for, so the state is asserted too.
     """
-    ics, _ = adapter(FeedBody(body=ALL_FEEDS[label], cursor=ETAG))
+    ics, _ = adapter(FeedBody(body=ALL_FEEDS[label], cursor=ETAG), bound=bounded)
 
     outcome, state = await ics.fetch(source(sync_state=synced()))
 
@@ -242,7 +255,9 @@ async def test_no_body_in_the_corpus_raises_at_the_adapter(label: str) -> None:
 
 
 @pytest.mark.parametrize("label", sorted(HOSTILE_MAGNITUDES))
-async def test_an_extreme_magnitude_is_a_rejection_rather_than_a_fault(label: str) -> None:
+async def test_an_extreme_magnitude_is_a_rejection_rather_than_a_fault(
+    label: str, bounded: ExpansionBound
+) -> None:
     """A number a feed states is the feed's doing, so it belongs on the panel.
 
     A magnitude is not a syntax error: ``DTEND;VALUE=DATE:99991231`` parses perfectly and then
@@ -254,7 +269,7 @@ async def test_an_extreme_magnitude_is_a_rejection_rather_than_a_fault(label: st
     Some of these bodies are legitimate and produce events, which is the point of a matrix: what is
     asserted is that every one of them is ANSWERED, not that every one is refused.
     """
-    ics, _ = adapter(FeedBody(body=HOSTILE_MAGNITUDES[label], cursor=ETAG))
+    ics, _ = adapter(FeedBody(body=HOSTILE_MAGNITUDES[label], cursor=ETAG), bound=bounded)
 
     outcome, state = await ics.fetch(source())
 

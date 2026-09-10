@@ -187,8 +187,8 @@ MAX_PARSE_SECONDS: Final = 60.0
 # parent CAN bound it: a wait past this deadline terminates the worker and answers a rejection.
 #
 # The value has two-sided headroom. The slowest legitimate single expansion measurable is under a
-# second (a weekly rule reaching dateutil's maximum year costs 0.54s), and even the step-bounded
-# runaway of 50,000 secondly steps completes well inside it. The cheapest known hang of the
+# second (a weekly rule reaching dateutil's maximum year costs 0.54s), and a 50,000-candidate
+# secondly expansion completes well inside it. The cheapest known hang of the
 # unsatisfiable family costs upwards of 200 seconds, twenty times this figure. A deadline below
 # ten would risk cutting a legitimate expansion on a loaded machine for no time saved that
 # matters; one above it leaves a hung reader holding a worker tick for minutes.

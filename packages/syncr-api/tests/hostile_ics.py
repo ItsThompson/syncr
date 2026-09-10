@@ -337,7 +337,7 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         f"RRULE:FREQ=DAILY;INTERVAL={PAST_INT_CONVERSION}",
     ),
     # The DEGENERATE end of the same axis, which is the end an exporter's sign slip reaches. A zero
-    # interval never advances, so a bound on how many occurrences a rule YIELDS cannot fire on it.
+    # interval never advances, so the parent-enforced deadline has to stop its expansion.
     "an interval of zero": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=0"),
     "a padded interval of zero": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=00"),
     "a negative interval": ("DURATION:PT1H", "RRULE:FREQ=DAILY;INTERVAL=-1"),

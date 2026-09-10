@@ -18,9 +18,8 @@ wall time in the series' zone. Dropping the suffix instead would move the bounda
 zone's offset, which silently keeps or loses the final occurrence of a term.
 
 **The work is bounded.** A rule with no ``COUNT`` and no ``UNTIL`` expands for as long as
-anything asks it to, and a feed can carry a ``FREQ=SECONDLY`` rule by mistake. Iteration
-stops at a stated step limit and the series is rejected with a reason, rather than holding a
-worker tick open.
+anything asks it to, and a feed can carry a ``FREQ=SECONDLY`` rule by mistake. Expansion runs
+behind a parent-enforced deadline, so a rule that does not finish cannot hold a worker tick open.
 """
 
 from __future__ import annotations
@@ -43,11 +42,6 @@ if TYPE_CHECKING:
     from syncr_api.calendars.ics_values import IcsTime
     from syncr_domain.intervals import Interval
     from syncr_domain.zones import ZoneProfile
-
-# How many candidate occurrences one series may be walked through before it is rejected.
-# A daily rule running since 2010 needs a few thousand steps to reach a horizon two weeks
-# out; a FREQ=SECONDLY rule needs hundreds of millions, and this is what stops it.
-MAX_EXPANSION_STEPS: Final = 50_000
 
 _UNTIL: Final = "UNTIL"
 _INTERVAL: Final = "INTERVAL"
@@ -108,7 +102,6 @@ def occurrences(
     *,
     window: Interval,
     profile: ZoneProfile,
-    limit: int = MAX_EXPANSION_STEPS,
 ) -> tuple[datetime, ...]:
     """Every occurrence's wall datetime inside ``window``, exclusions already applied.
 
@@ -123,20 +116,15 @@ def occurrences(
         rule_text=recurrence.rule_text,
         additions=_additions(recurrence.extra_dates, start, window=window, profile=profile),
     )
-    for _step in range(limit):
-        # `next` is called under the bound rather than the loop being driven by the iterator,
-        # because a rule can spend unbounded work WITHOUT yielding: dateutil advances by `INTERVAL`,
-        # so a zero interval never reaches a new value and a bound on yields never fires. Counting
-        # attempts bounds the work whether or not the rule produces anything.
+    while True:
         try:
             wall = next(candidates)
         except StopIteration:
-            return tuple(kept)
+            break
         except IcsRejection:
             # This package's own refusal, which is already stated in the reader's language. It
             # reaches here because it is a ValueError by inheritance, and re-wrapping it would
-            # prefix a foreign expander's excuse onto a message that already names the property:
-            # "the recurrence rule cannot be expanded: the recurrence rule selects position 2 of…".
+            # prefix a foreign expander's excuse onto a message that already names the property.
             raise
         except _RULE_FAULTS as error:
             # dateutil validates a rule lazily, so a value it accepted at construction can still be
@@ -151,12 +139,6 @@ def occurrences(
         if instant in excluded_instants or wall.date() in excluded_dates:
             continue
         kept.append(wall)
-    else:
-        message = (
-            f"the recurrence rule reaches {limit} occurrences without leaving the "
-            "window, so syncr will not read it"
-        )
-        raise UnparseableRecurrence(message)
     return tuple(kept)
 
 
@@ -336,7 +318,7 @@ def _require_expandable(rule: _Rule) -> None:
     conversion cannot depend on the interpreter configuration.
     """
     _require_readable_members(rule)
-    _require_positive_interval(rule)
+    _require_nonnegative_interval(rule)
 
 
 def _require_readable_members(rule: _Rule) -> None:
@@ -410,7 +392,7 @@ def _signed(value: str) -> bool:
     falls: ``str.isdigit`` is true for a superscript two that ``int`` refuses, and ``str.isdecimal``
     is false for ``'2_0'`` that ``int`` accepts as 20. Asking ``int`` cannot disagree with it.
 
-    ``_require_positive_interval`` reads this as a refusal, so a value it rejects is named
+    ``_require_nonnegative_interval`` reads this as a refusal, so a value it rejects is named
     rather than silently dropped. The answer still has to match the library's exactly: a value
     syncr calls unreadable and dateutil converts is a value the guard does not judge.
 
@@ -435,13 +417,13 @@ def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:
     return f"a value of {len(value)} characters"
 
 
-def _require_positive_interval(rule: _Rule) -> None:
-    """Refuse an ``INTERVAL`` that is not a positive number, quoting the stated value.
+def _require_nonnegative_interval(rule: _Rule) -> None:
+    """Refuse an ``INTERVAL`` dateutil cannot expand, quoting the stated value.
 
-    A zero interval now reaches the external deadline, which quotes the bounded rule text. A
-    negative interval instead raises during dateutil iteration, without naming the rule or the feed.
-    This guard remains for attribution, not protection: it states which interval value the publisher
-    needs to correct.
+    A zero interval reaches the external deadline, which quotes the bounded rule text. A negative
+    interval raises during dateutil iteration without naming the rule or the feed. This guard
+    remains for attribution, not protection: it states which interval value the publisher needs to
+    correct.
 
     A leading ``+`` is accepted, as dateutil accepts it. The standard does not write the sign, but a
     publisher that does means one, and losing a whole series over it would be the wrong trade.
@@ -449,10 +431,10 @@ def _require_positive_interval(rule: _Rule) -> None:
     stated = rule.parts.get(_INTERVAL)
     if stated is None:
         return
-    if not _signed(stated) or _number(stated) < 1:
+    if not _signed(stated) or _number(stated) < 0:
         message = (
             f"the recurrence rule states an INTERVAL of {_stated(stated)}, and an interval has "
-            "to be a positive number of periods"
+            "to be a non-negative number of periods"
         )
         raise UnparseableRecurrence(message)
 

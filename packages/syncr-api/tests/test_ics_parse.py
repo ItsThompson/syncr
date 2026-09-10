@@ -27,6 +27,7 @@ from syncr_api.calendars.config import (
     UNKNOWN_ZONE,
     UNPARSEABLE_RECURRENCE,
 )
+from syncr_api.calendars.expansion_bound import ExpansionBound
 from syncr_api.calendars.ics_lines import MAX_COMPONENT_DEPTH, VEVENT
 from syncr_api.calendars.ics_parse import parse_feed
 from syncr_domain.intervals import Interval
@@ -61,6 +62,8 @@ from tests.hostile_ics import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from syncr_api.calendars.events import FetchOutcome, RawEvent
 
 LONDON = "Europe/London"
@@ -68,6 +71,14 @@ TOKYO = "Asia/Tokyo"
 HOME = ZoneProfile(home_zone=LONDON)
 
 HORIZON = Interval(datetime(2026, 2, 9, 0, 0, tzinfo=UTC), datetime(2026, 2, 23, 0, 0, tzinfo=UTC))
+
+
+@pytest.fixture(scope="module")
+def bounded() -> Iterator[ExpansionBound]:
+    """A short deadline for corpus cases that do not terminate on their own."""
+    bound = ExpansionBound(deadline_seconds=0.5, size=1)
+    yield bound
+    bound.shutdown()
 
 
 def utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
@@ -302,8 +313,10 @@ def test_a_cancelled_occurrence_is_not_also_counted_as_a_discard() -> None:
     assert outcome.events_read == 8
 
 
-def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
-    outcome = parse_feed(RUNAWAY_RECURRENCE, horizon=HORIZON, profile=HOME)
+def test_a_runaway_recurrence_is_rejected_rather_than_expanded(
+    bounded: ExpansionBound,
+) -> None:
+    outcome = parse_feed(RUNAWAY_RECURRENCE, horizon=HORIZON, profile=HOME, bound=bounded)
 
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
@@ -312,13 +325,12 @@ def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
 
 @pytest.mark.parametrize(
     "interval",
-    ["0", "00", "-1", "-999999999", "1.5", ""],
-    ids=["zero", "padded zero", "negative", "a large negative", "fractional", "empty"],
+    ["-1", "-999999999", "1.5", ""],
+    ids=["negative", "a large negative", "fractional", "empty"],
 )
-def test_an_interval_that_is_not_a_positive_number_is_refused_by_name(interval: str) -> None:
-    # An exporter's sign slip, not a hostile body. A zero interval reaches the external deadline,
-    # but a negative interval raises during dateutil iteration without naming the rule or feed. The
-    # local refusal keeps both failures attributed to the stated value.
+def test_an_interval_that_cannot_expand_is_refused_by_name(interval: str) -> None:
+    # A zero interval is bounded externally. A negative interval raises during dateutil iteration
+    # without naming the rule or feed, so this local refusal keeps the stated value actionable.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:iv@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
@@ -330,7 +342,7 @@ def test_an_interval_that_is_not_a_positive_number_is_refused_by_name(interval: 
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
     detail = outcome.rejected[0].detail
-    assert "positive number of periods" in detail
+    assert "non-negative number of periods" in detail
     assert repr(interval) in detail
 
 
@@ -373,7 +385,7 @@ def test_a_positive_interval_is_expanded_however_it_is_written(interval: str) ->
 
 
 def test_a_component_overrunning_the_per_feed_bound_is_refused_whole_and_says_so() -> None:
-    # A FREQ=MINUTELY rule stays inside the per-series step bound while producing more events than
+    # A FREQ=MINUTELY rule stays inside the expansion deadline while producing more events than
     # syncr reads from one feed. Truncating the total would bound neither the memory nor the time it
     # took to build, and would discard occupancy with nothing counting the loss: the panel would
     # report the source healthy while some of the user's commitments had silently vanished.
@@ -385,10 +397,10 @@ def test_a_component_overrunning_the_per_feed_bound_is_refused_whole_and_says_so
     assert "none of it was read" in outcome.rejected[0].detail
 
 
-def test_no_feed_returns_more_events_than_the_per_feed_bound() -> None:
+def test_no_feed_returns_more_events_than_the_per_feed_bound(bounded: ExpansionBound) -> None:
     # The bound's own control: whatever a body asks for, the returned list is within it.
     for label, body in ALL_FEEDS.items():
-        outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+        outcome = parse_feed(body, horizon=HORIZON, profile=HOME, bound=bounded)
         assert len(outcome.events) <= MAX_EVENTS_PER_FEED, label
 
 
@@ -778,7 +790,7 @@ def test_a_component_placing_nothing_inside_the_horizon_is_counted() -> None:
     assert outcome.unplaced == 1
 
 
-def test_every_component_of_every_feed_is_accounted_for() -> None:
+def test_every_component_of_every_feed_is_accounted_for(bounded: ExpansionBound) -> None:
     # The counts are what the panel reports, so they have to close: a component that appeared in
     # none of the buckets would be occupancy that vanished with no explanation.
     #
@@ -787,7 +799,7 @@ def test_every_component_of_every_feed_is_accounted_for() -> None:
     # one identity, and a term counted from the body's text excuses a component whatever the parser
     # did with it.
     for label, body in ALL_FEEDS.items():
-        outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+        outcome = parse_feed(body, horizon=HORIZON, profile=HOME, bound=bounded)
         accounted = (
             outcome.placed
             + _component_rejection_count(outcome)
@@ -837,10 +849,10 @@ def _component_rejection_count(outcome: FetchOutcome) -> int:
 
 
 @pytest.mark.parametrize("label", sorted(ALL_FEEDS))
-def test_no_feed_in_the_corpus_raises(label: str) -> None:
+def test_no_feed_in_the_corpus_raises(label: str, bounded: ExpansionBound) -> None:
     # The adapter's whole contract: hostility is absorbed and returned, never raised at a
     # caller. A body that raised would take a worker tick down with it.
-    parse_feed(ALL_FEEDS[label], horizon=HORIZON, profile=HOME)
+    parse_feed(ALL_FEEDS[label], horizon=HORIZON, profile=HOME, bound=bounded)
 
 
 def test_a_deeply_nested_feed_is_a_stated_rejection_rather_than_a_recursion_error() -> None:
@@ -1082,14 +1094,16 @@ _MOVED_OVERRIDE = (
         "RRULE:FREQ=MONTHLY;BYDAY=8MO\r\nEND:VEVENT\r\n",
     ],
 )
-def test_a_replacement_outlives_a_master_the_feed_got_wrong(master: str) -> None:
+def test_a_replacement_outlives_a_master_the_feed_got_wrong(
+    master: str, bounded: ExpansionBound
+) -> None:
     # A master syncr refused places nothing, so nothing in the feed covers the hour its replacement
     # names: the orphan rule's premise exactly. Reading the master's PRESENCE instead of whether it
     # expanded made the answer depend on which layer refused it, so the same feed shape kept the
     # moved hour when the zone was wrong and lost it when the rule was.
     body = f"BEGIN:VCALENDAR\r\n{master}{_MOVED_OVERRIDE}END:VCALENDAR\r\n"
 
-    outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
+    outcome = parse_feed(body, horizon=HORIZON, profile=HOME, bound=bounded)
 
     assert [event.title for event in outcome.events] == ["Moved hour"]
     assert len(outcome.rejected) == 1

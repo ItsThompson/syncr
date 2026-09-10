@@ -42,6 +42,9 @@ FEED_URL = "https://example.org/hang.ics"
 HOME = ZoneProfile(home_zone="Europe/London")
 NOW = datetime(2026, 2, 9, 7, 0, tzinfo=UTC)
 HORIZON = Interval(datetime(2026, 2, 9, 0, 0, tzinfo=UTC), datetime(2026, 2, 23, 0, 0, tzinfo=UTC))
+SHORT_HORIZON = Interval(
+    datetime(2026, 2, 9, 0, 0, tzinfo=UTC), datetime(2026, 2, 9, 0, 1, tzinfo=UTC)
+)
 
 # The shape the ticket names, and the eight further members of the same class: every value
 # inside the range its property allows, jointly unsatisfiable, so dateutil scans for a match
@@ -102,6 +105,38 @@ def test_the_named_unsatisfiable_rule_is_answered_by_the_deadline(tight: Expansi
     # walk measured in thousands of them. The bound is the bite: a regression to inline
     # expansion hangs here instead of finishing inside this margin.
     assert elapsed < 5
+
+
+@pytest.mark.parametrize("interval", ["0", "00"])
+def test_a_nonadvancing_interval_is_answered_by_the_deadline(
+    interval: str, tight: ExpansionBound
+) -> None:
+    outcome = parse_feed(
+        _feed(_rule_event(f"FREQ=DAILY;INTERVAL={interval}", "interval@example.org")),
+        horizon=HORIZON,
+        profile=HOME,
+        bound=tight,
+    )
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert "did not finish expanding within" in outcome.rejected[0].detail
+    assert f"INTERVAL={interval}" in outcome.rejected[0].detail
+
+
+def test_candidates_before_the_window_do_not_exhaust_an_attempt_limit(
+    tight: ExpansionBound,
+) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:past@example.org\r\n"
+        "DTSTART:20260208T090000Z\r\nDTEND:20260208T100000Z\r\n"
+        "RRULE:FREQ=SECONDLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+
+    outcome = parse_feed(body, horizon=SHORT_HORIZON, profile=HOME, bound=tight)
+
+    assert outcome.rejected == ()
+    assert len(outcome.events) == 3_659
 
 
 @pytest.mark.parametrize("rule", FURTHER_LEGAL_SHAPES)

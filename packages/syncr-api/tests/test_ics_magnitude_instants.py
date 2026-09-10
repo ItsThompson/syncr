@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 import pytest
 
 from syncr_api.calendars.config import MALFORMED_VALUE, UNPARSEABLE_RECURRENCE
+from syncr_api.calendars.expansion_bound import ExpansionBound
 from syncr_api.calendars.ics_parse import parse_feed
 from syncr_domain.intervals import Interval
 from syncr_domain.zones import ZoneProfile
@@ -70,9 +71,9 @@ _RDATE_BODIES: dict[str, tuple[tuple[tuple[str, str], ...], tuple[str, ...]]] = 
 
 # What the whole corpus answers with. Bodies that produce at least one event, spans across all of
 # them, and one entry per rejection kind the corpus reaches.
-_PRODUCING_BODIES = 34
-_SPANS = 2126
-_REJECTION_KINDS = {MALFORMED_VALUE: 62, UNPARSEABLE_RECURRENCE: 116}
+_PRODUCING_BODIES = 35
+_SPANS = 2128
+_REJECTION_KINDS = {MALFORMED_VALUE: 64, UNPARSEABLE_RECURRENCE: 111}
 
 
 @pytest.mark.parametrize("label", sorted(_RDATE_BODIES))
@@ -108,12 +109,15 @@ def test_the_corpus_produces_these_counts_of_events_and_rejections() -> None:
     producing = 0
     spans = 0
     kinds: Counter[str] = Counter()
-
-    for body in HOSTILE_MAGNITUDES.values():
-        outcome = parse_feed(body, horizon=HORIZON, profile=HOME)
-        kinds.update(item.kind for item in outcome.rejected)
-        producing += bool(outcome.events)
-        spans += len(outcome.events)
+    bound = ExpansionBound(deadline_seconds=0.5, size=1)
+    try:
+        for body in HOSTILE_MAGNITUDES.values():
+            outcome = parse_feed(body, horizon=HORIZON, profile=HOME, bound=bound)
+            kinds.update(item.kind for item in outcome.rejected)
+            producing += bool(outcome.events)
+            spans += len(outcome.events)
+    finally:
+        bound.shutdown()
 
     assert (producing, spans) == (_PRODUCING_BODIES, _SPANS)
     assert dict(kinds) == _REJECTION_KINDS
