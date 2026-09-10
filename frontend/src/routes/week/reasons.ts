@@ -12,7 +12,7 @@
  * produced -- the row states the fact it has rather than a blank: a reason record outlives what it names, which is
  * exactly why it stores what it stores.
  *
- * A PINNED BLOCK'S THREE ROWS ARE THE ONES `US-PIN-05` NAMES: where it now sits and when the reader put it there,
+ * A PINNED BLOCK'S THREE ROWS: where it now sits and when the reader put it there,
  * what the solver had chosen instead, and what that choice cost. The first two are clauses; the cost is on the
  * `instead of` clause, so the panel reads it from there rather than from a fourth clause kind that does not exist. */
 
@@ -113,10 +113,8 @@ function authorityOf(block: Block): string {
   return "the solver's · a re-solve may move it";
 }
 
-/** The cost of a pin, from the `instead of` clause that records it, or null where the block carries none. */
-export function objectiveDeltaOf(block: Block): string | null {
-  const delta = block.objectiveDelta;
-  if (delta === null || delta === undefined) return null;
-  const sign = delta > 0 ? "+" : "";
-  return `${sign}${delta.toFixed(2)} against the proposal`;
+/** The cost of a pin, from the `instead of` clause that records it. */
+export function objectiveDeltaOf(objectiveDelta: number): string {
+  const sign = objectiveDelta > 0 ? "+" : "";
+  return `${sign}${objectiveDelta.toFixed(2)} against the proposal`;
 }

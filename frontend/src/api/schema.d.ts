@@ -4252,7 +4252,7 @@ export interface components {
              * Objectivedelta
              * @description What the user's choice cost in objective units, under weightSetVersion. Positive when the user's placement is worse under those weights, and zero for a pin that keeps a block where it already is.
              */
-            objectiveDelta: number | null;
+            objectiveDelta: number;
             /** @description Where the solver had put it. */
             supersededPlacement: components["schemas"]["WireSpan"];
             /**

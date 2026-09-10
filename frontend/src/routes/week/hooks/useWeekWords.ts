@@ -190,7 +190,7 @@ function detailOf(
     title: block.title,
     definitionRows: definitionRowsOf(block, context),
     reasonRows: reasonRowsOf(block.reason, context),
-    cost: objectiveDeltaOf(block),
+    cost: block.objectiveDelta === null ? null : objectiveDeltaOf(block.objectiveDelta),
     actions: block.pinned
       ? [{ label: "Unpin", onSelect: interaction.onTogglePin }]
       : [{ label: "Pin here", onSelect: interaction.onTogglePin }],

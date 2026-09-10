@@ -4738,16 +4738,9 @@
             "type": "string"
           },
           "objectiveDelta": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "What the user's choice cost in objective units, under weightSetVersion. Positive when the user's placement is worse under those weights, and zero for a pin that keeps a block where it already is.",
-            "title": "Objectivedelta"
+            "title": "Objectivedelta",
+            "type": "number"
           },
           "supersededPlacement": {
             "$ref": "#/components/schemas/WireSpan",
