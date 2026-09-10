@@ -5978,6 +5978,11 @@ export interface components {
              */
             unallocatedMinutes: number;
             /**
+             * Unconfirmeddates
+             * @description The dates counted by unconfirmedDays, in week order. The grid marks these days without recreating the confirmation rule from a total.
+             */
+            unconfirmedDates: string[];
+            /**
              * Unconfirmeddays
              * @description Days of this week that have ended, hold at least one block, and have not been confirmed. A day still ahead cannot be confirmed and is not counted.
              */

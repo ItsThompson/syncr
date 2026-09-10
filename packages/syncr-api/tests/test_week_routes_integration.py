@@ -962,7 +962,12 @@ def test_confirming_a_day_takes_it_out_of_the_count(
     confirmed = http.post(f"{DAYS_PREFIX}/{monday}/confirm", headers=configured)
 
     assert confirmed.status_code in {HTTPStatus.OK, HTTPStatus.NO_CONTENT}, confirmed.text
-    assert week_view(http, configured, week)["readings"]["unconfirmedDays"] == 6
+    readings = week_view(http, configured, week)["readings"]
+
+    assert readings["unconfirmedDays"] == 6
+    assert readings["unconfirmedDates"] == [
+        (monday + timedelta(days=day)).isoformat() for day in range(1, 7)
+    ]
 
 
 def test_a_week_nothing_is_working_on_reads_as_current(

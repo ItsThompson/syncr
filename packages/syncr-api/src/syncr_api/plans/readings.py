@@ -1,4 +1,4 @@
-"""The nine figures the summary strip and the review both read, computed once on the server.
+"""The week readings the summary strip and the review both read, computed once on the server.
 
 The strip shows three of them plus the verdict, and the pie review divides the same denominator.
 Computing them in a client from the document would risk a figure on the strip disagreeing with the
@@ -62,6 +62,7 @@ class WeekReadings:
     unallocated_minutes: int
     oversubscription_minutes: int
     unconfirmed_days: int
+    unconfirmed_dates: tuple[Date, ...]
     off_plan_minutes: int
     block_count: int
     dropped_legs: int
@@ -79,12 +80,14 @@ def week_readings(
     currency: PlanCurrency,
 ) -> WeekReadings:
     """Every reading for one week that holds a plan."""
+    outstanding_dates = unconfirmed_dates(document, span=span, confirmed=confirmed, now=now)
     return WeekReadings(
         scheduled_minutes=scheduled_minutes(document, span),
         discretionary_minutes=report.discretionary_minutes,
         unallocated_minutes=report.unallocated_minutes,
         oversubscription_minutes=report.oversubscription_minutes,
-        unconfirmed_days=unconfirmed_days(document, span=span, confirmed=confirmed, now=now),
+        unconfirmed_days=len(outstanding_dates),
+        unconfirmed_dates=outstanding_dates,
         off_plan_minutes=off_plan.minutes,
         block_count=len(document.blocks),
         dropped_legs=sum(
@@ -99,9 +102,9 @@ def scheduled_minutes(document: PlanDocument, span: Interval) -> int:
     return IntervalSet(block.interval for block in document.blocks).clip(span).total_minutes()
 
 
-def unconfirmed_days(
+def unconfirmed_dates(
     document: PlanDocument, *, span: Interval, confirmed: Collection[Date], now: datetime
-) -> int:
+) -> tuple[Date, ...]:
     """The week's ended days that hold a block and that the user has not confirmed.
 
     The days are bounded by the document's own zone mapping, so a date is as long as it really was:
@@ -115,10 +118,17 @@ def unconfirmed_days(
     run forward, so the disagreement costs a day rather than a fault, and charging the figure to the
     day the grid draws is the reading a person can check.
     """
-    return sum(
-        1
+    return tuple(
+        day.on
         for day in local_days(document.iso_week, document.zone_by_date, span)
         if day.interval.end <= now
         and day.on not in confirmed
         and any(block.interval.overlaps(day.interval) for block in document.blocks)
     )
+
+
+def unconfirmed_days(
+    document: PlanDocument, *, span: Interval, confirmed: Collection[Date], now: datetime
+) -> int:
+    """How many days ``unconfirmed_dates`` returns."""
+    return len(unconfirmed_dates(document, span=span, confirmed=confirmed, now=now))

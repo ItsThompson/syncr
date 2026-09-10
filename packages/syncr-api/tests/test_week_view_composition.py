@@ -34,7 +34,12 @@ from syncr_api.plans.emptiness import (
 )
 from syncr_api.plans.errors import SlotContextRejected
 from syncr_api.plans.readiness import MissingInput, PlanReadiness
-from syncr_api.plans.readings import scheduled_minutes, unconfirmed_days, week_readings
+from syncr_api.plans.readings import (
+    scheduled_minutes,
+    unconfirmed_dates,
+    unconfirmed_days,
+    week_readings,
+)
 from syncr_api.plans.schemas import WeekViewResponse
 from syncr_api.plans.slot_contexts import slot_context
 from syncr_api.plans.stored_reasons import CLAUSE_KIND
@@ -214,6 +219,24 @@ def test_a_confirmed_day_is_not_counted() -> None:
     )
 
     assert counted == 4
+
+
+def test_unconfirmed_dates_name_only_ended_days_with_blocks_that_are_not_confirmed() -> None:
+    document = a_document(
+        blocks=tuple(
+            a_block(interval=between(9, 10, day=day), binding=a_block(week=WEEK).binding)
+            for day in (0, 1, 2, 4)
+        )
+    )
+
+    dates = unconfirmed_dates(
+        document,
+        span=WEEK_SPAN,
+        confirmed=(WEEK.dates()[1],),
+        now=at(12, day=3),
+    )
+
+    assert dates == (WEEK.dates()[0], WEEK.dates()[2])
 
 
 def test_a_day_holding_no_block_has_nothing_to_confirm() -> None:
@@ -885,6 +908,7 @@ SECTION_13_READINGS = frozenset(
         "unallocatedMinutes",
         "oversubscriptionMinutes",
         "unconfirmedDays",
+        "unconfirmedDates",
         "offPlanMinutes",
         "blockCount",
         "droppedLegs",

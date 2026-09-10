@@ -81,6 +81,10 @@ class WeekReadingsResponse(WireModel):
         description="Days of this week that have ended, hold at least one block, and have not "
         "been confirmed. A day still ahead cannot be confirmed and is not counted."
     )
+    unconfirmed_dates: list[date] = Field(
+        description="The dates counted by unconfirmedDays, in week order. The grid marks these "
+        "days without recreating the confirmation rule from a total."
+    )
     off_plan_minutes: int = Field(
         description="How many of the week's minutes were declared off-plan. Already subtracted "
         "from discretionaryMinutes, so this explains the denominator rather than reducing it "
@@ -106,6 +110,7 @@ class WeekReadingsResponse(WireModel):
             unallocated_minutes=readings.unallocated_minutes,
             oversubscription_minutes=readings.oversubscription_minutes,
             unconfirmed_days=readings.unconfirmed_days,
+            unconfirmed_dates=list(readings.unconfirmed_dates),
             off_plan_minutes=readings.off_plan_minutes,
             block_count=readings.block_count,
             dropped_legs=readings.dropped_legs,
