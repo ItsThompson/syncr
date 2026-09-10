@@ -27,6 +27,16 @@
   pointer-events: none;
 }
 
+/* The label is a sibling of the band, not its child. A child cannot rise above its underlay
+   stacking context, so a block covering a labelled gap would intercept its control. */
+.week-band__label-anchor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: var(--z-content);
+  pointer-events: none;
+}
+
 /* The gutter label knocks out its own background for the same reason the hour label does: a hatch behind
    uppercase micro-type at --fs-eyebrow reads as a smudge rather than as a word. */
 .week-band__label {

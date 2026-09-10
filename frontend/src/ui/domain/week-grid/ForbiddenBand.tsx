@@ -39,11 +39,16 @@ const PLACES = 3;
 
 export function ForbiddenBand({ topPx, heightPx, label, onActivate }: ForbiddenBandProps) {
   return (
-    <div
-      className="week-band"
-      style={{ top: `${topPx.toFixed(PLACES)}px`, height: `${heightPx.toFixed(PLACES)}px` }}
-    >
-      {label === null ? null : <BandLabel label={label} onActivate={onActivate} />}
-    </div>
+    <>
+      <div
+        className="week-band"
+        style={{ top: `${topPx.toFixed(PLACES)}px`, height: `${heightPx.toFixed(PLACES)}px` }}
+      />
+      {label === null ? null : (
+        <div className="week-band__label-anchor" style={{ top: `${topPx.toFixed(PLACES)}px` }}>
+          <BandLabel label={label} onActivate={onActivate} />
+        </div>
+      )}
+    </>
   );
 }

@@ -68,12 +68,12 @@ const TITLE = "Ride the turbo trainer";
  * THE BAND IS FOUND BY ITS CLASS RATHER THAN BY BEING THE PARENT, so this reads what the assertion's name says: a
  * wrapper element between the two would otherwise make the pair pass while measuring the wrapper. */
 const LABELS_AND_THEIR_POINTER_POLICY = `[...document.querySelectorAll('.week-band__label')].map((label) => {
-  const band = label.closest('.week-band');
+  const anchor = label.closest('.week-band__label-anchor');
   return {
     isControl: label.tagName.toLowerCase() === 'button',
     wording: label.textContent,
     onTheLabel: getComputedStyle(label).pointerEvents,
-    onTheBand: band === null ? 'no band' : getComputedStyle(band).pointerEvents,
+    onTheAnchor: anchor === null ? 'no anchor' : getComputedStyle(anchor).pointerEvents,
   };
 })`;
 
@@ -81,7 +81,7 @@ interface PointerPolicy {
   readonly isControl: boolean;
   readonly wording: string;
   readonly onTheLabel: string;
-  readonly onTheBand: string;
+  readonly onTheAnchor: string;
 }
 
 const minutesOf = (interval: EmptySlot["interval"]): number =>
@@ -128,7 +128,7 @@ test("S17 a gutter label drawn as a control takes the pointer, and the band hold
   /* THE PAIR. The band takes no pointer and the control inside it takes one, so the words are pressable and the
    * hatch beside them is not. */
   expect(controls.filter((each) => each.onTheLabel === "none")).toEqual([]);
-  expect(controls.filter((each) => each.onTheBand !== "none")).toEqual([]);
+  expect(controls.filter((each) => each.onTheAnchor !== "none")).toEqual([]);
 
   /* AND THE POLICY HAS THE EFFECT IT CLAIMS, which a computed string does not prove: Playwright's trial click runs
    * every check a real click runs, including whether the element receives the pointer, and acts on nothing.

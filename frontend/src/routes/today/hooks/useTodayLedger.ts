@@ -26,6 +26,7 @@ import { useState } from "react";
 import { useKeyBinding } from "../../../lib/keyboard";
 import { useAreas, type Areas } from "../../../api/hooks/useAreas";
 import { useCalendarSources } from "../../../api/hooks/useCalendarSources";
+import { useSettings } from "../../../api/hooks/useSettings";
 import {
   useBackfill,
   useDay,
@@ -40,7 +41,7 @@ import {
 import { readingOf, type Reading } from "../../reading";
 import { backfillRange } from "../backfill";
 import { bodyFor, movedFormFor, partialFormFor, stateBody } from "../drafts";
-import { hostDateOf } from "../instants";
+import { todayIn } from "../../../lib/zonedInstant";
 import { isoWeekOf } from "../isoWeek";
 import type { Problem } from "../../../contract";
 import type { WireNotice } from "../../../ui/domain";
@@ -92,7 +93,9 @@ export interface TodayLedger {
 const NO_SOURCE_NOTICES: readonly WireNotice[] = [];
 
 export function useTodayLedger(): TodayLedger {
-  const [date] = useState(() => hostDateOf(new Date()));
+  const settings = useSettings();
+  const zone = settings.status === "ready" ? settings.data.activeZone : "UTC";
+  const date = todayIn(zone, Date.now());
   const [form, setForm] = useState<OutcomeForm | null>(null);
   const [currentBlockId, setCurrentBlockId] = useState<string | null>(null);
 

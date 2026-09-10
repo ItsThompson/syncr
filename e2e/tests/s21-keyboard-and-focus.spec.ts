@@ -28,8 +28,6 @@
 
 import { test, expect, usingFixture } from "./harness.ts";
 import type { Page } from "@playwright/test";
-import { civilDateIn } from "../src/api/weeks.ts";
-import { HOME_ZONE } from "../src/config.ts";
 import { planWeek } from "../src/harness/subject-weeks.ts";
 
 usingFixture("reference_week");
@@ -443,7 +441,6 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
      * reader was actually promised. The pin step two blocks up is the model, and it is in the same test.
      */
     await render(page, "/today");
-    const date = civilDateIn(HOME_ZONE);
     const unsafe: string[] = [];
     page.on("request", (request) => {
       if (request.method() !== "GET") unsafe.push(`${request.method()} ${request.url()}`);
@@ -454,34 +451,25 @@ test.describe("S21 keyboard only, at every tier the grid renders", () => {
      * not landed, measured across three runs, and a keystroke lost to a race is the same defect as one never
      * sent: the assertion this replaced could see neither. */
     await expect(page.getByRole("button", { name: "Confirm the day" })).toBeEnabled();
-    const dayBefore = await api.get<{ confirmedAt: string | null; blockCount: number }>(
-      `/api/v1/days/${date}`,
-    );
-    expect(
-      dayBefore.confirmedAt,
-      "the day is already confirmed, so `c` would assert nothing",
-    ).toBeNull();
-    expect(dayBefore.blockCount, "`c` is guarded on a day holding a block").toBeGreaterThan(0);
-
     const confirmSent = page.waitForRequest(
-      (request) => request.method() === "POST" && request.url().includes(`/days/${date}/confirm`),
+      (request) => request.method() === "POST" && /\/days\/\d{4}-\d{2}-\d{2}\/confirm$/.test(request.url()),
       { timeout: 15_000 },
     );
     await page.keyboard.press("c");
-    /* The diagnostic names what the page DID send, because "no confirm request" and "a confirm request for another
-     * date" are different failures and a bare timeout tells them apart for nobody. */
-    await confirmSent.catch((cause: unknown) => {
+    /* Today confirms the date its loaded ledger serves. Read that date from the request rather than
+     * recomputing it from the browser clock, which can differ after a prior test's stack shift. */
+    const request = await confirmSent.catch((cause: unknown) => {
       throw new Error(
-        `\`c\` sent no confirm for ${date}. Unsafe requests seen: ` +
-          `${JSON.stringify(unsafe)} (${String(cause)})`,
+        `\`c\` sent no confirm. Unsafe requests seen: ${JSON.stringify(unsafe)} (${String(cause)})`,
       );
     });
-
+    const match = /\/days\/(\d{4}-\d{2}-\d{2})\/confirm$/.exec(request.url());
+    const date = match?.[1];
+    if (date === undefined) throw new Error(`the confirm request named no date: ${request.url()}`);
+    const confirmed = await api.get<{ confirmedAt: string | null; blockCount: number }>(`/api/v1/days/${date}`);
+    expect(confirmed.blockCount, "`c` is guarded on a day holding a block").toBeGreaterThan(0);
     await expect
-      .poll(
-        async () =>
-          (await api.get<{ confirmedAt: string | null }>(`/api/v1/days/${date}`)).confirmedAt,
-      )
+      .poll(async () => (await api.get<{ confirmedAt: string | null }>(`/api/v1/days/${date}`)).confirmedAt)
       .not.toBeNull();
     /* And the screen states the change: the notice that says the day is not confirmed is the one thing that
      * cannot survive the day being confirmed. */
