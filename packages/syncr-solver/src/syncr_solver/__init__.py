@@ -13,6 +13,7 @@ directory in both directions, because an index a reader cannot trust is worse th
 |---|---|
 | ``inputs.py`` | ``SolveInputs`` and its member types: everything a solve reads, resolved |
 | ``churn_baseline.py`` | the approved plan baseline and the pairing its reason requires |
+| ``resolved_content.py`` | resolved content and immovable facts carried by ``SolveInputs`` |
 | ``materialize.py`` | phase 1, what is placed unchecked, and the order candidates take |
 | ``derivation.py`` | one block per determined placement, and one empty slot per Area slot |
 | ``clauses.py`` | the ``bound`` clause a derived block carries, and the labels it renders |

@@ -112,6 +112,9 @@ def test_the_concession_a_week_was_solved_under_is_carried_as_a_resolved_value()
 
     assert carried.adjustments == (concession,)
     assert isinstance(carried.adjustments[0], WeekAdjustment)
-    assert importlib.import_module(WeekAdjustment.__module__).__name__ == "syncr_solver.inputs"
+    assert (
+        importlib.import_module(WeekAdjustment.__module__).__name__
+        == "syncr_solver.resolved_content"
+    )
     # And a week nobody conceded anything for carries none, so the field is not required to solve.
     assert a_week().adjustments == ()
