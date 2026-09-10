@@ -1,6 +1,4 @@
-"""Read Google calendars without raising for provider failures.
-A delta stays a delta until the anchor writer applies it.
-"""
+"""Read Google calendars without raising; a delta stays a delta until reconciliation."""
 
 from __future__ import annotations
 
@@ -54,9 +52,7 @@ DELTA_OVER_MAX_PAGES: Final = (
 
 
 class GoogleReadAdapter:
-    """Read a Google calendar or list an account's calendars, with recorded failures.
-    No method raises for a provider response, so sibling sources keep polling.
-    """
+    """Read calendars and record provider failures so sibling sources keep polling."""
 
     def __init__(
         self,
@@ -73,7 +69,6 @@ class GoogleReadAdapter:
 
     @measured("google_adapter")
     async def list_calendars(self) -> CalendarsAnswer:
-        """List calendars for setup, returning a failure value rather than raising it."""
         answer = await self._client.list_calendars()
         if isinstance(answer, CalendarsRead):
             _log.info(
@@ -87,7 +82,6 @@ class GoogleReadAdapter:
 
     @measured("google_adapter")
     async def fetch(self, source: CalendarSourceRecord) -> GoogleFetch:
-        """Read one source incrementally when it holds a Google cursor, otherwise read it fully."""
         at = self._clock()
         held = sync_token_of(source.sync_state.cursor)
         if held is None:
@@ -97,7 +91,6 @@ class GoogleReadAdapter:
     async def read_changes(
         self, source: CalendarSourceRecord, *, since: str, at: datetime
     ) -> GoogleFetch:
-        """Read a delta without treating absent events as removals."""
         answer = await self._client.list_events(
             source.external_id, sync_token=since, window=self._horizon
         )
@@ -179,10 +172,15 @@ class GoogleReadAdapter:
         )
 
     def _failed(
-        self, source: CalendarSourceRecord, answer: GoogleReadFailed, *, at: datetime
+        self,
+        source: CalendarSourceRecord,
+        answer: GoogleReadFailed,
+        *,
+        at: datetime,
+        event: str = "calendars.google.unreachable",
     ) -> GoogleFetch:
         _log.warning(
-            "calendars.google.unreachable",
+            event,
             **_identity(source),
             attempt_count=answer.attempts,
             rate_limited=answer.rate_limited,
@@ -198,7 +196,7 @@ class GoogleReadAdapter:
     def _bounded_delta_failure(
         self, source: CalendarSourceRecord, answer: GoogleReadFailed, *, at: datetime
     ) -> GoogleFetch:
-        state = self._failed(source, answer, at=at)[1]
+        state = self._failed(source, answer, at=at, event="calendars.google.delta_unbounded")[1]
         return FetchOutcome(), replace(state, cursor=None, resync_reason=DELTA_OVER_MAX_PAGES)
 
     def _stated(self, answer: GoogleReadFailed, *, at: datetime) -> str:

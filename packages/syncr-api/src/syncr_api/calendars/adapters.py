@@ -3,8 +3,8 @@
 The syncer's job is to make one attempt on one source and record what it did. WHICH provider that
 source belongs to is a wiring decision, so the requirement is declared here as a protocol and each
 provider's module implements it: :class:`~syncr_api.calendars.ics_adapter.IcsAdapter` for a feed,
-:class:`~syncr_api.calendars.google_adapter.GoogleAdapter` for a Google calendar. Composition puts
-the two together, in ``injection.py`` for a request and ``runner.py`` for a worker tick.
+:class:`~syncr_api.calendars.google_read_adapter.GoogleReadAdapter` for a Google calendar.
+Composition uses ``injection.py`` for requests and ``runner.py`` for worker ticks.
 
 **One method, and it does not raise.** A worker tick polling five sources must not lose four because
 one publisher is down or one calendar was deleted, so every failure comes back as a recorded attempt

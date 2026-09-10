@@ -735,7 +735,9 @@ async def test_a_failed_read_retains_the_anchors_the_cursor_and_the_last_success
     assert RETAINED_NOTICE in state.last_error
 
 
-async def test_a_delta_over_max_pages_does_not_retain_the_cursor() -> None:
+async def test_a_delta_over_max_pages_does_not_retain_the_cursor(
+    rendered_lines: io.StringIO,
+) -> None:
     # A delta that exceeds the page bound did not finish, so the cursor that produced it cannot
     # claim the read completed. Retaining it would make the next poll re-page through the same
     # bound and never finish; dropping it costs one full read instead, and the source's
@@ -762,6 +764,8 @@ async def test_a_delta_over_max_pages_does_not_retain_the_cursor() -> None:
     assert state.last_success_at == EARLIER
     assert state.anchors_current == held.anchors_current
     assert state.attempts == MAX_PAGES
+    line = one_line(rendered_lines, "calendars.google.delta_unbounded")
+    assert line["attempt_count"] == MAX_PAGES
 
 
 async def test_a_rate_limited_read_states_that_it_backed_off_and_when_it_will_try_again() -> None:

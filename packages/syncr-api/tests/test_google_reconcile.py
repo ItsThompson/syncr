@@ -37,12 +37,14 @@ product, because the token source records the expiry where it discovers it.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 import httpx
 import pytest
 
+from syncr_api.calendars import injection as calendar_injection
 from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
 from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import GoogleCalendarClient
@@ -60,6 +62,7 @@ from syncr_api.calendars.google_writes import (
     HttpxGoogleWriteTransport,
     create_google_write_client,
 )
+from syncr_api.calendars.injection import build_write_target_adapter
 from syncr_api.calendars.projection import ProjectedEvent
 from syncr_api.calendars.projection_errors import (
     PREVIOUS_PROJECTION_STANDS,
@@ -89,8 +92,11 @@ from tests.fake_google import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from syncr_api.calendars.google_events import EventWriting
     from syncr_api.calendars.google_transport import GoogleResponse
+    from syncr_api.core.settings import ServiceSettings
 
 NOW = datetime(2026, 2, 9, 9, tzinfo=UTC)
 HORIZON = Interval(NOW, NOW + timedelta(days=14))
@@ -189,6 +195,36 @@ def projecting(
     """An adapter reading a target that holds ``held``, with a recording write transport."""
     written = RecordedGoogleWrites(**transport_options)  # type: ignore[arg-type]
     return an_adapter([ok(events_page(*held))], a_writer(written)), written
+
+
+async def test_the_write_target_factory_returns_an_adapter_that_can_reconcile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def response(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=events_page())
+
+    monkeypatch.setattr(calendar_injection, "build_access_tokens", lambda *_args: FixedTokens())
+    settings = cast(
+        "ServiceSettings",
+        SimpleNamespace(google_oauth_client_id="client-id", google_projection_writes=True),
+    )
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(response)) as reads,
+        httpx.AsyncClient(transport=httpx.MockTransport(response)) as writes,
+    ):
+        adapter = build_write_target_adapter(
+            settings,
+            cast("AsyncSession", object()),
+            TARGET.tenant_id,
+            reads=reads,
+            writes=writes,
+            profile=LONDON,
+            horizon=HORIZON,
+        )
+        result = await adapter.reconcile(TARGET, [])
+
+    assert isinstance(adapter, GoogleAdapter)
+    assert result.written == 0
 
 
 # --------------------------------------------------------------------------------
