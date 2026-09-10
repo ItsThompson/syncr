@@ -44,7 +44,6 @@ import httpx
 import pytest
 
 from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
-from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import GoogleCalendarClient
 from syncr_api.calendars.google_config import MAX_PAGE_BYTES, WRITE_DEADLINE_SECONDS
@@ -56,6 +55,7 @@ from syncr_api.calendars.google_events import (
     GoogleEventWriter,
     WritesUnavailable,
 )
+from syncr_api.calendars.google_write_adapter import GoogleWriteTargetAdapter as GoogleAdapter
 from syncr_api.calendars.google_writes import (
     HttpxGoogleWriteTransport,
     create_google_write_client,
@@ -178,7 +178,6 @@ def an_adapter(
         ),
         profile=LONDON,
         horizon=HORIZON,
-        clock=lambda: NOW,
         writes=writes,
         write_deadline_seconds=write_deadline_seconds,
     )
@@ -203,7 +202,6 @@ async def test_a_deployment_that_will_not_write_refuses_before_reading_anything(
         client=GoogleCalendarClient(transport=reads, tokens=FixedTokens()),
         profile=LONDON,
         horizon=HORIZON,
-        clock=lambda: NOW,
         writes=WritesUnavailable(reason="writing is switched off in this deployment."),
     )
 

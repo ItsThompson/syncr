@@ -41,7 +41,6 @@ from uuid import uuid4
 import pytest
 
 from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
-from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_client import CalendarsRead, EventsRead, GoogleCalendarClient
 from syncr_api.calendars.google_config import (
     PROJECTION_BUDGET_SECONDS,
@@ -57,6 +56,7 @@ from syncr_api.calendars.google_events import (
 from syncr_api.calendars.google_payloads import GoogleErrorPayload
 from syncr_api.calendars.google_transport import HttpxGoogleTransport, create_google_read_client
 from syncr_api.calendars.google_values import ReadSpan, read_span
+from syncr_api.calendars.google_write_adapter import GoogleWriteTargetAdapter as GoogleAdapter
 from syncr_api.calendars.google_writes import (
     HttpxGoogleWriteTransport,
     create_google_write_client,
@@ -575,7 +575,6 @@ async def test_one_destructive_reconciliation_against_the_development_calendar(
         client=live_client,
         profile=ZoneProfile(home_zone="Europe/London"),
         horizon=window,
-        clock=utc_now,
         writes=live_writer,
     )
     intended = an_intended_event(

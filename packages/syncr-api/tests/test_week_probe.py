@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from syncr_api.plans.netting import placements
 from syncr_api.plans.verdicts import PROBE_DURATION, ProbeCaller, WeekProbe
@@ -35,10 +35,10 @@ from syncr_domain.feasibility import Provenance, ShortfallKind, probe
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import IntervalSet
 from syncr_domain.plan import AdjustmentKind
-from syncr_solver.inputs import WeekAdjustment
 from tests.assembly_fakes import (
     NOW,
     WEEK,
+    FakeAdjustments,
     FakeAreas,
     FakeOffPlan,
     FakePlacements,
@@ -49,6 +49,7 @@ from tests.assembly_fakes import (
     a_routine,
     a_task,
     a_task_block,
+    an_adjustment,
     an_area,
     an_assembler,
     an_off_plan_period,
@@ -297,46 +298,48 @@ async def test_a_verdict_carries_the_version_and_the_instant_its_assembly_was_bu
     assert verdict.input_version == inputs.input_version
 
 
-async def test_a_routine_reduction_raises_every_area_target_from_the_folded_frame() -> None:
-    # 120 minutes a day off an eight-hour Sleep routine over seven nights. Six shortened nights
-    # affect this week's span because Sunday's reduction falls after the week's end.
+async def test_a_routine_reduction_frees_capacity_the_area_targets_were_not_taken_over() -> None:
+    # A measurement rather than a rule, and which of the two figures is right is open.
+    #
+    # The assembler takes the week's denominator over the frame BEFORE the concessions are folded,
+    # and the snapshot carries the frame after. So a reduce_routine concession frees minutes the
+    # probe reports as discretionary and no Area's target was computed over. Both figures are
+    # asserted here, so whoever settles it has the number and the direction rather than an
+    # argument, and so a change to either side is visible.
+    #
+    # 120 minutes a day off an eight-hour Sleep routine over seven days: 840 minutes.
     sleep = a_routine(
         duration_minutes=8 * MINUTES_PER_HOUR, min_duration_minutes=6 * MINUTES_PER_HOUR
     )
-    reductions = dict.fromkeys(WEEK.dates(), 2 * MINUTES_PER_HOUR)
-    fitness = an_area(name="Fitness", budget_percent=Decimal(25))
-    career = an_area(name="Career", budget_percent=Decimal(75))
-    assembler = an_assembler(routines=FakeRoutines([sleep]), areas=FakeAreas([fitness, career]))
+    reductions = {date.isoformat(): 2 * MINUTES_PER_HOUR for date in WEEK.dates()}
+    fitness = an_area(name="Fitness", budget_percent=Decimal(100))
 
-    before = await assembler.assemble(WEEK, NOW)
-    after = await assembler.assemble(
-        WEEK,
-        NOW,
-        WeekAdjustment(
-            adjustment_id=uuid4(),
-            kind=AdjustmentKind.REDUCE_ROUTINE,
-            target_id=sleep.id,
-            reductions=reductions,
+    inputs = await an_assembly(
+        routines=FakeRoutines([sleep]),
+        areas=FakeAreas([fitness]),
+        adjustments=FakeAdjustments(
+            [
+                an_adjustment(
+                    kind=AdjustmentKind.REDUCE_ROUTINE.value,
+                    target_id=sleep.id,
+                    reductions=reductions,
+                )
+            ]
         ),
     )
-    verdict = probe(after.for_probe())
+    verdict = probe(inputs.for_probe())
 
-    # The snapshot carries 49 hours of frame occupancy, so its denominator is 124 hours.
-    # Each Area's target uses that same denominator rather than the 112 hours before folding.
-    assert after.frame_occupancy().total_minutes() == 49 * MINUTES_PER_HOUR
+    # 2h off each of the week's seven nights, of which six fall inside the span: the seventh night's
+    # reduction lands on the Monday after it, which this week does not hold.
+    #
+    #   the frame it carries      7 x 6h, plus 7h inherited from the week before = 49h,
+    #                             of which 5h reach past the span's end
+    #   inside the span           44h, so the probe's denominator is 168h - 44h = 124h
+    #   unreduced, inside         56h, so every target was taken over 168h - 56h = 112h
+    assert inputs.frame_occupancy().total_minutes() == 49 * MINUTES_PER_HOUR
     assert verdict.discretionary_minutes == 124 * MINUTES_PER_HOUR
-    assert {area.name: area.target_minutes for area in before.areas} == {
-        "Fitness": 28 * MINUTES_PER_HOUR,
-        "Career": 84 * MINUTES_PER_HOUR,
-    }
-    assert {area.name: area.target_minutes for area in after.areas} == {
-        "Fitness": 31 * MINUTES_PER_HOUR,
-        "Career": 93 * MINUTES_PER_HOUR,
-    }
-    assert all(
-        after_area.target_minutes > before_area.target_minutes
-        for before_area, after_area in zip(before.areas, after.areas, strict=True)
-    )
+    assert inputs.areas[0].target_minutes == 112 * MINUTES_PER_HOUR
+    assert verdict.discretionary_minutes - inputs.areas[0].target_minutes == 12 * MINUTES_PER_HOUR
 
 
 async def test_a_probe_observes_its_duration_under_its_own_callers_label() -> None:

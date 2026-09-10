@@ -72,7 +72,7 @@ _RDATE_BODIES: dict[str, tuple[tuple[tuple[str, str], ...], tuple[str, ...]]] = 
 # them, and one entry per rejection kind the corpus reaches.
 _PRODUCING_BODIES = 34
 _SPANS = 2126
-_REJECTION_KINDS = {MALFORMED_VALUE: 62, UNPARSEABLE_RECURRENCE: 128}
+_REJECTION_KINDS = {MALFORMED_VALUE: 62, UNPARSEABLE_RECURRENCE: 116}
 
 
 @pytest.mark.parametrize("label", sorted(_RDATE_BODIES))

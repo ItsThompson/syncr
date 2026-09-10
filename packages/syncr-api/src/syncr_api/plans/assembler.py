@@ -7,7 +7,7 @@ lookup, derives no domain projection, and reads no clock, so it is testable agai
 
 ## The pipeline, and the count that is load-bearing
 
-**Nineteen resolutions over twenty-one repository reads.** The figure is stated once, here, and the
+**Eighteen resolutions over twenty-one repository reads.** The figure is stated once, here, and the
 bullets below are counted to match it, because a latency budget and an alert are calibrated to
 it: an assembly is budgeted at p95 under 100 ms against reads on a warm cache, and the assembly
 histogram's alert is read against that budget. **The budget and the alert were both set against a
@@ -42,20 +42,16 @@ assemble(iso_week, now, extra_adjustment=None)
   │     nothing in it, and suppress the BLOCKS a declared off-plan span covers
   ├── collect eligible tasks, netting recorded minutes and IMMOVABLE placements only
   ├── compute the demand per deadline, netting EVERY placement falling before it
-  ├── compute per-Area floor minutes, floor reservations, and daily caps
+  ├── compute per-Area floor minutes, floor reservations, gross targets, and daily caps
   ├── FOLD approved concessions, plus a candidate when one is being evaluated,
-  │     as a POST-PASS over the resolved quantities above that they modify
-  ├── compute gross Area targets from the FOLDED frame, so each target uses the denominator a
-  │     reader recomputes from the snapshot
+  │     as a POST-PASS over the six resolved quantities above that they modify
   └── resolve preferences down the Area to Habit or Task override chain, windows to instants,
         over the FOLDED eligibility, so a dropped task's window goes with it
 ```
 
-**Folding is a post-pass, and the two resolutions after it read its output.** Every quantity that
-does not depend on the final frame is resolved before the fold runs, so a reader asking what a
-concession touches reads one function rather than tracing a pipeline. Gross Area targets follow it
-because a routine reduction changes the frame's occupancy: computing their denominator beside the
-other resolutions would make targets disagree with the snapshot. Preferences also follow it,
+**Folding is a post-pass, and the one resolution after it reads its output.** Every quantity a
+concession changes is resolved before the fold runs, so a reader asking what a concession touches
+reads one function rather than tracing a pipeline. Preferences follow rather than precede it,
 because a window resolved for a task this week will not schedule is a window with no consumer.
 
 A candidate concession being evaluated is an argument rather than a table read, which is what keeps
@@ -94,7 +90,7 @@ from syncr_api.plans.calendar_occupancy import calendar_occupancy, typed_anchors
 from syncr_api.plans.candidates import reductions_of
 from syncr_api.plans.demand import deadline_demands, eligible_tasks, task_demands
 from syncr_api.plans.errors import StoredDocumentCorrupt
-from syncr_api.plans.folding import Concessions, fold, fold_frame
+from syncr_api.plans.folding import Concessions, fold
 from syncr_api.plans.materialization import (
     OffPlanSuppression,
     frame_entries,
@@ -160,7 +156,7 @@ _log = get_logger("syncr.plans")
 
 # How many resolutions the pipeline above performs, stated once so the docstring, the alert, and
 # the latency budget read one figure. `test_week_assembler.py` counts the bullets against it.
-RESOLUTION_COUNT = 19
+RESOLUTION_COUNT = 18
 
 # How many repository reads one assembly performs. The dominant cost of every request that
 # returns a live verdict, which is what the assembly histogram exists to make visible. Twenty-one
@@ -382,10 +378,6 @@ class WeekAssembler:
             ),
             now=now,
         )
-        adjustments = _adjustments(
-            await self._adjustments.for_week(iso_week), extra_adjustment, dates=dates
-        )
-        folded_frame = fold_frame(adjustments, frame)
         resolved = Concessions(
             frame=frame,
             eligible_tasks=eligible_tasks(tasks, placed=placed, multipliers=multipliers),
@@ -394,7 +386,7 @@ class WeekAssembler:
                 declared_areas,
                 discretionary_minutes=_discretionary_minutes(
                     span,
-                    frame=folded_frame,
+                    frame=frame,
                     inherited=inherited,
                     calendar=calendar,
                     off_plan=off_plan,
@@ -402,6 +394,10 @@ class WeekAssembler:
                 placed=placed,
                 caps=area_caps(stored_preferences),
             ),
+        )
+
+        adjustments = _adjustments(
+            await self._adjustments.for_week(iso_week), extra_adjustment, dates=dates
         )
         folded = fold(adjustments, resolved)
 

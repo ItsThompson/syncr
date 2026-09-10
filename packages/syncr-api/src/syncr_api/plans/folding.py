@@ -27,9 +27,8 @@ excused, because deadline risk reads the eligibility and not the demand.
 one, a reader sees the declaration drift from the resolved constraint or the probe reports the
 same gap after the user approves the breach.
 
-``reduce_routine`` shortens the frame occurrence on each named date. The shortened frame also
-sets every Area's gross target, because each target is a share of the discretionary minutes left
-by the frame the snapshot carries.
+``reduce_routine`` shortens the frame occurrence on each named date, and nothing further. The
+frame is one field.
 
 A concession is unique per week, kind, and target, which the storage index enforces, so approving it
 twice does not apply it twice. That covers stored rows only: a candidate being evaluated is an
@@ -98,7 +97,7 @@ class Concessions:
 # will schedule this week needs no window.
 FOLDED_FIELDS: Final[Mapping[AdjustmentKind, frozenset[str]]] = {
     AdjustmentKind.DROP_ITEM: frozenset({"eligible_tasks", "deadline_demands", "preferences"}),
-    AdjustmentKind.REDUCE_ROUTINE: frozenset({"frame.interval", "areas.target_minutes"}),
+    AdjustmentKind.REDUCE_ROUTINE: frozenset({"frame.interval"}),
     AdjustmentKind.BREACH_FLOOR: frozenset(
         {
             "areas.declared_floor_minutes",
@@ -108,16 +107,6 @@ FOLDED_FIELDS: Final[Mapping[AdjustmentKind, frozenset[str]]] = {
     ),
     AdjustmentKind.ACCEPT_PARTIAL: frozenset({"eligible_tasks.deadline", "deadline_demands"}),
 }
-
-
-def fold_frame(
-    adjustments: Sequence[WeekAdjustment], frame: tuple[FrameEntry, ...]
-) -> tuple[FrameEntry, ...]:
-    """The frame after approved routine reductions, before dependent figures resolve."""
-    return fold(
-        adjustments,
-        Concessions(frame=frame, eligible_tasks=(), demands=(), areas=()),
-    ).frame
 
 
 def fold(adjustments: Sequence[WeekAdjustment], into: Concessions) -> Concessions:

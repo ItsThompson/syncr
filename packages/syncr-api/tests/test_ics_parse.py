@@ -316,16 +316,9 @@ def test_a_runaway_recurrence_is_rejected_rather_than_expanded() -> None:
     ids=["zero", "padded zero", "negative", "a large negative", "fractional", "empty"],
 )
 def test_an_interval_that_is_not_a_positive_number_is_refused_by_name(interval: str) -> None:
-    # An exporter's sign slip, not a hostile body. Two different faults sit behind this one guard,
-    # and neither is answered by anything downstream:
-    #
-    # A NEGATIVE interval is accepted when the rule is built and raises during ITERATION, inside
-    # dateutil, where `ValueError` is neither a rejection nor unrepresentable, so it escaped the
-    # adapter with no sync state written.
-    #
-    # A ZERO interval never terminates. dateutil advances by the interval, so the rule never reaches
-    # a new value, and a bound counting the occurrences a rule YIELDS can never fire. That holds a
-    # worker tick and its transaction open rather than aborting them, which is worse than a raise.
+    # An exporter's sign slip, not a hostile body. A zero interval reaches the external deadline,
+    # but a negative interval raises during dateutil iteration without naming the rule or feed. The
+    # local refusal keeps both failures attributed to the stated value.
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:iv@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
@@ -336,7 +329,9 @@ def test_an_interval_that_is_not_a_positive_number_is_refused_by_name(interval: 
 
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
-    assert "positive number of periods" in outcome.rejected[0].detail
+    detail = outcome.rejected[0].detail
+    assert "positive number of periods" in detail
+    assert repr(interval) in detail
 
 
 @pytest.mark.parametrize(
@@ -1699,33 +1694,16 @@ def test_a_separator_in_a_set_member_reads_as_the_number_dateutil_reads() -> Non
 
 
 @pytest.mark.parametrize(
-    "rule",
+    ("rule", "property_name"),
     [
-        # A value outside the range RFC 5545 gives its property can never match, so the rule yields
-        # nothing while the expander walks looking for it. One of these did not return in twenty
-        # minutes.
-        "FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2",
-        "FREQ=MINUTELY;BYMONTH=13",
-        "FREQ=SECONDLY;BYHOUR=24",
-        "FREQ=DAILY;BYYEARDAY=400",
-        "FREQ=DAILY;BYWEEKNO=54",
-        # RFC 5545 gives a signed form to four properties and not to these, so comparing a magnitude
-        # admitted the negative of an unsigned one. BYMONTH=-1 is two characters, and -1 is the
-        # CORRECT idiom on the four that do count backwards, so copying it across is one slip.
-        "FREQ=SECONDLY;BYMONTH=-1;BYHOUR=2",
-        "FREQ=SECONDLY;BYHOUR=-1",
-        "FREQ=SECONDLY;BYMINUTE=-1",
-        # Zero is outside every one of these ranges, and dateutil accepts BYMONTHDAY=0.
-        "FREQ=MONTHLY;BYMONTHDAY=0",
-        "FREQ=DAILY;BYWEEKNO=0",
-        # A magnitude wider than the eleven significant digits syncr will ACT on. Routing the range
-        # check through that predicate made it skip exactly the values most obviously out of range.
-        "FREQ=SECONDLY;BYMONTHDAY=999999999999;BYHOUR=2",
-        "FREQ=SECONDLY;BYYEARDAY=999999999999;BYHOUR=2",
-        "FREQ=SECONDLY;BYWEEKNO=0000000000999999999999;BYHOUR=2",
+        ("FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2", "BYMONTHDAY"),
+        ("FREQ=SECONDLY;BYHOUR=24", "BYHOUR"),
+        ("FREQ=SECONDLY;BYMINUTE=-1", "BYMINUTE"),
+        ("FREQ=SECONDLY;BYSECOND=61", "BYSECOND"),
+        ("FREQ=SECONDLY;BYSETPOS=367", "BYSETPOS"),
     ],
 )
-def test_a_rule_that_can_never_match_is_refused_rather_than_walked(rule: str) -> None:
+def test_a_range_refusal_names_the_property_it_attributes(rule: str, property_name: str) -> None:
     body = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:never@example.org\r\n"
         "DTSTART:20260210T100000Z\r\nDTEND:20260210T110000Z\r\n"
@@ -1736,6 +1714,7 @@ def test_a_rule_that_can_never_match_is_refused_rather_than_walked(rule: str) ->
 
     assert outcome.events == ()
     assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert property_name in outcome.rejected[0].detail
 
 
 @pytest.mark.parametrize(

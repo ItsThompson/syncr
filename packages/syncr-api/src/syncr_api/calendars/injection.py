@@ -55,10 +55,11 @@ from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import GOOGLE, ICS
 from syncr_api.calendars.feed_notices import StaleFeedReading
 from syncr_api.calendars.feeds import HttpFeedFetcher, create_feed_client
-from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_client import GoogleCalendarClient
 from syncr_api.calendars.google_events import GoogleEventWriter, WritesUnavailable
+from syncr_api.calendars.google_read_adapter import GoogleReadAdapter
 from syncr_api.calendars.google_transport import HttpxGoogleTransport, create_google_read_client
+from syncr_api.calendars.google_write_adapter import GoogleWriteTargetAdapter
 from syncr_api.calendars.google_writes import HttpxGoogleWriteTransport
 from syncr_api.calendars.horizons import read_ingest_horizon
 from syncr_api.calendars.ics_adapter import IcsAdapter
@@ -182,9 +183,7 @@ def build_adapters(
         transport=HttpxGoogleTransport(google),
         tokens=build_access_tokens(settings, session, tenant_id, google),
     )
-    adapter = GoogleAdapter(
-        client=client, profile=profile, horizon=horizon, clock=utc_now, writes=READS_ONLY
-    )
+    adapter = GoogleReadAdapter(client=client, profile=profile, horizon=horizon, clock=utc_now)
     return {ICS: ics, GOOGLE: adapter}, adapter
 
 
@@ -214,7 +213,7 @@ def build_write_target_adapter(
     writes: httpx.AsyncClient,
     profile: ZoneProfile,
     horizon: Interval,
-) -> GoogleAdapter:
+) -> GoogleWriteTargetAdapter:
     """The adapter the projection reconciles the write target through.
 
     A second adapter rather than the read map's, and the difference is the whole point: this one

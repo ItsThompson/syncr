@@ -266,3 +266,26 @@ def test_a_setpos_past_its_set_is_answered_by_the_deadline_not_a_guard(
     # The deleted guard's message must not appear: its presence would mean the guard
     # is still standing and the bound never fired.
     assert "produces nothing" not in detail
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "FREQ=SECONDLY;BYMONTH=-1",
+        "FREQ=SECONDLY;BYYEARDAY=-367",
+        "FREQ=SECONDLY;BYWEEKNO=-54",
+    ],
+)
+def test_a_range_the_bound_can_answer_reaches_the_deadline(
+    rule: str, tight: ExpansionBound
+) -> None:
+    outcome = parse_feed(
+        _feed(_rule_event(rule, "range@example.org")),
+        horizon=HORIZON,
+        profile=HOME,
+        bound=tight,
+    )
+
+    assert outcome.events == ()
+    assert [item.kind for item in outcome.rejected] == [UNPARSEABLE_RECURRENCE]
+    assert "did not finish expanding" in outcome.rejected[0].detail

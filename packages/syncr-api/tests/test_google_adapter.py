@@ -39,18 +39,16 @@ from syncr_api.calendars.config import (
     SYNC_INTERVAL,
     UNKNOWN_LINE,
 )
-from syncr_api.calendars.google_adapter import (
-    CURSOR_INVALIDATED,
-    CURSOR_UNSTORABLE,
-    DELTA_OVER_MAX_PAGES,
-    GoogleAdapter,
-)
 from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import CalendarsRead, GoogleCalendarClient, GoogleReadFailed
 from syncr_api.calendars.google_config import MAX_PAGES
 from syncr_api.calendars.google_cursors import CURSOR_PREFIX
-from syncr_api.calendars.injection import READS_ONLY
-from syncr_api.calendars.projection_errors import ProjectionRefused
+from syncr_api.calendars.google_read_adapter import (
+    CURSOR_INVALIDATED,
+    CURSOR_UNSTORABLE,
+    DELTA_OVER_MAX_PAGES,
+)
+from syncr_api.calendars.google_read_adapter import GoogleReadAdapter as GoogleAdapter
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.sync_state import RETAINED_NOTICE
 from syncr_api.google_account.tokens import NoGoogleAccount
@@ -151,9 +149,6 @@ def adapter(answers: Sequence[GoogleResponse]) -> tuple[GoogleAdapter, RecordedG
             profile=LONDON,
             horizon=HORIZON,
             clock=lambda: NOW,
-            # The read side under test here holds the refusing arm of the write seam, which is what
-            # the request composition passes: the reconciliation is the projection suite's.
-            writes=READS_ONLY,
         ),
         transport,
     )
@@ -791,7 +786,6 @@ async def test_a_read_with_no_connected_account_says_so_and_names_what_still_wor
         profile=LONDON,
         horizon=HORIZON,
         clock=lambda: NOW,
-        writes=READS_ONLY,
     )
 
     _outcome, state = await google.fetch(source())
@@ -846,18 +840,6 @@ async def test_listing_calendars_names_each_one_and_whether_it_can_be_written() 
     assert isinstance(answer, CalendarsRead)
     assert answer.calendars[0].display_name == "Personal"
     assert answer.calendars[0].writable is True
-
-
-async def test_the_adapter_a_request_composes_refuses_to_write() -> None:
-    # The structural half of "the projection never sits on a request": the read composition holds
-    # the refusing arm, so no route can reach a destructive write however it is wired.
-    google, transport = adapter([ok(events_page())])
-
-    with pytest.raises(ProjectionRefused, match="only writes the plan from its background worker"):
-        await google.reconcile(source(display_name="syncr (dev)"), [])
-
-    # And it refused before spending a request, which is what makes the refusal free.
-    assert transport.calls == []
 
 
 # --------------------------------------------------------------------------------------

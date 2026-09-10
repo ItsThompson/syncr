@@ -32,10 +32,10 @@ from uuid import uuid4
 import httpx
 
 from syncr_api.calendars.config import GOOGLE, WRITE_TARGET
-from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_client import GoogleCalendarClient
 from syncr_api.calendars.google_events import GoogleEventWriter
 from syncr_api.calendars.google_transport import HttpxGoogleTransport
+from syncr_api.calendars.google_write_adapter import GoogleWriteTargetAdapter as GoogleAdapter
 from syncr_api.calendars.google_writes import HttpxGoogleWriteTransport
 from syncr_api.calendars.projection import ProjectedEvent
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
@@ -89,7 +89,6 @@ def an_adapter_over(calendar: FakeCalendar) -> GoogleAdapter:
         ),
         profile=ZoneProfile(home_zone="Europe/London"),
         horizon=WINDOW,
-        clock=lambda: NOW,
         writes=GoogleEventWriter(
             transport=HttpxGoogleWriteTransport(client),
             tokens=tokens,

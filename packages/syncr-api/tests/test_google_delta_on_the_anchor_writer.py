@@ -28,11 +28,10 @@ from syncr_api.anchors.reconcile import AnchorReconciler
 from syncr_api.anchors.repository import AnchorRepository
 from syncr_api.anchors.type_repository import AnchorTypeRepository
 from syncr_api.calendars.config import ANCHOR_SOURCE, GOOGLE
-from syncr_api.calendars.google_adapter import GoogleAdapter
 from syncr_api.calendars.google_backoff import BackoffPolicy
 from syncr_api.calendars.google_client import GoogleCalendarClient
 from syncr_api.calendars.google_cursors import CURSOR_PREFIX
-from syncr_api.calendars.injection import READS_ONLY
+from syncr_api.calendars.google_read_adapter import GoogleReadAdapter as GoogleAdapter
 from syncr_api.calendars.records import CalendarSourceRecord, SyncStateRecord
 from syncr_api.calendars.repository import CalendarSourceRepository
 from syncr_api.calendars.sync import SourceSyncer
@@ -110,9 +109,6 @@ def an_adapter(answers: list[GoogleResponse]) -> GoogleAdapter:
         profile=ZoneProfile(home_zone=HOME_ZONE),
         horizon=HORIZON,
         clock=lambda: NOW,
-        # The read side holds the refusing arm of the write seam, which is what the request
-        # composition passes; the projection is not this suite's subject.
-        writes=READS_ONLY,
     )
 
 

@@ -51,28 +51,18 @@ MAX_EXPANSION_STEPS: Final = 50_000
 
 _UNTIL: Final = "UNTIL"
 _INTERVAL: Final = "INTERVAL"
-# The values RFC 5545 section 3.3.10 allows each numeric rule part, as the closed intervals the
-# standard actually gives, one entry per interval.
+# The numeric properties whose invalid values dateutil rejects before the external deadline.
+# Refusing them here attributes the problem to the property the publisher supplied instead of
+# returning a library error. It is attribution, not protection.
 #
-# **Only four of these have a signed form.** BYMONTHDAY, BYYEARDAY, BYWEEKNO and BYSETPOS count
-# backwards from the end of their period, so -1 is the correct idiom on all four. BYMONTH, BYHOUR,
-# BYMINUTE and BYSECOND are unsigned, so each entry is the interval the standard gives rather than a
-# magnitude: comparing magnitudes admits BYMONTH=-1, which no month matches and which does not
-# return in three minutes.
+# Each value is an RFC 5545 closed interval. BYMONTHDAY and BYSETPOS count backwards from the end
+# of their period, so -1 is valid. Zero is excluded from the signed properties because the standard
+# excludes it, although dateutil accepts BYMONTHDAY=0. BYSECOND reaches 60 for leap seconds.
 #
-# Zero is excluded from the signed properties because the standard excludes it and dateutil does
-# not: BYMONTHDAY=0 is accepted there and can never match.
-#
-# BYSECOND reaches 60 because the standard allows a leap second. dateutil is stricter and refuses it
-# with its own message, so syncr does not add a second refusal for a value the standard permits.
-#
-# BYDAY is absent on purpose: it carries weekday codes rather than plain numbers, and dateutil
-# validates that one itself.
+# BYMONTH, BYYEARDAY, and BYWEEKNO are absent because their invalid values hang until the external
+# deadline. BYDAY carries weekday codes rather than plain numbers, so dateutil validates it.
 _RULE_RANGES: Final[dict[str, tuple[tuple[int, int], ...]]] = {
-    "BYMONTH": ((1, 12),),
     "BYMONTHDAY": ((-31, -1), (1, 31)),
-    "BYYEARDAY": ((-366, -1), (1, 366)),
-    "BYWEEKNO": ((-53, -1), (1, 53)),
     "BYHOUR": ((0, 23),),
     "BYMINUTE": ((0, 59),),
     "BYSECOND": ((0, 60),),
@@ -339,15 +329,11 @@ def _parsed_rule(rule_text: str, start: IcsTime) -> rruleset:
 
 
 def _require_expandable(rule: _Rule) -> None:
-    """Refuse a rule dateutil cannot expand in bounded time or bounded steps, naming the property.
+    """Refuse rule members that need a stated rejection before dateutil reads them.
 
-    Two shapes. One defeats a bound on how many occurrences a rule YIELDS, because it never yields
-    at all: a zero or negative ``INTERVAL`` never advances. The other is a value so long that
-    whether it converts at all depends on how the process was started.
-
-    A ``BYSETPOS`` reaching past the set its period holds is no longer refused here: it was
-    measured to hang inside one ``next()`` call, and the external expansion bound
-    (:mod:`syncr_api.calendars.expansion_bound`) now answers it with a stated rejection instead.
+    ``INTERVAL`` has its own guard because a negative value raises during dateutil iteration without
+    naming the rule or the feed. Member length is bounded before any numeric conversion, so that
+    conversion cannot depend on the interpreter configuration.
     """
     _require_readable_members(rule)
     _require_positive_interval(rule)
@@ -373,13 +359,12 @@ def _require_readable_members(rule: _Rule) -> None:
 
 
 def _require_value_in_range(name: str, stated: str) -> None:
-    """Refuse a numeric rule member outside the values RFC 5545 gives that property.
+    """Refuse retained numeric members by property instead of a foreign library error.
 
-    dateutil does not check most of these, and a value outside the range can never match, so the
-    rule yields nothing while the expander looks for it: ``FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2``
-    does not return in twenty minutes, inside one call no bound of syncr's can interrupt. A month
-    has at most 31 days, so 53 is a mistake, and refusing it by name is more useful than producing
-    nothing.
+    Each property in :data:`_RULE_RANGES` has an invalid value that raises before the external
+    deadline. This guard is attribution, not protection: it keeps that refusal in the publisher's
+    terms. Properties whose invalid values run until the deadline have no entry, so the deadline
+    quotes the bounded rule text instead.
 
     **The conversion here is a bare ``int``, not ``_signed``.** ``_signed`` answers a narrower
     question, "is this a magnitude syncr will ACT on", and is false past eleven significant digits,
@@ -451,13 +436,12 @@ def _stated(value: str, *, width: int = MAX_MAGNITUDE_DIGITS) -> str:
 
 
 def _require_positive_interval(rule: _Rule) -> None:
-    """Refuse an ``INTERVAL`` that is not a positive number, naming the value.
+    """Refuse an ``INTERVAL`` that is not a positive number, quoting the stated value.
 
-    RFC 5545 requires a positive integer and dateutil enforces neither bound. A NEGATIVE interval is
-    accepted at construction and raises during iteration, from inside dateutil, where the message
-    names neither the rule nor the feed. A ZERO interval is worse: dateutil advances by it, so the
-    rule never reaches a new value and never terminates. Both are answered here, where the rejection
-    can quote the value the feed stated.
+    A zero interval now reaches the external deadline, which quotes the bounded rule text. A
+    negative interval instead raises during dateutil iteration, without naming the rule or the feed.
+    This guard remains for attribution, not protection: it states which interval value the publisher
+    needs to correct.
 
     A leading ``+`` is accepted, as dateutil accepts it. The standard does not write the sign, but a
     publisher that does means one, and losing a whole series over it would be the wrong trade.

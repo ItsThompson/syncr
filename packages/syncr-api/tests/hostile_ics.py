@@ -370,7 +370,6 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
         "DURATION:PT1H",
         "RRULE:FREQ=SECONDLY;BYMONTHDAY=53;BYHOUR=2",
     ),
-    "a month past the year": ("DURATION:PT1H", "RRULE:FREQ=MINUTELY;BYMONTH=13"),
     # Whitespace inside a rule value. dateutil splits the value on any whitespace and reads each
     # token as its own content line, so a space smuggles a second RRULE past guards that split on
     # ";". No body carried whitespace inside a rule before, which is why nine passes agreed with
@@ -395,9 +394,6 @@ _EXTREMES: Final[dict[str, tuple[str, ...]]] = {
     "an until in lower case": ("DURATION:PT1H", "RRULE:FREQ=DAILY;UNTIL=20260220T000000z"),
     # And the accepting mirror: padding around a separator is a real publisher idiom.
     "separator padding a publisher writes": ("DURATION:PT1H", "RRULE:FREQ=WEEKLY; BYDAY=MO"),
-    # A negative value on a property RFC 5545 leaves UNSIGNED. Nothing in the corpus carried one, so
-    # a range check comparing the magnitude read it as valid and the rule walked for minutes.
-    "a negative month with an hour": ("DURATION:PT1H", "RRULE:FREQ=SECONDLY;BYMONTH=-1;BYHOUR=2"),
     # And a magnitude wider than the digits syncr will act on, which is where the range check was
     # skipped entirely rather than applied.
     "a month day past every magnitude": (
