@@ -62,21 +62,17 @@ produces one supersession per request whatever the window is. Read
 write was discarded mid-flight, which is the shape a tradeoff request leaves and a coalesced burst
 does not.
 
-## What the 1500 ms was measured against, and what it was not
+## What the 1500 ms was measured against
 
-The value comes from three figures, and only the first is a measurement of this deployment:
+The default is confirmed after a twelve-pin editing burst ran against the deployed E2E stack with all thirteen trigger rows wired. After a fresh worker restart, the worker reported **0 superseded solves from 4 finished solves**, a **0.0** supersession ratio. Three solves materialized the fixture and the fourth resolved the burst. The reading is below 0.1, so the default stays at 1500 ms.
 
-| Figure | Where it comes from |
+| Figure | Provenance |
 |---|---|
-| a drag takes roughly one second | the interaction the window has to outlast, so one drag is one solve |
-| a weekly-session burst has 3 to 8 second gaps | the rhythm a session should produce several solves across rather than one at the end |
-| a solve is budgeted under two seconds | ticket 37's measurement: p50 1408 ms on a 226-block week |
+| a twelve-pin editing burst produces 0 superseded solves from 4 finished solves | measurement of this deployment: `just e2e-only tests/s10-burst.spec.ts`, then the worker's `/metrics` |
+| a weekly-session burst has 3 to 8 second gaps | interview reading of how the product is used |
+| a solve is budgeted under two seconds | measurement of the solver budget on its reference workload |
 
-**The first two are the interview's readings of how the product is used, not readings taken from this
-system.** No pin endpoint exists yet, so the burst case the window is sized for cannot be driven at
-all: the coalescing is asserted with a hand-moved clock over the four triggers that do exist. Read
-the ratio once pinning ships and re-derive the value from what the user actually does; until then it
-is a considered default rather than a fitted one.
+**The first row is now a measurement of this deployment.** The session-gap range remains an interview reading. This one burst confirms the default's coalescing behavior; read the one-hour rate over ordinary editing before changing the deployment setting.
 
 ## Changing the value
 

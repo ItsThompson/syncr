@@ -391,11 +391,12 @@ class TestTheDebounceRunbook:
         # loses roughly one per solve-duration.
         assert "per window**, not per burst" in read(DEBOUNCE_TUNING)
 
-    def test_it_says_which_of_the_three_figures_were_measured_here(self) -> None:
-        # The window is a considered default rather than a fitted one, because the burst it is sized
-        # for has no endpoint to produce it yet. A runbook that implied otherwise would have an
-        # operator tuning against a figure nothing in this deployment has ever exercised.
-        assert "not readings taken from this" in read(DEBOUNCE_TUNING)
+    def test_it_records_the_measured_editing_session(self) -> None:
+        body = read(DEBOUNCE_TUNING)
+
+        assert "default is confirmed after a twelve-pin editing burst" in body
+        assert "0 superseded solves from 4 finished solves" in body
+        assert "0.0" in body
 
 
 def alert_waits(name: str) -> timedelta:

@@ -41,7 +41,7 @@ from ops.process import Result
 from ops.restore import RestoreRefused, require_empty
 from ops.verdict import compare
 
-from syncr_api.core.settings import EnvSettings
+from syncr_api.core.settings import DEFAULT_SOLVE_DEBOUNCE_MS, EnvSettings
 from syncr_api.google_account.config import STATE_LIFETIME
 from tests.test_alert_rules import named as alert_named
 from tests.test_alert_rules import repo_root
@@ -62,6 +62,7 @@ DISK_PRESSURE = RUNBOOKS / "disk-pressure.md"
 CLOCK_DRIFT = RUNBOOKS / "clock-drift.md"
 ICS_FEED_BROKEN = RUNBOOKS / "ics-feed-broken.md"
 GOOGLE_OAUTH_VERIFICATION = RUNBOOKS / "google-oauth-verification.md"
+DEBOUNCE_TUNING = RUNBOOKS / "debounce-tuning.md"
 
 # The eleven runbooks a rule names by file name, kept as one list. The assertion below is an
 # existence check rather than a claim about content: a pointer that does not resolve is worse than
@@ -546,6 +547,42 @@ class TestTheGoogleOAuthRunbooksStateJudgment:
         assert "What would reopen the question:" in runbook
         # The one cost of adding it later, named rather than left to be rediscovered.
         assert "verifier to survive the round trip" in runbook
+
+
+class TestTheDebounceFigures:
+    """The debounce runbook's figures, each read against its source."""
+
+    def test_the_runbook_quotes_the_deployment_default(self) -> None:
+        assert f"| {DEFAULT_SOLVE_DEBOUNCE_MS} ms | `DEFAULT_SOLVE_DEBOUNCE_MS`" in read(
+            DEBOUNCE_TUNING
+        )
+
+    def test_the_runbook_threshold_matches_the_alert(self) -> None:
+        runbook = read(DEBOUNCE_TUNING)
+
+        assert "| 0.3 | the supersession-ratio threshold" in runbook
+        assert "> 0.3" in alert_named("SupersededRatioHigh").expr
+
+    def test_the_runbook_states_the_single_flight_waste_bound(self) -> None:
+        runbook = read(DEBOUNCE_TUNING)
+
+        assert "| one discarded solve per window |" in runbook
+        assert "uq_operations_tenant_id_iso_week_in_flight_solve" in read(
+            Path("packages/syncr-api/src/syncr_api/solving/models.py")
+        )
+
+    def test_the_runbook_quotes_the_solver_budget(self) -> None:
+        runbook = read(DEBOUNCE_TUNING)
+
+        assert "| a solve under two seconds |" in runbook
+        assert "2000 ms budget" in read(Path("packages/syncr-solver/src/syncr_solver/budget.py"))
+
+    def test_the_runbook_records_the_measured_editing_session(self) -> None:
+        body = read(DEBOUNCE_TUNING)
+
+        assert "default is confirmed after a twelve-pin editing burst" in body
+        assert "0 superseded solves from 4 finished solves" in body
+        assert "0.0" in body
 
 
 class TestTheTimersAgreeWithTheConfiguration:
