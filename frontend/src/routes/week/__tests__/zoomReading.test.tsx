@@ -15,8 +15,9 @@
  * and the cap is that display's own 16. That fallback is what makes these cases readable without a browser; the
  * measured-height cases live beside the grid, in `ui/domain/week-grid/__tests__/zoomReport.test.tsx`. */
 
-import { act, renderHook, screen } from "@testing-library/react";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -137,6 +138,93 @@ describe("the band states the level the grid draws", () => {
 function HookHost({ children }: { readonly children: ReactNode }) {
   return <MemoryRouter>{withFreshCache(<>{children}</>)}</MemoryRouter>;
 }
+
+type VisibleHoursPatch = { readonly visibleHours: number };
+
+function isVisibleHoursPatch(body: unknown): body is VisibleHoursPatch {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "visibleHours" in body &&
+    typeof body.visibleHours === "number"
+  );
+}
+
+function installZoomSettings(initialHours: number): { readonly writes: number[] } {
+  let visibleHours = initialHours;
+  const writes: number[] = [];
+  const settingsPath = `${window.location.origin}/api/v1/settings`;
+
+  apiServer.use(
+    http.get(settingsPath, () => HttpResponse.json({ ...SETTINGS, visibleHours })),
+    http.patch(settingsPath, async ({ request }) => {
+      const body = await request.json();
+      if (!isVisibleHoursPatch(body)) return HttpResponse.json(null, { status: 400 });
+      visibleHours = body.visibleHours;
+      writes.push(visibleHours);
+      return HttpResponse.json({ ...SETTINGS, visibleHours });
+    }),
+  );
+
+  return { writes };
+}
+
+describe("the persisted zoom preference", () => {
+  it("stores a picked level and restores it after the Week route reloads", async () => {
+    installWeekReads(buildWeekView());
+    const settings = installZoomSettings(SETTINGS.visibleHours);
+    const first = renderAt(WEEK_PATH);
+    await screen.findByText("MON 09");
+
+    await userEvent.click(screen.getByRole("button", { name: /^8h$/ }));
+
+    await waitFor(() => expect(settings.writes).toEqual([8]));
+    expect(await pickedHours()).toBe("8h");
+
+    first.unmount();
+    renderAt(WEEK_PATH);
+
+    expect(await pickedHours()).toBe("8h");
+  });
+
+  it("coalesces five z presses into one write of the final level", async () => {
+    installWeekReads(buildWeekView());
+    const settings = installZoomSettings(SETTINGS.visibleHours);
+    renderAt(WEEK_PATH);
+    await screen.findByText("MON 09");
+
+    await userEvent.keyboard("zzzzz");
+
+    await waitFor(() => expect(settings.writes).toEqual([ZOOM_MIN_HOURS]));
+  });
+
+  it("reports a refused zoom write in the Week screen's panel volume", async () => {
+    installWeekReads(buildWeekView());
+    const settingsPath = `${window.location.origin}/api/v1/settings`;
+    apiServer.use(
+      http.patch(settingsPath, () =>
+        HttpResponse.json(
+          {
+            type: "syncr:validation-failed",
+            title: "Visible hours cannot be saved",
+            status: 422,
+            detail: "This zoom level is not available. Nothing was changed.",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderAt(WEEK_PATH);
+    await screen.findByText("MON 09");
+
+    await userEvent.click(screen.getByRole("button", { name: /^8h$/ }));
+
+    const refusal = await screen.findByRole("status", { name: "Visible hours cannot be saved" });
+    expect(refusal).toHaveClass("notice--panel");
+    expect(refusal).toHaveTextContent("This zoom level is not available. Nothing was changed.");
+    expect(await pickedHours()).toBe(`${SETTINGS.visibleHours}h`);
+  });
+});
 
 describe("the level the screen states before a grid has drawn one", () => {
   it("is no level, rather than the level the reader asked for", () => {

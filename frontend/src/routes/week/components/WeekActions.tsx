@@ -23,7 +23,7 @@
  * THE ZOOM SEGMENT IS THE GRID'S OWN ANSWER, NOT THE LEVEL THE SCREEN ASKED FOR. The offerable range is clamped per
  * display, from a measurement only the grid has, so a band that offered its own range would sell levels the reader's
  * display refuses and press a level the grid is not drawing. The segment renders the report's range whole, presses
- * the drawn level, and hands a pick to the same proposal `z` makes. There is no answer before the grid has measured,
+ * the drawn level, and sends a pick to the same durable preference `z` updates. There is no answer before the grid has measured,
  * which is what `null` states: a band with no grid beside it offers no range rather than a guess.
  *
  * THE KEYSTROKE IS ADVERTISED BESIDE THE CONTROL, not inside it: the hint sits in ink beside segments whose own fill
@@ -48,7 +48,7 @@ export interface WeekActionsProps {
   readonly drawnHours: number | null;
   /** Every level of the range the grid last reported, or null before it has measured. */
   readonly reportedLevels: readonly ZoomLevel[] | null;
-  /** Proposing a level picked in the segment, which the grid answers the way it answers `z`. */
+  /** Selecting a level picked in the segment, which updates the preference `z` updates. */
   readonly onPickHours: (hours: number) => void;
   readonly hasProposal: boolean;
   /** Where the weekly session opens for this week, or null when this band IS the session. */

@@ -14,8 +14,8 @@
  * a pressed 16 over a display whose cap is 16 is the truth; passing the level the reader asked for here would be
  * the falsehood the reading this control replaces committed.
  *
- * A PICK IS A PROPOSAL, NOT A WRITE. Activating an available segment proposes those hours exactly one press of
- * `z` does, and an unavailable segment cannot be activated at all, which is what its reason explains.
+ * A PICK UPDATES THE PREFERENCE. Activating an available segment stores those hours immediately, while repeated
+ * `z` presses coalesce. An unavailable segment cannot be activated, which is what its reason explains.
  *
  * NOTHING HERE MOVES. The pressed mark is an underline, drawn and not animated, like every state in this kit. */
 
@@ -26,7 +26,7 @@ export interface ZoomSegmentProps {
   readonly levels: readonly ZoomLevel[];
   /** The level the grid is drawing, which is the one segment pressed. */
   readonly pickedHours: number;
-  /** Proposing a level, which the grid answers the way it answers `z`. */
+  /** Selecting a level, which updates the same preference as `z`. */
   readonly onPick: (hours: number) => void;
 }
 

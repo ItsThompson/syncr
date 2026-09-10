@@ -100,6 +100,7 @@ function refusals(interaction: WeekInteraction): { write: string; problem: Probl
     ["approve", interaction.writes.approve.problem],
     ["tradeoff", interaction.writes.requestTradeoff.problem],
     ["conflict", interaction.writes.resolveConflict.problem],
+    ["visible hours", interaction.zoom.problem],
     ["reject", interaction.writes.rejectMove.problem],
   ];
   for (const [write, problem] of writes) {

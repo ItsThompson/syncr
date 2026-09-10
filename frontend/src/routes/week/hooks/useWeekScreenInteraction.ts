@@ -16,9 +16,8 @@
  * cleared selection rather than a silent no-op. A reason row for a block that no longer exists is the same case, one
  * panel over, and it is answered the same way.
  *
- * THE ZOOM IS SCREEN STATE RATHER THAN A SETTING WRITE. `z` walks the available levels of the range the grid
- * reported and wraps at the top, and cycling a stored setting would mean a request per keystroke on the densest surface in the product. The
- * reader's stored value is what the screen opens at, and what they cycle to is theirs until they leave.
+ * THE ZOOM IS A DURABLE SETTING. The segment writes it at once, and `z` coalesces repeated presses into one write
+ * so the grid reflects each press without sending a request for each one.
  *
  * A LEVEL TRAVELS DOWN AS A PROPOSAL AND COMES BACK AS A READING. Only the grid has a measurement, so only the grid can
  * say which level a display can draw: what this hook holds is the level the reader asked for, and `drawnHours` is what
@@ -58,6 +57,7 @@ import { hasRoomForDetailPanel } from "../panelRoom";
 import { stepColumn, stepInColumn, surviving, type Selected } from "../selection";
 import { nextAvailableHours } from "../zoomWalk";
 import { weekAway } from "../weeks";
+import { usePersistedZoom } from "./usePersistedZoom";
 import type { WeekView } from "../../../api/hooks/useWeek";
 
 const SNAP_MINUTES = 15;
@@ -88,8 +88,10 @@ export interface WeekInteraction {
   readonly drawnHours: number | null;
   /** Every level of the range the grid last reported, or null before it has measured. What the band's segment offers. */
   readonly reportedLevels: readonly ZoomLevel[] | null;
-  /** Proposing a level picked in the band's segment, which the grid answers the way it answers `z`. */
+  /** Selecting a level from the band's segment and writing it as the reader's preference. */
   readonly onPickHours: (hours: number) => void;
+  /** The zoom preference write, whose refusal shares the screen's notice volume. */
+  readonly zoom: ReturnType<typeof usePersistedZoom>["write"];
   /** The grid's own answer, handed back once per measurement. */
   readonly onZoom: (report: ZoomReport) => void;
   readonly statesOf: (blockId: string) => BlockStates;
@@ -115,8 +117,8 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
   const navigate = useNavigate();
   const [held, setHeld] = useState<Selected | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(hasRoomForDetailPanel);
-  const [zoomHours, setZoomHours] = useState<number | null>(null);
-  const [zoom, setZoom] = useState<ZoomReport | null>(null);
+  const [zoomReport, setZoomReport] = useState<ZoomReport | null>(null);
+  const zoom = usePersistedZoom(visibleHours);
 
   const operation = useOperation(isoWeek);
   const pinning = usePinning(isoWeek, view?.inputVersion ?? 0, operation.track);
@@ -201,8 +203,8 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
     if (week !== null) goTo(week);
   });
   useKeyBinding({ key: "z" }, () => {
-    const next = nextAvailableHours(zoom, zoomHours ?? visibleHours);
-    if (next !== null) setZoomHours(next);
+    const next = nextAvailableHours(zoomReport, zoom.proposedHours);
+    if (next !== null) zoom.onCycleHours(next);
   });
   useKeyBinding({ key: "p" }, togglePin);
   useKeyBinding({ key: "Enter" }, () => {
@@ -237,11 +239,12 @@ export function useWeekScreenInteraction(input: WeekInteractionInput): WeekInter
   return {
     selected,
     isDetailOpen,
-    proposedHours: zoomHours ?? visibleHours,
-    drawnHours: zoom?.hours ?? null,
-    reportedLevels: zoom?.levels ?? null,
-    onPickHours: setZoomHours,
-    onZoom: setZoom,
+    proposedHours: zoom.proposedHours,
+    drawnHours: zoomReport?.hours ?? null,
+    reportedLevels: zoomReport?.levels ?? null,
+    onPickHours: zoom.onPickHours,
+    zoom: zoom.write,
+    onZoom: setZoomReport,
     statesOf,
     onSelect: (blockId) => {
       const date = days.find((day) => day.blocks.some((block) => block.id === blockId))?.date;
