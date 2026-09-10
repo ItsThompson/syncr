@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from syncr_api.areas.repository import AreaRepository
-    from syncr_api.budgets.occupancy import WeekOccupancyReader
+    from syncr_api.budgets.occupancy import WeekOccupancySource
     from syncr_api.core.principal import Principal
     from syncr_api.offplan.reading import OffPlanReading
     from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
@@ -98,7 +98,7 @@ class BudgetService:
         areas: AreaRepository,
         settings: SettingsRepository,
         overrides: TravelOverrideRepository,
-        occupancy: WeekOccupancyReader,
+        occupancy: WeekOccupancySource,
     ) -> None:
         self._areas = areas
         self._settings = settings

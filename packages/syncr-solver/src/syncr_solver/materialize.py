@@ -49,6 +49,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from syncr_domain.plan import FrameOverhang as DocumentFrameOverhang
 from syncr_domain.plan import PlanDocument
 from syncr_solver.constraints import BlockedCandidate, ConstraintCheck
 from syncr_solver.derivation import (
@@ -124,6 +125,14 @@ def derive(inputs: SolveInputs, *, cause: MaterializeCause) -> Materialization:
         unallocated_minutes=figures.unallocated_minutes,
         oversubscription_minutes=figures.oversubscription_minutes,
         blocks=blocks,
+        frame_overhang=tuple(
+            DocumentFrameOverhang(
+                interval=overhang.interval,
+                label=overhang.label,
+                area_id=overhang.area_id,
+            )
+            for overhang in inputs.frame_overhang
+        ),
         forbidden_windows=space.forbidden_windows,
         empty_slots=(*_slots(inputs.template_entries), *inputs.dropped_legs),
         adjustments=tuple(adjustment.adjustment_id for adjustment in inputs.adjustments),

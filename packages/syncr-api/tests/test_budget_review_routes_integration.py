@@ -55,7 +55,7 @@ from syncr_domain.budget_review import QUARTER_WEEKS, ProposalBasis
 from syncr_domain.habits import BindingSource
 from syncr_domain.identity import BindingRef
 from syncr_domain.intervals import Interval
-from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.plan import Block, FrameOverhang, PlanDocument
 from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.weeks import IsoWeek, active_zone_by_date
 from syncr_domain.zones import ZoneProfile
@@ -104,11 +104,22 @@ def a_gym_block(*, on: Date, hour: int, index: int, area_id: AreaId, hours: int 
     )
 
 
+def a_sleep_block(on: Date) -> Block:
+    return Block(
+        iso_week=IsoWeek.containing(on),
+        interval=Interval(an_instant(on, 23), an_instant(on + timedelta(days=1), 7)),
+        binding=BindingRef.for_routine(uuid4(), on=on),
+        title="Sleep",
+        reason=A_REASON,
+    )
+
+
 def a_week(
     blocks: Sequence[Block],
     *,
     iso_week: IsoWeek = WEEK,
     discretionary_minutes: int = DISCRETIONARY_MINUTES,
+    frame_overhang: Sequence[FrameOverhang] = (),
 ) -> PlanDocument:
     return PlanDocument(
         iso_week=iso_week,
@@ -117,6 +128,7 @@ def a_week(
         unallocated_minutes=discretionary_minutes,
         oversubscription_minutes=0,
         blocks=tuple(blocks),
+        frame_overhang=tuple(frame_overhang),
     )
 
 
@@ -305,21 +317,34 @@ def planned(
 # --------------------------------------------------------------------------------
 
 
-def test_the_denominator_is_the_plan_of_records_own_figure_and_not_the_weeks_span(
-    http: TestClient, signed_in: dict[str, str], planned: AreaId
+def test_the_budget_and_review_routes_read_the_plan_of_records_own_figure(
+    http: TestClient,
+    signed_in: dict[str, str],
+    owner: UserRecord,
+    live_database_url: str,
 ) -> None:
-    """The decision this module rests on, pinned against the figure it deliberately does not use.
+    """Both routes derive the denominator from the plan the week was solved against."""
+    preceding = WEEK.preceding()
+    preceding_sleep = a_sleep_block(preceding.monday() + timedelta(days=6))
+    seed_plan(
+        live_database_url,
+        owner.tenant_id,
+        a_week([preceding_sleep], iso_week=preceding),
+    )
+    seed_plan(
+        live_database_url,
+        owner.tenant_id,
+        a_week(
+            [*(a_sleep_block(on) for on in WEEK.dates())],
+            frame_overhang=(FrameOverhang(interval=preceding_sleep.interval),),
+        ),
+    )
 
-    ``/api/v1/budget`` recomputes the denominator through an occupancy reader that fills one of four
-    subtrahends, so it reports the week's whole span. This route reads the figure the week was
-    actually solved against. The two disagree by the circadian frame, and the
-    assertion below is what stops this screen quietly inheriting it.
-    """
     review = read_review(http, signed_in)
     budget = http.get(BUDGET_PREFIX, params={PERIOD_PARAMETER: str(WEEK)}, headers=signed_in)
 
     assert review["discretionaryMinutes"] == DISCRETIONARY_MINUTES
-    assert budget.json()["discretionaryMinutes"] == WHOLE_SPAN_MINUTES
+    assert budget.json()["discretionaryMinutes"] == DISCRETIONARY_MINUTES
     assert review["statement"] is None
 
 

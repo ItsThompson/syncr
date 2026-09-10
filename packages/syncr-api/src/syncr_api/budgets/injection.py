@@ -10,12 +10,10 @@ travel overrides are what the week's real span is resolved against. A second zon
 would be a second answer to "how long was that week".
 
 Which occupancy reader the report asks is decided here. It is
-:class:`~syncr_api.offplan.occupancy.OffPlanOccupancy`, because off-plan periods are the one kind
-of span this deployment can store: it fills the denominator's fourth subtrahend and leaves the
-other four sets empty, which is still the honest reading for them. There is no routine, anchor,
-or forbidden-window table, and the plan document's interior shape is not defined, so no Area's
-blocks can be read out of one. Whoever brings one of those online replaces this reader with one
-that composes theirs with off-plan's rather than editing off-plan's to know about theirs.
+:class:`~syncr_api.budgets.occupancy.WeekOccupancyReader`, which reads the stored plan document
+and composes it with :class:`~syncr_api.offplan.occupancy.OffPlanOccupancy`. The plan supplies
+frame, anchor, forbidden-window, and Area-block occupancy. Off-plan remains its own reader, so a
+week with no plan still subtracts a declared period rather than silently reporting it available.
 
 **Two endpoints are composed from the factory below**, and that is deliberate: the week view's
 ``readings`` are this service's own figures, so the summary strip and the pie review divide one
@@ -33,9 +31,11 @@ from fastapi import Depends
 # resolve to a NameError while the app is being constructed.
 from syncr_api.accounts.injection import PrincipalDep, TransactionDep  # noqa: TC001
 from syncr_api.areas.repository import AreaRepository
+from syncr_api.budgets.occupancy import WeekOccupancyReader
 from syncr_api.budgets.service import BudgetService
 from syncr_api.offplan.occupancy import OffPlanOccupancy
 from syncr_api.offplan.repository import OffPlanPeriodRepository
+from syncr_api.plans.repository import PlanRepository
 from syncr_api.user_settings.repository import SettingsRepository, TravelOverrideRepository
 
 if TYPE_CHECKING:
@@ -60,7 +60,10 @@ def build_budget_service(transaction: AsyncSession, tenant_id: TenantId) -> Budg
         areas=AreaRepository(transaction, tenant_id),
         settings=SettingsRepository(transaction, tenant_id),
         overrides=TravelOverrideRepository(transaction, tenant_id),
-        occupancy=OffPlanOccupancy(OffPlanPeriodRepository(transaction, tenant_id)),
+        occupancy=WeekOccupancyReader(
+            PlanRepository(transaction, tenant_id),
+            OffPlanOccupancy(OffPlanPeriodRepository(transaction, tenant_id)),
+        ),
     )
 
 

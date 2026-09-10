@@ -69,6 +69,24 @@ ORIGINS_WITHOUT_AN_AREA: Final = frozenset({Origin.FRAME, Origin.ANCHOR})
 # carrying no chunk number at all.
 MIN_SPLIT_COUNT: Final = 2
 
+# The owning week has the occurrence but the following week still needs a truthful H3 clause.
+INHERITED_FRAME: Final = "a routine the preceding week owns"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FrameOverhang:
+    """A preceding week's occupied span, with the H3 label and optional Area it carries."""
+
+    interval: Interval
+    label: str = INHERITED_FRAME
+    area_id: AreaId | None = None
+
+    @property
+    def is_circadian_frame(self) -> bool:
+        """Whether this inherited span leaves the discretionary-time denominator."""
+        return self.area_id is None
+
+
 # Which kind of span the discretionary-time denominator reads a block of each origin as.
 # Total over `Origin`, so a caller assembling the denominator converts a block rather than
 # deciding about one, and the subtraction table stays the single home of what each kind does.
@@ -237,6 +255,7 @@ class PlanDocument:
     unallocated_minutes: int
     oversubscription_minutes: int
     blocks: tuple[Block, ...] = ()
+    frame_overhang: tuple[FrameOverhang, ...] = ()
     forbidden_windows: tuple[ForbiddenWindow, ...] = ()
     empty_slots: tuple[EmptySlot, ...] = ()
     adjustments: tuple[WeekAdjustmentId, ...] = ()
@@ -244,6 +263,7 @@ class PlanDocument:
     def __post_init__(self) -> None:
         object.__setattr__(self, "zone_by_date", dict(self.zone_by_date))
         object.__setattr__(self, "blocks", tuple(self.blocks))
+        object.__setattr__(self, "frame_overhang", tuple(self.frame_overhang))
         object.__setattr__(self, "forbidden_windows", tuple(self.forbidden_windows))
         object.__setattr__(self, "empty_slots", tuple(self.empty_slots))
         object.__setattr__(self, "adjustments", tuple(self.adjustments))

@@ -58,7 +58,7 @@ from syncr_domain.gaps import (
     ForbiddenWindow,
 )
 from syncr_domain.identity import BindingKind, BindingRef
-from syncr_domain.plan import Block, PlanDocument
+from syncr_domain.plan import Block, FrameOverhang, PlanDocument
 from syncr_domain.weeks import IsoWeek
 
 if TYPE_CHECKING:
@@ -73,6 +73,7 @@ DISCRETIONARY_MINUTES = "discretionary_minutes"
 UNALLOCATED_MINUTES = "unallocated_minutes"
 OVERSUBSCRIPTION_MINUTES = "oversubscription_minutes"
 BLOCKS = "blocks"
+FRAME_OVERHANG = "frame_overhang"
 FORBIDDEN_WINDOWS = "forbidden_windows"
 EMPTY_SLOTS = "empty_slots"
 ADJUSTMENTS = "adjustments"
@@ -108,6 +109,7 @@ def stored_document(document: PlanDocument) -> JsonObject:
         UNALLOCATED_MINUTES: document.unallocated_minutes,
         OVERSUBSCRIPTION_MINUTES: document.oversubscription_minutes,
         BLOCKS: [_stored_block(block) for block in document.blocks],
+        FRAME_OVERHANG: [_stored_frame_overhang(overhang) for overhang in document.frame_overhang],
         FORBIDDEN_WINDOWS: [_stored_window(window) for window in document.forbidden_windows],
         EMPTY_SLOTS: [_stored_slot(slot) for slot in document.empty_slots],
         ADJUSTMENTS: [stored_id(adjustment) for adjustment in document.adjustments],
@@ -138,6 +140,7 @@ def plan_document(stored: JsonDocument) -> PlanDocument:
                 stored.get(OVERSUBSCRIPTION_MINUTES), field=OVERSUBSCRIPTION_MINUTES
             ),
             blocks=_each(stored, BLOCKS, lambda one, at: _read_block(one, iso_week, field=at)),
+            frame_overhang=_each(stored, FRAME_OVERHANG, _read_frame_overhang),
             forbidden_windows=_each(stored, FORBIDDEN_WINDOWS, _read_window),
             empty_slots=_each(stored, EMPTY_SLOTS, _read_slot),
             adjustments=_each(stored, ADJUSTMENTS, lambda one, at: read_id(one, field=at)),
@@ -216,6 +219,23 @@ def _read_block(value: object, iso_week: IsoWeek, *, field: str) -> Block:
             make_up=read_optional_flag(stored.get(MAKE_UP), field=f"{field}.{MAKE_UP}"),
         ),
         field=field,
+    )
+
+
+def _stored_frame_overhang(overhang: FrameOverhang) -> JsonObject:
+    return {
+        INTERVAL: stored_interval(overhang.interval),
+        LABEL: overhang.label,
+        AREA_ID: None if overhang.area_id is None else stored_id(overhang.area_id),
+    }
+
+
+def _read_frame_overhang(value: object, field: str) -> FrameOverhang:
+    stored = read_mapping(value, field=field)
+    return FrameOverhang(
+        interval=read_interval(stored.get(INTERVAL), field=f"{field}.{INTERVAL}"),
+        label=read_text(stored.get(LABEL), field=f"{field}.{LABEL}"),
+        area_id=read_optional_id(stored.get(AREA_ID), field=f"{field}.{AREA_ID}"),
     )
 
 

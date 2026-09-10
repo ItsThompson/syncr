@@ -770,24 +770,13 @@ def test_a_weeks_gaps_cost_no_areas_read_of_their_own_and_none_per_gap(
     assert with_gaps == without_a_gap
 
 
-def test_the_two_denominators_on_one_payload_differ_by_the_occupancy_the_budget_cannot_see(
+def test_the_two_denominators_on_one_payload_read_the_same_occupancy(
     http: TestClient,
     owner: UserRecord,
     configured: tuple[dict[str, str], str],
     live_database_url: str,
 ) -> None:
-    """One payload spells the denominator twice today, and the difference is measured rather than
-    left implicit.
-
-    ``readings.discretionaryMinutes`` is the budget report's and ``verdict.discretionaryMinutes``
-    is the probe's. The probe subtracts all four subtrahends and the budget's occupancy reader fills
-    one, so the budget's figure is the whole span on a week with a circadian frame. The honest
-    figure is the verdict's.
-
-    Pinned side by side the way the pie review's own crossing is: the seam that closes it moves both
-    figures at once, so this reddens on the commit that lands it and is
-    deleted with the difference.
-    """
+    """The strip and verdict derive one denominator from the stored plan occupancy."""
     headers, _area_id = configured
     week = this_week()
     produce_a_plan(live_database_url, owner.tenant_id, week)
@@ -796,8 +785,7 @@ def test_the_two_denominators_on_one_payload_differ_by_the_occupancy_the_budget_
 
     strip = view["readings"]["discretionaryMinutes"]
     probed = view["verdict"]["discretionaryMinutes"]
-    assert probed < strip, (probed, strip)
-    assert strip - probed >= 3360, "the frame this week sleeps for is 56 hours"
+    assert strip == probed == 6720
 
 
 # --------------------------------------------------------------------------------
