@@ -148,6 +148,7 @@ is known, in `frontend/src/ui/domain/charts/__tests__/contrast.test.ts`.
 - `frontend/src/ui/domain/reason-rows/tokens.css`
 - `frontend/src/ui/domain/shell/help.css`
 - `frontend/src/ui/domain/shell/palette.css`
+- `frontend/src/ui/domain/shell/skip-link.css`
 - `frontend/src/ui/domain/status/status.css`
 - `frontend/src/ui/domain/table/table.css`
 - `frontend/src/ui/domain/verdict-panel/tokens.css`

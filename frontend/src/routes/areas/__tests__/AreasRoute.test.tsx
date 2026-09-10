@@ -89,7 +89,12 @@ function screenHandlers(
 }
 
 async function renderAreas(
-  { areas = buildAreas(), review = buildReview(), preferences = buildPreferences(), path = "/areas" } = {},
+  {
+    areas = buildAreas(),
+    review = buildReview(),
+    preferences = buildPreferences(),
+    path = "/areas",
+  } = {},
   extra: RequestHandler[] = [],
 ) {
   apiServer.use(...screenHandlers(areas, review, preferences), ...extra);
@@ -479,7 +484,8 @@ describe("the preference cell", () => {
         [CAREER]: buildPreference({
           effective: {
             ...buildPreference().effective!,
-            statement: "Inherited from `Fitness`: 05:30-07:00, strong, ideally 90 minutes at a time.",
+            statement:
+              "Inherited from `Fitness`: 05:30-07:00, strong, ideally 90 minutes at a time.",
           },
         }),
       },
@@ -487,7 +493,9 @@ describe("the preference cell", () => {
 
     const row = within(table).getByRole("row", { name: /Career/ });
     expect(
-      within(row).getByText("Inherited from `Fitness`: 05:30-07:00, strong, ideally 90 minutes at a time."),
+      within(row).getByText(
+        "Inherited from `Fitness`: 05:30-07:00, strong, ideally 90 minutes at a time.",
+      ),
     ).toBeInTheDocument();
   });
 

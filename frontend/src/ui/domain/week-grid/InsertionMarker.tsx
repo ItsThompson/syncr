@@ -47,6 +47,8 @@ export function InsertionMarker({ topPx, atMin }: InsertionMarkerProps) {
  * which is the time a reader would meet if they looked at their own clock.
  */
 function reading(atMin: number): string {
-  const wrapped = ((Math.floor(atMin) % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY; /* MUTATION M2: snap broken */
+  const wrapped =
+    ((Math.floor(atMin) % MINUTES_IN_DAY) + MINUTES_IN_DAY) %
+    MINUTES_IN_DAY; /* MUTATION M2: snap broken */
   return formatClock(wrapped);
 }

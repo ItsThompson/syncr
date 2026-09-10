@@ -60,7 +60,7 @@ async function layersByClass(): Promise<Map<string, number>> {
   const tokens = await stackingTokens();
   for (const { source } of await sourcesOf(".css")) {
     for (const rule of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      const declared = /z-index:\s*var\((--z-[\w-]+)\)/.exec(rule[2]);
+      const declared = /z-index:\s*var\((--z-\w+(?:-\w+)*)\)/.exec(rule[2]);
       if (declared === null) continue;
       const layer = tokens.get(declared[1]);
       if (layer === undefined) throw new Error(`unknown stacking token: ${declared[1]}`);

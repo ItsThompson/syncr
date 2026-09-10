@@ -42,7 +42,7 @@ interface ZIndexDeclaration {
 }
 
 const zIndexToken = (value: string): string | null =>
-  /^var\((--z-[\w-]+)\)$/.exec(value)?.[1] ?? null;
+  /^var\((--z-\w+(?:-\w+)*)\)$/.exec(value)?.[1] ?? null;
 
 /** Every `z-index` declaration the stacking sheets make, with prose excluded. */
 async function zIndexDeclarations(): Promise<ZIndexDeclaration[]> {

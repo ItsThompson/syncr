@@ -180,8 +180,8 @@
 .week-block__title {
   position: relative;
   z-index: var(--z-content);
-  display: block;
-  overflow: hidden;
+  display: flow-root;
+  overflow: clip;
   max-height: calc(var(--lines) * 1lh);
   overflow-wrap: anywhere;
 }
