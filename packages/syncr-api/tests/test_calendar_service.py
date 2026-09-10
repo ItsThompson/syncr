@@ -55,15 +55,15 @@ from syncr_api.core.principal import Principal
 from syncr_api.core.scopes import ALL_SCOPES, Scope
 from syncr_api.solving.config import CALENDAR_SYNC, PENDING, SUCCEEDED
 from syncr_api.solving.records import OperationRecord
+from syncr_api.user_settings.solve_inputs import WeekRange
 from syncr_domain.intervals import Interval
+from syncr_domain.weeks import IsoWeek
 from syncr_domain.zones import ZoneProfile
 from tests.boundaries import public_methods
 
 if TYPE_CHECKING:
     from syncr_api.calendars.config import CalendarProvider, CalendarRole
     from syncr_api.calendars.records import CalendarSourceId
-    from syncr_api.user_settings.solve_inputs import WeekRange
-    from syncr_domain.weeks import IsoWeek
 
 NOW = datetime(2026, 2, 9, 9, 0, tzinfo=UTC)
 
@@ -685,6 +685,18 @@ async def test_setting_the_horizon_bumps_the_weeks_the_new_range_covers(
     assert covered.last is not None
     assert covered.first <= covered.last
     assert wiring.solve_requests.requested == [frozenset(covered.closed_weeks())]
+
+
+async def test_a_seven_day_horizon_excludes_the_next_monday_week(
+    wiring: Wiring,
+) -> None:
+    held = wiring.sources.hold(record(external_id=PLAN, role=WRITE_TARGET, horizon_days=28))
+
+    await wiring.service.set_horizon(OWNER, held.id, horizon_days=7)
+
+    horizon_week = IsoWeek(2026, 7)
+    assert wiring.versions.bumped == [WeekRange(first=horizon_week, last=horizon_week)]
+    assert wiring.solve_requests.requested == [frozenset({horizon_week})]
 
 
 async def test_shortening_the_horizon_bumps_too(wiring: Wiring) -> None:

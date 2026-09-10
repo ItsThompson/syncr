@@ -316,7 +316,7 @@ class CalendarSourceService:
         missing one leaves the phone showing a plan the horizon no longer includes.
         """
         today = self._clock().date()
-        affected = weeks_covering(today, today + timedelta(days=horizon_days), today=today)
+        affected = weeks_covering(today, today + timedelta(days=horizon_days - 1), today=today)
         if affected is None:
             return
         await self._versions.bump(affected)
