@@ -50,11 +50,6 @@ from syncr_api.core.scopes import Scope
 from syncr_api.core.settings import API_PREFIX
 from syncr_api.idempotency.config import IDEMPOTENCY_KEY_HEADER
 from syncr_api.oauth.config import build_oauth_config
-from syncr_api.preferences.config import (
-    AREA_PREFERENCE_PATH,
-    HABIT_PREFERENCE_PATH,
-    TASK_PREFERENCE_PATH,
-)
 from syncr_api.oauth.injection import build_oauth_state
 from syncr_api.oauth.keys import SigningKeySet, generate_signing_key
 from syncr_api.preferences.config import (

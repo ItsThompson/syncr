@@ -40,6 +40,7 @@ EXIT_CODE_BY_PROBLEM_TYPE: Final[dict[str, ExitCode]] = {
     "syncr:origin-rejected": ExitCode.FAILURE,
     "syncr:not-found": ExitCode.NOT_FOUND,
     "syncr:conflict": ExitCode.CONFLICT,
+    "syncr:block-already-started": ExitCode.CONFLICT,
     "syncr:idempotency-request-in-flight": ExitCode.CONFLICT,
     "syncr:validation-failed": ExitCode.VALIDATION_FAILED,
     # A rate limit and a dependency outage are both "the API will not serve this now", which is

@@ -33,6 +33,7 @@ DOCUMENTED: Final[dict[str, ExitCode]] = {
     "syncr:origin-rejected": ExitCode.FAILURE,
     "syncr:not-found": ExitCode.NOT_FOUND,
     "syncr:conflict": ExitCode.CONFLICT,
+    "syncr:block-already-started": ExitCode.CONFLICT,
     "syncr:idempotency-request-in-flight": ExitCode.CONFLICT,
     "syncr:validation-failed": ExitCode.VALIDATION_FAILED,
     "syncr:rate-limited": ExitCode.API_UNAVAILABLE,

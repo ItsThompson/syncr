@@ -17,8 +17,8 @@ from syncr_api.core.settings import API_PREFIX
 WEEKS_PREFIX: Final = f"{API_PREFIX}/weeks"
 
 # Relative to the router's own prefix. The week is a path segment named as every other path
-# parameter this api declares one: snake_cased, matching `{period_id}` and `{area_id}`. The route table's
-# route table writes `{isoWeek}`, which is the same URL with a different parameter NAME; the
+# parameter this api declares one: snake_cased, matching `{period_id}` and `{area_id}`. The route
+# table writes `{isoWeek}`, which is the same URL with a different parameter NAME; the
 # generated client reads the name, so one spelling across the api's routes is worth more than
 # literal fidelity to an illustrative table.
 TRADEOFFS_PATH: Final = "/{iso_week}/tradeoffs"

@@ -61,9 +61,11 @@ SOLVE_MODULES: Final = (
 FIELDS_READ: Final = frozenset(
     {
         "adjustments",
+        "anchors",
         "areas",
         "eligible_tasks",
         "for_probe",
+        "frame",
         "habit_occurrences",
         "input_version",
         "iso_week",
@@ -71,6 +73,7 @@ FIELDS_READ: Final = frozenset(
         "now",
         "pins",
         "preferences",
+        "shadow_blocks",
         "template_entries",
         "zone_by_date",
     }

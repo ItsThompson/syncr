@@ -184,9 +184,7 @@ class SessionSources:
         answer lives in rows rather than in a stored count. Habits of the other policies answer
         from their stored charge, so a tenant with none skips this read entirely.
         """
-        escalating = [
-            habit.id for habit in habits if habit.miss_policy is MissPolicy.ESCALATE
-        ]
+        escalating = [habit.id for habit in habits if habit.miss_policy is MissPolicy.ESCALATE]
         if not escalating:
             return {}
         rows = await self._outcomes.settled_within(escalating, span=span)

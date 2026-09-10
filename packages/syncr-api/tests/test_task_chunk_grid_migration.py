@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 PREVIOUS_REVISION = "sr_intent_03_routine_grid"
 GRID_REVISION = "sr_intent_04_task_grid_floor"
 
-ADMIN_URL = "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr"
+ADMIN_URL = "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr"  # pragma: allowlist secret
 
 
 @pytest.fixture

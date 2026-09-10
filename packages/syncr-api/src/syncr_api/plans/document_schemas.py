@@ -43,7 +43,7 @@ rather than a second one. A task placed whole renders no pair.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Self
-from uuid import UUID  # noqa: TC003 - pydantic resolves annotations at runtime
+from uuid import UUID
 
 from pydantic import Field
 

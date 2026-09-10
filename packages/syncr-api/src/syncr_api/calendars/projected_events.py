@@ -180,10 +180,10 @@ def off_plan_key(period_id: OffPlanPeriodId, on: Date) -> str:
 def rendered_reason(reason: ReasonRecord) -> str | None:
     """The event's description: the block's reason record, as one line a reader can act on.
 
-    Today that is the ``bound`` clause, which names what determined the block. A future change is where a
-    reason record first carries clauses beyond ``bound``, and therefore where a DOMINANT clause
-    becomes available to prefer: until then a materialized block carries exactly one clause and
-    there is nothing to choose between. A record carrying no ``bound`` clause renders nothing rather
+    Today that is the ``bound`` clause, which names what determined the block. A future change is
+    where a reason record first carries clauses beyond ``bound``, and therefore where a DOMINANT
+    clause becomes available to prefer. Until then, a materialized block carries exactly one clause,
+    leaving nothing to choose between. A record carrying no ``bound`` clause renders nothing rather
     than a sentence built from a clause kind this has no wording for.
     """
     bound = next((clause for clause in reason.clauses if isinstance(clause, Bound)), None)

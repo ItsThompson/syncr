@@ -41,7 +41,6 @@ from syncr_api.habits.service import HabitService
 from syncr_api.user_settings.solve_inputs import BacklogWideBump, WeekRange
 from syncr_domain.habits import BindingSource, CadenceKind, MissPolicy
 from syncr_domain.identity import index_occurrence_key
-from syncr_domain.intervals import Interval
 from syncr_domain.outcomes import MISS_STATE, HabitOutcome, OutcomeState
 from syncr_domain.weeks import IsoWeek
 from tests.service_fakes import FakeAreaRepository, FakeSettingsRepository
@@ -52,6 +51,7 @@ if TYPE_CHECKING:
 
     from syncr_domain.habits import Habit
     from syncr_domain.identifiers import AreaId, HabitId, TenantId
+    from syncr_domain.intervals import Interval
 
 LONDON = "Europe/London"
 

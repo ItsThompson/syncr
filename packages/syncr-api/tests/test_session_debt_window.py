@@ -39,8 +39,7 @@ from syncr_api.reviews.session_sources import SessionSources
 from syncr_domain.habits import MissPolicy
 from syncr_domain.identity import BindingRef, index_occurrence_key
 from syncr_domain.outcomes import HabitOutcome, OutcomeState, RecordedOutcome
-from syncr_domain.weeks import week_span
-from syncr_domain.weeks import IsoWeek
+from syncr_domain.weeks import IsoWeek, week_span
 from syncr_domain.zones import ZoneProfile
 from tests.assembly_fakes import FakeAnchors, FakeHabits, FakeOutcomes, FakeTasks, a_habit
 from tests.live_tenants import delete_tenant, seed_owner
@@ -349,7 +348,6 @@ class TestADebtHabitAtItsCapIsRaisedWhicheverWeekTheSessionCovers:
         assert await raised_habits(planned=NEXT_SESSION, habits=[habit], outcomes=stored) == [
             "Anki"
         ]
-
 
 
 @pytest.mark.integration

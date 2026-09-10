@@ -83,6 +83,7 @@ COVERED_TREES: Final = (
 ALGEBRA: Final = "packages/syncr-domain/src/syncr_domain/intervals.py"
 NETTING: Final = "packages/syncr-api/src/syncr_api/plans/netting.py"
 ICS: Final = "packages/syncr-api/src/syncr_api/calendars/ics_recurrence_expansion.py"
+OFF_PLAN_WEEKS: Final = "packages/syncr-api/src/syncr_api/offplan/weeks.py"
 
 # The predicates by name, and the one module a reader may take them from.
 PREDICATES: Final = frozenset({"has_started", "has_elapsed", "has_ended"})
@@ -108,13 +109,15 @@ KNOWN_READERS: Final = (
 # question, and three set operations that compare the same pair of values to a different end,
 # cutting or walking a set at an instant rather than deciding anything about one member.
 #
-# Two sit outside it and each asks a different question, which is why each is named here rather
+# Three sit outside it and each asks a different question, which is why each is named here rather
 # than excluded by widening the reading:
 #
 #   _clipped_before  a local variant of `IntervalSet.before`, guarding the empty case before it
 #                    builds a bound. The set-clip family, not a decision about a placement.
 #   occurrences      an expansion filtered against the window it was expanded for. That bound is a
 #                    sync window rather than a reference instant, and no placement is decided.
+#   _week_holding    a containment walk that identifies the week containing an instant, including
+#                    correcting a UTC-date candidate across a zone boundary.
 CANONICAL_SITES: Final = frozenset(
     {
         (ALGEBRA, "has_started"),
@@ -124,6 +127,7 @@ CANONICAL_SITES: Final = frozenset(
         (ALGEBRA, "_without"),
         (NETTING, "_clipped_before"),
         (ICS, "occurrences"),
+        (OFF_PLAN_WEEKS, "_week_holding"),
     }
 )
 
@@ -425,12 +429,12 @@ def test_the_import_reading_reaches_the_readers_the_tree_holds() -> None:
 
 
 def test_a_start_is_compared_to_an_instant_only_in_the_scopes_this_module_names() -> None:
-    # Seven scopes: the algebra's five, and two elsewhere that ask a different question and are
-    # named where the set is defined. An eighth anywhere fails, in either direction, and so does
-    # any of the seven going missing.
+    # Eight scopes: the algebra's five, and three elsewhere that ask a different question and are
+    # named where the set is defined. A ninth anywhere fails, in either direction, and so does any
+    # of the eight going missing.
     #
-    # The name says "the scopes this module names" rather than "the interval algebra", because two
-    # of the seven are outside it. A test's name is what a red set prints, so it may not claim an
+    # The name says "the scopes this module names" rather than "the interval algebra", because three
+    # of the eight are outside it. A test's name is what a red set prints, so it may not claim an
     # invariant its assertion does not check.
     assert found_sites(repository_root()) == CANONICAL_SITES
 

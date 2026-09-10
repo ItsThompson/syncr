@@ -710,7 +710,9 @@ def test_three_pieces_of_one_task_each_render_a_position_from_1_to_3_and_a_count
     assert [block.chunk_pair for block in rendered.blocks] == ["1 of 3", "2 of 3", "3 of 3"]
 
 
-def test_a_pinned_chunk_numbered_5_renders_its_position_among_the_pieces_not_the_chunk_index() -> None:
+def test_a_pinned_chunk_numbered_5_renders_its_position_among_the_pieces_not_the_chunk_index() -> (
+    None
+):
     """The pin does not change the position: it is the place among the pieces, not the index."""
     task_id = uuid4()
     pinned_chunk = a_divided_task_block(task_id, split_index=5, split_count=6, day=2)

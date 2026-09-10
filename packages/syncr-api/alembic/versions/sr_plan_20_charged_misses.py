@@ -74,14 +74,15 @@ def downgrade() -> None:
 
 def _backfill() -> None:
     """Walk every habit's rows once and store what the live derivation would answer."""
+    # The SQL structure comes only from fixed migration constants; dynamic values are bound below.
     rows = sa.text(
-        f"SELECT tenant_id, {ENTITY} AS habit_id, state, occurred_at, confirmed_at, {MAKE_UP}"
+        f"SELECT tenant_id, {ENTITY} AS habit_id, state, occurred_at, confirmed_at, {MAKE_UP}"  # noqa: S608
         f" FROM {OUTCOMES} WHERE {KIND} = '{HABIT_KIND}'"
         " ORDER BY habit_id, occurred_at, binding->>'make_up'"
     )
     charges: dict[tuple[str, str], int] = {}
-    for tenant_id, habit_id, state, _occurred_at, confirmed_at, make_up in (
-        op.get_bind().execute(rows)
+    for tenant_id, habit_id, state, _occurred_at, confirmed_at, make_up in op.get_bind().execute(
+        rows
     ):
         if confirmed_at is None:
             continue
@@ -94,7 +95,7 @@ def _backfill() -> None:
         if charged:
             op.execute(
                 sa.text(
-                    f"UPDATE {TABLE} SET {COLUMN} = :charged"
+                    f"UPDATE {TABLE} SET {COLUMN} = :charged"  # noqa: S608
                     " WHERE id = :habit_id AND tenant_id = :tenant_id"
                 ).bindparams(tenant_id=tenant_id, habit_id=habit_id, charged=charged)
             )

@@ -18,11 +18,10 @@ the figures two consumers read differently.
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import ast
 import inspect
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4

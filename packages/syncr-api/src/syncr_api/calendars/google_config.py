@@ -5,8 +5,9 @@ returns, a calendar is as large as the account made it, a sync token is as long 
 it, and a rate limit is as long as Google decides to hold syncr off. None of those is a number
 syncr can trust, so each has a bound, and each bound is checked where the value is read or stored.
 
-Two of these exist because of what an oversize write cost. **The read deadline covers the WHOLE read**, not
-one request: a per-operation timeout against a host that answers each page slowly bounds nothing,
+Two of these exist because of what an oversize write cost. **The read deadline covers the WHOLE
+read**, not one request: a per-operation timeout against a host that answers each page slowly bounds
+nothing,
 which is how an eighty-second read passed a fifteen-second timeout on the ICS path. And **the sync
 token is bounded before it is stored**, because an oversize write does not fail one source, it
 rolls back the transaction the whole tenant's sync pass is in.

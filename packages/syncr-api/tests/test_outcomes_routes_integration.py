@@ -639,9 +639,11 @@ def test_correcting_an_outcome_after_a_confirmation_keeps_the_stored_confirmatio
     assert read_day(http, signed_in, YESTERDAY)["confirmedAt"] == settled_at_first
 
 
-
-def seed_a_debt_habit(database_url: str, tenant_id: TenantId, habit_id: UUID, area_id: AreaId) -> None:
+def seed_a_debt_habit(
+    database_url: str, tenant_id: TenantId, habit_id: UUID, area_id: AreaId
+) -> None:
     """One ``debt``-policy habit row behind the blocks the suite binds, charge at zero."""
+
     async def write() -> None:
         database = create_database(database_url)
         try:

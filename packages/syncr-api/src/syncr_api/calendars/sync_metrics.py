@@ -2,8 +2,9 @@
 
 ``syncr_calendar_sync_duration_seconds``, ``syncr_calendar_sync_total``,
 ``syncr_calendar_events_read``, ``syncr_calendar_events_rejected_total``, ``syncr_anchors_current``
-and ``syncr_source_staleness_seconds`` are named here. Nothing declared any of them, so the Calendar dashboard had
-nothing to draw and ``SourceStale``, one of the twelve alerts, read a series no process produced.
+and ``syncr_source_staleness_seconds`` are named here. Nothing declared any of them, so the Calendar
+dashboard had nothing to draw. ``SourceStale``, one of the twelve alerts, read a series no process
+produced.
 
 Mirrors ``projection_metrics``, which is the sibling to match: two outcome values, the zeroes
 observed as well as the counts, and every reason a rejection can carry named up front.

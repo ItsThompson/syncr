@@ -23,7 +23,7 @@ pytestmark = pytest.mark.integration
 
 PREVIOUS_REVISION = "sr_plan_20_charged_misses"
 PIN_DELTA_REVISION = "sr_plan_02_pin_delta"
-ADMIN_URL = "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr"
+ADMIN_URL = "postgresql+asyncpg://syncr:syncr@localhost:5432/syncr"  # pragma: allowlist secret
 
 
 @pytest.fixture
