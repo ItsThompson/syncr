@@ -34,11 +34,11 @@ _INSERT = text(
     f"INSERT INTO {HABITS_TABLE} ("  # noqa: S608 - a constant table name, no external input
     "id, tenant_id, area_id, title, cadence_kind, cadence_times_per_week, cadence_approx_days,"
     " duration_min_minutes, duration_max_minutes, miss_policy, binding_source, variants,"
-    " debt_cap_periods, created_at"
+    " debt_cap_periods, charged_misses, created_at"
     ") VALUES ("
     ":id, :tenant_id, :area_id, :title, :cadence_kind, :cadence_times_per_week,"
     " :cadence_approx_days, :duration_min_minutes, :duration_max_minutes, :miss_policy,"
-    " :binding_source, CAST(:variants AS jsonb), :debt_cap_periods, :created_at"
+    " :binding_source, CAST(:variants AS jsonb), :debt_cap_periods, :charged_misses, :created_at"
     ")"
 )
 
@@ -94,6 +94,7 @@ class LiveTable:
             "binding_source": "fixed",
             "variants": "[]",
             "debt_cap_periods": 2,
+            "charged_misses": 0,
             "created_at": utc_now(),
         }
         values.update(overrides)

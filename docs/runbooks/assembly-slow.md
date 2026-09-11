@@ -38,7 +38,7 @@ So this threshold is not "the assembly is slower than we would like". It is "the
 budget and the assembly is why".
 
 **Both figures were set against eleven repository reads, and eleven was never counted.**
-`plans/assembler.py` counts what the assembly actually does: `RESOLUTION_COUNT` is **18** resolutions
+`plans/assembler.py` counts what the assembly actually does: `RESOLUTION_COUNT` is **19** resolutions
 over `REPOSITORY_READ_COUNT` **21** repository reads, and the api suite crosses both constants against
 the method itself. Neither the 100 ms budget nor this threshold has been re-derived against 21, so read
 the threshold as the point where the interaction is over budget and not as a figure today's read count

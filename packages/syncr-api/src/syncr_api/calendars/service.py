@@ -115,6 +115,7 @@ class CalendarSourceService:
         clock: Clock,
         remote_calendars: RemoteCalendarReader,
         feeds: StaleFeedReading,
+        trusted_feed_hosts: frozenset[str] = frozenset(),
     ) -> None:
         self._sources = sources
         self._syncer = syncer
@@ -123,6 +124,7 @@ class CalendarSourceService:
         self._clock = clock
         self._remote_calendars = remote_calendars
         self._feeds = feeds
+        self._trusted_feed_hosts = trusted_feed_hosts
 
     @measured("calendars")
     async def list_sources(self, principal: Principal) -> SourceListing:
@@ -157,7 +159,9 @@ class CalendarSourceService:
         # No strip here: the shared user-text type on the request schema has already stripped
         # both values, so stripping again would state one rule twice.
         external_id = (
-            normalize_feed_url(new.external_id) if new.provider == ICS else new.external_id
+            normalize_feed_url(new.external_id, trusted_hosts=self._trusted_feed_hosts)
+            if new.provider == ICS
+            else new.external_id
         )
         if await self._sources.find_by_external_id(new.provider, external_id) is not None:
             raise Conflict(

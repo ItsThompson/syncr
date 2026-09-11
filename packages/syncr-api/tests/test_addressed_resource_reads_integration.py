@@ -37,14 +37,14 @@ from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.offplan.config import OFF_PLAN_PREFIX
 from syncr_api.outcomes.config import DAYS_PREFIX
 from syncr_api.plans.versions import WeekInputVersionRepository
-from syncr_api.solving.config import OPERATIONS_PREFIX
+from syncr_api.solving.config import OPERATIONS_PREFIX, SOLVE
+from syncr_api.solving.repository import OperationRepository
 from syncr_api.user_settings.solve_inputs import TrackedWeekInputVersions
 from syncr_domain.intervals import Interval
 from tests.boundaries import addressed_resource_reads, path_parameters
 from tests.live_tenants import provision_owner, remove_tenant, row_counts, run
 from tests.live_weeks import (
     declare_the_minimum,
-    enqueue_a_solve,
     produce_a_plan,
     set_home_zone,
     sign_in,
@@ -166,6 +166,24 @@ def seed_anchors(database_url: str, tenant_id: TenantId, source_id: str) -> None
     run(seed())
 
 
+def existing_solve(database_url: str, tenant_id: TenantId, iso_week: IsoWeek) -> str:
+    """The solve the fixture's declarations already requested for this week."""
+
+    async def read() -> str:
+        database = create_database(database_url)
+        try:
+            async with database.sessionmaker() as session:
+                operation = await OperationRepository(session, tenant_id).latest_of(
+                    iso_week, kinds=(SOLVE,)
+                )
+                assert operation is not None, "the declarations did not request a solve"
+                return str(operation.id)
+        finally:
+            await database.engine.dispose()
+
+    return run(read())
+
+
 def _a_source(source_id: UUID, tenant_id: TenantId) -> CalendarSourceRecord:
     return CalendarSourceRecord(
         id=source_id,
@@ -232,8 +250,8 @@ def identifiers(
         "source_id": source,
         "date": day.isoformat(),
         "period_id": str(declared.json()["id"]),
-        # Enqueued last, because the solve is the one non-terminal operation the week may hold.
-        "operation_id": enqueue_a_solve(live_database_url, owner.tenant_id, week),
+        # The declarations request the one non-terminal solve the week may hold.
+        "operation_id": existing_solve(live_database_url, owner.tenant_id, week),
     }
 
 

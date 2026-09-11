@@ -88,6 +88,7 @@ from syncr_api.solving.config import (
 )
 from syncr_api.solving.lifecycle import OperationLifecycle
 from syncr_api.solving.repository import OperationRepository
+from syncr_api.solving.runner import SolveRunner
 from syncr_api.worker.main import RUNNERS, WorkerContext
 from syncr_common.metrics import REGISTRY
 from syncr_domain.intervals import Interval
@@ -118,9 +119,10 @@ pytestmark = pytest.mark.integration
 LONDON = "Europe/London"
 # A Monday mid-morning, so a fortnight's horizon covers two ISO weeks rather than three.
 NOW = datetime(2026, 2, 9, 9, tzinfo=UTC)
-# A second later, because the maintainer schedules the projections it enqueues at its own instant,
-# and a queue is due at or before the instant it is read at.
-DRAINED_AT = NOW + timedelta(seconds=1)
+# The maintainer schedules solves after the debounce window. Their projections are enqueued when
+# those solves finish, so the projection pass starts after both have become due.
+SOLVED_AT = NOW + timedelta(seconds=3)
+DRAINED_AT = NOW + timedelta(seconds=5)
 
 TOKEN_HOST = "oauth2.googleapis.com"
 CALENDAR_ID = "syncr-dev@group.calendar.google.com"
@@ -310,6 +312,7 @@ async def declare_a_planned_week(
     await declare_a_write_target(sessions, tenant_id, horizon_days=horizon_days, provider=provider)
     await store_a_grant(sessions, tenant_id)
     await PlanHorizonRunner(clock=clock_at()).plan(context, now=NOW)
+    await SolveRunner(clock=clock_at(SOLVED_AT)).drain(context)
 
 
 async def declare_a_write_target(
@@ -479,10 +482,11 @@ async def test_a_span_reaching_into_the_horizon_from_the_previous_week_is_kept(
     await store_a_grant(sessions, owner.tenant_id)
     # Plan last week as well as this one, by running the maintainer a week earlier: only a week that
     # HAS a plan can contribute a block, and last week's is the one under test.
-    await PlanHorizonRunner(clock=clock_at(NOW - timedelta(days=7))).plan(
-        context, now=NOW - timedelta(days=7)
-    )
+    previous_now = NOW - timedelta(days=7)
+    await PlanHorizonRunner(clock=clock_at(previous_now)).plan(context, now=previous_now)
+    await SolveRunner(clock=clock_at(previous_now + timedelta(seconds=3))).drain(context)
     await PlanHorizonRunner(clock=clock_at()).plan(context, now=NOW)
+    await SolveRunner(clock=clock_at(SOLVED_AT)).drain(context)
 
     await drain(context, calendar)
 
@@ -544,6 +548,7 @@ async def test_a_tenant_with_no_write_target_drains_its_queue_without_writing(
     """Nothing happened, by the user's own instruction: the answer an excluded source gets."""
     await declare_the_minimum(sessions, owner.tenant_id, content=a_routine_frame)
     await PlanHorizonRunner(clock=clock_at()).plan(context, now=NOW)
+    await SolveRunner(clock=clock_at(SOLVED_AT)).drain(context)
 
     performed = await drain(context, calendar)
 
@@ -995,9 +1000,8 @@ async def test_the_adapter_a_request_composes_cannot_write(
         target = await CalendarSourceRepository(session, owner.tenant_id).write_target()
         assert target is not None
 
-        # A deployment that is fully armed for the worker, and this adapter still will not write.
-        with pytest.raises(ProjectionRefused, match="background worker"):
-            await adapters[GOOGLE].reconcile(target, [])  # type: ignore[attr-defined]
+        # A deployment that is fully armed for the worker, and this request adapter has no write arm.
+        assert not hasattr(adapters[GOOGLE], "reconcile")
 
 
 async def test_a_refused_write_publishes_the_notice_a_client_has_to_be_told(

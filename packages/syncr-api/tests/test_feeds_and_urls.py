@@ -251,6 +251,12 @@ def test_an_accepted_address_is_normalized_to_what_syncr_fetches(raw: str, expec
     assert normalize_feed_url(raw) == expected
 
 
+def test_an_explicit_e2e_publisher_exception_normalizes_a_loopback_feed() -> None:
+    url = "http://127.0.0.1:58041/timetable.ics"
+
+    assert normalize_feed_url(url, trusted_hosts=frozenset({"127.0.0.1"})) == url
+
+
 def test_two_spellings_of_one_host_normalize_to_one_address() -> None:
     # The duplication this module exists to prevent. A host is case-insensitive, so two rows
     # differing only in its case would be two sources for one feed, each contributing the same

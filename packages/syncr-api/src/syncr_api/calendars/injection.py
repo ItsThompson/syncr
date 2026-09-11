@@ -328,6 +328,7 @@ async def get_calendar_source_service(
         feeds=StaleFeedReading(
             AnchorRepository(transaction, principal.tenant_id), profile=profile, horizon=horizon
         ),
+        trusted_feed_hosts=frozenset(settings.e2e_calendar_trusted_hosts),
     )
 
 

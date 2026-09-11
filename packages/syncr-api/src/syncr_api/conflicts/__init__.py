@@ -11,6 +11,7 @@ directory, because an index a reader cannot trust is worse than none.
 |---|---|
 | ``config.py`` | the two paths, the resource name, and the fields a rejection cites |
 | ``declarations.py`` | the answer a caller chose, as one value |
+| ``errors.py`` | the refusals that keep a resolved conflict from moving a lived block |
 | ``overlapped.py`` | which block a conflict names, and who can move it |
 | ``pins.py`` | the pin release the ``moved`` answer needs, declared where it is needed |
 | ``ingest.py`` | detecting the overlaps a calendar sync just created, against the live plan |

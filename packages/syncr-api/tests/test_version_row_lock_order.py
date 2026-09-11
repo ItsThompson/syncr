@@ -17,12 +17,6 @@ pre-take write cannot contend with a version-first writer, carries that reason i
 A flagged site with no resolution fails here, and so does a resolution whose site has gone --
 both directions rot otherwise.
 
-**One finding is recorded rather than fixed.** ``PinService.unpin`` releases the pin row
-before bumping the week, which is the inverted shape the rule names: a pin written first here
-can cycle against a caller that takes the row and then pins. This ticket measures the tree and
-changes no service's write order, so the inversion stands resolved-as-recorded below, stated
-where a follow-up that reorders it will delete the entry and watch the walk go green.
-
 Both controls plant a synthetic module shaped like a real caller: one that writes first and
 must redden the walk, one that takes the row first and must stay green. They are one fixture
 with its two statements swapped, so the only delta between flagged and green is the order the
@@ -65,7 +59,7 @@ EXPECTED_CALLERS: frozenset[tuple[str, str, str]] = frozenset(
         ("conflicts/service.py", "ConflictService._solve_for", "bump"),
         ("horizon/maintainer.py", "PlanHorizonMaintainer._request", "bump"),
         ("learned/activation.py", "FutureWeeksResolved._resolved", "bump"),
-        ("offplan/service.py", "OffPlanService._bump", "bump"),
+        ("offplan/service.py", "OffPlanService._invalidate", "bump"),
         ("pins/service.py", "PinService._held", "bump"),
         ("pins/service.py", "PinService.unpin", "bump"),
         ("plans/production.py", "WeekProducer._produce_week", "bump"),
@@ -97,13 +91,6 @@ RESOLVED_PRECEDING_WRITES: Mapping[tuple[str, str], str] = {
     ("user_settings/service.py", "SettingsService.update"): (
         "ordered on the settings row itself, locked FOR UPDATE before the write; no "
         "version-first writer of the settings table exists"
-    ),
-    # THE FINDING. Release precedes bump: the inverted shape the rule names. Recorded, not
-    # reordered -- this ticket changes no service's write order. Reordering it deletes this
-    # entry and the walk stays green.
-    ("pins/service.py", "PinService.unpin"): (
-        "RECORDED INVERSION: the pin row is released before the week's row is bumped; left "
-        "as found because this walk measures write order and changes none"
     ),
 }
 

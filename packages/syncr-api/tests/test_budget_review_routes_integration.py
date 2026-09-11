@@ -114,6 +114,16 @@ def a_sleep_block(on: Date) -> Block:
     )
 
 
+def a_week_with_frame(blocks: Sequence[Block]) -> PlanDocument:
+    """A week whose daily sleep frame leaves the review's stated discretionary denominator."""
+    frame = [a_sleep_block(WEEK.preceding().monday() + timedelta(days=6))]
+    frame.extend(a_sleep_block(on) for on in WEEK.dates())
+    return a_week(
+        blocks,
+        frame_overhang=tuple(FrameOverhang(interval=block.interval) for block in frame),
+    )
+
+
 def a_week(
     blocks: Sequence[Block],
     *,
@@ -302,7 +312,7 @@ def planned(
     seed_plan(
         live_database_url,
         owner.tenant_id,
-        a_week(
+        a_week_with_frame(
             [
                 a_gym_block(on=YESTERDAY, hour=9, index=0, area_id=area_id),
                 a_gym_block(on=YESTERDAY, hour=11, index=1, area_id=area_id),
@@ -404,7 +414,7 @@ def test_shares_summing_to_a_hundred_leave_the_vacancy_non_zero(
     seed_plan(
         live_database_url,
         owner.tenant_id,
-        a_week([a_gym_block(on=YESTERDAY, hour=9, index=0, area_id=first)]),
+        a_week_with_frame([a_gym_block(on=YESTERDAY, hour=9, index=0, area_id=first)]),
     )
     confirm(http, signed_in, YESTERDAY)
 
@@ -419,7 +429,7 @@ def test_shares_summing_past_a_hundred_keep_the_vacancy_non_negative_and_report_
 ) -> None:
     first = declare_area(http, signed_in, "Career", budget_percent=100)
     declare_area(http, signed_in, "Study", budget_percent=30)
-    seed_plan(live_database_url, owner.tenant_id, a_week([]))
+    seed_plan(live_database_url, owner.tenant_id, a_week_with_frame([]))
 
     body = read_review(http, signed_in)
 

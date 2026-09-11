@@ -50,7 +50,7 @@ from syncr_api.calendars.config import (
 from syncr_api.core.app_factory import create_app
 from syncr_api.core.db import create_database, create_db_lifespan
 from syncr_api.core.errors import Conflict, NotFound, ValidationFailed
-from syncr_api.core.settings import DEV_ALLOWED_ORIGINS
+from syncr_api.core.settings import DEV_ALLOWED_ORIGINS, EnvSettings, build_service_settings
 from syncr_api.solving.config import SUCCEEDED
 from tests.live_tenants import PASSWORD, provision_owner, remove_tenant
 
@@ -179,6 +179,14 @@ def owner(live_database_url: str) -> Iterator[UserRecord]:
     account = provision_owner(live_database_url)
     yield account
     remove_tenant(live_database_url, account.tenant_id)
+
+
+@pytest.fixture
+def settings() -> ServiceSettings:
+    return build_service_settings(
+        service="syncr-api-test",
+        env=EnvSettings(_env_file=None, e2e_calendar_trusted_hosts=(STUB_HOST,)),
+    )
 
 
 @pytest.fixture
@@ -392,11 +400,11 @@ def test_a_feed_cannot_become_the_write_target_and_the_422_names_the_provider(
     assert still["horizonDays"] is None
 
 
-def test_an_active_anchor_source_cannot_become_the_write_target(
+def test_an_ics_anchor_source_cannot_become_the_write_target(
     http: TestClient, signed_in: dict[str, str], feed_origin: str
 ) -> None:
-    # The rule that stops syncr reading back its own projection. Its rejection names the
-    # reason and what to do instead, because "422" alone leaves the user nowhere.
+    # A feed has no provider API that accepts projected events. Its refusal names the provider and
+    # leaves the read source unchanged.
     created = add_source(http, signed_in, external_id=f"{feed_origin}/timetable.ics")
     assert http.post(f"{SOURCES}/{created['id']}/sync", headers=signed_in).status_code == 200
 
@@ -404,8 +412,8 @@ def test_an_active_anchor_source_cannot_become_the_write_target(
 
     assert response.status_code == ValidationFailed.status
     detail = response.json()["detail"]
-    assert "active anchor source" in detail
-    assert "reconciled destructively" in detail
+    assert "is a ics source" in detail
+    assert "Google calendar" in detail
     # And the source is untouched: it still contributes its anchors.
     still = http.get(f"{SOURCES}/{created['id']}", headers=signed_in).json()
     assert still["role"] == ANCHOR_SOURCE

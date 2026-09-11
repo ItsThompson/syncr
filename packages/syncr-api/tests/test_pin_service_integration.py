@@ -1048,6 +1048,7 @@ class TestStoredPinRelease:
         sessions: async_sessionmaker[AsyncSession],
         owner: UserRecord,
         app: FastAPI,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The two cases above hold the class. This one holds what the conflict path is handed.
 
@@ -1078,6 +1079,7 @@ class TestStoredPinRelease:
         # the wrong reason.
         assert len(await _pins_held_by(sessions, owner.tenant_id)) == 1
 
+        monkeypatch.setattr("syncr_api.conflicts.injection.utc_now", lambda: NOW)
         request = Request({"type": "http", "app": app})
         async with sessions() as session, session.begin():
             service = get_conflict_service(request, _principal(owner), session, session_mode=False)

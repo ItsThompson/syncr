@@ -181,7 +181,7 @@ async def read_template(
 ) -> TemplateResponse:
     """One shape of this tenant's, with its entries in the order the day runs."""
     shape = await service.read(principal, template_id)
-    return _as_template(shape, await service.held_bindings(shape))
+    return _as_template(shape, await service.held_bindings(principal, shape))
 
 
 @templates_router.patch(TEMPLATE_PATH, summary="Rename a day shape")
@@ -197,7 +197,7 @@ async def update_template(
 
     async def update() -> TemplateResponse:
         merged = await service.update(principal, template_id, change)
-        return _as_template(merged, await service.held_bindings(merged))
+        return _as_template(merged, await service.held_bindings(principal, merged))
 
     return await guard.once(UPDATE_TEMPLATE_ROUTE, TemplateResponse, update)
 

@@ -229,6 +229,7 @@ def materialized_entries(
     dates: Sequence[Date],
     zone_by_date: Mapping[Date, ZoneId],
     off_plan: OffPlanSuppression,
+    report_drops: bool = True,
 ) -> tuple[MaterializedEntry, ...]:
     """Each weekday's day shape, resolved for that weekday's date, its content named.
 
@@ -256,7 +257,8 @@ def materialized_entries(
                 dropped.append(outcome)
             elif outcome is not None:
                 resolved.append(outcome)
-    report(dropped)
+    if report_drops:
+        report(dropped)
     return tuple(resolved)
 
 

@@ -41,7 +41,7 @@ ACCEPTED_SCHEMES: Final = (HTTPS, HTTP, WEBCAL, ICS)
 REWRITTEN_SCHEMES: Final = (WEBCAL, ICS)
 
 
-def normalize_feed_url(raw: str) -> str:
+def normalize_feed_url(raw: str, *, trusted_hosts: frozenset[str] = frozenset()) -> str:
     """``raw`` as the URL syncr will fetch, or a stated rejection.
 
     The rejection names the schemes that are accepted, because "invalid URL" leaves a user
@@ -63,7 +63,11 @@ def normalize_feed_url(raw: str) -> str:
 
     host = _host(parts)
     literal = address_in(host)
-    if literal is not None and (refusal := refusal_of(literal)) is not None:
+    if (
+        literal is not None
+        and parts.hostname not in trusted_hosts
+        and (refusal := refusal_of(literal)) is not None
+    ):
         raise ValidationFailed(refusal)
 
     fetchable = HTTPS if scheme in REWRITTEN_SCHEMES else scheme

@@ -197,8 +197,8 @@ STATES_NO_SESSION = frozenset({"NO_SESSION_IS_OPEN", repr(NO_SESSION_IS_OPEN)})
 # How many mutating routes the trigger table derives, and how many of them the periodic probe is
 # left to notice. Exact numbers rather than a non-empty set, so an enumeration that stopped seeing
 # routes fails rather than covering nothing quietly.
-MUTATIONS_THAT_CAN_MOVE_A_READING = 57
-FLIPS_THE_PERIODIC_PROBE_RECORDS = 43
+MUTATIONS_THAT_CAN_MOVE_A_READING = 58
+FLIPS_THE_PERIODIC_PROBE_RECORDS = 44
 
 # The routes whose own act records the flip it causes, so the row carries what the request stated.
 # Named rather than counted, because this is the set the remaining expiring guard exists to grow: a
@@ -1247,7 +1247,7 @@ async def test_no_verdict_bearing_read_appends_a_row_however_often_it_is_driven(
     guard: the recorder writes only on a TRANSITION, so a read that recorded would write one row and
     then be quiet, which counting once after one call cannot tell from writing none.
     """
-    await a_planned_week(sessions, owner, context)
+    await a_solved_week(sessions, owner, context)
     headers = sign_in(http, owner.email)
     paths = verdict_bearing_reads_of(settings)
     assert paths, "no verdict-bearing read was found, so this asserted nothing"

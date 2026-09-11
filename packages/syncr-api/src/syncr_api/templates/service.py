@@ -160,7 +160,9 @@ class TemplateService:
         require_scope(principal, Scope.PLAN_READ)
         return await self._require_template(principal, template_id)
 
-    async def held_bindings(self, shape: TemplateRecord) -> dict[BindingTarget, frozenset[UUID]]:
+    async def held_bindings(
+        self, principal: Principal, shape: TemplateRecord
+    ) -> dict[BindingTarget, frozenset[UUID]]:
         """Which of a shape's bindings name a row this tenant still holds, per table.
 
         The read model reports a dangling binding rather than leaving every client to infer it
@@ -168,6 +170,7 @@ class TemplateService:
         them. Keyed per target, in step with how a binding names its row: an identifier is only
         ever resolved against the table ``binding_target`` names.
         """
+        require_scope(principal, Scope.PLAN_READ)
         held: dict[BindingTarget, set[UUID]] = {}
         for entry in shape.entries:
             if entry.binding_target is None or entry.binding_ref is None:

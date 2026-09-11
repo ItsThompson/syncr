@@ -225,8 +225,8 @@ class PinService:
         # principal's own tenant, so another tenant's identifier already read as absent above.
         authorize_tenant(principal, found.tenant_id, resource=PIN_RESOURCE)
 
-        await self._pins.release(pin_id)
         version = await self._versions.bump(week, at=self._clock())
+        await self._pins.release(pin_id)
         _log.info(
             "pins.pin.released",
             tenant_id=str(principal.tenant_id),

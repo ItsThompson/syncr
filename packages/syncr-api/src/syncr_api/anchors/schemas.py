@@ -305,7 +305,7 @@ class AnchorTypeCreateRequest(WireModel):
         description=_FORBIDDEN_AREAS_DESCRIPTION,
     )
 
-    _read_free_text = field_validator("name", "match_title_contains")(_readable)
+    _read_free_text = field_validator("name", "match_title_contains", mode="before")(_readable)
 
 
 class AnchorTypePatchRequest(WireModel):
@@ -372,7 +372,7 @@ class AnchorTypePatchRequest(WireModel):
             raise ValueError(_NOT_NULLABLE_MESSAGE)
         return value
 
-    _read_free_text = field_validator("name", "match_title_contains")(_readable)
+    _read_free_text = field_validator("name", "match_title_contains", mode="before")(_readable)
 
 
 class ReorderAnchorTypesRequest(WireModel):

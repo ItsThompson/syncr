@@ -61,9 +61,9 @@ _INSERT_AREA = text(
 _INSERT_HABIT = text(
     "INSERT INTO habits (id, tenant_id, area_id, title, cadence_kind, cadence_times_per_week,"
     " cadence_approx_days, duration_min_minutes, duration_max_minutes, miss_policy,"
-    " binding_source, variants, debt_cap_periods, created_at)"
+    " binding_source, variants, debt_cap_periods, charged_misses, created_at)"
     " VALUES (:id, :tenant_id, :area_id, 'Gym', 'daily', NULL, NULL, 90, 90, 'forgive', 'fixed',"
-    " CAST('[]' AS jsonb), 2, :created_at)"
+    " CAST('[]' AS jsonb), 2, 0, :created_at)"
 )
 
 _INSERT_TASK = text(

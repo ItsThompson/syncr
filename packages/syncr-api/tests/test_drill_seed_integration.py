@@ -358,7 +358,7 @@ class TestTheEvidenceTheFingerprintReads:
         try:
             async with sessions() as session, session.begin():
                 await declare(session, principal)
-            await _declare_the_week_off_plan(sessions, principal, the_week_behind(NOW))
+            await _declare_the_week_off_plan(sessions, principal, the_week_behind(utc_now()))
             assert await run_the_console_script(context, bootstrap=_found_it) == EXIT_REFUSED
         finally:
             await delete_tenant(sessions, user.tenant_id)

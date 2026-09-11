@@ -620,10 +620,11 @@ def test_a_historical_floor_reaches_the_wire_with_its_declaration_unavailable() 
 # The document on the wire
 # --------------------------------------------------------------------------------
 
-# The document's own three minute figures, which the wire deliberately does not carry: each was
-# computed when the plan was produced, and `readings` carries all three live.
+# The document's own derived figures and prior-week occupancy, which the wire deliberately does not
+# carry: `readings` carries the figures live, and the overhang is an assembly input rather than a
+# current plan reading.
 STALE_BY_NATURE = frozenset(
-    {"discretionary_minutes", "unallocated_minutes", "oversubscription_minutes"}
+    {"discretionary_minutes", "frame_overhang", "unallocated_minutes", "oversubscription_minutes"}
 )
 
 

@@ -25,7 +25,7 @@ from typing import Final
 import pytest
 
 from syncr_api.core.db import MAX_OVERFLOW, POOL_SIZE, POOL_TIMEOUT_SECONDS
-from syncr_api.horizon import maintainer as maintainer_module
+from syncr_api.horizon import verdicts as verdicts_module
 from syncr_api.horizon.config import MaintainerDuty
 from syncr_api.plans import assembler as assembler_module
 from syncr_api.plans import injection as injection_module
@@ -258,8 +258,8 @@ def wired_callers() -> set[str]:
 
 
 def caller_the_maintainer_assembles_under() -> str:
-    """The label value the maintainer's own assemblies carry, read from the maintainer."""
-    found = set(_WIRED_CALLER.findall(inspect.getsource(maintainer_module)))
+    """The label value the maintainer's own assemblies carry, read from its verdict wiring."""
+    found = set(_WIRED_CALLER.findall(inspect.getsource(verdicts_module)))
 
     assert len(found) == 1, f"the maintainer names {sorted(found)} callers, and the runbook one"
     return AssemblyCaller[found.pop()].value

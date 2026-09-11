@@ -55,6 +55,7 @@ one resolved ``SolveInputs``:
 | ``materialization.py`` | a declared wall time to instants per date, and what suppresses one |
 | ``entry_content.py`` | what a concrete entry names, and what charges it: an Area, or the frame |
 | ``overhang.py`` | the preceding week's occurrences, as the time they occupy in this one |
+| ``anchor_origins.py`` | the source and recurrence identity an anchor carries into a plan |
 | ``cadence.py`` | a habit's cadence to occurrences, with the cursor and the debt figure |
 | ``multipliers.py`` | the learned duration multiplier, its maturity gate, its two applications |
 | ``demand.py`` | the two TASK quantities, side by side |

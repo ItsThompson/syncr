@@ -340,6 +340,7 @@ class WeekAssembler:
             dates=preceding.dates(),
             zone_by_date=preceding_zone_by_date,
             off_plan=preceding_suppression,
+            report_drops=False,
         )
         inherited = (*inherited_frame, *concrete_entry_overhang(preceding_entries, into=span))
 
