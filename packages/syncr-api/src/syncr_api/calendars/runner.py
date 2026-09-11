@@ -110,9 +110,12 @@ class CalendarSyncRunner:
         self._next_due_at = now + self._interval
         # One client per transport for the whole tick, so several feeds on one host reuse a
         # connection and every Google read shares one pool.
-        async with create_feed_client(
-            trusted_hosts=frozenset(context.settings.e2e_calendar_trusted_hosts)
-        ) as feeds, create_google_read_client() as google:
+        async with (
+            create_feed_client(
+                trusted_hosts=frozenset(context.settings.e2e_calendar_trusted_hosts)
+            ) as feeds,
+            create_google_read_client() as google,
+        ):
             await self.poll(context, feeds, google, now=now)
 
     @measured("calendar_sync")

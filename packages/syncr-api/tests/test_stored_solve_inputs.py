@@ -69,7 +69,8 @@ from syncr_domain.identity import (
 )
 from syncr_domain.intervals import Interval
 from syncr_domain.off_plan import OffPlanPeriod
-from syncr_domain.plan import AdjustmentKind, FrameOverhang as StoredFrameOverhang
+from syncr_domain.plan import AdjustmentKind
+from syncr_domain.plan import FrameOverhang as StoredFrameOverhang
 from syncr_domain.preferences import PreferenceOwner, PreferenceOwnerKind, PreferenceStrength
 from syncr_domain.reasons import Bound, ReasonRecord
 from syncr_domain.tasks import Priority

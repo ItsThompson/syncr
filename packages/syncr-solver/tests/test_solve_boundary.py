@@ -66,6 +66,7 @@ FIELDS_READ: Final = frozenset(
         "eligible_tasks",
         "for_probe",
         "frame",
+        "frame_overhang",
         "habit_occurrences",
         "input_version",
         "iso_week",

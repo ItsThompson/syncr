@@ -1000,7 +1000,7 @@ async def test_the_adapter_a_request_composes_cannot_write(
         target = await CalendarSourceRepository(session, owner.tenant_id).write_target()
         assert target is not None
 
-        # A deployment that is fully armed for the worker, and this request adapter has no write arm.
+        # A deployment can arm the worker while the request adapter still has no write arm.
         assert not hasattr(adapters[GOOGLE], "reconcile")
 
 
