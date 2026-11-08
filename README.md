@@ -1,5 +1,11 @@
 # syncr
 
+<p>
+  <a href="https://0rwx.com/"><picture><source media="(prefers-color-scheme: dark)" srcset="https://0rwx.com/static/AI-X-dark.svg"><img src="https://0rwx.com/static/AI-X-light.svg" alt="0rwx EXECUTE: Human architected, AI executed" width="64" height="64"></picture></a>
+  <br>
+  <sub><strong>0rwx EXECUTE</strong>: Human architected, AI executed</sub>
+</p>
+
 syncr is a scheduling and life-management system that owns the plan. It turns long-term time
 allocations and a short-term task backlog into a timeblocked week, projects that week onto the
 user's calendar, and adapts the plan as reality diverges, without rearranging it behind the
